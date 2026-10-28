@@ -268,6 +268,18 @@ they cannot drift:
 
 Verified by `test/exercise_metric_service_test.dart` (S-904 … S-911).
 
+`getAllTimeBestE1RM(exerciseId)` and `getAllTimeBestReps(exerciseId)` are the
+standing-best reads the PR surfaces compare a set against — the Epley estimate
+in kilograms for a loaded exercise, the rep count for a bodyweight one — and
+`getAllTimeBests()` is the same pair for every exercise in one pass over the
+cached history, which is what the wrist's `bests_down` frame is built from; a
+caller needing all of them would otherwise re-walk the whole history once per
+exercise. An exercise appears in the bulk map only when one of its axes is
+above zero, and an in-progress session contributes nothing, exactly as in the
+two per-exercise walks. Verified by `test/stats_bests_builder_test.dart`, group
+`StatsProgressService.getAllTimeBests`, the parity test `S-87a-5 parity: every
+exercise equals getAllTimeBestE1RM and getAllTimeBestReps`.
+
 `progressionSamples()` returns one sample per completed session and exercise that
 logged a `set` effort in it — whatever the session's modality, so a set logged in
 a Cardio session still counts — ordered by exercise and then by session start,

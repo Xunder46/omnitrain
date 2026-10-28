@@ -44,6 +44,18 @@ final class WatchSpokenTextTests: XCTestCase {
         XCTAssertEqual(WatchSpokenText.rating(1, of: 10), "Rating 1 of 10", "S-15302 a ten-step scale")
     }
 
+    // MARK: - S-87b-14 the record banner's spoken text
+
+    /// The banner shows "New PR" and no number, so what VoiceOver reads is the
+    /// whole sentence (plan 87b D-7).
+    func testS87b14TheRecordBannerSpeaksTheWholeSentence() {
+        XCTAssertEqual(
+            WatchSpokenText.personalRecord,
+            "New personal record",
+            "S-87b-14 the wrist's banner label and its announcement share this text"
+        )
+    }
+
     // MARK: - S-15309 the zero-unit dropping table
 
     func testS15309DurationDropsEveryZeroUnitExceptAZeroTotal() {

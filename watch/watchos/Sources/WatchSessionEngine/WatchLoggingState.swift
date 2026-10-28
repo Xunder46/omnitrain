@@ -137,6 +137,14 @@ public enum WatchSensorPace {
     public static let minDistanceMeters = 50.0
 }
 
+/// How long the "New PR" banner stays up (plan 87b D-7), read by the view and
+/// the tests from one number rather than two.
+public enum WatchPersonalRecordCopy {
+    /// About four seconds: long enough to read on a wrist, short enough not to
+    /// cover the next set's rows. A second record restarts the window.
+    public static let bannerSeconds: TimeInterval = 4.0
+}
+
 /// What the sensors are reading, as the wrist prints it: the beat, the distance
 /// in the saved unit, and the pace it is being covered at.
 ///
@@ -183,6 +191,22 @@ public final class WatchLoggingState {
 
     private let clock: () -> Date
     private let newId: () -> String
+
+    /// The phone's standing bests, when the host wired one in. A watch without
+    /// a holder gives no verdict at all: its sets are logged and nothing more
+    /// (plan 87b D-3).
+    private let personalBests: WatchPersonalBests?
+
+    /// Whether the set this state last logged was a record (plan 87b D-1).
+    /// Assigned on every log, so a non-record log clears it; false when no
+    /// holder is wired or no frame is held.
+    public private(set) var lastLogWasPersonalRecord = false
+
+    /// The instant the "New PR" banner stops showing, or nil when none has
+    /// shown since the app launched. A second record simply overwrites it,
+    /// which restarts the window; a non-record log leaves it alone — the banner
+    /// only ever expires by time (plan 87b D-7).
+    public private(set) var personalRecordBannerUntil: Date?
 
     /// Values the user has dialled in but not confirmed, by exercise slot and
     /// then metric key. Cleared on confirm, at which point the values come back
@@ -235,7 +259,8 @@ public final class WatchLoggingState {
         sensors: WatchSensorRecorder? = nil,
         roundPresetMs: Int? = nil,
         unitsSource: (() -> WatchUnitPreferences)? = nil,
-        workoutNotice: @escaping () -> Bool = { false }
+        workoutNotice: @escaping () -> Bool = { false },
+        personalBests: WatchPersonalBests? = nil
     ) {
         self.engine = engine
         self.clock = clock
@@ -243,6 +268,7 @@ public final class WatchLoggingState {
         self.unitsSource = unitsSource ?? { units }
         self.sensors = sensors
         self.workoutNotice = workoutNotice
+        self.personalBests = personalBests
         self.presetRoundMs = roundPresetMs
             ?? WatchLoggingDefaults.roundDurationSeconds * 1000
     }
@@ -296,6 +322,17 @@ public final class WatchLoggingState {
     /// The current instant, read through this state's clock, so the view and
     /// the events it logs agree on the time.
     public func now() -> Date { clock() }
+
+    /// Whether the "New PR" banner is still up at `now` (plan 87b D-7).
+    ///
+    /// Strictly before the expiry: visible a tenth of a second short of the
+    /// window, gone exactly at its end. The view reads this off the injected
+    /// clock on the logging screen's existing tick, so the banner needs no
+    /// timer of its own (D-9).
+    public func isPersonalRecordBannerVisible(at now: Date) -> Bool {
+        guard let until = personalRecordBannerUntil else { return false }
+        return now < until
+    }
 
     // MARK: - Live sensors
 
@@ -944,6 +981,20 @@ public final class WatchLoggingState {
         if isResting { await endRest(at: loggedAt) }
 
         let stored = try await engine.appendObservation(event)
+        // D-4: the verdict is a synchronous in-memory comparison against the
+        // frame and the wrist's own bests — it cannot throw, await or change the
+        // event, and it runs only on this path, so a set the phone mirrored in
+        // never reaches it. A watch with no holder stays silent (D-3).
+        let record = personalBests?.noteLogged(
+            kind: event["kind"] as? String ?? "",
+            exerciseId: event["exerciseId"] as? String ?? "",
+            reps: event["reps"] as? Int ?? 0,
+            loadKg: event["loadKg"] as? Double
+        ) ?? false
+        lastLogWasPersonalRecord = record
+        if record {
+            personalRecordBannerUntil = clock().addingTimeInterval(WatchPersonalRecordCopy.bannerSeconds)
+        }
         dialled[loggedKey] = nil
         // D-1304: Log ends the clock at the instant the entry's own window ends
         // (D-223). A set has no clock; it starts its rest instead.

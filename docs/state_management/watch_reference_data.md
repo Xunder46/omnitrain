@@ -248,6 +248,26 @@ and each frame is stamped with its own request's clock rather than the bundle's
 sends validates against the contract (`S-87a-11 the sent frame validates, with
 and without history`).
 
+### The wrist keeps one copy
+
+The wrist holds ONE copy of the newest bests. A frame older than the copy it
+holds is understood and dropped, a frame carrying the numbers it already holds
+writes nothing at all, and the old copy is dropped only after the new one is
+stored (`WatchSessionStore.pruneBests(keepingRecordId:)`, which the holder
+calls on its store), so a store that is
+append-only does not grow a row per sync. Memory is at most the frame's 300
+exercises plus one best per exercise the wrist itself logged, and holding them
+reads no history. A frame the wrist cannot read is refused whole, with the
+previous copy still deciding, and a wrist that never received a frame says
+nothing: no banner, no record tap, no change. Verified by
+`WatchPersonalBestsTests.testS87b11ThreeFramesLeaveOnlyTheNewestAndARestoreReadsIt`,
+`…testS87b11EqualEntriesTwiceAppendOnce`,
+`…testS87b11AnOlderFrameIsUnderstoodAndDropped`,
+`…testS87b13AMalformedFrameIsRefusedWholeAndThePreviousCopyStillDecides`,
+`…testS87b2AWristThatNeverReceivedAFrameSaysNothing`,
+`WatchPersonalBestsStoreTests.testS87b19APruneKeepsExactlyTheNamedRow` and
+`…testS87b11AStoredBestsRowReadsBackAfterRelaunch`.
+
 ### The phone's sender since 23e2
 
 The phone sends the exercise list as `exercises_down` batches of at most 100,

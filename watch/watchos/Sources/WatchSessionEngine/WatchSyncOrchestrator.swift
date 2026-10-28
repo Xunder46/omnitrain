@@ -57,6 +57,11 @@ public final class WatchSyncOrchestrator {
     /// has nothing to do with a `preferences_down`.
     private let preferences: WatchPhonePreferences?
 
+    /// The phone's standing bests, when the app keeps them. A watch without
+    /// them has nothing to do with a `bests_down`, and announces nothing about
+    /// a record (D-3).
+    private let bests: WatchPersonalBests?
+
     /// Whether a catch-up is running. The class is not main-actor isolated, so
     /// the flag is protected by a lock: the test-and-set in `catchUp` has no
     /// suspension point between the check and the set, so two triggers can never
@@ -69,13 +74,15 @@ public final class WatchSyncOrchestrator {
         paths: WatchSessionStartPaths,
         engine: WatchSessionEngine,
         nutrition: WatchNutritionState? = nil,
-        preferences: WatchPhonePreferences? = nil
+        preferences: WatchPhonePreferences? = nil,
+        bests: WatchPersonalBests? = nil
     ) {
         self.transport = transport
         self.paths = paths
         self.engine = engine
         self.nutrition = nutrition
         self.preferences = preferences
+        self.bests = bests
     }
 
     /// Brings the watch up to date with the phone: the routines, and then the
@@ -172,6 +179,12 @@ public final class WatchSyncOrchestrator {
             // the watch cannot read is refused with nothing stored (D-113).
             guard let preferences else { return false }
             return await preferences.applyPreferencesDown(envelope).applied
+        case "bests_down":
+            // The phone's standing bests, gated the same way: a frame the watch
+            // cannot read is refused with nothing stored and the copy it holds
+            // still deciding (D-5).
+            guard let bests else { return false }
+            return await bests.applyBestsDown(envelope).applied
         case "exercise_push", "session_snapshot", "structure_change",
              "session_lifecycle", "timer_state", "observations_up",
              "receipt":

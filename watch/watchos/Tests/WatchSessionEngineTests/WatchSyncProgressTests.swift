@@ -208,4 +208,51 @@ final class WatchSyncProgressTests: XCTestCase {
             "S-8510 inactive two seconds after the routines reply, which came second"
         )
     }
+
+    // MARK: - S-87b-12 `bests_down` is a reply, so the spinner waits for it
+
+    /// The phone sends the bests last on every request (plan 87b D-8): the sync
+    /// is not over until two quiet seconds after that frame, not two after the
+    /// routines.
+    func testS87b12TheBestsReplyKeepsTheSyncRunningUntilItsOwnQuietWindow() {
+        let clock = makeClock()
+        var progress = WatchSyncProgress(clock: clock.call)
+        let began = clock.call()
+        progress.begin()
+
+        progress.noteArrival(type: "routines_down", at: began.addingTimeInterval(1.0))
+        progress.noteArrival(type: "bests_down", at: began.addingTimeInterval(1.5))
+
+        XCTAssertTrue(
+            progress.isActive(at: began.addingTimeInterval(3.4)),
+            "S-87b-12 a tenth before the bests reply goes quiet: still syncing"
+        )
+        XCTAssertFalse(
+            progress.isActive(at: began.addingTimeInterval(3.5)),
+            "S-87b-12 finished two seconds after the bests frame, not two after the routines"
+        )
+    }
+
+    /// A `bests_down` that lands after the sync is over cannot revive it — the
+    /// spinner reads the same rule as every other straggler.
+    func testS87b12AStragglingBestsReplyDoesNotReviveTheSync() {
+        let clock = makeClock()
+        var progress = WatchSyncProgress(clock: clock.call)
+        let began = clock.call()
+        progress.begin()
+
+        progress.noteArrival(type: "routines_down", at: began.addingTimeInterval(1.0))
+
+        XCTAssertFalse(
+            progress.isActive(at: began.addingTimeInterval(3.0)),
+            "S-87b-12 the routines-only window has already closed"
+        )
+
+        progress.noteArrival(type: "bests_down", at: began.addingTimeInterval(3.0))
+
+        XCTAssertFalse(
+            progress.isActive(at: began.addingTimeInterval(3.0)),
+            "S-87b-12 a bests frame after the sync ended leaves it ended"
+        )
+    }
 }

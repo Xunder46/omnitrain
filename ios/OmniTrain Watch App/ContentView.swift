@@ -22,6 +22,12 @@ final class WatchAppHost: ObservableObject {
     let paths: WatchSessionStartPaths
     let preferences: WatchPhonePreferences
 
+    /// The phone's standing bests, and the wrist's own (plan 87b D-2): one
+    /// holder for the life of the app, restored with the settings and fed by the
+    /// orchestrator's `bests_down`, so the logging state can say whether a set
+    /// beats what the wrist knows.
+    let personalBests: WatchPersonalBests
+
     /// The logging surface's state, and the End/effort-rating state. One of each
     /// for the life of the app (D-30): the logging state derives the current
     /// exercise live from the engine, so one instance follows the session, the
@@ -153,6 +159,9 @@ final class WatchAppHost: ObservableObject {
         let engine = WatchSessionEngine(store: store, onEmit: forwarder.sink)
         let paths = WatchSessionStartPaths(engine: engine, store: store)
         let preferences = WatchPhonePreferences(store: store)
+        // The bests holder, built beside the settings and over the same store
+        // (plan 87b D-2): the orchestrator feeds it and the logging state asks it.
+        let personalBests = WatchPersonalBests(store: store)
         // The quick-log is built over the same engine and store (D-1): its foods
         // arrive on the orchestrator's `foods_down`, and its log is the engine's
         // own `logNutrition`, so it is the same event the start screen takes.
@@ -166,7 +175,8 @@ final class WatchAppHost: ObservableObject {
             paths: paths,
             engine: engine,
             nutrition: nutrition,
-            preferences: preferences
+            preferences: preferences,
+            bests: personalBests
         )
         // The health store is built once and shared (D-2106): it owns the
         // workout builder and the sensor feed, so the workout coordinator and
@@ -189,7 +199,8 @@ final class WatchAppHost: ObservableObject {
             engine: engine,
             sensors: recorder,
             unitsSource: { preferences.units },
-            workoutNotice: { workout.openFailed }
+            workoutNotice: { workout.openFailed },
+            personalBests: personalBests
         )
         let rating = WatchEffortRatingState(
             engine: engine,
@@ -203,6 +214,7 @@ final class WatchAppHost: ObservableObject {
         self.engine = engine
         self.paths = paths
         self.preferences = preferences
+        self.personalBests = personalBests
         self.logging = logging
         self.rating = rating
         self.summary = summary
@@ -304,10 +316,10 @@ final class WatchAppHost: ObservableObject {
     /// the engine first (its session, the rows it logged and their timers) so a
     /// relaunch mid-session comes back before anything is asked of it, then the
     /// quick-log's synced food list, then the routines, the phone's settings as the
-    /// last `preferences_down` left them, and any rating the wrist's own End still
-    /// owes. The routines, the settings and the rating are empty on a fresh
-    /// install, because all three only arrive when the user asks the phone for
-    /// them.
+    /// last `preferences_down` left them, the bests that ride beside them, and any
+    /// rating the wrist's own End still owes. The routines, the settings and the
+    /// rating are empty on a fresh install, because all three only arrive when the
+    /// user asks the phone for them.
     func restore() async {
         // A stranded workout must end before a restored session can open one.
         await workout.recoverInProgress()
@@ -315,6 +327,7 @@ final class WatchAppHost: ObservableObject {
         await nutrition.restore()
         await paths.restore()
         await preferences.restore()
+        await personalBests.restore()
         await rating.restore()
         revision += 1
     }

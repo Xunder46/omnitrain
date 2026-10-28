@@ -569,3 +569,78 @@ public struct WatchExerciseBatchRecord {
         )
     }
 }
+
+// MARK: - The phone's standing bests
+
+/// One `bests_down` frame as the wrist stored it.
+///
+/// The phone owns the history; the wrist only needs the numbers a set has to
+/// beat. `entries` is the frame's `bests` array exactly as it arrived, so the
+/// code that applies a frame and the code that restores one parse the same
+/// shape (A-1). Like a catalog row it carries no session — its `sessionId` is
+/// empty — because the bests belong to the watch, not to any one workout.
+///
+/// The row is append-only like every other; the one way bests rows leave is
+/// `pruneBests(keepingRecordId:)`, once the caller has written the copy it
+/// holds as newest (D-11, D-17).
+public struct WatchBestsRecord {
+    public let recordId: String
+    public let sessionId: String
+    public let recordedAt: Date
+    public let sequence: Int
+
+    /// When the phone generated this frame. The newest one is the copy that
+    /// applies; an older one is not a newer truth.
+    public let generatedAt: Date
+
+    /// The frame's `bests` array: one entry per exercise, each with an
+    /// `exerciseId` and at least one axis (`e1rmKg`, `repsBest`).
+    public let entries: [[String: Any]]
+
+    public init(
+        recordId: String,
+        recordedAt: Date,
+        generatedAt: Date,
+        entries: [[String: Any]] = [],
+        sequence: Int = 0
+    ) {
+        self.recordId = recordId
+        self.sessionId = ""
+        self.recordedAt = recordedAt
+        self.sequence = sequence
+        self.generatedAt = generatedAt
+        self.entries = entries
+    }
+
+    public func withSequence(_ sequence: Int) -> WatchBestsRecord {
+        WatchBestsRecord(
+            recordId: recordId,
+            recordedAt: recordedAt,
+            generatedAt: generatedAt,
+            entries: entries,
+            sequence: sequence
+        )
+    }
+
+    public func toJson() -> [String: Any] {
+        [
+            "recordType": StoredWatchRecord.bestsType,
+            "recordId": recordId,
+            "sessionId": sessionId,
+            "recordedAt": utcIso(recordedAt),
+            "sequence": sequence,
+            "generatedAt": utcIso(generatedAt),
+            "entries": entries,
+        ]
+    }
+
+    public static func fromJson(_ json: [String: Any]) throws -> WatchBestsRecord {
+        WatchBestsRecord(
+            recordId: try requiredString(json, "recordId"),
+            recordedAt: try parseUtcIso(json["recordedAt"]),
+            generatedAt: try parseUtcIso(json["generatedAt"]),
+            entries: (json["entries"] as? [[String: Any]]) ?? [],
+            sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
+        )
+    }
+}

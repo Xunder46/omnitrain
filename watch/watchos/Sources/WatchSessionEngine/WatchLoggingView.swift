@@ -56,6 +56,13 @@ public struct WristHaptics: WatchHaptics {
         WKInterfaceDevice.current().play(.success)
     }
 
+    /// A set the wrist logged that beat the best it holds (plan 87b D-18):
+    /// the one built-in type no other cue here uses, so a record is told apart
+    /// without a second tap.
+    public func playPersonalRecord() {
+        WKInterfaceDevice.current().play(.start)
+    }
+
     /// Next on the rest screen: lighter than the log's tap and unlike the rest
     /// ping's click.
     public func playNext() {
@@ -120,6 +127,18 @@ public struct WatchLoggingView: View {
 
     public var body: some View {
         crownDriven(surface)
+            // The banner is an overlay, so it neither pushes the rows nor moves
+            // the Log button (plan 87b D-7). It shows while the state's window is
+            // open; that window is read on the model's existing tick, so the
+            // banner needs no timer of its own (D-9).
+            .overlay(alignment: .top) { personalRecordBanner }
+            // One announcement per record (D-19): the state stamps a new expiry
+            // only when a log is a record, so this fires once per record and
+            // never for a log that is not one.
+            .onChange(of: model.state.personalRecordBannerUntil) { until in
+                guard until != nil else { return }
+                announcePersonalRecord()
+            }
             .onAppear {
                 model.start()
                 crownFocused = true
@@ -154,6 +173,42 @@ public struct WatchLoggingView: View {
             primaryButton
         }
         .padding(.horizontal, Self.surfaceInset)
+    }
+
+    /// The "New PR" banner: a trophy and two words over the top of the surface
+    /// while the state's window is open (plan 87b D-7).
+    ///
+    /// Opacity is the only thing that can change it — no movement, no repeating
+    /// animation — so Reduce Motion needs nothing extra. VoiceOver reads the one
+    /// label; the trophy and the words are decoration under it.
+    @ViewBuilder
+    private var personalRecordBanner: some View {
+        if model.state.isPersonalRecordBannerVisible(at: model.state.now()) {
+            HStack(spacing: 4) {
+                Image(systemName: "trophy.fill")
+                Text("New PR")
+            }
+            .font(.caption)
+            .bold()
+            .foregroundStyle(Color.black)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(accent?.color ?? Color.yellow))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(WatchSpokenText.personalRecord)
+            .allowsHitTesting(false)
+            .transition(.opacity)
+        }
+    }
+
+    /// Posts the one announcement a record gets (plan 87b D-19). The
+    /// announcement API arrives with watchOS 10 while the package's floor is
+    /// watchOS 9, so on the floor the banner's own label is what VoiceOver
+    /// reads.
+    private func announcePersonalRecord() {
+        if #available(watchOS 10.0, *) {
+            AccessibilityNotification.Announcement(WatchSpokenText.personalRecord).post()
+        }
     }
 
     /// One Crown binding for the whole surface. It steps the armed row; a

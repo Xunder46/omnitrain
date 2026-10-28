@@ -178,6 +178,10 @@ final class WatchNutritionQuickLogTests: XCTestCase {
         func pruneExerciseBatches(keepingVersion: String) async -> [String] {
             await backing.pruneExerciseBatches(keepingVersion: keepingVersion)
         }
+
+        func pruneBests(keepingRecordId: String) async -> [String] {
+            await backing.pruneBests(keepingRecordId: keepingRecordId)
+        }
     }
 
     // MARK: - S-001 quick-logging a food with the phone out of reach

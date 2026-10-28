@@ -174,7 +174,7 @@ public final class WatchLoggingModel: ObservableObject {
         if isAwaitingStart {
             await state.startWork()
         } else if (try? await state.log()) != nil {
-            haptics.playLogged()
+            playLogCue()
         }
         poll()
     }
@@ -205,9 +205,20 @@ public final class WatchLoggingModel: ObservableObject {
 
     public func log() async {
         if (try? await state.log()) != nil {
-            haptics.playLogged()
+            playLogCue()
         }
         poll()
+    }
+
+    /// The one cue a recorded log is owed: the record's own tap when the set
+    /// beat the standing best, the logged tap otherwise — never both (plan 87b
+    /// D-6, S-87b-21).
+    private func playLogCue() {
+        if state.lastLogWasPersonalRecord {
+            haptics.playPersonalRecord()
+        } else {
+            haptics.playLogged()
+        }
     }
 }
 
@@ -217,6 +228,7 @@ public final class RecordingHaptics: WatchHaptics {
     public private(set) var milestones: [WatchTimerMilestone] = []
     public private(set) var restPings = 0
     public private(set) var logged = 0
+    public private(set) var personalRecords = 0
     public private(set) var nexts = 0
 
     public init() {}
@@ -231,6 +243,10 @@ public final class RecordingHaptics: WatchHaptics {
 
     public func playLogged() {
         logged += 1
+    }
+
+    public func playPersonalRecord() {
+        personalRecords += 1
     }
 
     public func playNext() {
@@ -251,6 +267,11 @@ public protocol WatchHaptics {
     /// A log the wrist recorded: one success tap (plan 51e D-1).
     func playLogged()
 
+    /// A log that beat the standing best: one distinct tap in place of the
+    /// logged one (plan 87b D-6). A conformer with no record cue of its own
+    /// falls back to the logged tap.
+    func playPersonalRecord()
+
     /// Next on the rest screen, back to logging: one light directional tap.
     func playNext()
 
@@ -263,4 +284,10 @@ extension WatchHaptics {
     /// A conformer with no device to tap on does nothing, so a fake in the
     /// tests compiles without a witness (plan 82 S-15109).
     public func playFinished() {}
+
+    /// A surface that has no record cue of its own still confirms the log: the
+    /// default is the logged tap, so a PR never plays nothing (plan 87b D-6).
+    public func playPersonalRecord() {
+        playLogged()
+    }
 }

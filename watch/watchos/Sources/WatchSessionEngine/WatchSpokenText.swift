@@ -33,4 +33,9 @@ public enum WatchSpokenText {
     public static func rating(_ value: Int, of highest: Int) -> String {
         "Rating \(value) of \(highest)"
     }
+
+    /// The wrist's "New PR" banner the way VoiceOver speaks it (plan 87b D-7,
+    /// D-19). The banner shows two words and no number, so the spoken form is
+    /// the whole sentence, not a reading of what is on screen.
+    public static let personalRecord = "New personal record"
 }

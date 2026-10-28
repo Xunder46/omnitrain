@@ -324,6 +324,26 @@ hardware yet.
     extra set. Held off-device by `WatchRestAdvanceTests.swift`,
     `WatchPagerModelTests` S-9110 and `WatchPagerSourceTests` S-9111 (plan 79).
 
+35. **New PR banner on the wrist — (owner).** (a) On a watch that has never
+    synced, log any set: no banner, and the usual logged tap. (b) Tap Sync and
+    wait for the spinner to stop, then pick an exercise you have never trained
+    (or log a heavier weight than your best) and log a set: a trophy with
+    "New PR" shows at the top for about four seconds, the tap feels different
+    from the usual one, and Log, the rest screen and Next all still work while
+    it shows. (c) Log the same set again: no banner, and the usual tap.
+    (d) Log a heavier one: the banner again. (e) In a workout mirrored to the
+    wrist, log a set on the PHONE: the phone says "Congrats! New PR" and the
+    watch shows nothing. (f) With VoiceOver on, the banner is read as "New
+    personal record", once per record. Held off-device by
+    `WatchPersonalRecordBannerTests.testS87b9ARecordLogPlaysTheRecordTapAndNotTheLoggedOne`,
+    `…testS87b10TheBannerIsVisibleUntilTheWindowEnds`,
+    `…testS87b10ASecondRecordRestartsTheWindow`,
+    `…testS87b8ASnapshotSetRaisesNoBannerAndNoTap`,
+    `WatchPersonalBestsTests.testS87b5TheSameSetTwiceIsOneRecordAndAHeavierOneIsTheNext`,
+    `WatchSpokenTextTests.testS87b14TheRecordBannerSpeaksTheWholeSentence` and
+    `WatchPersonalBestsWiringSourceTests.testS87b14TheBannerCarriesTheLabelAndOneGuardedAnnouncement`
+    (plan 87b).
+
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and
 leaves a wrist-started one running (`test/watch_logging_timers_test.dart`,
@@ -332,4 +352,15 @@ the phone-written case is the reconciliation fixture `timer_cleared.json`,
 replayed by `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`),
 and the load label is always in kg, whatever unit the phone is set to
 (`WatchLoggingTimersTests.testS007APoundPreferenceStepsInPoundsStoredInKilograms`
-holds the kilogram payload underneath).
+holds the kilogram payload underneath). Plan 87b adds two more. A set logged on
+the phone during a workout mirrored to the wrist counts against the wrist's new
+sets only after the watch app restarts: in-process the wrist compares against
+the phone's bests and its own sets alone (step 35 e), and the same phone set
+silences a beating wrist set once the app relaunches
+(`WatchPersonalRecordBannerTests.testS87b8ASnapshotSetRaisesNoBannerAndNoTap`,
+`WatchPersonalBestsTests.testS87b18ASnapshotBroughtPhoneSetFoldsIntoTheRebuild`).
+And a wrist workout the phone has not taken in yet is covered by the wrist's own
+memory of the sets it logged, which leaves a rare repeat only if the stored
+observations that memory is rebuilt from are ever pruned before the phone's next
+frame (plan 87b, open question d;
+`WatchPersonalBestsTests.testS87b17AReceiptedSetStillSilencesItsRepeatAfterARelaunch`).

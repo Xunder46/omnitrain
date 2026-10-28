@@ -253,7 +253,13 @@ will actually run — and ends once a `routines_down` has arrived *and* the newe
 reply has been quiet for `WatchSyncProgressCopy.quietSeconds`, or at
 `WatchSyncProgressCopy.capSeconds`, whichever comes first. A reply of another
 type neither ends nor extends it, and the routines gate means a sync that only
-ever received foods stays open to the cap. The start surface takes `isSyncing`
+ever received foods stays open to the cap. The types that do count are
+`WatchSyncProgressCopy.replyTypes` — the three reference frames, the exercise
+batches, the snapshot and, since plan 87b, `bests_down`: the phone sends the
+bests last on every answer, so the spinner must not stop before they have
+landed, and a sync whose last frame is the bests ends `quietSeconds` after it
+(`WatchSyncProgressTests.testS87b12TheBestsReplyKeepsTheSyncRunningUntilItsOwnQuietWindow`,
+`…testS87b12AStragglingBestsReplyDoesNotReviveTheSync`). The start surface takes `isSyncing`
 and renders a non-tappable syncing row instead of the Sync button while the
 window is open, inside the same `onRequestSync` and `offersSync` gate as the
 button, so a second tap starts nothing new and a watch with no transport shows
@@ -287,7 +293,9 @@ over, so a late reply cannot flip it. Only a manual Sync can raise the line: the
 host sets `manualSyncPending` in `requestSync()` (the Sync button; an automatic
 catch-up never does), and when the spinner's ticker finds the sync over it sets
 `syncNoAnswer` from `endedWithoutAnswer`. Any phone reply of a type in
-`WatchSyncProgressCopy.replyTypes`, or the next manual Sync, clears it. The copy
+`WatchSyncProgressCopy.replyTypes`, or the next manual Sync, clears it — the
+bests are one of them, so an answer carrying only the bests clears the line
+while the routines gate keeps the sync itself open to its cap. The copy
 is `WatchStartSurfaceCopy.syncNoAnswerLabel`, again not a contract value.
 Verified by `WatchSyncNoAnswerTests` (S-9001:
 `testS9001aNeverBeganIsFalse`, `…testS9001bFiveSecondsInIsStillRunningSoFalse`,
@@ -578,6 +586,43 @@ to a `WatchHapticCue`, `WristHaptics.play` switches on it), and confirming
 Finish in the menu plays one `.success` tap before `finish()`, Cancel none
 (`WatchTimerCueTests.swift` S-15105, S-15106, S-15107). The Wear OS twin keeps
 one tap.
+
+**A record logged on the wrist is announced with a banner and its own tap.**
+A `set` effort that strictly beats the best the wrist knows raises a trophy
+banner reading "New PR" over the exercise screen for about four seconds
+(`WatchPersonalRecordCopy.bannerSeconds`) and plays the record tap
+(`WristHaptics.playPersonalRecord`, `.start`) instead of the logged tap. It
+needs no timer — an overlay read on the screen's existing one-second refresh —
+and it lets taps through (`allowsHitTesting(false)`), so Log, rest and Next work
+while it shows; it replaces nothing, a second record restarts its window, and
+only its opacity changes, so Reduce Motion needs nothing extra. VoiceOver reads
+"New personal record" (`WatchSpokenText.personalRecord`) and, on watchOS 10 and
+later, hears one announcement per record; watchOS 9 reads the label alone. A log
+that is not a record keeps the logged tap and shows nothing. Verified by
+`WatchPersonalRecordBannerTests`
+`testS87b9ARecordLogPlaysTheRecordTapAndNotTheLoggedOne`,
+`testS87b10TheBannerIsVisibleUntilTheWindowEnds`,
+`testS87b10ASecondRecordRestartsTheWindow`,
+`WatchSpokenTextTests.testS87b14TheRecordBannerSpeaksTheWholeSentence` and
+`WatchPersonalBestsWiringSourceTests`
+`testS87b22TheBannerIsANonBlockingOverlayWithNoTimer`.
+
+**The rule is the phone's "Congrats! New PR" toast, mirrored.** Only a `set`
+effort counts. A loaded set is compared by its estimated one-rep max in
+kilograms — `loadKg * (1 + reps / 30)`, the phone's own Epley order — and a set
+with no weight or a band assist by reps; the comparison is strict, so an equal
+set is no record. The best is the larger of the phone's copy and the wrist's own
+earlier sets, which stops one set firing twice — after a relaunch too, and
+before the phone has taken the workout in — and a wrist that never received a
+frame says nothing, while an exercise the frame omits is a first-ever record.
+Sets the phone logged and mirrored raise nothing. Two limits stay open, stated
+in `docs/watch_session_capture.md` ("Why the wrist's record banner has two
+limits") and in the QA walkthrough's gaps. Verified by
+`WatchPersonalBestsTests.testS87b1AnEqualSetIsNotARecordAndAHeavierOneIs`,
+`testS87b2AWristThatNeverReceivedAFrameSaysNothing`,
+`testS87b5TheSameSetTwiceIsOneRecordAndAHeavierOneIsTheNext`,
+`testS87b7OnlySetEffortsGetAVerdictOrMoveTheOwnBest` and
+`testS87b16AnAssistedSetWinsOnTheRepsAxis`.
 
 **The wrist's surfaces speak to VoiceOver.** The rest clock reads "Rest time"
 with a spoken value ("2 minutes 5 seconds", via `WatchSpokenText.duration`)

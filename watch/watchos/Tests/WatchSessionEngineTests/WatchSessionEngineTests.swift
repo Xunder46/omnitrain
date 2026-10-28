@@ -320,21 +320,24 @@ final class WatchSessionEngineTests: XCTestCase {
     // MARK: - S-004 append-only enforcement at the storage API
 
     func testS004NoMutatingOperationExistsAnywhereInTheModule() throws {
-        // Exactly five names are deliberate. `pruneConfirmed` and
+        // Exactly six names are deliberate. `pruneConfirmed` and
         // `pruneSensorSamples` are two ways anything leaves the store, each
         // gated on having nothing left to lose: confirmed observations for the
         // first, and for the second a session that is over whose numbers the
         // phone has already recorded in full. The third, `pruneExerciseBatches`,
         // drops only the stored batches of list versions that are not the active
         // one, and its caller names a version only once a complete list of it is
-        // active. A fourth prune, or a wider gate, has to be added here on
-        // purpose.
+        // active. The fourth, `pruneBests`, drops the bests frames the wrist has
+        // replaced: its caller names the one copy it holds as newest, having just
+        // written it (D-11, D-17). A fifth prune, or a wider gate, has to be
+        // added here on purpose.
         let allowed: Set<String> = [
             "append",
             "readAll",
             "pruneConfirmed",
             "pruneSensorSamples",
             "pruneExerciseBatches",
+            "pruneBests",
         ]
         let verbs = "update|delete|remove|replace|edit|overwrite|write|clear"
             + "|purge|wipe|reset|drop|truncate|erase|forget|modify|mutate|destroy|set"

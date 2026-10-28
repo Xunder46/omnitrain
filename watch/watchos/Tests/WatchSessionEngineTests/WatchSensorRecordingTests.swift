@@ -1081,6 +1081,10 @@ final class ContendedWatchSessionStore: WatchSessionStore {
     func pruneExerciseBatches(keepingVersion: String) async -> [String] {
         await inner.pruneExerciseBatches(keepingVersion: keepingVersion)
     }
+
+    func pruneBests(keepingRecordId: String) async -> [String] {
+        await inner.pruneBests(keepingRecordId: keepingRecordId)
+    }
 }
 
 /// One append at a time, counting the ones that had to wait.

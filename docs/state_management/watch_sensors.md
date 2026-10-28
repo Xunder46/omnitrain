@@ -403,14 +403,19 @@ summary therefore never makes its event unsendable. Verified by watchOS
 behaves exactly as with it granted. Verified by watchOS
 `WatchSensorRecordingStepsDeniedTests`, which runs the whole sensor suite again with
 steps denied, and `WatchSensorRecordingTests.testS239StepsPermissionChangesNothingButTheStepsRecorded`.
-- **Three prunes, each gated on having nothing to lose.** The store's public surface
-is exactly `append`, `readAll`, `pruneConfirmed`, `pruneSensorSamples` and
-`pruneExerciseBatches`;
+- **Four prunes, each gated on having nothing to lose.** The store's public surface
+is exactly `append`, `readAll`, `pruneConfirmed`, `pruneSensorSamples`,
+`pruneExerciseBatches` and `pruneBests`;
 confirmed observations go first, and a session's sensor log goes only after the
 session is over, all of its entries are acknowledged and — for a session the
 wrist created — its `session_end` is acknowledged, pruned or not; a batch prune
 with no rows of another version to drop writes nothing
-(`WatchFileStoreTests.testS3835APruneWithNoBatchesWritesNothing`). Verified by
+(`WatchFileStoreTests.testS3835APruneWithNoBatchesWritesNothing`); the bests
+prune keeps only the frame the caller names as newest and drops nothing when
+that id is not stored
+(`WatchPersonalBestsStoreTests.testS87b11ThreeFramesLeaveTheNewestOneAfterThePrune`,
+`WatchPersonalBestsStoreTests.testS87b19APruneNamingAnAbsentRowDropsNothing`).
+Verified by
 `test/watch_session_engine_test.dart` (`S-004 append-only enforcement at the
 storage API`) and by watchOS
 `WatchSessionEngineTests.testS004NoMutatingOperationExistsAnywhereInTheModule` and

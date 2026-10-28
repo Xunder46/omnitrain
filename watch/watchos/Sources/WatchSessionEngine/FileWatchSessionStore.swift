@@ -80,7 +80,11 @@ public final class FileWatchSessionStore: WatchSessionStore {
         locked { pruneExerciseBatchesLocked(keepingVersion) }
     }
 
-    // MARK: - The four operations
+    public func pruneBests(keepingRecordId: String) async -> [String] {
+        locked { pruneBestsLocked(keepingRecordId) }
+    }
+
+    // MARK: - The store's operations
 
     private func appendLocked(_ record: StoredWatchRecord) -> StoredWatchRecord {
         let loaded = loadRows()
@@ -118,6 +122,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
         var preferences: [WatchPreferencesRecord] = []
         var ratingPrompts: [WatchRatingPromptRecord] = []
         var exerciseBatches: [WatchExerciseBatchRecord] = []
+        var bests: [WatchBestsRecord] = []
 
         for row in loaded {
             switch row {
@@ -131,6 +136,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
             case .preferences(let value): preferences.append(value)
             case .ratingPrompt(let value): ratingPrompts.append(value)
             case .exerciseBatch(let value): exerciseBatches.append(value)
+            case .bests(let value): bests.append(value)
             }
         }
 
@@ -144,7 +150,8 @@ public final class FileWatchSessionStore: WatchSessionStore {
             foodCatalogs: foodCatalogs,
             preferences: preferences,
             ratingPrompts: ratingPrompts,
-            exerciseBatches: exerciseBatches
+            exerciseBatches: exerciseBatches,
+            bests: bests
         )
     }
 
@@ -210,6 +217,35 @@ public final class FileWatchSessionStore: WatchSessionStore {
         let survivors = loaded.filter { row in
             guard case .exerciseBatch(let value) = row else { return true }
             return !kept.contains(value.recordId)
+        }
+
+        // A prune that finds nothing is not a write (D-3821): the file keeps
+        // every byte it had, marker and torn tail included.
+        guard !dropped.isEmpty else { return [] }
+        guard compact(survivors) else { return [] }
+        rows = survivors
+        return dropped
+    }
+
+    private func pruneBestsLocked(_ keepingRecordId: String) -> [String] {
+        let loaded = loadRows()
+        guard !unsupported else { return [] }
+
+        let stored = loaded.contains { row in
+            if case .bests(let value) = row { return value.recordId == keepingRecordId }
+            return false
+        }
+        guard stored else { return [] }
+
+        let dropped = loaded.compactMap { row -> String? in
+            guard case .bests(let value) = row,
+                  value.recordId != keepingRecordId else { return nil }
+            return value.recordId
+        }
+        let drop = Set(dropped)
+        let survivors = loaded.filter { row in
+            guard case .bests(let value) = row else { return true }
+            return !drop.contains(value.recordId)
         }
 
         // A prune that finds nothing is not a write (D-3821): the file keeps

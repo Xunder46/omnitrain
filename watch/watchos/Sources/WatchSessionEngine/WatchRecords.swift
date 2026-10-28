@@ -694,6 +694,7 @@ public enum StoredWatchRecord {
     public static let preferencesType = "preferences"
     public static let ratingPromptType = "rating_prompt"
     public static let exerciseBatchType = "exercise_batch"
+    public static let bestsType = "bests"
 
     case session(WatchSessionRecord)
     case observation(WatchObservationRecord)
@@ -705,6 +706,7 @@ public enum StoredWatchRecord {
     case preferences(WatchPreferencesRecord)
     case ratingPrompt(WatchRatingPromptRecord)
     case exerciseBatch(WatchExerciseBatchRecord)
+    case bests(WatchBestsRecord)
 
     public var recordType: String {
         switch self {
@@ -718,6 +720,7 @@ public enum StoredWatchRecord {
         case .preferences: return Self.preferencesType
         case .ratingPrompt: return Self.ratingPromptType
         case .exerciseBatch: return Self.exerciseBatchType
+        case .bests: return Self.bestsType
         }
     }
 
@@ -733,6 +736,7 @@ public enum StoredWatchRecord {
         case .preferences(let row): return row.recordId
         case .ratingPrompt(let row): return row.recordId
         case .exerciseBatch(let row): return row.recordId
+        case .bests(let row): return row.recordId
         }
     }
 
@@ -748,6 +752,7 @@ public enum StoredWatchRecord {
         case .preferences(let row): return row.sessionId
         case .ratingPrompt(let row): return row.sessionId
         case .exerciseBatch(let row): return row.sessionId
+        case .bests(let row): return row.sessionId
         }
     }
 
@@ -763,6 +768,7 @@ public enum StoredWatchRecord {
         case .preferences(let row): return row.recordedAt
         case .ratingPrompt(let row): return row.recordedAt
         case .exerciseBatch(let row): return row.recordedAt
+        case .bests(let row): return row.recordedAt
         }
     }
 
@@ -778,6 +784,7 @@ public enum StoredWatchRecord {
         case .preferences(let row): return row.sequence
         case .ratingPrompt(let row): return row.sequence
         case .exerciseBatch(let row): return row.sequence
+        case .bests(let row): return row.sequence
         }
     }
 
@@ -793,6 +800,7 @@ public enum StoredWatchRecord {
         case .preferences(let row): return .preferences(row.withSequence(sequence))
         case .ratingPrompt(let row): return .ratingPrompt(row.withSequence(sequence))
         case .exerciseBatch(let row): return .exerciseBatch(row.withSequence(sequence))
+        case .bests(let row): return .bests(row.withSequence(sequence))
         }
     }
 
@@ -808,6 +816,7 @@ public enum StoredWatchRecord {
         case .preferences(let row): return row.toJson()
         case .ratingPrompt(let row): return row.toJson()
         case .exerciseBatch(let row): return row.toJson()
+        case .bests(let row): return row.toJson()
         }
     }
 
@@ -826,6 +835,7 @@ public enum StoredWatchRecord {
         case preferencesType: return .preferences(try WatchPreferencesRecord.fromJson(json))
         case ratingPromptType: return .ratingPrompt(try WatchRatingPromptRecord.fromJson(json))
         case exerciseBatchType: return .exerciseBatch(try WatchExerciseBatchRecord.fromJson(json))
+        case bestsType: return .bests(try WatchBestsRecord.fromJson(json))
         default: throw WatchRecordError.unknownRecordType(type)
         }
     }

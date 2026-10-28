@@ -1,6 +1,7 @@
 # Feature: 87a — the phone tells the watch each exercise's best (`bests_down`), so the wrist can later say "New PR"
 
 > Status: SEEDED 2026-10-26 (governor seed; planner expands phases, adds impact rows and edge scenarios). Series: `docs/plans/2026-10-26-87-wrist-new-pr-banner-index.md`. This PR changes nothing the owner can see: it only puts the data on the wire. PR 87b (the wrist's detection, banner and tap) follows.
+> Status: CLOSED 2026-10-27: reviewed APPROVE, committed `d0189d6d`. 87b is BUILT against it and awaiting review.
 > Status: Iteration 1 planned 2026-10-26 (planner expansion of the seed). D-1..D-8, S-87a-1..8 and the phase outline below are the governor seed, kept verbatim; D-9..D-14, S-87a-9..14, the expanded phases and the impact rows are the planner's.
 > Next handoff: @developer (Phase 1)
 > Binding conventions: docs/global_conventions.md

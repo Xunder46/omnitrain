@@ -7,12 +7,13 @@
 //
 //  Append-only by construction (PROTOCOL.md, authority rule 1): a store offers
 //  no update, no delete and no remove. `append` is the only way anything enters,
-//  and there are exactly three ways anything leaves it — all of them prunes,
+//  and there are exactly four ways anything leaves it — all of them prunes,
 //  each gated on nothing left to lose: `pruneConfirmed` drops observations the
 //  phone has acknowledged, `pruneSensorSamples` drops the raw sensor log of a
-//  session the phone has recorded in full, and `pruneExerciseBatches` drops the
+//  session the phone has recorded in full, `pruneExerciseBatches` drops the
 //  stored exercise batches of every list version but the one that just became
-//  active.
+//  active, and `pruneBests` drops the bests frames the wrist has replaced with
+//  the copy it holds as newest.
 //
 //  `WatchSessionEngineTests` (S-004) fails the build if a mutating method is
 //  declared anywhere in this module or if the engine reaches for a store method
@@ -54,6 +55,11 @@ public struct WatchStoreContents {
     /// all but the active version's are then pruned (D-3813, D-3814).
     public let exerciseBatches: [WatchExerciseBatchRecord]
 
+    /// The standing bests each `bests_down` brought, oldest first. The newest
+    /// by `generatedAt` is the copy that applies, and the others are pruned
+    /// once it is written (D-11, D-17).
+    public let bests: [WatchBestsRecord]
+
     public init(
         sessions: [WatchSessionRecord] = [],
         observations: [WatchObservationRecord] = [],
@@ -64,7 +70,8 @@ public struct WatchStoreContents {
         foodCatalogs: [WatchFoodCatalogRecord] = [],
         preferences: [WatchPreferencesRecord] = [],
         ratingPrompts: [WatchRatingPromptRecord] = [],
-        exerciseBatches: [WatchExerciseBatchRecord] = []
+        exerciseBatches: [WatchExerciseBatchRecord] = [],
+        bests: [WatchBestsRecord] = []
     ) {
         self.sessions = sessions
         self.observations = observations
@@ -76,6 +83,7 @@ public struct WatchStoreContents {
         self.preferences = preferences
         self.ratingPrompts = ratingPrompts
         self.exerciseBatches = exerciseBatches
+        self.bests = bests
     }
 
     public var isEmpty: Bool {
@@ -83,7 +91,7 @@ public struct WatchStoreContents {
             && confirmations.isEmpty && sensorSamples.isEmpty
             && routineCatalogs.isEmpty && foodCatalogs.isEmpty
             && preferences.isEmpty && ratingPrompts.isEmpty
-            && exerciseBatches.isEmpty
+            && exerciseBatches.isEmpty && bests.isEmpty
     }
 }
 
@@ -118,6 +126,17 @@ public protocol WatchSessionStore {
     /// reads any more. No other record kind is touched — a routine catalog row
     /// stays where it is.
     func pruneExerciseBatches(keepingVersion: String) async -> [String]
+
+    /// Drops every `bests` row whose record id is not `keepingRecordId`,
+    /// returning the record ids that were dropped.
+    ///
+    /// The gate is the frame, not the phone's receipt: the caller names the one
+    /// copy it holds as newest, having just written it, and every other frame
+    /// is a copy nothing reads any more (D-11, D-17). A tie in `generatedAt`
+    /// still leaves exactly one row, because the caller names the copy it keeps.
+    /// A record id that is not stored drops nothing — there is then no newest
+    /// copy to keep. No other record kind is touched.
+    func pruneBests(keepingRecordId: String) async -> [String]
 }
 
 /// Folds confirmations into observations as their `confirmedAt` receipt.
@@ -179,6 +198,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
         var preferences: [WatchPreferencesRecord] = []
         var ratingPrompts: [WatchRatingPromptRecord] = []
         var exerciseBatches: [WatchExerciseBatchRecord] = []
+        var bests: [WatchBestsRecord] = []
 
         for row in rows {
             switch row {
@@ -192,6 +212,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             case .preferences(let value): preferences.append(value)
             case .ratingPrompt(let value): ratingPrompts.append(value)
             case .exerciseBatch(let value): exerciseBatches.append(value)
+            case .bests(let value): bests.append(value)
             }
         }
 
@@ -205,7 +226,8 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             foodCatalogs: foodCatalogs,
             preferences: preferences,
             ratingPrompts: ratingPrompts,
-            exerciseBatches: exerciseBatches
+            exerciseBatches: exerciseBatches,
+            bests: bests
         )
     }
 
@@ -250,6 +272,28 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
         rows.removeAll { row in
             if case .exerciseBatch(let value) = row {
                 return keep.contains(value.recordId)
+            }
+            return false
+        }
+        return dropped
+    }
+
+    public func pruneBests(keepingRecordId: String) async -> [String] {
+        let stored = rows.contains { row in
+            if case .bests(let value) = row { return value.recordId == keepingRecordId }
+            return false
+        }
+        guard stored else { return [] }
+
+        let dropped = rows.compactMap { row -> String? in
+            if case .bests(let value) = row,
+               value.recordId != keepingRecordId { return value.recordId }
+            return nil
+        }
+        let drop = Set(dropped)
+        rows.removeAll { row in
+            if case .bests(let value) = row {
+                return drop.contains(value.recordId)
             }
             return false
         }

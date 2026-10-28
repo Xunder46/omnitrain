@@ -289,6 +289,24 @@ groups) and watchOS `WatchEffortRatingTests`
 `testS218TheWristNeverChangesARating`,
 `testS216ThePhonesLifecycleEndingItOwesNoPrompt`).
 
+**Why the wrist's record banner has two limits.** The wrist compares each set it
+logs against the larger of the phone's bests and its own earlier sets — the rule
+itself is in `docs/state_management/watch_surface_wrist.md` — which is what stops
+a repeat firing twice. Two cases still slip, and both are stated rather than
+fixed. A set logged on the phone during a workout mirrored to the wrist counts
+against the wrist's sets only from the wrist app's next launch: until then the
+wrist remembers just the sets it logged itself, so a wrist set that beats the
+phone's bests but not that phone set still announces
+(`WatchPersonalRecordBannerTests.testS87b8ASnapshotSetRaisesNoBannerAndNoTap`
+holds the in-process silence for the mirrored set,
+`WatchPersonalBestsTests.testS87b18ASnapshotBroughtPhoneSetFoldsIntoTheRebuild`
+the fold once the app has restarted). And a wrist workout the phone has not taken
+in yet is covered by the wrist's own memory, rebuilt once at launch from the
+stored observations, so a rare double remains possible only if those
+observations are pruned before the phone's next frame — nothing in production
+prunes them today (plan 87b, open question d;
+`WatchPersonalBestsTests.testS87b17AReceiptedSetStillSilencesItsRepeatAfterARelaunch`).
+
 **Why the wrist shows a summary when its workout ends.** With the question out
 of the way, the wrist answers what was just done with one card:
 `WatchWorkoutSummaryState`
