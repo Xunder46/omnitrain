@@ -235,7 +235,30 @@ extension SessionCoreLifecycleMethods on SessionCore {
       _notify();
     } catch (e) {
       _setError('Failed to update session feeling: $e');
+      return;
     }
+
+    await _sendRatingToHealth(sessionId);
+  }
+
+  /// Plan 90 D-4: a saved rating of a finished session becomes its Fitness
+  /// workout's effort. Not awaited past the read: the service retries for
+  /// minutes and is contract-bound never to throw. A running session has no
+  /// workout yet and asks nothing.
+  Future<void> _sendRatingToHealth(String sessionId) async {
+    final healthSync = _healthSync;
+    if (healthSync == null) return;
+    TrainingSession? rated;
+    try {
+      rated = _currentSession?.id == sessionId
+          ? _currentSession
+          : await _repository.getSession(sessionId);
+    } catch (_) {
+      // The rating is saved; a failed read only means no effort is sent.
+      return;
+    }
+    if (rated == null || rated.endedAtMs == null) return;
+    healthSync.onSessionRated(rated);
   }
 
   /// Adopts a rating the wrist's import already wrote (D-1): updates the live

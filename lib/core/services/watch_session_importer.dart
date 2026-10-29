@@ -579,6 +579,8 @@ class _Pass {
 
   Future<void> _createSession(List<WatchInboxEntry> rows) async {
     final end = this.end!;
+    // A session created with its rating applied that rating too (plan 90 D-4).
+    final rating = _ratingAtImport(rows);
     await _repository.createSession(
       TrainingSession(
         id: sessionId,
@@ -586,11 +588,12 @@ class _Pass {
         startedAtMs: end.startedAtMs,
         endedAtMs: end.endedAtMs,
         modality: end.modality,
-        sessionFeeling: _ratingAtImport(rows),
+        sessionFeeling: rating,
         createdAtMs: end.startedAtMs,
         updatedAtMs: end.endedAtMs,
       ),
     );
+    ratingWritten = rating;
     changed = true;
     await _attachSessionSummary();
   }

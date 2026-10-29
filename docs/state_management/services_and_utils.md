@@ -82,7 +82,9 @@ writing a completed session out, and reading body weight back in. Constructed
 in `main.dart` and injected into `WorkoutState` (via `SessionCore`, which calls
 `onSessionCompleted` after a successful session save — except for a session the
 watch runs, whose workout the watch saves (plan 89c1) — and `onSessionDeleted`,
-un-awaited, after a successful discard) and into the app-lifetime
+un-awaited, after a successful discard, and `onSessionRated`, un-awaited, after
+a saved rating of a finished session; `WatchSessionInbox` also calls it for an
+import that applied a rating, plan 90) and into the app-lifetime
 `AppLifecycleListener` (which calls `syncOnForeground`).
 
 Layering rationale — the plugin boundary is deliberately narrow:
@@ -98,6 +100,8 @@ Layering rationale — the plugin boundary is deliberately narrow:
   `HealthActivityKind`; the io gateway translates a kind to a platform activity
   type **per platform**, because several types (e.g. strength, flexibility)
   exist on exactly one platform and crossing them throws.
+- `health_effort_mapper.dart` maps the 1 to 5 session rating to Apple's 1 to 10
+  Workout Effort (doubled; null off the scale).
 
 Invariants:
 
@@ -115,6 +119,12 @@ Invariants:
   rule (`.strictStartDate`, own source only), so a back-to-back neighbour is
   never hit. The discard never waits on it. Verified by the `S-89-4` / `S-89-5`
   tests in `test/health_platform_test.dart` (plan 89).
+- A finished session's rating goes to its workout as Workout Effort through
+  `setWorkoutEffort` over the same span (same gate). Only a `noWorkout` answer is
+  retried, 20 s, 90 s and 5 min after the first try, in process only; a newer
+  rating or the delete drops pending retries, and the delete clears the effort
+  before the workout. On iOS the io gateway calls the native channel
+  `omnitrain/health_effort` (`ios/Runner/HealthEffortChannel.swift`, iOS 18+); every other platform answers `unavailable`. Verified by `test/health_effort_test.dart` (`S-90-2` to `S-90-6`).
 - Imported body-weight rows use deterministic ids derived from the platform
   sample, so a repeated foreground read upserts instead of duplicating.
 - Toggle state lives in the normal preference store (`HealthPrefs` keys), so a

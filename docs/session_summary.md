@@ -32,6 +32,7 @@ The **session effort rating** is how hard the whole session was: 1 is the easies
 - **A watch session in history is rated like any other.** An imported watch session is an ordinary `TrainingSession`, so its summary shows the rating the wrist recorded, or offers to add one, through the same control. Verified by `test/watch_session_summary_integration_test.dart` (`S-285`, `S-286`).
 - **The phone's rating is final.** A rating written here is never replaced by one the wrist sends later: the import applies a wrist rating only while the session has none (D-138 of `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). Verified by `test/watch_session_import_test.dart` (`S-264`).
 - **Both devices ask the same question.** The sheet's question, scale and end labels are the ones `watch/contract/watch_effort_rating_contract.json` gives the wrist. Verified by `test/watch_effort_rating_copy_parity_test.dart` (`S-287`).
+- **A finished session's rating is sent to Fitness.** With Write workouts on, a rating saved for a finished session, here or by a wrist import, is also sent as its Fitness workout's Workout Effort (1 to 5 becomes 2 to 10); the iPhone does this on iOS 18 and later only, and leaves a value the owner set in Fitness alone. Verified by `test/health_effort_test.dart` (`S-90-1`, `S-90-5`).
 
 Verified by:
 

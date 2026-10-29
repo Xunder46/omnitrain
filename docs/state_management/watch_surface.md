@@ -650,6 +650,9 @@ The inbox also tells a screen when the wrist's heart-rate summary was stored
 (`onSensorSummaryAttached` → `WorkoutState.wristSummary`, plan 72), and the
 session summary re-reads the heart rate only. Verified by
 `test/watch_summary_notify_test.dart` (`S-10201` to `S-10203`, `S-10207`).
+A session an import rated also goes to `HealthSyncService.onSessionRated`, which
+`main.dart` passes to `createWatchSync` (plan 90; `S-90-5` in
+`test/health_effort_test.dart`).
 
 Two construction details are load-bearing:
 

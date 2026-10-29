@@ -137,6 +137,8 @@ denial is persisted as its own toggle state (rather than silently reading as off
 point the user at system settings. The gate each pipeline reads is owned by `SettingsState`; see
 [State Management](state_management.md). With Write workouts on, deleting a finished session also
 asks Health to remove the workout this phone saved for it; with it off, Health is left alone.
+With it on, a finished session's effort rating is also sent as that workout's Workout Effort, and
+a delete clears it first (plan 90). Switching Write workouts on asks Health for Workout Effort in the same sheet; iOS 18 and later only.
 A session the watch runs gets its workout from the watch, never also from the phone: the phone
 writes nothing when the wrist ends it, or when the phone ends a session the wrist is running with an
 exercise in it (plan 89c1; `S-89c1-*` in `test/health_platform_test.dart`).

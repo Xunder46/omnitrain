@@ -375,6 +375,8 @@ Future<Widget> runStartup({
     settingsState: settingsState,
     // A wrist session that lands in history shows in the calendar's month.
     onHistoryChanged: calendarState.refresh,
+    // A wrist rating becomes the Fitness workout's effort (plan 90 D-4).
+    healthSync: healthSyncService,
     onFailure: (error, stackTrace) {
       debugPrint('Watch transport unavailable: $error');
       debugPrintStack(stackTrace: stackTrace);

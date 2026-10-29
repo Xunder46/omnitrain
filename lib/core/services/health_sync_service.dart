@@ -5,7 +5,8 @@
 //   * write  — a completed session goes out to the platform health store
 //     exactly once (gated by the `Write workouts` toggle, idempotent per
 //     session id, S-008); deleting a finished session asks the store to
-//     remove its workout again (plan 89, same toggle).
+//     remove its workout again (plan 89, same toggle); a finished session's
+//     rating becomes its workout's Workout Effort (plan 90, same toggle).
 //   * read   — body weight comes back on app foreground (gated by the
 //     `Read body weight` toggle) and is merged into the stored
 //     measurement history.
@@ -29,6 +30,7 @@ import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../constants/health_constants.dart';
 import '../constants/profile_measurements.dart';
+import 'health_effort_mapper.dart';
 import 'health_modality_mapper.dart';
 import 'health_platform_service.dart';
 
@@ -47,15 +49,21 @@ class HealthSyncService {
   /// without a ledger round-trip.
   final Set<String> _writtenThisRun = {};
 
+  /// How long the effort write waits before each retry (plan 90 D-3). Tests
+  /// inject a delay they release by hand.
+  final Future<void> Function(Duration) _effortRetryDelay;
+
   HealthSyncService({
     required HealthPlatformService platform,
     required WorkoutRepository repository,
     required bool Function() isWriteEnabled,
     required bool Function() isReadEnabled,
+    Future<void> Function(Duration)? effortRetryDelay,
   }) : _platform = platform,
        _repository = repository,
        _isWriteEnabled = isWriteEnabled,
-       _isReadEnabled = isReadEnabled;
+       _isReadEnabled = isReadEnabled,
+       _effortRetryDelay = effortRetryDelay ?? Future<void>.delayed;
 
   /// Writes a completed session to the platform health store when the
   /// user has opted in. Safe to call again for the same session — the
@@ -91,6 +99,62 @@ class HealthSyncService {
     }
   }
 
+  /// When a `noWorkout` answer is tried again, counted from the first try
+  /// (plan 90 D-3): a watch workout reaches the phone's store a little after
+  /// the finish. After the last one the write gives up (limit L-1).
+  static const List<Duration> effortRetryOffsets = [
+    Duration(seconds: 20),
+    Duration(seconds: 90),
+    Duration(minutes: 5),
+  ];
+
+  /// The newest effort write per session, by a token no write reuses: a write
+  /// whose token is no longer here was overtaken by a newer rating or by the
+  /// session's delete, and drops its pending retries (S-90-4).
+  final Map<String, int> _effortWriteBySession = {};
+  int _effortWrites = 0;
+
+  /// Writes a finished session's rating to its workout as Workout Effort
+  /// when the user has opted in to writing workouts (plan 90 D-3).
+  ///
+  /// The span is the session's own `[startedAtMs, endedAtMs]`, the one the
+  /// delete uses. A session with no end or no rating asks nothing. Only a
+  /// `noWorkout` answer is retried, on [effortRetryOffsets]; every other
+  /// answer, and any error, ends the write silently.
+  Future<void> onSessionRated(TrainingSession session) async {
+    final endedAtMs = session.endedAtMs;
+    final rating = session.sessionFeeling;
+    if (endedAtMs == null || rating == null) return;
+    final score = ratingToAppleEffort(rating);
+    if (score == null) return;
+    if (!_isWriteEnabled()) return;
+
+    final token = ++_effortWrites;
+    _effortWriteBySession[session.id] = token;
+    final start = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
+    final end = DateTime.fromMillisecondsSinceEpoch(endedAtMs);
+
+    try {
+      var waited = Duration.zero;
+      for (final offset in [Duration.zero, ...effortRetryOffsets]) {
+        if (offset > waited) {
+          await _effortRetryDelay(offset - waited);
+          waited = offset;
+          if (_effortWriteBySession[session.id] != token) return;
+          if (!_isWriteEnabled()) return;
+        }
+        final outcome = await _platform.setWorkoutEffort(start, end, score);
+        if (outcome != HealthEffortOutcome.noWorkout) return;
+      }
+    } catch (e) {
+      debugPrint('Health workout effort skipped: $e');
+    } finally {
+      if (_effortWriteBySession[session.id] == token) {
+        _effortWriteBySession.remove(session.id);
+      }
+    }
+  }
+
   /// Asks the platform store to remove the workout of a deleted, finished
   /// session when the user has opted in to writing workouts (plan 89 D-4).
   ///
@@ -105,10 +169,22 @@ class HealthSyncService {
     if (!_isWriteEnabled()) return;
 
     _writtenThisRun.remove(session.id);
+    _effortWriteBySession.remove(session.id);
     try {
       await _forgetWritten(session.id);
     } catch (e) {
       debugPrint('Health ledger cleanup skipped: $e');
+    }
+
+    // Plan 90 D-5: the effort first, while the workout it hangs on is still
+    // there to find.
+    try {
+      await _platform.clearWorkoutEffort(
+        DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
+        DateTime.fromMillisecondsSinceEpoch(endedAtMs),
+      );
+    } catch (e) {
+      debugPrint('Health workout effort clear skipped: $e');
     }
 
     try {

@@ -412,3 +412,18 @@ memory of the sets it logged, which leaves a rare repeat only if the stored
 observations that memory is rebuilt from are ever pruned before the phone's next
 frame (plan 87b, open question d;
 `WatchPersonalBestsTests.testS87b17AReceiptedSetStillSilencesItsRepeatAfterARelaunch`).
+
+39. **The effort rating reaches Fitness — (owner, plan 90).** iPhone on iOS 18 or
+    later. Phone Settings, Health: switch Write workouts off, then on; the Health
+    sheet lists Workout Effort, allow it. (a) Finish a session on the watch, rate
+    it 4 on the phone: Fitness shows Workout Effort 8 for that workout (it may
+    take a few minutes to appear). (b) Change the rating to 2: Fitness shows 4.
+    (c) On another finished session, set your own effort in Fitness first, then
+    rate it in OmniTrain: your value stays. (d) Rate a phone-only session: same as
+    (a). (e) Delete a rated session in OmniTrain: the workout and its effort are
+    both gone (Health, Browse, Activity, Workout Effort). (f) Rate a session on
+    the wrist: it appears in Fitness after the phone takes it in. Report which of
+    (a) to (f) fail; (a) failing for a watch session while (d) works means
+    HealthKit refused the link to the watch's workout (plan 90 L-2). Held
+    off-device by `test/health_effort_test.dart` and
+    `test/health_effort_native_test.dart`.

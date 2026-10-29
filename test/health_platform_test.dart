@@ -117,6 +117,16 @@ class _FakeHealthPlatform implements HealthPlatformService {
   }
 
   @override
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  ) async => HealthEffortOutcome.unavailable;
+
+  @override
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end) async => false;
+
+  @override
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since) async {
     readQueries++;
     lastReadSince = since;
@@ -1229,6 +1239,21 @@ void main() {
     });
   });
 
+  test('S-90-7 the fakes answer the effort calls with unavailable', () async {
+    final start = DateTime(2026, 10, 28, 9);
+    final end = DateTime(2026, 10, 28, 10);
+    for (final HealthPlatformService fake in [
+      _FakeHealthPlatform(),
+      _ThrowingReadPlatform(),
+    ]) {
+      expect(
+        await fake.setWorkoutEffort(start, end, 8),
+        HealthEffortOutcome.unavailable,
+      );
+      expect(await fake.clearWorkoutEffort(start, end), isFalse);
+    }
+  });
+
   group('unit conversion', () {
     test('platform pound samples convert to canonical kilograms', () {
       expect(
@@ -1272,4 +1297,14 @@ class _ThrowingReadPlatform implements HealthPlatformService {
 
   @override
   Future<bool> deleteWorkouts(DateTime start, DateTime end) async => false;
+
+  @override
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  ) async => HealthEffortOutcome.unavailable;
+
+  @override
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end) async => false;
 }

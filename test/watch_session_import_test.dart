@@ -322,11 +322,33 @@ class _RecordingHealthPlatform implements HealthPlatformService {
   Future<bool> deleteWorkouts(DateTime start, DateTime end) async => false;
 
   @override
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  ) async => HealthEffortOutcome.unavailable;
+
+  @override
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end) async => false;
+
+  @override
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since) async =>
       const [];
 }
 
 void main() {
+  test('S-90-7 the recording fake answers the effort calls with '
+      'unavailable', () async {
+    final fake = _RecordingHealthPlatform();
+    final start = DateTime(2026, 10, 28, 9);
+    final end = DateTime(2026, 10, 28, 10);
+    expect(
+      await fake.setWorkoutEffort(start, end, 8),
+      HealthEffortOutcome.unavailable,
+    );
+    expect(await fake.clearWorkoutEffort(start, end), isFalse);
+  });
+
   group('S-261 import from the offline stream', () {
     for (final caseName in const ['full', 'no-sensors', 'prompt-off']) {
       test('S-261 $caseName: every envelope through the router imports exactly '

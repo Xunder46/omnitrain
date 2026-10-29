@@ -25,6 +25,7 @@ import '../../core/platform/no_watch_transport.dart';
 import '../../core/platform/watch_delivery.dart';
 import '../../core/platform/watch_link_source.dart';
 import '../../core/platform/watch_transport.dart';
+import '../../core/services/health_sync_service.dart';
 import '../../core/utils/platform_watch_transport_factory.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../watch/session/watch_records.dart' show WatchLifecycleState;
@@ -211,6 +212,7 @@ Future<WatchSyncGraph?> createWatchSync({
   Future<void> Function()? onHistoryChanged,
   void Function(Object error, StackTrace stack)? onFailure,
   void Function(String heldSessionId, String offeredSessionId)? onSkipped,
+  HealthSyncService? healthSync,
 }) async {
   final resolved =
       transport ??
@@ -245,6 +247,9 @@ Future<WatchSyncGraph?> createWatchSync({
     // The wrist's heart rate landing after the summary opened reaches that
     // screen (plan 72).
     onSensorSummaryAttached: adoption.noteSensorSummary,
+    // A rating the import wrote reaches the session's Fitness workout as its
+    // effort (plan 90 D-4).
+    healthSync: healthSync,
   );
   // Built after the mirror, but the projection below reads it.
   WatchTimerPush? timerPushForSnapshots;
