@@ -57,6 +57,11 @@ abstract class HealthPlatformService {
 
   Future<bool> writeWorkout(HealthWorkoutDraft workout);
 
+  /// Removes this app's own workouts that start inside `[start, end)`
+  /// (plan 89 D-5: the plugin matches by start time and by this app's
+  /// source only). True when the store accepted the request.
+  Future<bool> deleteWorkouts(DateTime start, DateTime end);
+
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since);
 }
 
@@ -73,6 +78,9 @@ class UnavailableHealthPlatformService implements HealthPlatformService {
 
   @override
   Future<bool> writeWorkout(HealthWorkoutDraft workout) async => false;
+
+  @override
+  Future<bool> deleteWorkouts(DateTime start, DateTime end) async => false;
 
   @override
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since) async =>

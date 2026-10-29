@@ -80,7 +80,9 @@ Post-workout analytics.
 Owns the two opt-in platform-health pipelines (Apple Health / Health Connect):
 writing a completed session out, and reading body weight back in. Constructed
 in `main.dart` and injected into `WorkoutState` (via `SessionCore`, which calls
-`onSessionCompleted` after a successful session save) and into the app-lifetime
+`onSessionCompleted` after a successful session save — except for a session the
+watch runs, whose workout the watch saves (plan 89c1) — and `onSessionDeleted`,
+un-awaited, after a successful discard) and into the app-lifetime
 `AppLifecycleListener` (which calls `syncOnForeground`).
 
 Layering rationale — the plugin boundary is deliberately narrow:
@@ -107,6 +109,12 @@ Invariants:
 - The write pipeline touches the platform at most once per session id, across
   restarts, via a JSON ledger preference key (`HealthPrefs.writtenSessionIdsKey`).
   Enforced in `onSessionCompleted`; verified by `test/health_platform_test.dart`.
+- Discarding a finished session (same Write workouts gate) drops its ledger
+  entry and asks the store to delete this app's workouts that *start* inside the
+  session's own `[startedAtMs, endedAtMs)` window — the `health` plugin's iOS
+  rule (`.strictStartDate`, own source only), so a back-to-back neighbour is
+  never hit. The discard never waits on it. Verified by the `S-89-4` / `S-89-5`
+  tests in `test/health_platform_test.dart` (plan 89).
 - Imported body-weight rows use deterministic ids derived from the platform
   sample, so a repeated foreground read upserts instead of duplicating.
 - Toggle state lives in the normal preference store (`HealthPrefs` keys), so a

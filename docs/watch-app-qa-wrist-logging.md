@@ -362,6 +362,35 @@ hardware yet.
     (`S-87c-18 a holding wrist is sent no bests until its frame is stale`, plan
     87c).
 
+37. **Cancelled or abandoned sessions leave nothing in Fitness; a force-quit
+    stops the sensor — (owner, plan 89).** Phone Settings, Write workouts on.
+    (a) Start a workout on the watch and cancel it on the wrist: Fitness shows
+    nothing new. (b) Start a session on the phone, add a set, then Discard
+    session on the phone: Fitness shows nothing new, and the watch's workout
+    for it is discarded too. (c) Finish a short session on the watch: Fitness
+    shows one workout. (d) Start a workout, then force-quit the watch app from
+    the app switcher: the green heart-rate light should stop within about a
+    minute without reopening the app. If it stays on, or comes straight back,
+    report it: the system may not relaunch a force-quit app, or the relaunch may
+    restore the still-active session and open a new workout (plan 89 W-1). Held
+    off-device by `WatchFitnessFollowsSessionTests` and
+    `WatchFitnessFollowsSessionSourceTests`; the real hook is only seen here.
+
+38. **One Fitness workout per session — (owner, plan 89c1).** Phone Settings,
+    Write workouts on, watch app open, phone in reach. (a) On the watch start a
+    Free workout, add Outdoor Walk, walk a minute, finish it on the watch:
+    Fitness shows exactly one new workout, "Outdoor Walk". (b) On the phone
+    start a session with one exercise, let the watch pick it up, raise the wrist
+    once so the watch reports back, then finish it on the phone: Fitness shows
+    exactly one workout, sourced to the watch app. (c) With the watch app closed
+    or the watch out of reach, start and finish a session on the phone: exactly
+    one workout, sourced to the phone app. (d) On an earlier duplicate pair,
+    open Health, Browse, Activity, Workouts, Show All Data and read each
+    entry's Source: the "Other" one should be the phone app. Known gap: deleting
+    a session on the phone does not remove the watch's workout from Fitness
+    (series 89c, 89c2). Held off-device by `test/health_platform_test.dart`
+    (group `S-89c1`) and `WatchOneWorkoutPerSessionTests`.
+
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and
 leaves a wrist-started one running (`test/watch_logging_timers_test.dart`,

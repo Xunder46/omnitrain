@@ -767,7 +767,9 @@ class WatchSessionAdoptionBridge {
     switch (_asObject(envelope['payload'])['state']) {
       case WatchLifecycleState.completed:
         await _catchUpSessionRow(sessionId);
-        await target.endSession();
+        // The watch saved its own workout for this session: the phone's end
+        // must not write a second one (plan 89c1 D-1).
+        await target.endSession(writeToHealth: false);
       case WatchLifecycleState.abandoned:
         await target.discardCurrentSession();
     }

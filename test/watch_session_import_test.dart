@@ -319,6 +319,9 @@ class _RecordingHealthPlatform implements HealthPlatformService {
   }
 
   @override
+  Future<bool> deleteWorkouts(DateTime start, DateTime end) async => false;
+
+  @override
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since) async =>
       const [];
 }

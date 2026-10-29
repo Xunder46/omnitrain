@@ -1,9 +1,16 @@
 part of 'session_core.dart';
 
 extension SessionCoreLifecycleMethods on SessionCore {
-  Future<void> endSession() async {
+  /// Ends the current session and, unless the watch saves its own workout for
+  /// it, writes it to Health (plan 89c1): [writeToHealth] false is the wrist's
+  /// own end (D-1); a session the wrist is running is read here, at the
+  /// phone's end, before the wrist can hear of it (D-2).
+  Future<void> endSession({required bool writeToHealth}) async {
     if (_currentSession == null) return;
     if (_currentSession!.endedAtMs != null) return;
+
+    final wristSavesWorkout =
+        _wristRunsSession?.call(_currentSession!.id) ?? false;
 
     _clearError();
 
@@ -48,7 +55,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
     // contract-bound never to throw, so nothing here can flip the
     // session into an error state.
     final completedSession = _currentSession;
-    if (completedSession != null) {
+    if (completedSession != null && writeToHealth && !wristSavesWorkout) {
       await _healthSync?.onSessionCompleted(completedSession);
     }
   }
@@ -102,12 +109,19 @@ extension SessionCoreLifecycleMethods on SessionCore {
 
     _clearError();
 
+    final discarded = _currentSession!;
     try {
-      await _repository.deleteSession(_currentSession!.id);
+      await _repository.deleteSession(discarded.id);
       clearSession();
     } catch (e) {
       _setError('Failed to discard session: $e');
+      return;
     }
+
+    // Platform health delete (plan 89 D-4). Not awaited: the discard is
+    // already complete and must not wait on the store; the service is
+    // contract-bound never to throw.
+    _healthSync?.onSessionDeleted(discarded);
   }
 
   Future<void> updateSessionNote(String note) async {

@@ -135,7 +135,11 @@ The Settings screen does not include account-management rows such as sign-in, ex
 The platform-health toggles are the one settings area that can fail to take effect: an OS permission
 denial is persisted as its own toggle state (rather than silently reading as off) so the row can
 point the user at system settings. The gate each pipeline reads is owned by `SettingsState`; see
-[State Management](state_management.md).
+[State Management](state_management.md). With Write workouts on, deleting a finished session also
+asks Health to remove the workout this phone saved for it; with it off, Health is left alone.
+A session the watch runs gets its workout from the watch, never also from the phone: the phone
+writes nothing when the wrist ends it, or when the phone ends a session the wrist is running with an
+exercise in it (plan 89c1; `S-89c1-*` in `test/health_platform_test.dart`).
 
 ---
 

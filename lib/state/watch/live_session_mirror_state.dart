@@ -144,6 +144,13 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// Whether the session is still running on the wrist.
   bool get isActive => status == WatchSessionStatus.active;
 
+  /// Whether the wrist last reported [sessionId] as the session it is running,
+  /// with an exercise in it — the state in which the wrist has its own Fitness
+  /// workout open for it (plan 89c1 D-2). Only a wrist snapshot moves this
+  /// mirror onto a session; the placeholder is never active.
+  bool wristRunsSession(String sessionId) =>
+      this.sessionId == sessionId && isActive && exercises.isNotEmpty;
+
   /// Where in the ladder the session is.
   int get currentExerciseIndex => (state['currentExerciseIndex'] as int?) ?? 0;
 

@@ -388,6 +388,9 @@ Future<Widget> runStartup({
     repository,
     healthSync: healthSyncService,
     watchLateEntryRecovery: watchSync?.lateEntryRecovery,
+    // Plan 89c1 D-2: a session the wrist is running gets its Fitness workout
+    // from the watch, so the phone's own end does not write a second one.
+    wristRunsSession: watchSync?.mirror.wristRunsSession,
   );
 
   // The session the wrist is running becomes this phone's own (D-2): the graph

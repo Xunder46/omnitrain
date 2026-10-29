@@ -107,6 +107,23 @@ class HealthPluginPlatformService implements HealthPlatformService {
   }
 
   @override
+  Future<bool> deleteWorkouts(DateTime start, DateTime end) async {
+    try {
+      // iOS: the plugin deletes only this app's own workouts whose start
+      // lies in [start, end) (`.strictStartDate` + `HKSource.default()`),
+      // so a back-to-back neighbour or another app's workout is never hit.
+      return await _health.delete(
+        type: HealthDataType.WORKOUT,
+        startTime: start,
+        endTime: end,
+      );
+    } catch (e) {
+      debugPrint('Health workout delete skipped: $e');
+      return false;
+    }
+  }
+
+  @override
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since) async {
     try {
       final points = await _health.getHealthDataFromTypes(

@@ -4,7 +4,8 @@
 //
 //   * write  — a completed session goes out to the platform health store
 //     exactly once (gated by the `Write workouts` toggle, idempotent per
-//     session id, S-008).
+//     session id, S-008); deleting a finished session asks the store to
+//     remove its workout again (plan 89, same toggle).
 //   * read   — body weight comes back on app foreground (gated by the
 //     `Read body weight` toggle) and is merged into the stored
 //     measurement history.
@@ -90,6 +91,36 @@ class HealthSyncService {
     }
   }
 
+  /// Asks the platform store to remove the workout of a deleted, finished
+  /// session when the user has opted in to writing workouts (plan 89 D-4).
+  ///
+  /// The window is the session's own `[startedAtMs, endedAtMs]` and nothing
+  /// wider (D-5). It is asked for whether or not the ledger names the
+  /// session, since a workout the watch saved has no ledger entry. A session
+  /// still in progress was never written by the phone and asks nothing.
+  /// Best-effort: a refusal or an error is logged and swallowed.
+  Future<void> onSessionDeleted(TrainingSession session) async {
+    final endedAtMs = session.endedAtMs;
+    if (endedAtMs == null) return;
+    if (!_isWriteEnabled()) return;
+
+    _writtenThisRun.remove(session.id);
+    try {
+      await _forgetWritten(session.id);
+    } catch (e) {
+      debugPrint('Health ledger cleanup skipped: $e');
+    }
+
+    try {
+      await _platform.deleteWorkouts(
+        DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
+        DateTime.fromMillisecondsSinceEpoch(endedAtMs),
+      );
+    } catch (e) {
+      debugPrint('Health workout delete skipped: $e');
+    }
+  }
+
   /// Imports body weight from the platform store and returns the rows it
   /// wrote, so the caller can refresh whatever displays them. Empty when the
   /// toggle is off, nothing was available, or the platform refused. Called on
@@ -144,6 +175,15 @@ class HealthSyncService {
     await _repository.setPreferenceString(
       HealthPrefs.writtenSessionIdsKey,
       jsonEncode(trimmed),
+    );
+  }
+
+  Future<void> _forgetWritten(String sessionId) async {
+    final ids = await _loadLedger();
+    if (!ids.remove(sessionId)) return;
+    await _repository.setPreferenceString(
+      HealthPrefs.writtenSessionIdsKey,
+      jsonEncode(ids),
     );
   }
 

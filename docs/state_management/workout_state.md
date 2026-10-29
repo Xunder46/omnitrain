@@ -34,6 +34,10 @@ graph, `lib/main.dart` builds `WorkoutState` after `createWatchSync` and builds
 `test/watch_session_edit_restore_late_entry_test.dart` (`S-1401` to `S-1410`,
 `S-1414`).
 
+It also takes an optional `wristRunsSession` predicate, `main.dart` passing the
+watch graph's `LiveSessionMirrorState.wristRunsSession`: `endSession` reads it to
+leave the Health write to the watch (plan 89c1 D-2). Null without a watch.
+
 Each sub-holder receives `notify: () => notifyListeners()` so all `notifyListeners()` calls still fire once from the single `ChangeNotifier` that consumers subscribe to. No consumer screen or test changes are required.
 
 **`notify` callback pattern**: Sub-holders are plain Dart objects (not ChangeNotifiers). They call the injected `notify` callback in place of `notifyListeners()`. This preserves the single-listener model and avoids the double-dispatch overhead of chaining multiple ChangeNotifiers.
@@ -89,9 +93,9 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 | `loadSessionData()` | Loads exercises, efforts, observations for current session |
 | `refreshEfforts(effortIds)` | Re-reads only the named efforts' observations, instances and entry rests from the repository — a refresh, not a reload, so a running timer survives. Used by the watch merge (`docs/watch_session_sync.md`, D-17); verified by `test/watch_session_merge_test.dart`'s S-16 |
 | `loadHistoricalSession(session)` | Loads a previously completed session for review/edit mode; sets `_currentModalityConfig` correctly from `session.modality` |
-| `endSession()` | Marks session as ended: `endedAtMs` is `max(startedAtMs, now)`, so a stored end never precedes its start (D-153; `S-155 writer table — every phone-owned writer leaves an ordered window`, `endSession clamps a start that lies ahead of the phone clock` in `test/session_window_never_inverted_test.dart`); idempotent — no-op if session already has `endedAtMs`. After a successful save, delegates to the injected `HealthSyncService` (no-op when not injected or when the health write toggle is off) |
+| `endSession({writeToHealth = true})` | Marks session as ended: `endedAtMs` is `max(startedAtMs, now)`, so a stored end never precedes its start (D-153; `S-155 writer table — every phone-owned writer leaves an ordered window`, `endSession clamps a start that lies ahead of the phone clock` in `test/session_window_never_inverted_test.dart`); idempotent — no-op if session already has `endedAtMs`. After a successful save, delegates to the injected `HealthSyncService` (no-op when not injected or when the health write toggle is off), except when `writeToHealth` is false (the wrist's own end, from the adoption bridge) or the injected `wristRunsSession` says the wrist is running the session: the watch saves that workout (plan 89c1, `S-89c1-*` in `test/health_platform_test.dart`) |
 | `clearSession()` | Removes session reference from state (doesn't delete data) |
-| `discardCurrentSession()` | Deletes session and all related data |
+| `discardCurrentSession()` | Deletes session and all related data; then, without awaiting, hands a finished session to `HealthSyncService.onSessionDeleted` (plan 89 `S-89-4` in `test/health_platform_test.dart`) |
 | `updateSessionNote(note)` | Updates session note |
 | `updateSessionEndTime(durationSecs)` | Edit-mode only — sets `endedAtMs = max(startedAtMs, startedAtMs + durationSecs × 1000)` (D-153); no-op if `durationSecs ≤ 0` (`S-155 writer table — every phone-owned writer leaves an ordered window`, `updateSessionEndTime with a zero or negative duration writes nothing` in `test/session_window_never_inverted_test.dart`) |
 | `updateSessionFeeling(sessionId, rating, {onlyIfUnrated})` | Persists the 1-5 session effort rating (1 Very easy … 5 Max effort) to `TrainingSession.sessionFeeling` for any session id; updates `_currentSession` in-place when it is that session. With `onlyIfUnrated: true` it writes nothing when the stored row already holds a rating — the automatic post-workout prompt saves this way, so a rating the watch's import wrote first is never overwritten by it. Verified by `test/rating_first_answer_state_test.dart` (`S-4304 onlyIfUnrated leaves the stored rating alone, the default still writes`) |

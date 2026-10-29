@@ -31,11 +31,16 @@ class WorkoutState extends ChangeNotifier {
   /// nothing and the restore behaves exactly as it did before (D-803).
   ///
   /// [clock] is the timer's clock seam; the default is the real clock.
+  ///
+  /// [wristRunsSession] answers whether the wrist is running a session, and so
+  /// saves its own Fitness workout for it (plan 89c1 D-2). Null without a
+  /// watch: the phone's end then writes as it always has.
   WorkoutState(
     this._repository, {
     HealthSyncService? healthSync,
     WatchLateEntryRecovery? watchLateEntryRecovery,
     DateTime Function()? clock,
+    bool Function(String sessionId)? wristRunsSession,
   }) {
     _timerManager = TimerManager(
       _repository,
@@ -60,6 +65,7 @@ class WorkoutState extends ChangeNotifier {
       exerciseLibrary: _exerciseLibrary,
       healthSync: healthSync,
       lateEntryRecovery: watchLateEntryRecovery,
+      wristRunsSession: wristRunsSession,
     );
     _timerManager.bindObservations(_sessionCore.observationsMap);
   }
@@ -176,7 +182,10 @@ class WorkoutState extends ChangeNotifier {
 
   Future<void> populateSessionFromManifest(RoutineSessionManifest manifest) =>
       _sessionCore.populateSessionFromManifest(manifest);
-  Future<void> endSession() => _sessionCore.endSession();
+  /// Ends the session. [writeToHealth] false skips the Health write-back: the
+  /// wrist's own end, whose workout the watch already saved (plan 89c1 D-1).
+  Future<void> endSession({bool writeToHealth = true}) =>
+      _sessionCore.endSession(writeToHealth: writeToHealth);
   Future<void> discardCurrentSession() => _sessionCore.discardCurrentSession();
   Future<void> updateSessionNote(String note) =>
       _sessionCore.updateSessionNote(note);

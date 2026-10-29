@@ -65,6 +65,11 @@ class SessionCore {
   /// behaves exactly as it did before the recovery existed (D-803, D-811).
   final WatchLateEntryRecovery? _lateEntryRecovery;
 
+  /// Whether the wrist is running the session with this id, and so saves its
+  /// own Fitness workout for it (plan 89c1 D-2). Null in tests and in builds
+  /// without a watch; the phone's end then writes as it always has.
+  final bool Function(String sessionId)? _wristRunsSession;
+
   late final SessionBlockManager _blockManager;
   late final SessionSummaryBuilder _summaryBuilder;
 
@@ -100,13 +105,15 @@ class SessionCore {
     required ExerciseLibrary exerciseLibrary,
     HealthSyncService? healthSync,
     WatchLateEntryRecovery? lateEntryRecovery,
+    bool Function(String sessionId)? wristRunsSession,
   }) : _notify = notify,
        _setErrorCallback = setError,
        _clearErrorCallback = clearError,
        _timerManager = timerManager,
        _exerciseLibrary = exerciseLibrary,
        _healthSync = healthSync,
-       _lateEntryRecovery = lateEntryRecovery {
+       _lateEntryRecovery = lateEntryRecovery,
+       _wristRunsSession = wristRunsSession {
     _blockManager = SessionBlockManager(
       _repository,
       notify: _notify,
