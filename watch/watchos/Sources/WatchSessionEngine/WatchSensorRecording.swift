@@ -301,13 +301,13 @@ public final class WatchSessionSensors {
     /// Stops the sensors and closes the platform workout.
     public func stop() async {
         await recorder.stop()
-        await platform.end()
+        await platform.end(saving: true)
     }
 
     /// Ends any workout a previous process left open. Call at launch, before
     /// anything starts.
     @discardableResult
     public func recoverInProgress() async -> [String] {
-        await platform.recoverInProgress()
+        await platform.recoverInProgress(saving: true)
     }
 }

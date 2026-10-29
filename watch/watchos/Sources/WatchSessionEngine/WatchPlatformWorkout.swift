@@ -257,6 +257,10 @@ public protocol WatchPlatformWorkoutStore {
 
     func end() async
 
+    /// Closes the open workout and either saves it to Health (`true`) or
+    /// discards it so it never reaches Fitness (`false`, plan 89 D-1).
+    func end(saving: Bool) async
+
     /// The activity types the health store still reports as in progress, oldest
     /// first. Anything here belongs to a process that is gone.
     func inProgressActivityTypes() async -> [String]
@@ -288,6 +292,16 @@ extension WatchPlatformWorkoutStore {
     public func begin(_ activityType: String) async {
         await begin(activityType, outdoors: false)
     }
+
+    /// The two `end` shapes forward the same way (plan 89 D-1): `end()` is
+    /// `end(saving: true)`, and a store that cannot discard saves either way.
+    public func end() async {
+        await end(saving: true)
+    }
+
+    public func end(saving: Bool) async {
+        await end()
+    }
 }
 
 /// The watch's platform workout, over whatever store the platform provides.
@@ -316,11 +330,12 @@ public final class WatchPlatformWorkout {
     ///
     /// Starting a session while one is already open ends the old workout first:
     /// the platform grants one at a time, and a dangling one is exactly the
-    /// stuck state recovery exists to clear.
+    /// stuck state recovery exists to clear. The old one is discarded: whether
+    /// its session completed is not known here (plan 89 D-2).
     @discardableResult
     public func start(_ session: WatchSessionRecord) async -> WatchActivityType {
         openFailed = false
-        if running != nil { await end() }
+        if running != nil { await end(saving: false) }
 
         let activityType = WatchActivityTypes.forSession(session) ?? WatchActivityTypes.generic
         await store.begin(
@@ -332,15 +347,17 @@ public final class WatchPlatformWorkout {
         return activityType
     }
 
-    /// Closes the workout the watch opened, if any.
-    public func end() async {
+    /// Closes the workout the watch opened, if any: saved to Health, or
+    /// discarded when `saving` is false (plan 89 D-1).
+    public func end(saving: Bool) async {
         guard running != nil else { return }
-        await store.end()
+        await store.end(saving: saving)
         running = nil
     }
 
-    /// Ends whatever the health store still reports as in progress and returns
-    /// the activity types it closed.
+    /// Ends whatever the health store still reports as in progress — saved or
+    /// discarded as `saving` says (plan 89 D-3) — and returns the activity
+    /// types it closed.
     ///
     /// Run at launch. A kill cannot be caught, so the only reliable moment to
     /// notice an orphaned workout is the next start — and the honest thing to do
@@ -348,12 +365,12 @@ public final class WatchPlatformWorkout {
     /// this process is concerned, and its logged entries are in storage
     /// regardless of whether the workout was open (S-005).
     @discardableResult
-    public func recoverInProgress() async -> [String] {
+    public func recoverInProgress(saving: Bool) async -> [String] {
         let stranded = await store.inProgressActivityTypes()
         var ended: [String] = []
 
         for activityType in stranded {
-            await store.end()
+            await store.end(saving: saving)
             ended.append(activityType)
         }
 
@@ -432,14 +449,21 @@ public final class WatchWorkoutCoordinator {
     }
 
     /// Closes whatever a previous process left open, before a session can open
-    /// another. Called at launch, before anything starts.
-    public func recoverInProgress() async {
-        await enqueue { await self.recover() }.value
+    /// another. Called at launch, before anything starts, and by the system's
+    /// workout-recovery relaunch. `storedSession` is the session the killed
+    /// process persisted: still active keeps the workout up to now (plan 89
+    /// OQ-1), anything else discards it (D-3).
+    public func recoverInProgress(
+        storedSession: @escaping () async -> WatchSessionRecord?
+    ) async {
+        await enqueue { await self.recover(storedSession) }.value
     }
 
     private func apply(_ session: WatchSessionRecord?) async {
         if let opened = openedForSessionId, opened != session?.sessionId {
-            await platform.end()
+            // Replaced: whether the old session completed is unknown here, so
+            // its workout is discarded (plan 89 D-2).
+            await platform.end(saving: false)
             openedForSessionId = nil
             // A different session is now live: the last one's failure is not
             // its failure, even before its own workout is asked for. A session
@@ -454,15 +478,18 @@ public final class WatchWorkoutCoordinator {
             openedForSessionId = session?.sessionId
             if let session { await platform.start(session) }
         case .end:
-            await platform.end()
+            // Only a completed session keeps its workout in Fitness; an
+            // abandoned or vanished one leaves none (plan 89 D-2).
+            await platform.end(saving: session?.status == WatchSessionStatus.completed)
             openedForSessionId = nil
         case .none:
             break
         }
     }
 
-    private func recover() async {
-        await platform.recoverInProgress()
+    private func recover(_ storedSession: () async -> WatchSessionRecord?) async {
+        let stillActive = await storedSession()?.status == WatchSessionStatus.active
+        await platform.recoverInProgress(saving: stillActive)
         openedForSessionId = nil
     }
 

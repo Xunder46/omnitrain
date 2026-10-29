@@ -322,7 +322,7 @@ final class WatchAppHost: ObservableObject {
     /// user asks the phone for them.
     func restore() async {
         // A stranded workout must end before a restored session can open one.
-        await workout.recoverInProgress()
+        await recoverStrandedWorkout()
         await engine.restore()
         await nutrition.restore()
         await paths.restore()
@@ -330,6 +330,14 @@ final class WatchAppHost: ObservableObject {
         await personalBests.restore()
         await rating.restore()
         revision += 1
+    }
+
+    /// Ends a workout a killed process left open: kept when its persisted
+    /// session is still active, discarded otherwise (plan 89 D-3, OQ-1). The
+    /// launch's `restore()` and the system's workout-recovery relaunch
+    /// (`WatchAppDelegate`) both run this one path.
+    func recoverStrandedWorkout() async {
+        await workout.recoverInProgress(storedSession: { [engine] in await engine.storedSession() })
     }
 
     /// Asks the phone for the routines and the wrist's session state — the Sync

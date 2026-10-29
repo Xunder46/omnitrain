@@ -97,8 +97,13 @@ nonisolated final class HealthKitRouteRecorder: @unchecked Sendable {
     }
 
     /// Finishes a recovered route with the saved workout. Failure (no points, F-3) is swallowed.
+    /// With no saved workout (discarded, plan 89 D-1) the route is discarded, as `finish` does.
     func finishRecovered(_ route: HKWorkoutRouteBuilder?, workout: HKWorkout?) async {
-        guard let route, let workout else { return }
+        guard let route else { return }
+        guard let workout else {
+            route.discard()
+            return
+        }
         _ = try? await route.finishRoute(with: workout, metadata: nil)
     }
 

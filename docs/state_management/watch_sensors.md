@@ -248,11 +248,17 @@ engine and its store are built for one writer, so the recorder chains its writes
 (`WatchSensorWrites`).
 
 **The workout is recovered, not resumed.** A kill cannot be caught, so the next
-launch ends whatever the health store still reports as running rather than trying
-to adopt it. The session it belonged to is already over, and its logged entries
-are in storage either way. Verified by
-`test/watch_sensor_recording_test.dart` (`S-005`) and by watchOS
-`WatchSensorRecordingTests.testS005TheNextLaunchEndsTheWorkoutTheKillLeftBehind`.
+launch, and the system's workout-recovery relaunch after a force-quit
+(`WatchAppDelegate.handleActiveWorkoutRecovery`, plan 89 D-3), end whatever the
+health store still reports as running rather than trying to adopt it; the
+heart-rate feed stops with it. The workout is saved when the session the killed
+process persisted is still active (the reopened app then opens a new workout for
+the rest of it, OQ-1) and discarded otherwise. Its logged entries are in storage
+either way. Verified by
+`test/watch_sensor_recording_test.dart` (`S-005`), by watchOS
+`WatchSensorRecordingTests.testS005TheNextLaunchEndsTheWorkoutTheKillLeftBehind`,
+`WatchFitnessFollowsSessionTests` (S-89-2) and the source guards
+`WatchFitnessFollowsSessionSourceTests` (S-89-3).
 
 ### Route in Apple Fitness
 
@@ -293,7 +299,8 @@ read workout routes (and read workouts). The Health permission sentence says:
 outdoor run, to Health so they count toward your activity rings."
 
 **Recovery.** A workout recovered after the app was killed gets a best-effort
-route finish; whether Apple kept the points is not documented.
+route finish; whether Apple kept the points is not documented. A workout that is
+discarded rather than saved (plan 89) discards its route too.
 
 Pins: package tests `WatchRouteKeeperTests` (S-9801, S-9803..S-9814),
 `WatchRouteTeeTests` (S-9810 tee arm, S-9815, S-9816); app-target source guards
@@ -325,8 +332,11 @@ Owner device checks (not yet run):
 
 - **The workout follows the session.** One workout at a time: exactly one begin and one
 end per session however often the surface refreshes, and a launch ends what a previous
-process left open before a session can open another. Verified by watchOS
-`WatchWorkoutCoordinatorTests` (S-1500...S-1505, S-1507, S-1508, S-1510).
+process left open before a session can open another. Only a completed session
+saves its workout to Health; an abandoned, gone or replaced one discards it
+(`WatchPlatformWorkoutStore.end(saving:)`, plan 89 D-1, D-2). Verified by watchOS
+`WatchWorkoutCoordinatorTests` (S-1500...S-1505, S-1507, S-1508, S-1510) and
+`WatchFitnessFollowsSessionTests` (S-89-1).
 - **GPS activation derives from the modality's capability profile and the current
 exercise's capabilities, never from a name.** A modality added later is handled
 without touching the policy, and one that merely sounds like distance work does

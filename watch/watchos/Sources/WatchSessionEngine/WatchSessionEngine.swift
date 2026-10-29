@@ -164,6 +164,14 @@ public final class WatchSessionEngine: ObservableObject {
         deletedEntryIds = Set(current?.deletedEntryIds ?? [])
     }
 
+    /// The newest session the store holds, read without restoring anything
+    /// (plan 89 D-3): the launch's workout recovery asks it before `restore()`
+    /// runs, so a stranded workout is ended before a restored session can open
+    /// another. The same row `restore()` makes current.
+    public func storedSession() async -> WatchSessionRecord? {
+        await store.readAll().sessions.max { $0.sequence < $1.sequence }
+    }
+
     // MARK: - Session state
 
     public var session: WatchSessionRecord? { current }

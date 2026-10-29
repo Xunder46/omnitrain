@@ -287,6 +287,13 @@ half — it ends its session on receiving that lifecycle — is
 `WatchSessionEngineTests.testThePhonesLifecycleEndsAWristSessionAtTheMomentItNames`
 in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
 
+**The wrist's Apple Fitness workout follows the end (plan 89).** Whichever device
+ends the session, the workout the wrist opened is saved to Health only when the
+session ends `completed`. An `abandoned` session (the wrist's Cancel, or a discard
+on the phone, which abandons the wrist's copy), one that is gone, or one replaced
+by the phone's reset discards the workout, so it never appears in Fitness.
+Verified by watchOS `WatchFitnessFollowsSessionTests` (S-89-1).
+
 ## Catching up by itself
 
 **The wrist catches up when the phone comes back in reach and whenever its app

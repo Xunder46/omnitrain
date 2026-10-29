@@ -113,8 +113,9 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         guard await resolveAuthorization() else { return }
 
         // The platform grants one workout at a time; a second begin replaces the
-        // first rather than leaving two open.
-        if session != nil { await end() }
+        // first rather than leaving two open, and discards it: its session's end
+        // is not known here (plan 89 D-2).
+        if session != nil { await end(saving: false) }
 
         let configuration = HKWorkoutConfiguration()
         configuration.activityType = Self.activityType(for: activityType)
@@ -183,7 +184,10 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         location.observeFixes { [routeRecorder] fix in routeRecorder.offer(fix) }
     }
 
-    func end() async {
+    /// Closes the workout: saved to Health when `saving`, otherwise discarded so
+    /// an abandoned or removed session leaves nothing in Fitness (plan 89 D-1).
+    /// The sensor stops either way.
+    func end(saving: Bool) async {
         // The feed stops reading the builder this store is about to finish,
         // whatever else `end` does: a tick over a closed builder is a stranded
         // reading (D-3113).
@@ -210,12 +214,19 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
             return
         }
         var saved: HKWorkout?
-        do {
-            try await openBuilder.endCollection(at: Date())
-            saved = try await openBuilder.finishWorkout()
-        } catch {
-            // The session is already closed, which is the part that matters: a
-            // saved workout is a bonus, a workout left open is a lie.
+        if saving {
+            do {
+                try await openBuilder.endCollection(at: Date())
+                saved = try await openBuilder.finishWorkout()
+            } catch {
+                // The session is already closed, which is the part that matters: a
+                // saved workout is a bonus, a workout left open is a lie.
+            }
+        } else {
+            // Not saved (plan 89 D-1): the builder and its samples are dropped,
+            // and `saved` stays nil, so both routes below are discarded too.
+            try? await openBuilder.endCollection(at: Date())
+            openBuilder.discardWorkout()
         }
         // The workout is saved first, then the route is finished with it (F-1).
         await routeRecorder.finish(route, workout: saved)

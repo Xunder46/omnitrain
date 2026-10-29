@@ -11,14 +11,29 @@
 //
 
 import SwiftUI
+import WatchKit
 
 @main
 struct OmniTrain_Watch_AppApp: App {
-    @StateObject private var host = WatchAppHost()
+    /// The delegate owns the one host, so the system's workout-recovery
+    /// relaunch and the surface reach the same engine and workout (plan 89 D-3).
+    @WKApplicationDelegateAdaptor private var delegate: WatchAppDelegate
 
     var body: some Scene {
         WindowGroup {
-            ContentView(host: host)
+            ContentView(host: delegate.host)
         }
+    }
+}
+
+/// Answers the system when it relaunches the app to recover a workout a
+/// force-quit left running (plan 89 D-3): the stranded workout is ended through
+/// the launch's own recovery, so the heart-rate sensor stops without the user
+/// opening the app.
+final class WatchAppDelegate: NSObject, WKApplicationDelegate {
+    let host = WatchAppHost()
+
+    func handleActiveWorkoutRecovery() {
+        Task { await host.recoverStrandedWorkout() }
     }
 }
