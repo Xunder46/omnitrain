@@ -10,6 +10,7 @@ import '../../features/exercise/exercise_editor_screen.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/navigation/navigation.dart';
 import '../../widgets/common/omni_empty_state.dart';
+import '../../widgets/exercise/exercise_filter_row.dart';
 import '../../widgets/layout/omni_back_header.dart';
 
 /// Full-screen page for selecting an exercise with search and filters.
@@ -187,7 +188,6 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
-    final muscleEntries = muscleFilterEntries(_muscleGroups);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -237,158 +237,19 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
               const SizedBox(height: 12),
 
               // Filter row
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _selectedDisciplineId,
-                      isExpanded: true,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.colors.textSecondary,
-                      ),
-                      decoration: InputDecoration(
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeColors.surfaceBorder,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: theme.colorScheme.primary,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        labelText: 'Discipline',
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeColors.surfaceBorder,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        isDense: true,
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: null,
-                          child: Text(
-                            'All',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: OmniTheme.colors.textSecondary,
-                            ),
-                          ),
-                        ),
-                        ..._disciplines.map(
-                          (d) => DropdownMenuItem(
-                            value: d.id,
-                            child: Text(
-                              d.name,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: OmniTheme.colors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _selectedDisciplineId = value);
-                        _searchExercises();
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _selectedMuscleGroupId,
-                      isExpanded: true,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.colors.textSecondary,
-                      ),
-                      decoration: InputDecoration(
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeColors.surfaceBorder,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: theme.colorScheme.primary,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        labelText: 'Muscle',
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeColors.surfaceBorder,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        isDense: true,
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: null,
-                          child: Text(
-                            'All',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: OmniTheme.colors.textSecondary,
-                            ),
-                          ),
-                        ),
-                        ...muscleEntries.map(
-                          (entry) => DropdownMenuItem(
-                            value: entry.group.id,
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                left: 16.0 * entry.depth,
-                              ),
-                              child: Text(
-                                entry.group.name,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: OmniTheme.colors.textSecondary,
-                                  fontWeight: entry.depth == 0
-                                      ? FontWeight.w600
-                                      : FontWeight.w400,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      selectedItemBuilder: (context) => [
-                        Text(
-                          'All',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: OmniTheme.colors.textSecondary,
-                          ),
-                        ),
-                        for (final entry in muscleEntries)
-                          Text(
-                            entry.group.name,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: OmniTheme.colors.textSecondary,
-                            ),
-                          ),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _selectedMuscleGroupId = value);
-                        _searchExercises();
-                      },
-                    ),
-                  ),
-                ],
+              ExerciseFilterRow(
+                disciplines: _disciplines,
+                muscleGroups: _muscleGroups,
+                disciplineId: _selectedDisciplineId,
+                muscleGroupId: _selectedMuscleGroupId,
+                onDisciplineChanged: (value) {
+                  setState(() => _selectedDisciplineId = value);
+                  _searchExercises();
+                },
+                onMuscleChanged: (value) {
+                  setState(() => _selectedMuscleGroupId = value);
+                  _searchExercises();
+                },
               ),
 
               // Clear filters button (only show when filters are active)

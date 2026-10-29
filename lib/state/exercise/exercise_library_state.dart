@@ -18,6 +18,7 @@ class ExerciseLibraryState extends ChangeNotifier {
   List<Exercise> _exercises = const [];
   String? _searchText;
   String? _disciplineId;
+  String? _muscleGroupId;
   bool _customOnly = false;
   bool _isLoading = false;
   String? _error;
@@ -33,6 +34,14 @@ class ExerciseLibraryState extends ChangeNotifier {
   List<Exercise> get exercises => List.unmodifiable(_exercises);
   String? get searchText => _searchText;
   String? get disciplineId => _disciplineId;
+  String? get muscleGroupId => _muscleGroupId;
+
+  /// True when anything narrows the list (search, discipline, muscle, custom).
+  bool get hasActiveFilters =>
+      _searchText != null ||
+      _disciplineId != null ||
+      _muscleGroupId != null ||
+      _customOnly;
   bool get customOnly => _customOnly;
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -48,6 +57,20 @@ class ExerciseLibraryState extends ChangeNotifier {
 
   Future<void> setDisciplineId(String? value) async {
     _disciplineId = value;
+    await _reload();
+  }
+
+  Future<void> setMuscleGroupId(String? value) async {
+    _muscleGroupId = value;
+    await _reload();
+  }
+
+  /// Resets search, discipline, muscle and custom-only in one reload.
+  Future<void> clearFilters() async {
+    _searchText = null;
+    _disciplineId = null;
+    _muscleGroupId = null;
+    _customOnly = false;
     await _reload();
   }
 
@@ -150,6 +173,7 @@ class ExerciseLibraryState extends ChangeNotifier {
       final results = await _service.searchExercises(
         searchText: _searchText,
         disciplineId: _disciplineId,
+        muscleGroupIds: _muscleGroupId == null ? null : [_muscleGroupId!],
         customOnly: _customOnly,
       );
       _exercises = results;

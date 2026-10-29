@@ -9,6 +9,8 @@
 //
 // Differences from ExercisePickerScreen:
 //   - No "Add to workout" action (rows never pop a selected exercise).
+//   - Same search, Discipline and Muscle filters as the picker (shared
+//     ExerciseFilterRow); fuzzy search keeps its best-match-first order.
 //   - "Custom only" toggle (key `exercise_library_custom_only_toggle`).
 //   - Tap a row to open the management details surface
 //     (ExerciseLibraryDetailScreen), which exposes Copy / Edit / Remove.
@@ -24,6 +26,7 @@ import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/common/omni_empty_state.dart';
+import 'package:omnitrain/widgets/exercise/exercise_filter_row.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 
 import 'exercise_editor_screen.dart';
@@ -83,6 +86,12 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
     _debounce = Timer(const Duration(milliseconds: 300), () {
       widget.exerciseLibraryState.setSearchText(_searchController.text);
     });
+  }
+
+  void _clearFilters() {
+    _debounce?.cancel();
+    _searchController.clear();
+    widget.exerciseLibraryState.clearFilters();
   }
 
   @override
@@ -168,6 +177,33 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  ExerciseFilterRow(
+                    disciplines: _disciplines,
+                    muscleGroups: widget.workoutState.muscleGroups,
+                    disciplineId: state.disciplineId,
+                    muscleGroupId: state.muscleGroupId,
+                    onDisciplineChanged: state.setDisciplineId,
+                    onMuscleChanged: state.setMuscleGroupId,
+                  ),
+                  if (state.hasActiveFilters)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: TextButton.icon(
+                        key: const Key('exercise_library_clear_filters_button'),
+                        onPressed: _clearFilters,
+                        style: TextButton.styleFrom(
+                          foregroundColor: OmniTheme.colors.textSecondary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              OmniTheme.buttonUtilityRadius,
+                            ),
+                          ),
+                        ),
+                        icon: const Icon(Icons.clear_all, size: 16),
+                        label: const Text('Clear Filters'),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   SwitchListTile(
                     key: const Key('exercise_library_custom_only_toggle'),

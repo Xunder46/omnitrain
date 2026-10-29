@@ -89,17 +89,19 @@ class ExerciseLibraryService {
   /// rows are excluded in both modes — the management screen has its
   /// own way to surface them (e.g., an "Archived" section) if needed.
   ///
-  /// Returns the same shape as `getExercisesRankedForModality(null)`
-  /// for the no-modality case (alphabetical) so the library rows are
-  /// stable and predictable.
+  /// Without a search the rows are alphabetical so they stay stable and
+  /// predictable. With a search they keep the repository's fuzzy ranking
+  /// (best match first), the same order the picker shows.
   Future<List<Exercise>> searchExercises({
     String? searchText,
     String? disciplineId,
+    List<String>? muscleGroupIds,
     bool customOnly = false,
   }) async {
     final all = await _repository.searchExercises(
       searchText: searchText,
       disciplineId: disciplineId,
+      muscleGroupIds: muscleGroupIds,
     );
     return _filterAndRank(all, searchText: searchText, customOnly: customOnly);
   }
@@ -124,8 +126,10 @@ class ExerciseLibraryService {
     if (customOnly) {
       filtered = filtered.where((e) => e.isCustomExercise);
     }
-    final list = filtered.toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final list = filtered.toList();
+    if (searchText == null || searchText.isEmpty) {
+      list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    }
     return list;
   }
 

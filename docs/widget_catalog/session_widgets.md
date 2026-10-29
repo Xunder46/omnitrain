@@ -566,6 +566,17 @@ Verified by `test/watch_effort_rating_copy_parity_test.dart` (`S-287`). The rule
 session-summary caller applies are in [Session Summary](../session_summary.md) ("Effort Rating
 Capture"); the wrist's own ask is in [Watch Session Capture](../watch_session_capture.md).
 
+### `ExerciseFilterRow`
+
+**File**: `lib/widgets/exercise/exercise_filter_row.dart`
+
+The Discipline + Muscle dropdown pair (keys `exercise_filter_discipline`,
+`exercise_filter_muscle`) used by both `ExercisePickerScreen` and
+`ExerciseLibraryScreen`. Stateless: the screen owns the selected ids and re-runs
+its search from `onDisciplineChanged` / `onMuscleChanged`; `null` is "All". The
+Muscle menu is grouped by region and indented (`muscleFilterEntries`). Verified
+by `test/muscle_filter_picker_test.dart` and `test/exercise_library_filters_test.dart`.
+
 ### `MusclePicker`
 
 **File**: `lib/widgets/exercise/muscle_picker.dart`

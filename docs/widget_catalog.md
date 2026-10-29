@@ -96,6 +96,7 @@ Alphabetical. Use this rather than guessing which page a component lives on.
 | `MetricStepCalc` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `ModalityPickerDialog` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `MusclePicker` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
+| `ExerciseFilterRow` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `NoiseOverlayPainter` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `NumericFieldWithDoneBar` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `NutritionPrimerSheet` | [Nutrition Widgets](widget_catalog/nutrition_widgets.md) |
