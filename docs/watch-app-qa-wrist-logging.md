@@ -328,9 +328,10 @@ hardware yet.
     synced, log any set: no banner, and the usual logged tap. (b) Tap Sync and
     wait for the spinner to stop, then pick an exercise you have never trained
     (or log a heavier weight than your best) and log a set: a trophy with
-    "New PR" shows at the top for about four seconds, the tap feels different
-    from the usual one, and Log, the rest screen and Next all still work while
-    it shows. (c) Log the same set again: no banner, and the usual tap.
+    "New PR" shows at the top for about four seconds — straight away on the rest
+    screen too, when the set starts a rest — the tap feels different from the
+    usual one, and Log, the rest screen and Next all still work while it shows.
+    (c) Log the same set again: no banner, and the usual tap.
     (d) Log a heavier one: the banner again. (e) In a workout mirrored to the
     wrist, log a set on the PHONE: the phone says "Congrats! New PR" and the
     watch shows nothing. (f) With VoiceOver on, the banner is read as "New
@@ -341,8 +342,10 @@ hardware yet.
     `…testS87b8ASnapshotSetRaisesNoBannerAndNoTap`,
     `WatchPersonalBestsTests.testS87b5TheSameSetTwiceIsOneRecordAndAHeavierOneIsTheNext`,
     `WatchSpokenTextTests.testS87b14TheRecordBannerSpeaksTheWholeSentence` and
-    `WatchPersonalBestsWiringSourceTests.testS87b14TheBannerCarriesTheLabelAndOneGuardedAnnouncement`
-    (plan 87b).
+    `WatchPersonalBestsWiringSourceTests.testS87b14TheBannerCarriesTheLabelAndOneGuardedAnnouncement`,
+    `…testS88_3TheRestSurfaceHostsTheBannerInsideItsTimeline` and
+    `…testS88_1TheAnnouncementIsTakenOncePerRecordAndNeverForANonRecord`
+    (plans 87b, 88).
 
 36. **Syncing twice does not take the bests away — (owner).** (a) Tap Sync and
     wait for the spinner to stop, then tap Sync again straight away with no

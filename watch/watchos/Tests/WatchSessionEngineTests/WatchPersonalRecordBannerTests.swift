@@ -17,6 +17,10 @@
 //  the snapshot brought fires nothing (S-87b-8), and a hold or a timed effort is
 //  never a claim (S-87b-7).
 //
+//  Plan 88 adds one gate both wrist surfaces share: a record is announced once,
+//  whichever screen asks, and a screen that arrives after the window has run out
+//  still hears it once (S-88-1, S-88-2).
+//
 
 import XCTest
 
@@ -455,5 +459,89 @@ final class WatchPersonalRecordBannerTests: XCTestCase {
         XCTAssertEqual(haptics.personalRecords, 0, "S-87b-7 …and never the record tap, load or not")
         XCTAssertFalse(state.lastLogWasPersonalRecord)
         XCTAssertNil(state.personalRecordBannerUntil)
+    }
+
+    // MARK: - S-88-1 one announcement per record, taken by whichever screen is up
+
+    /// The gate both surfaces ask: false with no record, true once for the
+    /// record's stamp, false for that same stamp again, true for a second
+    /// record's new stamp, and false after a log that is not a record (plan 88
+    /// D-3). Fixture F: 100 x 6 is 120.0 against the held 116.6667, 100 x 7
+    /// beats that again, and 100 x 5 only equals what the frame holds.
+    @MainActor
+    func testS88_1TheAnnouncementIsTakenOncePerRecordAndNeverForANonRecord() async throws {
+        let harness = Harness()
+        let bests = holder(harness)
+        _ = await bests.applyBestsDown(fixtureF())
+        let (_, state, model, _) = await benchSurface(
+            harness,
+            bests: bests,
+            plannedSets: [
+                ["reps": 6, "loadKg": 100],
+                ["reps": 7, "loadKg": 100],
+                ["reps": 5, "loadKg": 100],
+            ]
+        )
+
+        XCTAssertFalse(
+            state.takePersonalRecordAnnouncement(),
+            "S-88-1 a wrist that has logged nothing has nothing to announce"
+        )
+
+        await model.log()
+        XCTAssertTrue(
+            state.takePersonalRecordAnnouncement(),
+            "S-88-1 the record's own log hands out one announcement"
+        )
+        XCTAssertFalse(
+            state.takePersonalRecordAnnouncement(),
+            "S-88-1 the same record never announces twice, so the second screen to ask stays quiet"
+        )
+
+        harness.clock.advance(2)
+        await model.log()
+        XCTAssertTrue(
+            state.takePersonalRecordAnnouncement(),
+            "S-88-1 a second record's new stamp is announced again"
+        )
+        XCTAssertFalse(
+            state.takePersonalRecordAnnouncement(),
+            "S-88-1 …once, not for as long as its window lasts"
+        )
+
+        harness.clock.advance(2)
+        await model.log()
+        XCTAssertFalse(
+            state.takePersonalRecordAnnouncement(),
+            "S-88-1 a log that is not a record leaves nothing to announce"
+        )
+    }
+
+    // MARK: - S-88-2 the announcement outlives the window
+
+    /// The rest screen can appear after the four seconds are already gone. The
+    /// window has run out but the announcement is owed — once (plan 88 D-3).
+    @MainActor
+    func testS88_2TheAnnouncementWaitsPastTheBannerWindow() async throws {
+        let harness = Harness()
+        let bests = holder(harness)
+        _ = await bests.applyBestsDown(fixtureF())
+        let (_, state, model, _) = await benchSurface(harness, bests: bests)
+
+        await model.log()
+        harness.clock.advance(10)
+
+        XCTAssertFalse(
+            state.isPersonalRecordBannerVisible(at: harness.clock.now),
+            "S-88-2 the banner itself is gone once its window has run out"
+        )
+        XCTAssertTrue(
+            state.takePersonalRecordAnnouncement(),
+            "S-88-2 a screen that asks late still hears the record, once"
+        )
+        XCTAssertFalse(
+            state.takePersonalRecordAnnouncement(),
+            "S-88-2 and only once: the announcement is not time-limited, it is one-shot"
+        )
     }
 }

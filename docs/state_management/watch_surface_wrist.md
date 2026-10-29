@@ -590,23 +590,24 @@ one tap.
 
 **A record logged on the wrist is announced with a banner and its own tap.**
 A `set` effort that strictly beats the best the wrist knows raises a trophy
-banner reading "New PR" over the exercise screen for about four seconds
+banner reading "New PR" over the wrist surfaces for about four seconds
 (`WatchPersonalRecordCopy.bannerSeconds`) and plays the record tap
-(`WristHaptics.playPersonalRecord`, `.start`) instead of the logged tap. It
-needs no timer — an overlay read on the screen's existing one-second refresh —
-and it lets taps through (`allowsHitTesting(false)`), so Log, rest and Next work
-while it shows; it replaces nothing, a second record restarts its window, and
-only its opacity changes, so Reduce Motion needs nothing extra. VoiceOver reads
-"New personal record" (`WatchSpokenText.personalRecord`) and, on watchOS 10 and
-later, hears one announcement per record; watchOS 9 reads the label alone. A log
-that is not a record keeps the logged tap and shows nothing. Verified by
-`WatchPersonalRecordBannerTests`
+(`WristHaptics.playPersonalRecord`, `.start`) instead of the logged tap. One
+`WatchPersonalRecordBanner` serves both: the logging screen overlays it, and the
+rest screen the shell swaps in when a record log starts a rest shows it too, on
+each screen's own tick and no timer. It lets taps through
+(`allowsHitTesting(false)`), so Log, rest and Next work; a second record restarts
+its window, and only its opacity changes, so Reduce Motion needs nothing extra.
+VoiceOver reads "New personal record" (`WatchSpokenText.personalRecord`) and, on
+watchOS 10 and later, hears one announcement per record, whichever screen is up;
+watchOS 9 reads the label alone. A log that is not a record keeps the logged tap
+and shows nothing. Verified by `WatchPersonalRecordBannerTests`
 `testS87b9ARecordLogPlaysTheRecordTapAndNotTheLoggedOne`,
 `testS87b10TheBannerIsVisibleUntilTheWindowEnds`,
-`testS87b10ASecondRecordRestartsTheWindow`,
-`WatchSpokenTextTests.testS87b14TheRecordBannerSpeaksTheWholeSentence` and
-`WatchPersonalBestsWiringSourceTests`
-`testS87b22TheBannerIsANonBlockingOverlayWithNoTimer`.
+`...testS88_1TheAnnouncementIsTakenOncePerRecordAndNeverForANonRecord`,
+`...testS88_2TheAnnouncementWaitsPastTheBannerWindow`,
+`...testS88_3TheRestSurfaceHostsTheBannerInsideItsTimeline` and
+`WatchSpokenTextTests.testS87b14TheRecordBannerSpeaksTheWholeSentence`.
 
 **The rule is the phone's "Congrats! New PR" toast, mirrored.** Only a `set`
 effort counts. A loaded set is compared by its estimated one-rep max in

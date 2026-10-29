@@ -130,13 +130,19 @@ public struct WatchLoggingView: View {
             // The banner is an overlay, so it neither pushes the rows nor moves
             // the Log button (plan 87b D-7). It shows while the state's window is
             // open; that window is read on the model's existing tick, so the
-            // banner needs no timer of its own (D-9).
-            .overlay(alignment: .top) { personalRecordBanner }
-            // One announcement per record (D-19): the state stamps a new expiry
-            // only when a log is a record, so this fires once per record and
-            // never for a log that is not one.
+            // banner needs no timer of its own (D-9). It is the one view the rest
+            // surface overlays too, so a record logged as a rest begins keeps
+            // showing there (plan 88 D-1).
+            .overlay(alignment: .top) {
+                WatchPersonalRecordBanner(state: model.state, accent: accent)
+            }
+            // One announcement per record, across both surfaces (D-19; plan 88
+            // D-3): the state stamps a new expiry only when a log is a record,
+            // and hands the announcement out once, so whichever surface is up
+            // when it is due is the one that speaks.
             .onChange(of: model.state.personalRecordBannerUntil) { until in
                 guard until != nil else { return }
+                guard model.state.takePersonalRecordAnnouncement() else { return }
                 announcePersonalRecord()
             }
             .onAppear {
@@ -175,36 +181,12 @@ public struct WatchLoggingView: View {
         .padding(.horizontal, Self.surfaceInset)
     }
 
-    /// The "New PR" banner: a trophy and two words over the top of the surface
-    /// while the state's window is open (plan 87b D-7).
-    ///
-    /// Opacity is the only thing that can change it — no movement, no repeating
-    /// animation — so Reduce Motion needs nothing extra. VoiceOver reads the one
-    /// label; the trophy and the words are decoration under it.
-    @ViewBuilder
-    private var personalRecordBanner: some View {
-        if model.state.isPersonalRecordBannerVisible(at: model.state.now()) {
-            HStack(spacing: 4) {
-                Image(systemName: "trophy.fill")
-                Text("New PR")
-            }
-            .font(.caption)
-            .bold()
-            .foregroundStyle(Color.black)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(accent?.color ?? Color.yellow))
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(WatchSpokenText.personalRecord)
-            .allowsHitTesting(false)
-            .transition(.opacity)
-        }
-    }
-
-    /// Posts the one announcement a record gets (plan 87b D-19). The
-    /// announcement API arrives with watchOS 10 while the package's floor is
-    /// watchOS 9, so on the floor the banner's own label is what VoiceOver
-    /// reads.
+    /// The "New PR" banner's spoken announcement (plan 87b D-19). The banner
+    /// itself is `WatchPersonalRecordBanner`, shared with the rest surface
+    /// (plan 88 D-1); this surface only posts the announcement the state hands
+    /// out. The announcement API arrives with watchOS 10 while the package's
+    /// floor is watchOS 9, so on the floor the banner's own label is what
+    /// VoiceOver reads.
     private func announcePersonalRecord() {
         if #available(watchOS 10.0, *) {
             AccessibilityNotification.Announcement(WatchSpokenText.personalRecord).post()

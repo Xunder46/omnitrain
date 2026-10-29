@@ -208,6 +208,11 @@ public final class WatchLoggingState {
     /// only ever expires by time (plan 87b D-7).
     public private(set) var personalRecordBannerUntil: Date?
 
+    /// The stamp `takePersonalRecordAnnouncement()` last handed out (plan 88
+    /// D-3). The window itself is time-limited; the announcement is not, so the
+    /// two are remembered apart.
+    private var announcedPersonalRecordUntil: Date?
+
     /// Values the user has dialled in but not confirmed, by exercise slot and
     /// then metric key. Cleared on confirm, at which point the values come back
     /// from the logged observation (for a set) or start fresh (for measured
@@ -332,6 +337,22 @@ public final class WatchLoggingState {
     public func isPersonalRecordBannerVisible(at now: Date) -> Bool {
         guard let until = personalRecordBannerUntil else { return false }
         return now < until
+    }
+
+    /// Hands out the one announcement a record gets (plan 88 D-3): true for
+    /// each stamp of `personalRecordBannerUntil` exactly once, false with no
+    /// stamp and false for a stamp already handed out.
+    ///
+    /// Both wrist surfaces ask — the logging surface when the stamp changes, the
+    /// rest surface when it appears and when the stamp changes — so a record is
+    /// announced once whichever screen is up when it is due. The answer is not
+    /// time-limited: a rest surface that appears after the four-second window
+    /// has run out still hears it once.
+    public func takePersonalRecordAnnouncement() -> Bool {
+        guard let until = personalRecordBannerUntil else { return false }
+        guard until != announcedPersonalRecordUntil else { return false }
+        announcedPersonalRecordUntil = until
+        return true
     }
 
     // MARK: - Live sensors

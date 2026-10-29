@@ -9,6 +9,10 @@
 //  scenarios S-87b-8 (its structural half), S-87b-14 and S-87b-22 (decisions
 //  D-4, D-7, D-8, D-18, D-19).
 //
+//  Plan 88 moved the capsule into one `WatchPersonalRecordBanner` view both
+//  wrist surfaces overlay, so the markup scans below read that file and the
+//  hosts are read separately (S-88-3, decisions D-1 to D-3).
+//
 //  The app target has no test target and `WatchLoggingView` compiles only under
 //  xcodebuild, so the suite holds the text those two files are made of; the
 //  governor's watch app build is the compiler check.
@@ -194,12 +198,15 @@ final class WatchPersonalBestsWiringSourceTests: XCTestCase {
     // MARK: - S-87b-22 the banner is an overlay, and the record tap is its own
 
     /// The banner draws a trophy, cannot swallow a tap, and hands its label to
-    /// VoiceOver; the view gained no timer for it (D-9).
+    /// VoiceOver; the view gained no timer for it (D-9). Since plan 88 the
+    /// capsule is its own view both surfaces overlay, so the markup is read
+    /// there and the logging surface keeps the overlay host.
     func testS87b22TheBannerIsANonBlockingOverlayWithNoTimer() throws {
         let view = try engineSource("WatchLoggingView.swift")
+        let banner = try engineSource("WatchPersonalRecordBanner.swift")
 
         XCTAssertTrue(
-            view.contains("trophy.fill"),
+            banner.contains("trophy.fill"),
             "S-87b-22 the banner draws the trophy symbol"
         )
         XCTAssertTrue(
@@ -207,11 +214,11 @@ final class WatchPersonalBestsWiringSourceTests: XCTestCase {
             "S-87b-22 the banner is an overlay at the top, so it covers no button and pushes no row"
         )
         XCTAssertTrue(
-            view.contains("allowsHitTesting(false)"),
+            banner.contains("allowsHitTesting(false)"),
             "S-87b-22 the banner never takes a tap from Log, rest or Next (D-7)"
         )
         XCTAssertTrue(
-            view.contains("isPersonalRecordBannerVisible(at:"),
+            banner.contains("isPersonalRecordBannerVisible(at:"),
             "S-87b-22 the banner reads the state's window rather than a clock of its own"
         )
 
@@ -220,6 +227,11 @@ final class WatchPersonalBestsWiringSourceTests: XCTestCase {
             timers,
             Self.viewTimersAtBanner,
             "S-87b-22 the banner added no timer: the expiry rides the model's existing tick (D-9)"
+        )
+        XCTAssertEqual(
+            banner.components(separatedBy: "Timer.scheduledTimer").count - 1,
+            Self.viewTimersAtBanner,
+            "S-87b-22 the banner view carries no timer of its own either (D-9)"
         )
     }
 
@@ -252,16 +264,18 @@ final class WatchPersonalBestsWiringSourceTests: XCTestCase {
 
     /// The banner carries the spoken label, and exactly one announcement is
     /// posted for it — guarded by the availability check, because the package
-    /// pins watchOS 9 (D-19).
+    /// pins watchOS 9 (D-19). The label lives in the shared banner view since
+    /// plan 88; the one announcement site stays on the logging surface.
     func testS87b14TheBannerCarriesTheLabelAndOneGuardedAnnouncement() throws {
         let view = try engineSource("WatchLoggingView.swift")
+        let banner = try engineSource("WatchPersonalRecordBanner.swift")
 
         XCTAssertTrue(
-            view.contains(".accessibilityLabel(WatchSpokenText.personalRecord)"),
+            banner.contains(".accessibilityLabel(WatchSpokenText.personalRecord)"),
             "S-87b-14 the banner's element is labelled with the spoken text"
         )
         XCTAssertTrue(
-            view.contains(".accessibilityElement(children: .ignore)"),
+            banner.contains(".accessibilityElement(children: .ignore)"),
             "S-87b-14 the label replaces the trophy and the two words, not joins them"
         )
 
@@ -393,5 +407,82 @@ final class WatchPersonalBestsWiringSourceTests: XCTestCase {
             holder.text.contains("func noteLogged("),
             "S-87b-8 that one occurrence declares the verdict, it is not a call"
         )
+    }
+
+    // MARK: - S-88-3 one banner, both wrist surfaces
+
+    /// The rest surface is what the shell swaps in the instant a record log
+    /// starts a rest, so it must overlay the same banner view from its own
+    /// ticker, and both surfaces must take their announcement through the
+    /// state's once-per-record gate (plan 88, D-1 to D-3).
+    ///
+    /// A record the logging surface announces before the swap, and one the rest
+    /// surface announces on appearing, are the same stamp: the gate is what
+    /// keeps it to one announcement.
+    func testS88_3TheRestSurfaceHostsTheBannerInsideItsTimeline() throws {
+        let rest = try engineSource("WatchRestView.swift")
+        let logging = try engineSource("WatchLoggingView.swift")
+
+        let timeline = try XCTUnwrap(
+            braceBody(ofLineContaining: "TimelineView(", in: rest),
+            "S-88-3 the rest surface keeps its one ticker"
+        )
+        XCTAssertTrue(
+            timeline.contains("WatchPersonalRecordBanner("),
+            "S-88-3 the banner is built inside the timeline's closure, so its window is read"
+                + " on the existing tick rather than a timer (D-2)"
+        )
+        XCTAssertTrue(
+            timeline.contains(".overlay(alignment: .top)"),
+            "S-88-3 the rest surface overlays the banner at the top, as the logging surface does (D-1)"
+        )
+        XCTAssertTrue(
+            logging.contains("WatchPersonalRecordBanner("),
+            "S-88-3 both surfaces host the one banner view, never a second copy of the capsule (D-1)"
+        )
+
+        XCTAssertTrue(
+            rest.contains(".onAppear"),
+            "S-88-3 the rest surface announces a record that was already due when it appeared"
+        )
+        XCTAssertTrue(
+            rest.contains(".onChange(of: state.personalRecordBannerUntil)"),
+            "S-88-3 …and one logged while the rest is up (D-3)"
+        )
+        XCTAssertTrue(
+            logging.contains("takePersonalRecordAnnouncement()"),
+            "S-88-3 the logging surface takes the shared gate, not its own flag (D-3)"
+        )
+
+        let announce = try XCTUnwrap(
+            braceBody(ofLineContaining: "func announcePersonalRecordIfDue()", in: rest),
+            "S-88-3 the rest surface's one announcement site"
+        )
+        XCTAssertTrue(
+            announce.contains("takePersonalRecordAnnouncement()"),
+            "S-88-3 only a true answer posts, whichever surface is up (D-3)"
+        )
+        XCTAssertTrue(
+            announce.contains("#available(watchOS 10.0, *)"),
+            "S-88-3 the announcement API stays guarded: the package's floor is watchOS 9"
+        )
+        XCTAssertTrue(
+            announce.contains("AccessibilityNotification.Announcement("),
+            "S-88-3 the guarded post is the announcement the logging surface makes"
+        )
+
+        let banner = try engineSource("WatchPersonalRecordBanner.swift")
+        XCTAssertTrue(banner.contains("trophy.fill"), "S-88-3 the one banner view draws the trophy")
+        let capsuleFiles = try targetSources()
+            .filter { $0.text.contains("trophy.fill") }
+            .map(\.name)
+        XCTAssertEqual(
+            capsuleFiles,
+            ["WatchPersonalRecordBanner.swift"],
+            "S-88-3 the capsule markup lives in exactly one source file (D-1)"
+        )
+
+        XCTAssertFalse(rest.contains("Timer"), "S-88-3 the rest surface adds no timer (D-2)")
+        XCTAssertFalse(banner.contains("Timer"), "S-88-3 the banner view brings no timer (D-9)")
     }
 }

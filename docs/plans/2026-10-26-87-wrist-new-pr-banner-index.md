@@ -1,6 +1,6 @@
 # Series 87: New PR banner on the watch
 
-> Status: 87a CLOSED 2026-10-27 (reviewed APPROVE, committed `d0189d6d`); 87b done (`403d96d9`); 87c BUILT 2026-10-28, awaiting review (phone half committed `2c64ffa5`, wrist half on the tree). 87b was planned on its turn against the code as it was then (`.github/copilot/pr-scope-budget.md`, "Over budget at planning time"), and 87b's own plan carries the decisions, scenarios and evidence.
+> Status: 87a CLOSED 2026-10-27 (reviewed APPROVE, committed `d0189d6d`); 87b done (`403d96d9`); 87c BUILT 2026-10-28, awaiting review (phone half committed `2c64ffa5`, wrist half on the tree); 88 (the banner on the rest screen, `docs/plans/2026-10-28-88-pr-banner-on-rest-screen-plan/`) BUILT 2026-10-28, awaiting review. 87b was planned on its turn against the code as it was then (`.github/copilot/pr-scope-budget.md`, "Over budget at planning time"), and 87b's own plan carries the decisions, scenarios and evidence.
 
 ## What the owner asked for, and decided (2026-10-26)
 

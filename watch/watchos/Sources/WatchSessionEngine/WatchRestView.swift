@@ -21,6 +21,10 @@
 //  that is off or dimmed pings on time; this view only shows the clock, and
 //  shows whole minutes while the display is dimmed (plan 61).
 //
+//  Plan 88 D-1: the shell swaps this surface in the instant a record log starts
+//  a rest, so this surface overlays the same "New PR" banner the logging surface
+//  does, from its own timeline tick rather than a timer (D-2).
+//
 
 #if os(watchOS)
 
@@ -32,6 +36,10 @@ public struct WatchRestView: View {
     /// True while the display is dimmed (Always On, wrist down): the clock then
     /// shows whole minutes and the timeline ticks once a minute (plan 61, D-3).
     @Environment(\.isLuminanceReduced) private var dimmed
+
+    /// The phone's accent, for the "New PR" banner's capsule — the same value
+    /// the logging surface reads (plan 88 D-1).
+    @Environment(\.watchAccent) private var accent
 
     private let haptics: WatchHaptics
     /// Moves the session to the slot id the next line announced (plan 79, D-6).
@@ -88,6 +96,31 @@ public struct WatchRestView: View {
                 nextButton
             }
             .padding(.horizontal, Self.surfaceInset)
+            // A record log starts the rest and the shell swaps this screen in
+            // at once (D-161), so the banner the logging surface shows is
+            // continued here rather than torn down with it (plan 88 D-1). It is
+            // built inside the timeline's closure, so its window is read on this
+            // screen's existing tick and it needs no timer of its own (D-2).
+            .overlay(alignment: .top) {
+                WatchPersonalRecordBanner(state: state, accent: accent)
+            }
+        }
+        // One announcement per record, whichever surface is up when it is due
+        // (plan 88 D-3): appearing is the moment a record logged before the swap
+        // is announced, and a record logged while the rest is up arrives as a new
+        // stamp. The state hands it out once, so a record already announced on
+        // the logging surface stays silent here.
+        .onAppear { announcePersonalRecordIfDue() }
+        .onChange(of: state.personalRecordBannerUntil) { _ in announcePersonalRecordIfDue() }
+    }
+
+    /// Posts the record's one announcement when the state still owes it (plan 88
+    /// D-3). Guarded like the logging surface's, because the package's floor is
+    /// watchOS 9; there the banner's own label is what VoiceOver reads.
+    private func announcePersonalRecordIfDue() {
+        guard state.takePersonalRecordAnnouncement() else { return }
+        if #available(watchOS 10.0, *) {
+            AccessibilityNotification.Announcement(WatchSpokenText.personalRecord).post()
         }
     }
 
