@@ -104,6 +104,10 @@ rules matter beyond the row list:
   one measurement with a compound display form.
 - **Sound choices preview immediately on tap** through `TimerAlertService.playPreview`, and audio
   playback no-ops safely on web rather than throwing.
+- **Silent mode:** the phone's silent switch silences the **rest ping** sound (the haptic tap still
+  fires), because the ping is a nudge, not an alarm. The effort-timer alert and the sound preview
+  still play with the switch on, since the user asked to hear them (`TimerAlertAudio.nudge` /
+  `.alarm` in `TimerAlertService`). Not yet confirmed on a device.
 
 The APPLE WATCH section is the one read-only status readout, built only when the platform's
 transport can report a link: one `Apple Watch` row, not tappable, with the link phase on the
