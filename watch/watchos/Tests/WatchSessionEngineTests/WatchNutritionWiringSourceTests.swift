@@ -176,83 +176,35 @@ final class WatchNutritionWiringSourceTests: XCTestCase {
             view.contains("WatchNutritionView("),
             "S-7201 the surface the start screen opens is the existing quick-log view"
         )
-
-        let menu = try XCTUnwrap(
-            callBody(of: "WatchMenuView", in: view),
-            "S-7201 the shell hosts the session menu"
-        )
-        XCTAssertTrue(
-            menu.contains("nutritionModel: host.nutritionModel"),
-            "S-7201 the menu is handed the same model, so its row pushes the same quick-log (D-3, D-10)"
-        )
     }
 
-    // MARK: - S-7202: the menu's words are the start screen's
+    // MARK: - S-7202: no Log food row while a session runs
 
-    /// The menu row says what the start screen's button says, and the start
-    /// screen's constant is the same words: two surfaces, one phrase (D-3).
-    func testS7202TheLogFoodCopyIsTheStartScreens() throws {
-        XCTAssertEqual(
-            WatchMenuCopy.logFoodLabel,
-            "Log food",
-            "S-7202 the menu's way into the quick-log is named as the start screen names it"
-        )
-
-        let start = try engineSource("WatchStartView.swift")
-        XCTAssertTrue(
-            start.contains("public static let logFoodLabel = \"Log food\""),
-            "S-7202 WatchStartView.logFoodLabel carries the same words, so the two cannot drift"
-        )
-    }
-
-    // MARK: - S-7203: the row sits between Add Exercise and End Session
-
-    /// The menu's Log food row is a `NavigationLink` to the quick-log, labelled
-    /// with the shared copy, placed after Add Exercise and before End Session and
-    /// never disabled: eating is independent of the effort being logged (D-3).
-    func testS7203TheMenuRowSitsBetweenAddExerciseAndFinish() throws {
+    /// Food is logged from the start screen only. The session menu offers no
+    /// Log food row and is handed no quick-log model.
+    func testS7202TheSessionMenuHasNoLogFoodRow() throws {
         let source = try engineSource("WatchMenuView.swift")
-
-        XCTAssertTrue(
-            source.contains("nutritionModel: WatchNutritionModel? = nil"),
-            "S-7203 the model is optional, so a menu without one keeps the row off (D-3, D-10)"
-        )
-
-        let add = try XCTUnwrap(
-            usageLine(of: "addExerciseRow", in: source),
-            "S-7203 the menu carries the Add Exercise row"
-        )
-        let food = try XCTUnwrap(
-            usageLine(of: "logFoodRow", in: source),
-            "S-7203 the menu carries the Log food row"
-        )
-        let finish = try XCTUnwrap(
-            usageLine(of: "finishRow", in: source),
-            "S-7203 the menu carries the End Session row"
-        )
-
-        XCTAssertLessThan(add, food, "S-7203 Log food comes after Add Exercise")
-        XCTAssertLessThan(food, finish, "S-7203 and before End Session")
-
-        let row = try XCTUnwrap(
-            braceBody(ofLineContaining: "private var logFoodRow", in: source),
-            "S-7203 the row is the view's own property"
-        )
-        XCTAssertTrue(
-            row.contains("NavigationLink {"),
-            "S-7203 the row pushes the quick-log the way Add Exercise pushes its list"
-        )
-        XCTAssertTrue(
-            row.contains("WatchNutritionView(model: nutritionModel)"),
-            "S-7203 the destination is the existing quick-log view over the handed model"
-        )
-        XCTAssertTrue(
-            row.contains("Text(WatchMenuCopy.logFoodLabel)"),
-            "S-7203 the label is the shared copy, not a second literal"
+        XCTAssertFalse(
+            source.contains("WatchNutritionView"),
+            "S-7202 the session menu opens no quick-log"
         )
         XCTAssertFalse(
-            row.contains(".disabled("),
-            "S-7203 the row is never disabled: food is independent of the effort"
+            source.contains("logFood"),
+            "S-7202 the session menu carries no Log food row"
+        )
+        XCTAssertFalse(
+            source.contains("nutritionModel"),
+            "S-7202 the session menu is handed no quick-log model"
+        )
+
+        let view = try appSource("ContentView.swift")
+        let menu = try XCTUnwrap(
+            callBody(of: "WatchMenuView", in: view),
+            "S-7202 the shell hosts the session menu"
+        )
+        XCTAssertFalse(
+            menu.contains("nutritionModel"),
+            "S-7202 the shell hands the menu no quick-log model"
         )
     }
 
@@ -375,40 +327,6 @@ final class WatchNutritionWiringSourceTests: XCTestCase {
         XCTAssertTrue(
             dismiss.contains("crownPosition = 0"),
             "S-8312 the crown starts over with the next food"
-        )
-    }
-
-    // MARK: - S-8318: the menu pushes the host's model
-
-    /// The session menu carries the host's model instead of building one, so a
-    /// `foods_down` that lands while the menu's quick-log is open redraws it and
-    /// the crown survives a body evaluation (D-10).
-    func testS8318TheMenuPushesTheHostsNutritionModel() throws {
-        let source = try engineSource("WatchMenuView.swift")
-
-        XCTAssertEqual(
-            occurrences(of: "WatchNutritionModel(", in: source),
-            0,
-            "S-8318 the menu builds no model of its own"
-        )
-
-        let row = try XCTUnwrap(
-            braceBody(ofLineContaining: "private var logFoodRow", in: source),
-            "S-8318 the menu carries the Log food row"
-        )
-        XCTAssertTrue(
-            row.contains("WatchNutritionView(model: nutritionModel)"),
-            "S-8318 the row pushes the quick-log over the handed model"
-        )
-
-        let view = try appSource("ContentView.swift")
-        let menu = try XCTUnwrap(
-            callBody(of: "WatchMenuView", in: view),
-            "S-8318 the shell opens the menu"
-        )
-        XCTAssertTrue(
-            menu.contains("nutritionModel: host.nutritionModel"),
-            "S-8318 the menu is handed the host's one model"
         )
     }
 

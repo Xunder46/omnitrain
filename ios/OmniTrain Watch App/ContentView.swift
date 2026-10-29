@@ -50,8 +50,7 @@ final class WatchAppHost: ObservableObject {
 
     /// The quick-log's one model, built beside its state so the crown, the
     /// selection and the state's change observer live as long as the app: the
-    /// start screen's sheet and the session menu's row both present this model
-    /// (D-6, D-10).
+    /// start screen's sheet presents this model (D-6, D-10).
     let nutritionModel: WatchNutritionModel
 
     /// The platform workout, following the session's life. One coordinator for
@@ -603,7 +602,6 @@ private extension View {
             WatchMenuView(
                 state: menu,
                 revision: host.revision,
-                nutritionModel: host.nutritionModel,
                 syncNotice: host.syncNotice,
                 onClose: {
                     isPresented.wrappedValue = false

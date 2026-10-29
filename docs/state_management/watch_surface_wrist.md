@@ -664,15 +664,13 @@ unchanged.
 **Food is reachable with or without a workout, and the phone's rest arrives.**
 The watch app builds one `WatchNutritionState` for its life — `WatchAppHost`'s
 `nutrition`, handed to the sync orchestrator and restored at launch — and one
-`WatchNutritionModel` beside it (`nutritionModel`) that both entry points hand
-to the screen, so either reuses the one observable rather than building a model
-on each body pass (`WatchNutritionWiringSourceTests.testS8311TheHostOwnsTheOneNutritionModel`,
-`…testS8318TheMenuPushesTheHostsNutritionModel`). The start
-screen shows `Log food` (`WatchStartView.logFoodLabel`) directly under Free
-workout and opens `WatchNutritionView` in a sheet, and the session menu carries
-a `Log food` row (`WatchMenuCopy.logFoodLabel`, the same words) between Add
-Exercise and End Session that pushes the same screen; the row is never
-disabled, because food is independent of the effort. A tapped food opens its
+`WatchNutritionModel` beside it (`nutritionModel`) that the start screen's sheet
+hands to the screen, so it reuses the one observable rather than building a model
+on each body pass (`WatchNutritionWiringSourceTests.testS8311TheHostOwnsTheOneNutritionModel`).
+The start screen shows `Log food` (`WatchStartView.logFoodLabel`) directly under Free
+workout and opens `WatchNutritionView` in a sheet. The session menu has no Log
+food row: food is logged from the start screen only, not while a session is in
+progress (`…testS7202TheSessionMenuHasNoLogFoodRow`). A tapped food opens its
 own screen (`WatchFoodPortionView`: the portion row, the kcal and Log), and
 the portion's Crown turns the raising direction the logging screen's Crown does:
 positive travel raises the portion, one detent per
