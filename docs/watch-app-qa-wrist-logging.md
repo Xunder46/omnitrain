@@ -386,9 +386,10 @@ hardware yet.
     or the watch out of reach, start and finish a session on the phone: exactly
     one workout, sourced to the phone app. (d) On an earlier duplicate pair,
     open Health, Browse, Activity, Workouts, Show All Data and read each
-    entry's Source: the "Other" one should be the phone app. Known gap: deleting
-    a session on the phone does not remove the watch's workout from Fitness
-    (series 89c, 89c2). Held off-device by `test/health_platform_test.dart`
+    entry's Source: the "Other" one should be the phone app. (e) Finish a session
+    on the watch, then delete it from the calendar or Session Summary on the
+    phone (Write workouts on): its workout leaves Fitness (checked on a real
+    watch 2026-10-28, series 89c2). Held off-device by `test/health_platform_test.dart`
     (group `S-89c1`) and `WatchOneWorkoutPerSessionTests`.
 
 Two known gaps this walkthrough must not be read as failing on: each device owns

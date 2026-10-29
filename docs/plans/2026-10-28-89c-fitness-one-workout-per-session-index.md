@@ -9,9 +9,13 @@ Two different jobs came out of the plan 89 findings, with different size and ris
 | PR | Job | State |
 |---|---|---|
 | 89c1 | Stop the phone writing a second workout for a session the watch already saved. Phone track, small, no wire change. Plan: `docs/plans/2026-10-28-89c1-one-workout-per-session-plan/` | planned |
-| 89c2 | Make deleting a session on the phone also remove the workout the watch saved. Not planned yet. | outlined |
+| 89c2 | Make deleting a session on the phone also remove the workout the watch saved. **Closed without code, 2026-10-28**: the owner's real-watch check showed the existing phone delete already removes a finished watch workout (see below). | closed |
 
-## 89c2 outline (to plan after 89c1 lands)
+## 89c2 result (2026-10-28): no code needed
+
+Owner device check, Write workouts on: a session finished on the watch (workout visible in Fitness) and then deleted on the phone lost its watch workout; a phone-only discard also removed its workout. So HealthKit treats the watch app's workouts as the OmniTrain app's own, and the existing `onSessionDeleted` (plan 89 D-4/D-5) reaches them. The wrist-side frame, the native Runner method and the `HKMetadataKeyExternalUUID` tie below are NOT needed and are dropped. Unchanged by choice: the delete still needs "Write workouts" on (plan 89 OQ-2); the window stays the session's exact span. Open (not blocking): the Source label could not be read on the watch (it is shown in the iPhone Health app); `healthWorkoutSaved` on `session_end` (89c1 D-3) stays unbuilt and unneeded until a real case shows it.
+
+## Original 89c2 outline (superseded, kept for the record)
 
 Problem: the watch's workout has the watch app as its source, and the health plugin's delete only reaches the phone app's own source (plan 89 P-1). It also has no identifier that ties it to an OmniTrain session.
 
