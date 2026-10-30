@@ -7,12 +7,16 @@ import '../../data/models/models.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 import 'widgets/delete_created_food.dart';
 import 'widgets/food_form.dart';
+import 'widgets/food_form_unsaved_probe.dart';
 
 /// Edit Food screen — opened from the pencil on an in-list row of the
 /// **Library** tab of [AddFoodScreen]. Pre-fills the shared [FoodForm] with
-/// the given [Food] and saves on blur (no Save button).
+/// the given [Food] and carries the same bottom **Save** CTA and
+/// unsaved-changes guard as the New Food screen: nothing is written until
+/// Save, and leaving with edits asks first.
 ///
 /// Which food is edited decides where the edit lands:
 ///   * a **library row** (`isCatalog == false`, the user's own copy of a
@@ -72,10 +76,51 @@ class EditFoodScreen extends StatefulWidget {
 class _EditFoodScreenState extends State<EditFoodScreen> {
   final FoodFormController _formController = FoodFormController();
 
+  /// Key on the hosted [FoodForm]; the unsaved-work probe reads the form's
+  /// rendered fields through it (see [FoodFormUnsavedProbe]).
+  final GlobalKey _formKey = GlobalKey();
+  late final FoodFormUnsavedProbe _probe = FoodFormUnsavedProbe(
+    _formKey,
+    initialImagePath: widget.food.imagePath,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    // The form's fields exist once it has laid out; that first frame is the
+    // baseline the guard compares against.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _probe.record();
+    });
+  }
+
   @override
   void dispose() {
+    _probe.dispose();
     _formController.detach();
     super.dispose();
+  }
+
+  /// Single exit path for the header back button and system back: leaving a
+  /// form the user has not touched pops straight away, leaving one with
+  /// edits asks first. Save is the only path that writes, and it pops on
+  /// success without the guard.
+  Future<void> _attemptExit() async {
+    if (!_probe.isDirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final discard = await ConfirmationDialog.showUnsavedChanges(
+      context: context,
+      title: 'Unsaved changes',
+      body: 'You have unsaved edits. Discard them to return to the '
+          'food library.',
+      keepEditingKey: const Key('edit-food-unsaved-keep'),
+      discardKey: const Key('edit-food-unsaved-discard'),
+    );
+    if (!mounted || !discard) return;
+    Navigator.of(context).pop();
   }
 
   Future<bool> _save(FoodDraft draft) async {
@@ -131,64 +176,88 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
         widget.food.isCatalog &&
         widget.nutritionState != null &&
         !widget.foodLibraryState.isBundledCatalogFood(widget.food.id);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Edit Food')),
-      body: Column(
-        children: [
-          Expanded(
-            child: FoodForm(
-              initial: widget.food,
-              foodLibraryState: widget.foodLibraryState,
-              saveLabel: 'Save',
-              showNotesField: true,
-              controller: _formController,
-              autoSaveOnBlur: true,
-              skipPopOnSave: true,
-              onSave: _save,
-              // "Save on upload": the form has no Save button, so the
-              // photo pick handler persists the new imagePath at once.
-              // The partial draft keeps concurrent half-typed edits.
-              onImageSave: _save,
-            ),
-          ),
-          if (canReset || canDelete)
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  OmniTheme.bottomCTAHorizontalPadding,
-                  8,
-                  OmniTheme.bottomCTAHorizontalPadding,
-                  OmniTheme.bottomCTAVerticalBottomPadding,
-                ),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    key: Key(
-                      canReset ? 'food_reset_original' : 'food_delete_created',
-                    ),
-                    onPressed: canReset ? _onReset : _onDeleteCreated,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: canReset
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.error,
-                      side: BorderSide(
-                        color: canReset
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.error,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          OmniTheme.buttonBorderRadius,
-                        ),
-                      ),
-                    ),
-                    child: Text(canReset ? 'Reset to original' : 'Delete food'),
-                  ),
+    return PopScope(
+      // Always intercept: whether leaving is safe is decided fresh in
+      // [_attemptExit], because the host does not rebuild as the user types
+      // into the form (so a `canPop` computed at build time would go stale
+      // and let the edits through).
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _attemptExit();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Edit Food')),
+        body: Column(
+          children: [
+            Expanded(
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (notification is ScrollEndNotification) _probe.record();
+                  return false;
+                },
+                child: FoodForm(
+                  key: _formKey,
+                  initial: widget.food,
+                  foodLibraryState: widget.foodLibraryState,
+                  saveLabel: 'Save',
+                  showNotesField: true,
+                  controller: _formController,
+                  // Nothing persists the photo before Save, so the probe
+                  // learns about a pick (or a clear) from the form itself.
+                  onImageChanged: _probe.markImageChanged,
+                  onSave: _save,
                 ),
               ),
             ),
-        ],
+            if (canReset || canDelete)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    OmniTheme.bottomCTAHorizontalPadding,
+                    8,
+                    OmniTheme.bottomCTAHorizontalPadding,
+                    OmniTheme.bottomCTAVerticalBottomPadding,
+                  ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      key: Key(
+                        canReset
+                            ? 'food_reset_original'
+                            : 'food_delete_created',
+                      ),
+                      onPressed: canReset ? _onReset : _onDeleteCreated,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: canReset
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.error,
+                        side: BorderSide(
+                          color: canReset
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.error,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            OmniTheme.buttonBorderRadius,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        canReset ? 'Reset to original' : 'Delete food',
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        bottomNavigationBar: OmniBottomCTA(
+          label: 'Save',
+          buttonKey: const Key('food_form_save'),
+          onPressed: _formController.submit,
+        ),
       ),
     );
   }

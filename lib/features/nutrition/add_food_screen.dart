@@ -12,6 +12,7 @@ import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
 import 'edit_food_screen.dart';
 import 'widgets/food_form.dart';
+import 'widgets/food_form_unsaved_probe.dart';
 import 'widgets/food_thumbnail.dart';
 import '../../widgets/buttons/omni_header_add_button.dart';
 import '../../widgets/common/omni_empty_state.dart';
@@ -204,134 +205,6 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   }
 }
 
-/// Unsaved-work probe for the two screens that host a [FoodForm].
-///
-/// `FoodForm` owns its controllers and its dropdown selections privately,
-/// so a host cannot ask it whether the user changed anything. What a host
-/// *can* read is what the form renders: every field is a keyed
-/// [FormField] whose state carries the live value
-/// ([FormFieldState.value] — a text field's controller text, a dropdown's
-/// selection). The probe remembers the first value it sees per field key
-/// and reports a later difference as unsaved work. A text field it has
-/// seen also gets a controller listener, so typing still counts after the
-/// field has scrolled out of the build window and its element is gone.
-class _FoodFormProbe {
-  _FoodFormProbe(this._formKey);
-
-  /// Key on the host's [FoodForm]; it is the root of the field walk.
-  final GlobalKey _formKey;
-
-  /// First value seen per rendered field key (the untouched baseline).
-  final Map<Key, Object?> _firstSeen = <Key, Object?>{};
-
-  /// Text controllers already hooked; holding them keeps a typing signal
-  /// alive after the field's element has been disposed.
-  final Set<TextEditingController> _hooked = <TextEditingController>{};
-  bool _typed = false;
-
-  /// Latest photo state reported through [FoodForm.onImageChanged]; null
-  /// until the photo changes at all. A create-mode form starts with no
-  /// photo, so `true` is unsaved work and clearing back to no photo is
-  /// clean again.
-  bool? _imageHasPhoto;
-
-  /// Record a change to the form-local photo, reported by
-  /// [FoodForm.onImageChanged]. The photo tile is neither a rendered
-  /// [FormField] nor an [EditableText], so a pick or a clear is invisible
-  /// to [_renderedFields] and would otherwise be dropped on the way out.
-  void markImageChanged(bool hasPhoto) => _imageHasPhoto = hasPhoto;
-
-  /// True when the form carries work the user has not saved.
-  bool get isDirty {
-    if (_typed) return true;
-    if (_imageHasPhoto ?? false) return true;
-    for (final field in _renderedFields()) {
-      if (_firstSeen.containsKey(field.key) &&
-          field.value != _firstSeen[field.key]) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /// Record the values the form currently renders as the untouched
-  /// baseline. Called once the form has laid out, and again after every
-  /// scroll, so a field that scrolls into the build window is baselined
-  /// before the user can type into it.
-  void record() {
-    for (final field in _renderedFields()) {
-      _firstSeen.putIfAbsent(field.key, () => field.value);
-      final controller = field.controller;
-      if (controller != null && _hooked.add(controller)) {
-        controller.addListener(_onTyped);
-      }
-    }
-  }
-
-  void _onTyped() => _typed = true;
-
-  /// Release the controller hooks. [ChangeNotifier.removeListener] is safe
-  /// on a controller [FoodForm] has already disposed.
-  void dispose() {
-    for (final controller in _hooked) {
-      controller.removeListener(_onTyped);
-    }
-    _hooked.clear();
-  }
-
-  /// Every keyed [FormField] the form currently renders.
-  List<_RenderedField> _renderedFields() {
-    final root = _formKey.currentContext;
-    if (root == null) return const <_RenderedField>[];
-    final fields = <_RenderedField>[];
-
-    void visit(Element element) {
-      final widget = element.widget;
-      if (widget is FormField) {
-        final state = element is StatefulElement ? element.state : null;
-        if (widget.key != null && state is FormFieldState<Object?>) {
-          fields.add(
-            _RenderedField(widget.key!, state.value, _controllerOf(element)),
-          );
-        }
-        return;
-      }
-      element.visitChildren(visit);
-    }
-
-    root.visitChildElements(visit);
-    return fields;
-  }
-
-  /// The text controller a rendered text field edits, or null when the
-  /// field is not a text field.
-  TextEditingController? _controllerOf(Element field) {
-    TextEditingController? controller;
-
-    void visit(Element element) {
-      final widget = element.widget;
-      if (widget is EditableText) {
-        controller = widget.controller;
-        return;
-      }
-      element.visitChildren(visit);
-    }
-
-    field.visitChildElements(visit);
-    return controller;
-  }
-}
-
-/// A [FormField] the form renders, reduced to what the probe compares: the
-/// value the user sees and the controller behind it.
-class _RenderedField {
-  const _RenderedField(this.key, this.value, this.controller);
-
-  final Key key;
-  final Object? value;
-  final TextEditingController? controller;
-}
-
 /// Edit screen shim for **legacy library-only customs** (D-2
 /// compatibility shim).
 ///
@@ -367,9 +240,12 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
   final FoodFormController _formController = FoodFormController();
 
   /// Key on the hosted [FoodForm]; the unsaved-work probe reads the form's
-  /// rendered fields through it (see [_FoodFormProbe]).
+  /// rendered fields through it (see [FoodFormUnsavedProbe]).
   final GlobalKey _formKey = GlobalKey();
-  late final _FoodFormProbe _probe = _FoodFormProbe(_formKey);
+  late final FoodFormUnsavedProbe _probe = FoodFormUnsavedProbe(
+    _formKey,
+    initialImagePath: widget.food.imagePath,
+  );
 
   @override
   void initState() {
@@ -477,21 +353,7 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
                 return false;
               }
             },
-            // "Save on upload / save on clear": picking or clearing a
-            // photo persists immediately, the same as the catalog
-            // editor (`EditFoodScreen`). Without this the photo
-            // change lived only in the form until the user pressed
-            // Save — and a user who tapped × and then backed out
-            // (the natural gesture, since the catalog editor needs no
-            // Save) found the photo still there.
-            onImageSave: (draft) async {
-              try {
-                await _persist(draft);
-                return true;
-              } catch (_) {
-                return false;
-              }
-            },
+            onImageChanged: _probe.markImageChanged,
           ),
         ),
         bottomNavigationBar: OmniBottomCTA(
@@ -888,9 +750,9 @@ class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
   final FoodFormController _formController = FoodFormController();
 
   /// Key on the hosted [FoodForm]; the unsaved-work probe reads the form's
-  /// rendered fields through it (see [_FoodFormProbe]).
+  /// rendered fields through it (see [FoodFormUnsavedProbe]).
   final GlobalKey _formKey = GlobalKey();
-  late final _FoodFormProbe _probe = _FoodFormProbe(_formKey);
+  late final FoodFormUnsavedProbe _probe = FoodFormUnsavedProbe(_formKey);
 
   @override
   void initState() {
@@ -954,7 +816,7 @@ class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
             key: _formKey,
             initial: null,
             foodLibraryState: widget.foodLibraryState,
-            saveLabel: 'Create',
+            saveLabel: 'Save',
             controller: _formController,
             // Create mode never persists the photo until Save, so the
             // probe learns about a pick (or a clear) from the form.
@@ -999,7 +861,7 @@ class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
         // is preserved on the rendered FilledButton for backward
         // compatibility with the existing test contract.
         bottomNavigationBar: OmniBottomCTA(
-          label: 'Create',
+          label: 'Save',
           buttonKey: const Key('food_form_save'),
           onPressed: _formController.submit,
         ),

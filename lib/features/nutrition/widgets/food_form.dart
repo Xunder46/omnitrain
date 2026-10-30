@@ -100,40 +100,15 @@ class FoodForm extends StatefulWidget {
   /// case after the shared-CTA migration).
   final FoodFormController? controller;
 
-  /// When true, the form auto-saves on blur (tap outside any field)
-  /// instead of requiring a save button press.
-  final bool autoSaveOnBlur;
-
-  /// Optional partial-save callback fired after a successful photo
-  /// pick in **edit mode** (when [initial] is non-null). The host
-  /// wires this to `updateCustomFood` / `updateCatalogFood` so the
-  /// new `imagePath` lands in the data layer immediately, even on
-  /// screens that have no Save button (e.g. `EditFoodScreen` with
-  /// `autoSaveOnBlur: true`).
+  /// Notified whenever the form-local photo changes, with the path the
+  /// form now holds: the persisted managed path after a pick, `null` after
+  /// the × overlay cleared it.
   ///
-  /// The draft passed to this callback is built from [initial] with
-  /// only `imagePath` changed. Concurrent edits to the form's text
-  /// controllers are NOT clobbered (the pick should not overwrite
-  /// a half-typed name).
-  ///
-  /// In create mode ([initial] is null) the callback is **not**
-  /// fired — the form just stores the image locally and the user
-  /// saves the whole food via the existing Save button.
-  ///
-  /// The D-7 cleanup (delete previous managed file) is the
-  /// state method's responsibility; the form does not call the
-  /// service directly.
-  final Future<bool> Function(FoodDraft draft)? onImageSave;
-
-  /// Notified whenever the form-local photo changes: `true` after a pick
-  /// persisted a new path, `false` after the × overlay cleared it.
-  ///
-  /// In create mode ([initial] is null) the photo never leaves the form
-  /// ([onImageSave] is not wired), so a host that guards unsaved work has
-  /// no other way to see it; `_NewFoodFormScreen` marks its guard dirty
-  /// from here. The legacy edit shim leaves this unwired — its photos
-  /// persist immediately.
-  final ValueChanged<bool>? onImageChanged;
+  /// Nothing about the photo reaches the data layer until Save (the save
+  /// draft carries `imagePath`), so a host that guards unsaved work has no
+  /// other way to see a pick or a clear; it compares the reported path
+  /// with the one the stored food started with.
+  final ValueChanged<String?>? onImageChanged;
 
   const FoodForm({
     super.key,
@@ -144,8 +119,6 @@ class FoodForm extends StatefulWidget {
     this.showNotesField = false,
     this.skipPopOnSave = false,
     this.controller,
-    this.autoSaveOnBlur = false,
-    this.onImageSave,
     this.onImageChanged,
   });
 
@@ -196,11 +169,6 @@ class FoodFormController {
 
 class _FoodFormState extends State<FoodForm> {
   final _formKey = GlobalKey<FormState>();
-  // Form-level focus node: when `autoSaveOnBlur` is on, blurring
-  // the form (tapping outside any field) triggers an auto-save.
-  // Distinct from the per-field focus nodes below, which exist
-  // solely to select-all on focus for fast overwrite.
-  final _focusNode = FocusNode();
   late final TextEditingController _name;
   late final TextEditingController _referenceAmount;
   late final TextEditingController _referenceLabel;
@@ -251,11 +219,6 @@ class _FoodFormState extends State<FoodForm> {
     // pipeline so the host's bottom CTA can trigger the form's
     // validation + save flow without exposing private state.
     widget.controller?.attach(_onSave);
-
-    // Set up focus listener for auto-save on blur
-    if (widget.autoSaveOnBlur) {
-      _focusNode.addListener(_onFocusChange);
-    }
 
     final initial = widget.initial;
     _name = TextEditingController(text: initial?.name ?? '');
@@ -336,18 +299,7 @@ class _FoodFormState extends State<FoodForm> {
     _fat.dispose();
     _sodium.dispose();
     _notes.dispose();
-    _focusNode.removeListener(_onFocusChange);
-    _focusNode.dispose();
     super.dispose();
-  }
-
-  // ─── Focus handler for auto-save ────────────────────────────────────
-
-  void _onFocusChange() {
-    // When focus leaves the form (blur), auto-save
-    if (widget.autoSaveOnBlur && !_focusNode.hasFocus) {
-      _onSave();
-    }
   }
 
   // ─── Image picker ────────────────────────────────────────────────────
@@ -380,10 +332,8 @@ class _FoodFormState extends State<FoodForm> {
     }
   }
 
-  /// Persist a picked [XFile] into the managed directory, update
-  /// the form's local `_imagePath`, and (in edit mode) fire
-  /// [FoodForm.onImageSave] so the data layer sees the new path
-  /// immediately.
+  /// Persist a picked [XFile] into the managed directory and update
+  /// the form's local `_imagePath`.
   ///
   /// This is the single source of truth for the pick-handler
   /// post-Persistence work. `_pickImage` is the user-facing
@@ -391,14 +341,10 @@ class _FoodFormState extends State<FoodForm> {
   /// here. Tests invoke this method directly to bypass the
   /// `image_picker` platform channel.
   ///
-  /// The "save on upload" behaviour addresses the food-library
-  /// photo-persistence bug: `EditFoodScreen` uses
-  /// `autoSaveOnBlur: true, skipPopOnSave: true` and has no Save
-  /// button, so a pure `_pickImage` would leave the food's
-  /// `imagePath` null in the data layer until the user blurred
-  /// focus off the form (which they may not do — they may just
-  /// tap back). Firing `onImageSave` here means the photo is
-  /// saved the moment it is picked.
+  /// The photo stays form-local: nothing reaches the data layer
+  /// until the user saves (the save draft carries `imagePath`), so
+  /// the persisted path is reported through [FoodForm.onImageChanged]
+  /// for the host's unsaved-work guard (D-92a.2).
   @visibleForTesting
   Future<void> handlePickedImage(XFile picked) async {
     if (kIsWeb) return;
@@ -412,66 +358,19 @@ class _FoodFormState extends State<FoodForm> {
     if (!mounted) return;
     setState(() => _imagePath = persistedPath);
     // The host's unsaved-work guard reads the pick through this
-    // callback: in create mode the photo is form-local, so nothing else
+    // callback: the photo stays form-local until Save, so nothing else
     // can see it.
-    widget.onImageChanged?.call(true);
-
-    // Save on upload — edit mode only. The create flow uses the
-    // existing Save button; partial-saving a half-typed new food
-    // would write a corrupt row. The partial draft is built from
-    // [FoodForm.initial] (the existing food) with only
-    // `imagePath` changed, so concurrent edits to the form's
-    // text controllers (e.g. a half-typed name) are preserved.
-    final onImageSave = widget.onImageSave;
-    if (onImageSave == null || widget.initial == null) return;
-    final partialDraft = _partialDraftFromInitial(persistedPath);
-    final ok = await onImageSave(partialDraft);
-    if (!ok && mounted) {
-      OmniMessage.error(context, 'Could not save photo');
-    }
+    widget.onImageChanged?.call(persistedPath);
   }
 
-  /// Build a [FoodDraft] from [FoodForm.initial] with only
-  /// `imagePath` swapped. Used by [handlePickedImage] to fire
-  /// [FoodForm.onImageSave] without clobbering in-flight edits
-  /// to the form's text controllers.
-  FoodDraft _partialDraftFromInitial(String? imagePath) {
-    final initial = widget.initial!;
-    return FoodDraft(
-      name: initial.name,
-      groupId: initial.groupId,
-      unitType: initial.unitType,
-      referenceAmount: initial.referenceAmount,
-      referenceLabel: initial.referenceLabel,
-      protein: initial.protein,
-      carbs: initial.carbs,
-      fiber: initial.fiber,
-      fat: initial.fat,
-      sodium: initial.sodium,
-      notes: initial.notes,
-      imagePath: imagePath,
-    );
-  }
-
-  /// Clear the current image. In **edit mode** (`initial != null`
-  /// and an [FoodForm.onImageSave] callback is wired), fire the
-  /// callback with a partial draft whose `imagePath` is `null`
-  /// so the data layer immediately sees the cleared path. The
-  /// host (`EditFoodScreen`) wires `onImageSave` to
-  /// `FoodLibraryState.updateCatalogFood`, whose existing
-  /// `previousPath != draft.imagePath` branch handles D-7
-  /// cleanup of the previous managed file (calls
-  /// `svc.deleteIfManaged(previousPath)` when the previous
-  /// path was non-null and the new path is null).
+  /// Clear the current image.
   ///
-  /// In **create mode** (`initial == null`) the callback is
-  /// **not** fired — the image is just unset locally and the
-  /// user saves the whole food via the existing Save button.
-  ///
-  /// This mirrors [handlePickedImage]'s "save on upload" pattern
-  /// — the same partial-draft logic preserves any in-flight
-  /// edits to the form's text controllers (a half-typed name
-  /// is not clobbered by the clear).
+  /// The clear is form-local: nothing reaches the data layer until the
+  /// user saves, so `null` is reported through [FoodForm.onImageChanged]
+  /// for the host's unsaved-work guard (D-92a.2). The save draft then
+  /// carries `imagePath: null`, and the state method's
+  /// `previousPath != draft.imagePath` branch deletes the managed file
+  /// the clear replaced (D-7).
   ///
   /// **Production entry point**: the × (clear) overlay on
   /// [FoodFormImageTile] invokes this via the `onClear`
@@ -483,14 +382,7 @@ class _FoodFormState extends State<FoodForm> {
   @visibleForTesting
   Future<void> clearImage() async {
     setState(() => _imagePath = null);
-    widget.onImageChanged?.call(false);
-    final onImageSave = widget.onImageSave;
-    if (onImageSave == null || widget.initial == null) return;
-    final partialDraft = _partialDraftFromInitial(null);
-    final ok = await onImageSave(partialDraft);
-    if (!ok && mounted) {
-      OmniMessage.error(context, 'Could not clear photo');
-    }
+    widget.onImageChanged?.call(null);
   }
 
   // ─── Save ────────────────────────────────────────────────────────────
@@ -552,9 +444,7 @@ class _FoodFormState extends State<FoodForm> {
         final groups = _sortedGroups(widget.foodLibraryState.activeFoodGroups);
         return Form(
           key: _formKey,
-          child: Focus(
-            focusNode: _focusNode,
-            child: ListView(
+          child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 FoodFormImageTile(
@@ -752,7 +642,6 @@ class _FoodFormState extends State<FoodForm> {
                 // pipeline the inline button used to trigger.
               ],
             ),
-          ),
         );
       },
     );

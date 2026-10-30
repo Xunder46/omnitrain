@@ -442,7 +442,7 @@ void main() {
 
     testWidgets(
       'S-12719: the Edit screen routes a bundled copy\'s save through '
-      'editLibraryFood (onSave and onImageSave)',
+      'editLibraryFood',
       (tester) async {
         final repo = await _freshRepo();
         final foodLib = FoodLibraryState(repo);
@@ -498,27 +498,6 @@ void main() {
           ),
           isFalse,
         );
-
-        // onImageSave is wired to the same routing.
-        final draft2 = FoodDraft(
-          name: 'Image path edit 77',
-          groupId: copy.groupId,
-          unitType: copy.unitType,
-          referenceAmount: copy.referenceAmount,
-          referenceLabel: copy.referenceLabel,
-          protein: 66,
-          carbs: copy.carbs,
-          fiber: copy.fiber,
-          fat: copy.fat,
-          sodium: copy.sodium,
-          notes: copy.notes,
-          imagePath: copy.imagePath,
-        );
-        final ok2 = await form.onImageSave!(draft2);
-        expect(ok2, isTrue);
-        final afterImage = foodLib.libraryFoodFor('chicken_breast')!;
-        expect(afterImage.name, 'Image path edit 77');
-        expect(afterImage.protein, 66);
       },
     );
 

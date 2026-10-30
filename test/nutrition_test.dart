@@ -2042,6 +2042,77 @@ void main() {
         expect(foodLibraryState.foods, isEmpty);
       },
     );
+
+    testWidgets('the New Food bottom bar says Save, not Create (S-92a.10)', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo, seen: true);
+      final nutritionState = NutritionState(repo);
+      final foodLibraryState = FoodLibraryState(repo);
+      await foodLibraryState.loadFoodGroups();
+      await foodLibraryState.loadFoods();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NutritionScreen(
+            nutritionState: nutritionState,
+            foodLibraryState: foodLibraryState,
+            nutritionPrimerState: primer,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('food_library_manage_pencil')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('new_food_button')));
+      await tester.pumpAndSettle();
+
+      final saveButton = find.byKey(const Key('food_form_save'));
+      expect(saveButton, findsOneWidget);
+      expect(
+        find.descendant(of: saveButton, matching: find.text('Save')),
+        findsOneWidget,
+        reason: 'the New Food bottom button reads Save (D-92a.8)',
+      );
+      expect(
+        find.text('Create'),
+        findsNothing,
+        reason: 'the old label is gone',
+      );
+
+      // The create flow behind the renamed button still works.
+      await tester.enterText(
+        find.byKey(const Key('food_form_name')),
+        'Renamed CTA Mix',
+      );
+      await tester.enterText(
+        find.byKey(const Key('food_form_reference_amount')),
+        '50',
+      );
+      await tester.enterText(
+        find.byKey(const Key('food_form_reference_label')),
+        'g',
+      );
+      await tester.enterText(find.byKey(const Key('food_form_protein')), '10');
+      await tester.enterText(find.byKey(const Key('food_form_carbs')), '18');
+      await tester.enterText(find.byKey(const Key('food_form_fat')), '12');
+      await tester.pumpAndSettle();
+
+      await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+
+      await foodLibraryState.loadCatalogFoods();
+      expect(
+        foodLibraryState.catalogFoods.where((f) => f.name == 'Renamed CTA Mix'),
+        hasLength(1),
+        reason: 'Save must still create the food',
+      );
+    });
   });
 
   group('LogFoodRow — log from library (S-001 / S-008)', () {
