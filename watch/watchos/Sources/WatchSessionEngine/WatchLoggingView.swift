@@ -45,10 +45,12 @@ public struct WristHaptics: WatchHaptics {
         }
     }
 
-    /// A rest ping is not a countdown ending: it is a shorter nudge, so it does
-    /// not share the countdown's alert (D-251).
+    /// A rest ping is not a countdown ending (D-251), but `.click` — the page
+    /// swipe's own tick — was too faint to feel mid-workout. `.notification`
+    /// is the strongest built-in tap; a rest is a count-up with no round
+    /// timer running, so it never lands on top of the round-end cue.
     public func playRestPing() {
-        WKInterfaceDevice.current().play(.click)
+        WKInterfaceDevice.current().play(.notification)
     }
 
     /// A log the wrist recorded (plan 51e D-1).

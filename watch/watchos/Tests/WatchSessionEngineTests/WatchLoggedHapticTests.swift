@@ -167,6 +167,18 @@ final class WatchLoggedHapticTests: XCTestCase {
             .joined(separator: "\n")
     }
 
+    func testTheRestPingIsNotTheFaintPageSwipeClick() throws {
+        let logging = try engineSource("WatchLoggingView.swift")
+        let ping = try XCTUnwrap(logging.range(of: "playRestPing()"), "WristHaptics maps playRestPing")
+        let end = try XCTUnwrap(
+            logging.range(of: "playLogged()", range: ping.upperBound..<logging.endIndex),
+            "playLogged follows playRestPing"
+        )
+        let body = String(logging[ping.upperBound..<end.lowerBound])
+        XCTAssertTrue(body.contains(".notification"), "the rest ping plays the strong .notification tap")
+        XCTAssertFalse(body.contains(".click"), "the faint .click is the page swipe's tick, not the ping")
+    }
+
     func testS7805TheSurfacesPlayTheTapsAndNameTheListButton() throws {
         let rest = try engineSource("WatchRestView.swift")
         XCTAssertTrue(rest.contains("haptics.playNext()"), "the rest's Next plays the directional tap")
