@@ -1,0 +1,277 @@
+# Evidence — 92a Edit Food Save (planning run, 2026-10-29)
+
+Research evidence for `2026-10-29-92a-edit-food-save-plan.md`. Collected by the planner; no code changed.
+
+## Baselines
+
+- Base commit `1b9bfb405168f9c629952802dfa4fd27f2aeb516` on `claude_develop` (from the brief).
+- `flutter analyze` baseline: **180 issues, 0 errors** (from the brief). Phase Done Criteria compare against 180.
+- `flutter test` full suite: several minutes (900 s timeout). Widget tests Mock-first; Hive seeded in `setUp`; real `Future.delayed`/Hive writes hang inside `testWidgets` (FakeAsync).
+- Evidence file did not exist before this run; created by the planner.
+
+## Key Flutter behaviour (resolved from repo evidence, not assumption)
+
+Programmatic `Navigator.pop()` bypasses `PopScope(canPop: false)`; only `maybePop` paths (AppBar back via `pageBack`, system back via `handlePopRoute`) invoke `onPopInvokedWithResult(didPop: false)`. Proof: the legacy shim's dialog-Discard test (`test/nutrition_test.dart`, 'Discard pops and leaves the stored food unchanged') passes today with the shim's `PopScope(canPop: false)` — the dialog's Discard pops programmatically and is not intercepted. Consequences encoded in D-92a.14/D-92a.15: form-save pop, Reset pop and Delete pop never hit the guard; the guard fires only on back paths.
+
+## Grep match lists (full)
+
+### `EditFoodScreen` (grep `EditFoodScreen` over lib/test/docs)
+- lib: `lib/features/nutrition/add_food_screen.dart` L1139 (`_UserFoodRowState._openEdit` — user-created catalog rows), L1468 (`_CatalogRowState` pencil; bundled `? copy : widget.food`).
+- tests: `test/library_row_toggle_test.dart` L272, L435, L459, L557; `test/library_merge_test.dart` L327, L337, L345, L439, L453; `test/screen_widget_test.dart` L9291, L9360, L9520, L9646; `test/food_form_pick_saves_test.dart` and `test/food_photo_clear_legacy_edit_test.dart` (comments only).
+- docs: `docs/navigation_and_screens.md` L136, L183-184; `docs/state_management/nutrition_state.md` L178-179; `docs/nutrition.md` L174, L206; `docs/widget_catalog/nutrition_widgets.md` L96, L206, L222; `docs/README.md` L126 (tree); `docs/app_philosophy.md` L28 (shipped list only — no change needed).
+
+### `_LegacyLibraryEditScreen` (grep over lib/test/docs)
+- lib: defined `add_food_screen.dart` L352, pushed L1151 (legacy branch of `_openEdit`).
+- tests reach it indirectly via an AddFoodScreen row tap: `test/food_photo_clear_legacy_edit_test.dart`, `test/nutrition_test.dart` legacy guard group (~L3040), `test/screen_widget_test.dart` S-N2 (~L9812-9896).
+- docs: `docs/nutrition.md` L194-199; `docs/design_system.md` L608. (`docs/history/` skipped by convention.)
+
+### `FoodForm.onImageSave` (grep `onImageSave`)
+- lib: `food_form.dart` L126 (field), L425-431 (`handlePickedImage`), L487-493 (`clearImage`), L438 (`_partialDraftFromInitial`); `edit_food_screen.dart` L151; `add_food_screen.dart` L487 (shim block).
+- tests: `test/food_form_pick_saves_test.dart` (5 testWidgets, names at L67, L189, L296, L384, L512); `test/library_row_toggle_test.dart` L517 (`form.onImageSave!`).
+- docs: `docs/widget_catalog/nutrition_widgets.md` L104, L122, L140-151; S-12719 test-name quotes containing "(onSave and onImageSave)": `docs/nutrition.md` L231, `docs/state_management/nutrition_state.md` L143 and L179, `docs/navigation_and_screens.md` L184.
+
+### `FoodForm.autoSaveOnBlur` (grep `autoSaveOnBlur`)
+- lib: `food_form.dart` L105 (field), L256, L348 (`_onFocusChange`); `edit_food_screen.dart` L145.
+- tests: `test/food_form_pick_saves_test.dart` comments L12, L363 only — no test drives it directly.
+- docs: `docs/widget_catalog/nutrition_widgets.md` L133, L147, L168.
+
+### `FoodForm.onImageChanged` (grep `onImageChanged`)
+- lib: `food_form.dart` L136 (field, `ValueChanged<bool>?`), L417 (`handlePickedImage`), L486 (`clearImage`); `add_food_screen.dart` L961 (New Food only).
+- tests: `test/nutrition_test.dart` S-2902 photo tests (indirect, via the `handlePickedImage` seam).
+- docs: `docs/widget_catalog/nutrition_widgets.md` L105, L152-158.
+
+### `FoodForm.skipPopOnSave` (grep `skipPopOnSave` over test/)
+- `test/food_form_orphan_category_test.dart` L133, L218, L275, L336, L400, L460 (6 direct-drive sites).
+- `test/food_form_decimals_and_autofocus_test.dart` L185, L260, L310, L382, L431, L494 (6 direct-drive sites).
+- `test/food_form_pick_saves_test.dart` L12, L363 (comments).
+- `skipPopOnSave` stays (D-92a.3), so all 12 sites keep compiling and passing unchanged.
+
+### `food_form_save` key (grep over test/)
+- `test/nutrition_test.dart` ~L1905, ~L2004 (New Item save tests tap it on New Food). Key unchanged in this unit.
+
+### Extra doc finding (missed by the seed's grep pattern)
+- `docs/design_system.md` L601-603, "Unsaved work" section, names Edit Food among "the screens that auto-save" — found by `grep -rn "Edit Food" docs/design_system.md`; Phase 3 item 3 removes the exception.
+
+### Stale doc claim
+- `docs/nutrition.md` EditFoodScreen section: "Clearing the photograph clears the stored path; the file on disk is left intact" — contradicts D-7 (the state methods `updateCatalogFood` ~L946, `editLibraryFood` ~L1022, `updateCustomFood` ~L1361 delete the replaced managed file; `test/food_photo_clear_legacy_edit_test.dart` asserts the deletion). Phase 3 item 2 fixes it.
+
+## Prove-red rationale (why each guard fails on base)
+
+- S-92a.1/2/3/11/12/13/14/17: no `food_form_save` exists in Edit Food on base; blur auto-saves; back closes silently.
+- S-92a.5/6: `handlePickedImage`/`clearImage` write through `onImageSave` immediately on base.
+- S-92a.8: the shim's `onImageSave` block writes on clear on base (`test/food_photo_clear_legacy_edit_test.dart` asserts exactly that today).
+- S-92a.10: the New Food bar says Create on base.
+- S-92a.15/16/18: green-on-base structural guards — they pin behaviour the new `PopScope` could break (guard intercepting direct pops, or Save routed through `_attemptExit`); they pass on base and must stay green.
+
+## Test-seam notes for implementers
+
+- Real photo I/O in widget tests: `tester.runAsync` (existing pattern in `test/food_photo_clear_legacy_edit_test.dart`); `TestImageStorage.create()` from `test/helpers/test_image_storage.dart`; the × button is found by tooltip `Remove photo`.
+- S-92a.12/S-92a.17 need `MockWorkoutRepository` subclasses (call-counting / throwing `updateCatalogFood`).
+- S-92a.14 uses `tester.binding.handlePopRoute()` for system back.
+- `ConfirmationDialog.showUnsavedChanges(context, title:, body:, keepEditingKey:, discardKey:)` — verified signature.
+- `FoodForm._onSave` starts with `if (_saving) return;` — the double-tap guard is synchronous.
+- `FoodForm._categoryDropdownItems` (~L845) synthesises an orphan/archived dropdown item when the food's `_groupId` is not in active groups — S-92a.13 is testable at screen level.
+- `test/docs_indexing_contract_test.dart` prints exact byte sizes for docs in the 52 KiB warning band and enforces the 64 KiB ceiling; Phase 3 reads sizes from its output (no `wc`/`ls` available; gateway-only shell).
+- `test/ui_standards_contract_test.dart` food references are generic scanners only — no food-specific contract trips on this change (verified).
+
+---
+
+# Phase 1 evidence — shared probe and photo signal (developer, 2026-10-29)
+
+Base `1b9bfb40` (HEAD); no code changes beyond the Phase 1 Predicted Files.
+
+## Tests written first (red before implementation)
+
+1. `test/food_photo_clear_legacy_edit_test.dart` — rewritten to S-92a.8, name
+   `clearing a legacy library food's photo waits for the Save tap`. One
+   `testWidgets`, three legs: clear writes nothing → Discard (back →
+   `legacy-food-unsaved-discard`) leaves stored path + file → Save writes null
+   and deletes the file (D-7). Leg 1 is bracketed by a 1 s real-time settle
+   (`DateTime.now()` deadline in `runAsync`) so a save-on-clear has room to
+   land before the assertion; no fixed sleep, no wall-clock threshold.
+   Red run on base code (before implementation):
+
+   ```
+   Expected: true
+     Actual: <false>
+   the managed file must survive an unwritten clear
+   ... food_photo_clear_legacy_edit_test.dart line 177
+   00:01 +0 -1: Some tests failed.
+   ```
+
+2. `test/nutrition_test.dart`, group `AddFoodScreen — + New Item (S-004 / S-005)`,
+   new `testWidgets` `the New Food bottom bar says Save, not Create (S-92a.10)`:
+   header `new_food_button` → `food_form_save` renders `Save`, no `Create` text;
+   then the create flow still writes a catalog row. Red run on base code:
+
+   ```
+   Expected: exactly one matching candidate
+     Actual: _DescendantWidgetFinder:<Found 0 widgets with text "Save" descending from widgets with key [<'food_form_save'>]: []>
+   the New Food bottom button reads Save (D-92a.8)
+   00:01 +2 -1: Some tests failed.
+   ```
+
+   No existing test in `test/nutrition_test.dart` expected the text `Create`
+   (`grep "'Create'"` → 0 hits), so no expectation needed updating.
+
+## Prove-red (gateway, base `1b9bfb405168f9c629952802dfa4fd27f2aeb516`)
+
+```
+$ gateway.sh prove-red 1b9bfb4… test test/food_photo_clear_legacy_edit_test.dart
+the managed file must survive an unwritten clear
+gateway: prove-red: RED AT 1b9bfb405168f9c629952802dfa4fd27f2aeb516 (exit 1).
+
+$ gateway.sh prove-red 1b9bfb4… test test/nutrition_test.dart --plain-name S-92a.10
+the New Food bottom button reads Save (D-92a.8)
+gateway: prove-red: RED AT 1b9bfb405168f9c629952802dfa4fd27f2aeb516 (exit 1).
+```
+
+Both fail by assertion on base (not a compile or load error), each for the
+reason its scenario names.
+
+## Green runs after implementation
+
+| Check | Result |
+|---|---|
+| `gateway.sh test test/food_photo_clear_legacy_edit_test.dart` | `+1: All tests passed!` |
+| `gateway.sh test test/nutrition_test.dart --plain-name "New Item"` | `+3: All tests passed!` |
+| `gateway.sh test test/nutrition_test.dart --plain-name "S-2902"` | `+17: All tests passed!` (both S-2902 groups, no edits) |
+| `gateway.sh test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` | `+54: All tests passed!` |
+| `gateway.sh lint` | `180 issues found.` — 0 errors, equal to the 180 baseline |
+| `gateway.sh test` (full suite) | `03:51 +5873 ~2: All tests passed!` (5873 passed, 2 skipped, 0 failed) |
+| `grep -rln "import .*hive_workout_repository" lib/{state,features,widgets,core}` | no matches |
+
+## What changed
+
+- `lib/features/nutrition/widgets/food_form_unsaved_probe.dart` (new):
+  `FoodFormUnsavedProbe(GlobalKey formKey, {String? initialImagePath})` — the
+  moved `_FoodFormProbe` as public API and `_RenderedField` private to the new
+  file. Photo signal now `markImageChanged(String? path)`; `isDirty` reports a
+  change when the reported path differs from `initialImagePath`.
+- `lib/features/nutrition/widgets/food_form.dart`: `onImageChanged` is
+  `ValueChanged<String?>?`; `handlePickedImage` reports the persisted path,
+  `clearImage` reports `null`; doc comment rewritten. `onImageSave` and
+  `autoSaveOnBlur` untouched (Edit still uses them until Phase 2).
+- `lib/features/nutrition/add_food_screen.dart`: probe block removed (moved);
+  both hosts use `FoodFormUnsavedProbe` (the shim with
+  `initialImagePath: widget.food.imagePath` and `onImageChanged:
+  _probe.markImageChanged`); the shim's `onImageSave` block deleted; New Food
+  `saveLabel` and CTA label `Create` → `Save`. `food_form_save` key unchanged.
+
+## Diff footprint
+
+`git-diff --stat` for the files this run touched: `add_food_screen.dart`
+(−160 lines net: the moved probe block plus the deleted shim `onImageSave`),
+`food_form.dart` 22 lines, `food_photo_clear_legacy_edit_test.dart` 131,
+`nutrition_test.dart` +71, plus the new untracked probe file. No other file was
+edited; `docs/`, `edit_food_screen.dart` and the hands-off watch/session files
+are untouched by this run.
+
+---
+
+# Phase 2 Part A evidence (2026-10-29, developer)
+
+Scope: plan Phase 2 items **1-5, 8** — `EditFoodScreen` gets the bottom Save CTA
+and the unsaved-changes guard; `FoodForm` loses `onImageSave`, `autoSaveOnBlur`,
+the form-level `_focusNode`/`Focus` wrapper and `_partialDraftFromInitial`; the
+rewritten tests (table rows 2-7) go green. Items 6-7 (S-92a.7, 9, 11-18) are
+Part B and were not touched.
+
+## Tests written first (red before implementation)
+
+New file `test/edit_food_save_test.dart` (S-92a.1-S-92a.4), written before any
+production edit. First run against the base code:
+
+```
+00:0x +1 -3: Some tests failed.
+  S-92a.1: Save writes the edited food and closes the screen
+    Expected: exactly one matching candidate
+      Actual: _KeyFinder:<Found 0 widgets with key [<'food_form_save'>] …>
+  S-92a.2: focus leaving the form writes nothing
+    Expected: 'Trail Mix'
+      Actual: 'Trail Mix 2'          <- the blur auto-save landed
+  S-92a.3: back with edits asks; Discard drops them and Keep editing stays
+    Expected: exactly one matching candidate
+      Actual: _TextFinder:<Found 0 widgets with text "Unsaved changes" …>
+  S-92a.4: back on an untouched form closes with no dialog  … passed
+```
+
+S-92a.4 is a structural guard (no dialog on an untouched form) and is expected
+to be green on base; the three behaviour guards are red for exactly the reason
+each scenario names (no Save button, blur writes, no guard).
+
+## Prove-red (gateway, base `1b9bfb405168f9c629952802dfa4fd27f2aeb516`)
+
+```
+$ gateway.sh prove-red HEAD test test/edit_food_save_test.dart
+S-92a.1: Save writes the edited food and closes the screen
+S-92a.2: focus leaving the form writes nothing
+S-92a.3: back with edits asks; Discard drops them and Keep editing stays
+gateway: prove-red: RED AT HEAD (exit 1).
+```
+
+`prove-red HEAD test test/food_form_pick_saves_test.dart` cannot compile at the
+base commit (`onImageChanged` is `ValueChanged<bool>` there, the rewritten tests
+pass `String?`), so that file's guards are proven by mutation instead. Original
+lines, verbatim, in `lib/features/nutrition/widgets/food_form.dart`:
+
+| Mutation (removed line) | Tests that went red | Restored? |
+|---|---|---|
+| `    widget.onImageChanged?.call(persistedPath);` in `handlePickedImage` | 3 S-92a.5 tests (`Expected: <1> Actual: <0>` — the probe never went dirty) at L145, L293, L381 | yes, exact re-insert; re-run `+9: All tests passed!` |
+| `    widget.onImageChanged?.call(null);` in `clearImage` | 2 S-92a.6 tests (`Expected: <1> Actual: <0>`) at L508, L599 | yes, exact re-insert; re-run `+9: All tests passed!` |
+
+No mutation was left applied; the tree was re-run green after each restore.
+
+## Green runs after implementation
+
+| Check | Result |
+|---|---|
+| `gateway.sh test test/edit_food_save_test.dart test/food_form_pick_saves_test.dart` | `+9: All tests passed!` |
+| `gateway.sh test test/food_photo_clear_legacy_edit_test.dart test/library_row_toggle_test.dart` | `+11: All tests passed!` |
+| `gateway.sh test test/library_merge_test.dart test/screen_widget_test.dart` | `+248: All tests passed!` (both predicted unchanged; neither was edited) |
+| `gateway.sh test test/nutrition_test.dart` | `+94: All tests passed!` |
+| `gateway.sh test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` | `+54: All tests passed!` |
+| `gateway.sh lint` | `180 issues found.` — 0 errors, equal to the 180 baseline; none in a file this run touched |
+| `gateway.sh test` (full suite) | `03:42 +5877 ~2: All tests passed!` (5877 passed, 2 skipped, 0 failed; Phase 1 was `+5873 ~2`, the +4 being the new `edit_food_save_test.dart`) |
+| invariant grep `import .*hive_workout_repository` over `lib/` | only `lib/main.dart` (the composition root) — none in `lib/state`, `lib/features`, `lib/widgets`, `lib/core` |
+
+## What changed
+
+- `lib/features/nutrition/edit_food_screen.dart` (+ guard, + CTA): class doc
+  comment rewritten to the Save/guard contract; `_formKey` +
+  `FoodFormUnsavedProbe(initialImagePath: widget.food.imagePath)`; `initState`
+  post-frame `record()`; `dispose` → `_probe.dispose()` then
+  `_formController.detach()`; `_attemptExit()` (clean form pops, dirty form asks
+  via `ConfirmationDialog.showUnsavedChanges` with keys
+  `edit-food-unsaved-keep`/`edit-food-unsaved-discard`); `build` wrapped in
+  `PopScope(canPop: false)`, body `Column[Expanded(NotificationListener<
+  ScrollNotification> re-baselining on `ScrollEndNotification` → `FoodForm`),
+  the existing Reset/Delete `SafeArea` block]`; `bottomNavigationBar:
+  OmniBottomCTA(label: 'Save', buttonKey: Key('food_form_save'))`. The removed
+  args are `autoSaveOnBlur`, `skipPopOnSave` and `onImageSave`; the form now
+  gets `onImageChanged: _probe.markImageChanged`.
+- `lib/features/nutrition/widgets/food_form.dart` (25 insertions, 136
+  deletions): `onImageSave`, `autoSaveOnBlur`, `_focusNode`, its listener, its
+  `dispose` lines, `_onFocusChange`, `_partialDraftFromInitial` and the
+  `Focus(...)` wrapper gone; `handlePickedImage` ends at
+  `onImageChanged(persistedPath)` and `clearImage` at `onImageChanged(null)`,
+  both documented as form-local until Save with the D-7 delete owned by state.
+- `test/food_form_pick_saves_test.dart`: rewritten to the "waits for Save" rule
+  (groups S-92a.5 and S-92a.6, tests 2-6 of the plan's table).
+- `test/library_row_toggle_test.dart`: S-12719 renamed and its `onImageSave` leg
+  deleted (table row 7); the `onSave` leg kept.
+- `test/edit_food_save_test.dart` (new): S-92a.1-S-92a.4.
+
+## Diff footprint
+
+`git-diff --stat` for this run's files: `edit_food_screen.dart` 167 (mostly the
+re-indent of the body under `PopScope` plus the new guard/CTA code),
+`food_form.dart` 161 (25 insertions, 136 deletions — the machinery removal),
+`food_form_pick_saves_test.dart` 414 (five rewritten tests),
+`library_row_toggle_test.dart` 23, plus the new untracked
+`test/edit_food_save_test.dart`. No doc file was edited: Phase 3 owns
+`docs/nutrition.md`, `docs/widget_catalog/nutrition_widgets.md`,
+`docs/design_system.md`, `docs/navigation_and_screens.md` and
+`docs/state_management/nutrition_state.md`. The hands-off watch/session files
+and `add_food_screen.dart` were not touched by this run.
+
