@@ -275,3 +275,64 @@ re-indent of the body under `PopScope` plus the new guard/CTA code),
 `docs/state_management/nutrition_state.md`. The hands-off watch/session files
 and `add_food_screen.dart` were not touched by this run.
 
+# Phase 2 Part B — edge scenarios (tests only, no production change)
+
+Date: 2026-10-29. Base: `e41a4c10` (Phase 1 + Phase 2 Part A). Worktree files this
+run: `test/edit_food_save_test.dart` only, plus this evidence file and the plan's
+Progress/Assumption Log.
+
+## Scenario → test map (all in `test/edit_food_save_test.dart`)
+
+| S-id | Test name | Fixture |
+|---|---|---|
+| S-92a.7 | `S-92a.7: a bundled food's library copy saves through editLibraryFood` | `chicken_breast` seeded + `addCatalogFoodToLibrary` + `editLibraryFood` name change |
+| S-92a.9 | `S-92a.9: Reset and Delete remain above Save` | differing library copy (Reset) and a user-created catalog food with a `NutritionState` (Delete); `getTopLeft(...).dy` compared with `food_form_save` |
+| S-92a.11 | `S-92a.11: Save with an empty name writes nothing and stays open` | `_trailMix`; name cleared to `''` |
+| S-92a.12 | `S-92a.12: a second Save while saving writes once` | `_CountingCatalogRepo` (counts `updateCatalogFood`); two `controller.submit()` calls with no pump |
+| S-92a.13 | `S-92a.13: an orphan category survives Save` | `_orphanSnack` with `groupId: 'g-gone'` (no such catalog group) |
+| S-92a.14 | `S-92a.14: system back routes through the guard` | `_trailMix`, name typed, `handlePopRoute()` |
+| S-92a.15 | `S-92a.15: Reset pops through unsaved edits with no dialog` | differing copy + typed edit, then `food-reset-confirm` |
+| S-92a.16 | `S-92a.16: Delete pops through unsaved edits with no dialog` | user-created food + typed edit, then `food-delete-confirm` |
+| S-92a.17 | `S-92a.17: a failed save keeps the form and the guard` | `_FailingCatalogRepo` (throws from `updateCatalogFood`) |
+| S-92a.18 | `S-92a.18: Save pops without the guard` | `_trailMix`, name typed, Save |
+
+## Red proof: mutation, not `prove-red`
+
+`prove-red HEAD` cannot prove these tests: the guarded behaviour shipped in
+`e41a4c10`, so the code and the tests are on the same side of HEAD and the new
+tests do not exist in HEAD's test file at all. Each guard was therefore proven by
+mutating the production line it protects — original recorded, mutated, target test
+observed red, original restored verbatim, file re-run green.
+
+| # | File | Original (restored verbatim) | Mutation | Verdict |
+|---|---|---|---|---|
+| a | `lib/features/nutrition/edit_food_screen.dart` | `showNotesField: true,` in the hosted `FoodForm` (no `skipPopOnSave`) | inserted `skipPopOnSave: true,` | S-92a.18 RED — `Expected: no matching candidates / Actual: Found 1 widget with type "EditFoodScreen"` (test line 727) |
+| b | same | `if (didPop) return;` + `_attemptExit();` inside `onPopInvokedWithResult` | body replaced by `return;` | S-92a.14 RED — `Found 0 widgets with text "Unsaved changes"` (line 567) |
+| c | `lib/features/nutrition/widgets/food_form.dart` | `return 'Name is required';` | line deleted (if-body left empty) | S-92a.11 RED — `Found 0 widgets with text "Name is required"` (line 470) |
+| d | `lib/features/nutrition/edit_food_screen.dart` | `catch (_) {` / `return false;` in `_save` | `return true;` | S-92a.17 RED — `Found 0 widgets with text "Could not save food"` (line 686) |
+| e | same | `Navigator.of(context).pop();` at the end of `_onReset` | `await _attemptExit();` | S-92a.15 RED — `Found 1 widget with text "Unsaved changes"` where none expected (line 611) |
+
+After every restore `git-diff --stat -- lib` showed only the four pre-existing
+hands-off files (`session_summary_screen.dart`, `watch_session_adoption_bridge.dart`,
+`session_core_entry.dart`, `workout_state.dart`); neither mutated file appeared.
+Residue: `grep -r MUTANT` hits only `docs/plans/**` and
+`.claude/commands/feature.md`, nothing in `lib/` or `test/`.
+
+## Green runs
+
+| Run | Result |
+|---|---|
+| `gateway.sh test test/edit_food_save_test.dart` | `+14: All tests passed!` (S-92a.1-4 from Part A plus the ten above) |
+| `gateway.sh test test/edit_food_save_test.dart --plain-name S-92a.13` | `+1: All tests passed!` (after the import cleanup) |
+| `gateway.sh test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` | `+54: All tests passed!` |
+| `gateway.sh lint` | **180 issues, 0 errors** — equal to the baseline. The first run reported 181: `unnecessary_import` for `core/models/food_draft.dart` in the new test (`food_form.dart` re-exports it); the import was removed and no other issue appeared. |
+| `gateway.sh test` (full suite) | `+5887 ~2: All tests passed!` — 5887 against the Part A baseline 5877, the ten new tests. |
+
+## Diff footprint
+
+`git-diff --stat -- test/edit_food_save_test.dart`: 490 insertions, 6 deletions
+against `e41a4c10` — nine new `testWidgets`, the `_openEditorFor` / `_seedCatalog` /
+`_tapSave` / `_typeName` / `_draftOf` helpers they share, the `_orphanSnack` and
+`_seedEditedLibraryCopy` fixtures, and the counting/failing repository subclasses.
+No `lib/` file is modified by this part.
+

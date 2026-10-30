@@ -208,7 +208,7 @@ Unchanged but verified: `test/nutrition_test.dart` S-2902 photo tests (`a picked
 ## Progress
 
 - [x] Phase 1 (developer) — shared probe and photo signal — **Complete** (`FoodFormUnsavedProbe` in its own file, `onImageChanged: ValueChanged<String?>`, shim photo waits for Save, New Food CTA says Save; full suite `+5873 ~2`, lint 180/0 errors; evidence in `…-plan.evidence.md`)
-- [ ] Phase 2 (developer) — Edit gets Save — **Part A complete** (items 1-5, 8: `EditFoodScreen` gains the bottom Save CTA and the unsaved-changes guard, `FoodForm` loses `onImageSave`/`autoSaveOnBlur`/the form-level `FocusNode`, rewritten tests 2-7 green; scenarios S-92a.1-4 in the new `test/edit_food_save_test.dart` and S-92a.5/S-92a.6 in `test/food_form_pick_saves_test.dart` — all red before the change; full suite `+5877 ~2`, `ui_standards_contract_test` + `docs_indexing_contract_test` `+54`, lint 180/0 errors — evidence in `…-plan.evidence.md`). **Part B remains**: items 6 (S-92a.7, S-92a.9) and 7 (S-92a.11-18)
+- [x] Phase 2 (developer) — Edit gets Save — **Complete** (Part A items 1-5, 8: `EditFoodScreen` gains the bottom Save CTA and the unsaved-changes guard, `FoodForm` loses `onImageSave`/`autoSaveOnBlur`/the form-level `FocusNode`, rewritten tests 2-7 green; scenarios S-92a.1-4 in `test/edit_food_save_test.dart` and S-92a.5/S-92a.6 in `test/food_form_pick_saves_test.dart`. Part B items 6-7: S-92a.7, 9, 11-18 added to the same file, 14 tests in it all green, each new guard proven red by mutation (5 mutations, originals restored verbatim, `git-diff --stat -- lib` back to the four hands-off files). No production change in Part B. Full suite `+5887 ~2`, contract pair `+54`, lint 180 issues / 0 errors — evidence in `…-plan.evidence.md`)
 - [ ] Phase 3 (developer) — docs
 
 ## Assumption Log
@@ -219,6 +219,8 @@ Unchanged but verified: `test/nutrition_test.dart` S-2902 photo tests (`a picked
 - **A-92a.P2.1 Reset/Delete block is wrapped, not restructured** — the brief says its SafeArea block is "unchanged"; it now sits inside the `PopScope` → `Scaffold` body's `Column` with the CTA in `bottomNavigationBar`. Chose to keep the block's own widget tree and tokens verbatim (only re-indented) because D-92a.14 puts the CTA below it and `bottomNavigationBar` is the standard slot.
 - **A-92a.P2.2 Create-mode clear test seeds no photo** — `FoodForm` exposes no seam for `_imagePath`, so the create-mode `clearImage` test asserts the `onImageChanged(null)` signal and "nothing saved" instead of staging a managed file it cannot inject. Chose the narrower assertion over adding a test-only parameter.
 - **A-92a.P2.3 D-7 clear test asserts both sides of Save** — the managed file must survive the clear (nothing writes until Save) and be gone after the Save, both through `MockWorkoutRepository`. Chose two phases over the old single post-clear assertion so the new ownership rule is what fails if the delete moves back into the form.
+- **A-92a.P2.4 S-92a.9 opens a second editor via a keyed MaterialApp** — `pumpWidget` on the same `MaterialApp` type reuses the Navigator element, so the second `_openEditor` in one test found the first route still on the stack. `_openEditorFor` now passes `key: UniqueKey()`; no production seam added.
+- **A-92a.P2.5 S-92a.17's failure message is read without `runAsync`** — `Could not save food` arrives through `OmniMessage`, not a repository write, so the test uses plain `pump()` + `pump(300 ms)` rather than the bounded real-time poll the write assertions use.
 
 ## Feedback
 
