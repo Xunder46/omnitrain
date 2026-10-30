@@ -1015,9 +1015,8 @@ class FoodLibraryState extends ChangeNotifier {
     if (!_foods.containsKey(libraryCopy.id)) {
       throw Exception('Library food not found: ${libraryCopy.id}');
     }
-    // The edit screen auto-saves repeatedly with the snapshot it was opened
-    // with, so the base row (and the image path to clean up) is the cached
-    // row, not the argument.
+    // The edit screen holds the snapshot it was opened with, so the base row
+    // (and the image path to clean up) is the cached row, not the argument.
     final current = _foods[libraryCopy.id]!;
     final previousPath = current.imagePath;
     if (previousPath != draft.imagePath) {

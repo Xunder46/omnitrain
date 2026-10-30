@@ -128,7 +128,7 @@ void main() {
         reason: 'row tap must open the food editor',
       );
 
-      /// Tap the × on the photo tile — and nothing else.
+      // Tap the × on the photo tile — and nothing else.
       Future<void> clearPhoto() async {
         final clearButton = find.byTooltip('Remove photo');
         expect(
@@ -140,8 +140,8 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      /// Reopen the legacy row. The search text still filters the list, so
-      /// the row is back in view after the editor pops.
+      // Reopen the legacy row. The search text still filters the list, so
+      // the row is back in view after the editor pops.
       Future<void> reopenEditor() async {
         await tester.tap(
           find.descendant(
