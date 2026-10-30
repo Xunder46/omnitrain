@@ -336,3 +336,72 @@ against `e41a4c10` — nine new `testWidgets`, the `_openEditorFor` / `_seedCata
 `_seedEditedLibraryCopy` fixtures, and the counting/failing repository subclasses.
 No `lib/` file is modified by this part.
 
+---
+
+# Phase 3 — docs (developer)
+
+Date: 2026-10-29. Base: the Phase 2B commit. Worktree files this run: the five
+docs below, this plan (`> Status:` line, `## Progress`, `## Assumption Log`), and
+this evidence file. No `lib/`, `test/` or app file was written.
+
+## What changed, per doc
+
+| Doc | Edit |
+|---|---|
+| `docs/widget_catalog/nutrition_widgets.md` | `FoodForm` props paragraph loses `onImageSave` and states `onImageChanged` is `ValueChanged<String?>` (form-local path, null after a clear); the "EditFoodScreen is the exception" paragraph became "every host owns a bottom `Save` (`food_form_save`)", naming New Food's label test; the `onImageSave` contract bullet became "nothing writes until Save … the state method owns the D-7 delete", citing `test/food_photo_clear_legacy_edit_test.dart` and the two `test/food_form_pick_saves_test.dart` groups; the `onImageChanged` bullet now covers all three hosts marking a probe (S-2902 tests kept, cross-referenced); the select-all bullet loses the form-level `FocusNode`/`autoSaveOnBlur` sentence; the test-seam paragraph states neither seam saves; the internal S-12719 quote loses `(onSave and onImageSave)`; a new `### FoodFormUnsavedProbe` entry lists `lib/features/nutrition/widgets/food_form_unsaved_probe.dart` |
+| `docs/nutrition.md` | guard paragraph now covers three hosts with the three key pairs and says Save pops without the guard (New Food reads `Save`), citing `test/nutrition_test.dart` S-2902 groups and `test/edit_food_save_test.dart` S-92a.3 / S-92a.18; `### EditFoodScreen` gains the Save + guard + Reset/Delete-bypass paragraph (S-92a.1/3/4/15/16/18) and a photo-on-Save paragraph replacing the false "the file on disk is left intact" claim (D-7, `test/food_photo_clear_legacy_edit_test.dart`); the S-12719 quote loses `(onSave and onImageSave)` |
+| `docs/design_system.md` | "Unsaved work": the live session is the one named exception; the food editors are explicitly not, Edit Food included, with `test/edit_food_save_test.dart` `S-92a.3` added to the verified-by list |
+| `docs/navigation_and_screens.md` | `EditFoodScreen` row: Save + guard + photo-on-Save, the S-12719 quote without `(onSave and onImageSave)`, and `test/edit_food_save_test.dart` S-92a.3 / S-92a.18 added |
+| `docs/state_management/nutrition_state.md` | the `editLibraryFood` table row and the pencil bullet: S-12719 quoted without `(onSave and onImageSave)` |
+
+## Residue sweep
+
+`grep -rn "autoSaveOnBlur\|onImageSave\|save on blur\|saves on blur\|no Save button" docs`
+returns **7 files, all under `docs/plans/`** — zero hits outside `docs/plans/`
+and `docs/history/`:
+
+- `docs/plans/2026-10-13-27-ui-messages-plan/2026-10-13-27-ui-messages-plan.review.md`
+- `docs/plans/2026-10-29-92-food-form-rework-plan/2026-10-29-92-food-form-rework-plan.md`
+- `docs/plans/2026-10-29-92a-edit-food-save-plan/2026-10-29-92a-edit-food-save-plan.md` (its own D-92a.2/3/6 text, historical by design)
+- `docs/plans/2026-10-29-92a-edit-food-save-plan/2026-10-29-92a-edit-food-save-plan.evidence.md`
+- `docs/plans/food-library-edit-image-plan.md`
+- `docs/plans/food-form-decimals-and-autofocus-plan.md`
+- `docs/plans/2026-10-12-25-ui-standards-refresh-plan/survey/s8-area-nutrition.md`
+
+Symbols the edited sentences name, each confirmed present: `test/edit_food_save_test.dart` (S-92a.1/3/4/15/16/18 names read from the file),
+`test/food_photo_clear_legacy_edit_test.dart` (`clearing a legacy library food's
+photo waits for the Save tap`), `test/food_form_pick_saves_test.dart` (groups
+`FoodForm: a picked photo waits for Save (S-92a.5)` / `FoodForm: a cleared photo
+waits for Save (S-92a.6)`), `test/nutrition_test.dart` (groups
+`AddFoodScreen — New Food form unsaved guard (S-2902)`,
+`AddFoodScreen — legacy edit shim unsaved guard (S-2902)`,
+`AddFoodScreen — + New Item (S-004 / S-005)` · "the New Food bottom bar says
+Save, not Create (S-92a.10)"), `test/library_row_toggle_test.dart` (S-12719 as
+renamed), `lib/features/nutrition/widgets/food_form_unsaved_probe.dart` /
+`FoodFormUnsavedProbe`, and the keys `food_form_save`,
+`new-food-unsaved-*`, `legacy-food-unsaved-*`, `edit-food-unsaved-*`.
+
+## Checks (this phase)
+
+| Run | Result |
+|---|---|
+| `gateway.sh test test/docs_indexing_contract_test.dart` | `+13: All tests passed!` — no file landed in the 52 KiB warning band, so nothing needed splitting |
+| `gateway.sh test test/ui_standards_contract_test.dart` | `+41: All tests passed!` |
+| `gateway.sh lint` | **180 issues, 0 errors** — equal to the baseline; docs-only change |
+| `gateway.sh test` (full suite) | `+5887 ~2: All tests passed!` — identical to the Phase 2B baseline, as expected for a docs-only change |
+
+## Diff footprint
+
+`git-diff --stat` over the six touched paths: `docs/widget_catalog/nutrition_widgets.md`
+(94 changed lines), `docs/nutrition.md` (52), `docs/design_system.md` (11),
+`docs/navigation_and_screens.md` (2), `docs/state_management/nutrition_state.md`
+(4), the plan (19), plus this evidence file (68 added) — 187 insertions,
+63 deletions in total. The other files in the
+worktree-wide stat are the other unit's pre-existing hands-off work, untouched by
+this run.
+
+## Not fixed (out of this phase's hands)
+
+- `lib/state/food_library_state.dart:1018` — `// The edit screen auto-saves repeatedly with the snapshot it was opened with`: the conclusion (use the cached row) still holds, the rationale is stale. Code, not docs.
+- `lib/features/nutrition/add_food_screen.dart:1488` — `/// Used to maintain focus after auto-save.` in `_GroupsTabState`: still accurate (group rename saves on blur), left alone.
+

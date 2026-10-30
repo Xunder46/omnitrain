@@ -598,15 +598,18 @@ OmniEmptyState (S-2802)"), and `test/nutrition_trend_screen_test.dart` (group
 ### Unsaved work
 
 Any screen with a Save action warns before discarding typed or changed work,
-through `ConfirmationDialog.showUnsavedChanges`. Named exceptions: the screens
-that auto-save (Edit Food) and the live session, where nothing is unsaved by
-design.
+through `ConfirmationDialog.showUnsavedChanges`. The one named exception is the
+live session, where nothing is unsaved by design; the food editors are not an
+exception — New Food, Edit Food and the legacy library edit shim all carry the
+guard.
 
 Verified by `test/screen_widget_test.dart` (group `CreatePeriodScreen unsaved
 changes guard (S-2901)`) and `test/nutrition_test.dart` (groups
 `NutritionTargetScreen — unsaved changes guard (S-2902)`, `AddFoodScreen — New
 Food form unsaved guard (S-2902)`, `AddFoodScreen — legacy edit shim unsaved
-guard (S-2902)`), and by `test/muscle_editor_screen_test.dart` (group
+guard (S-2902)`), by `test/edit_food_save_test.dart` (`S-92a.3: back with edits
+asks; Discard drops them and Keep editing stays`), and by
+`test/muscle_editor_screen_test.dart` (group
 `S-8 unsaved guard`) for the exercise editor. The every-screen generalisation
 is *unguarded* — no scan covers it.
 

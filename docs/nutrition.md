@@ -191,13 +191,21 @@ tab`: `trash on an empty category asks first, and Cancel keeps it (S-2904)`,
 non-empty category closes the dialog without throwing and keeps the category
 and its foods (S-2910)`).
 
-The New Food form and the legacy edit shim warn about unsaved changes: leaving
-with edits open a two-button dialog (keep editing / discard), so typed
-values cannot be lost silently; saving is the form's own Save button. Verified by `test/nutrition_test.dart` (group
-`AddFoodScreen — New Food form unsaved guard (S-2902)`: `Discard pops without
-creating the food`; group
+All three `FoodForm` hosts warn about unsaved changes — the New Food form, the
+legacy edit shim and `EditFoodScreen`: leaving with edits opens a two-button
+dialog (keep editing / discard), so typed values and a changed photo cannot be
+lost silently. Each host keys its own pair (`new-food-unsaved-keep` /
+`new-food-unsaved-discard`, `legacy-food-unsaved-keep` /
+`legacy-food-unsaved-discard`, `edit-food-unsaved-keep` /
+`edit-food-unsaved-discard`). Saving is each host's bottom `Save`
+(`food_form_save`), which pops without going through the guard; the New Food
+button reads `Save`, not `Create`. Verified by `test/nutrition_test.dart`
+(group `AddFoodScreen — New Food form unsaved guard (S-2902)`: `Discard pops
+without creating the food`; group
 `AddFoodScreen — legacy edit shim unsaved guard (S-2902)`: `Discard pops and
-leaves the stored food unchanged`).
+leaves the stored food unchanged`) and by `test/edit_food_save_test.dart`
+(`S-92a.3: back with edits asks; Discard drops them and Keep editing stays`,
+`S-92a.18: Save pops without the guard`).
 
 Verified by `test/food_library_test.dart`, `test/food_library_edit_test.dart`,
 `test/food_library_state_delete_guard_test.dart`, `test/food_group_membership_test.dart`,
@@ -205,15 +213,35 @@ Verified by `test/food_library_test.dart`, `test/food_library_edit_test.dart`,
 
 ### `EditFoodScreen`
 
-Edits a food's own values and its photograph. Which save path runs depends on
-the food the screen is given. A library copy of a bundled catalog food
+Edits a food's own values and its photograph. Nothing is written until the
+user taps the bottom **Save** (key `food_form_save`), which runs the shared
+`FoodForm` validation and then this screen's save path; a successful save pops
+the screen. Leaving with edits — typed values or a changed photo — asks
+`Unsaved changes` first (keys `edit-food-unsaved-keep` /
+`edit-food-unsaved-discard`), while an untouched form closes with no dialog.
+**Reset to original** and **Delete food** keep their own confirmation and pop
+directly, so they never raise the unsaved-changes dialog. Verified by
+`test/edit_food_save_test.dart` (`S-92a.1: Save writes the edited food and
+closes the screen`, `S-92a.3: back with edits asks; Discard drops them and Keep
+editing stays`, `S-92a.4: back on an untouched form closes with no dialog`,
+`S-92a.15: Reset pops through unsaved edits with no dialog`, `S-92a.16: Delete
+pops through unsaved edits with no dialog`, `S-92a.18: Save pops without the
+guard`).
+
+Which save path runs depends on the food the screen is given. A library copy of a bundled catalog food
 (`isCatalog == false`) saves through `FoodLibraryState.editLibraryFood` and
 changes only the copy — the shipped catalog row and its seed-touched marker
 are untouched. A user-created catalog food (`isCatalog == true`) saves through
 `updateCatalogFood` as before, and that edit still propagates to the personal
 library rows linked to it through the durable `catalogId` linkage. Neither
-path touches already-logged snapshots — history stays frozen. Clearing the
-photograph clears the stored path; the file on disk is left intact.
+path touches already-logged snapshots — history stays frozen.
+
+The photograph is written on Save like every other field: a pick or a ×-clear
+stays local to the form until then, and the state method deletes the managed
+file the new path replaced (D-7), so a cleared photo leaves no orphan behind
+and a Discard leaves both the stored path and its file untouched. Verified by
+`test/food_photo_clear_legacy_edit_test.dart` (`clearing a legacy library
+food's photo waits for the Save tap`).
 
 **Editing your copy and Reset.** When the screen holds a library copy that
 differs from its bundled original, a `Reset to original` button (key
@@ -227,8 +255,8 @@ an edit. Verified by `test/library_row_toggle_test.dart` (group `Library row
 toggle (plan 77a S-12710..S-12717)`: `S-12713: pencil on an in-list bundled
 food edits the copy; reset restores the shipped values`, `S-12717: a
 user-created (non-bundled) in-list food has no Reset button`, `S-12719: the
-Edit screen routes a bundled copy's save through editLibraryFood (onSave and
-onImageSave)`, `S-12720: the Edit screen routes a user-created catalog food's
+Edit screen routes a bundled copy's save through editLibraryFood`,
+`S-12720: the Edit screen routes a user-created catalog food's
 save through updateCatalogFood (propagates to the library copy)`) and by
 `test/food_library_copy_edit_test.dart` (groups `FoodLibraryState edit own
 copy (Mock)` / `FoodLibraryState edit own copy (Hive)`:

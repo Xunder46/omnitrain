@@ -100,11 +100,10 @@ The form is parameterized by an optional `Food?` initial value
 (`null` → create mode, non-null → edit mode), the `FoodLibraryState`
 that sources the categories dropdown (re-reading `activeFoodGroups` on
 every notification), a `saveLabel` for the host's CTA, an optional
-`showNotesField` flag (edit mode), a required `onSave` callback, an
-optional `onImageSave` partial-save callback, and an optional
-`onImageChanged` callback (`ValueChanged<bool>?` — `true` after a
-photo is picked, `false` after it is cleared). Its field set, per-field
-keys and defaults are the file's own — read them in
+`showNotesField` flag (edit mode), a required `onSave` callback, and an
+optional `onImageChanged` callback (`ValueChanged<String?>` — the
+form-local photo path, `null` after the × overlay clears it). Its field set,
+per-field keys and defaults are the file's own — read them in
 `lib/features/nutrition/widgets/food_form.dart` rather than here; this
 page does not restate the control list.
 
@@ -118,45 +117,49 @@ screen is given a library copy of a bundled catalog food
 `FoodLibraryState.editLibraryFood`, which changes only the copy
 (verified by `test/library_row_toggle_test.dart`, group
 `Library row toggle (plan 77a S-12710..S-12717)` · `S-12719: the Edit
-screen routes a bundled copy's save through editLibraryFood (onSave and
-onImageSave)`). Macro and amount fields accept
+screen routes a bundled copy's save through editLibraryFood`). Macro and
+amount fields accept
 decimal entry, and macros are stored as `double` on `Food` /
 `FoodDraft` so fractional grams persist. Fiber is exposed alongside
 carbs, matching the `Food.fiber` field on the model;
 `calculateNetCarbs(food)` in `lib/core/utils/food_helpers.dart` handles
 the net-carb math.
 
-**Save CTA**: the form does **not** render an inline save button. Hosts that show
-a primary bottom CTA own it via the shared `OmniBottomCTA` (see
-`docs/plans/primary-bottom-cta-anchor-width-plan.md`) and wire its `onPressed` to
-`FoodFormController.submit`. `EditFoodScreen` is the exception: it has **no**
-save button at all — it passes `autoSaveOnBlur: true, skipPopOnSave: true`, so
-edits persist when focus leaves the form (see
-`lib/features/nutrition/edit_food_screen.dart`).
+**Save CTA**: the form does **not** render an inline save button. Every host
+owns a primary bottom CTA through the shared `OmniBottomCTA` (see
+`docs/plans/primary-bottom-cta-anchor-width-plan.md`) and wires its `onPressed` to
+`FoodFormController.submit`, so the validation + save pipeline stays in one
+place. `_NewFoodFormScreen`, `_LegacyLibraryEditScreen` and `EditFoodScreen`
+all follow that wiring: each renders a bottom `Save` with key `food_form_save`
+(New Food's CTA reads `Save`, not `Create` — `test/nutrition_test.dart`, group
+`AddFoodScreen — + New Item (S-004 / S-005)` · "the New Food bottom bar says
+Save, not Create (S-92a.10)"), and `EditFoodScreen` pairs it with the
+unsaved-changes guard below.
 
 **Contracts that outlive the file's internals**:
 
 - `onSave` returns `true` to pop, `false` to surface feedback.
-- `onImageSave` (edit mode only) is fired after a successful photo
-  pick **or** after the × (clear) overlay empties the photo. The
-  draft is built from `initial` with only `imagePath` swapped, so
-  concurrent edits to the form's text controllers (a half-typed name,
-  for example) are preserved, and the state method owns D-7 cleanup
-  of the previous managed file — the form does not call the service
-  directly. On hosts that have no Save button (`EditFoodScreen` with
-  `autoSaveOnBlur: true`), this is the **only** path that writes the
-  picked photo to the data layer before the user navigates away, so
-  without it the photo would not persist. **Not fired in create
-  mode** — the image is just stored locally until the user saves the
-  whole food.
-- `onImageChanged` is the create-mode guard signal: the host marks
-  picked/cleared photo state as unsaved work so the unsaved-changes
-  guard can fire. `AddFoodScreen` wires it to its unsaved-work probe;
-  the legacy edit-mode shim leaves it unwired (edit mode has
-  `onImageSave` instead). Verified by `test/nutrition_test.dart`,
-  group `AddFoodScreen — New Food form unsaved guard (S-2902)` ·
+- Nothing about the photo writes until Save: the save draft carries
+  `imagePath`, and the state method that applies it (`updateCatalogFood`,
+  `editLibraryFood`, `updateCustomFood`) owns the D-7 delete of the replaced
+  managed file — the form never calls the service directly. A pick only
+  copies the picked file into the managed directory and moves the form's
+  local path; a clear only nulls that path. Verified by
+  `test/food_photo_clear_legacy_edit_test.dart` (`clearing a legacy library
+  food's photo waits for the Save tap`) and `test/food_form_pick_saves_test.dart`
+  (groups `FoodForm: a picked photo waits for Save (S-92a.5)` and `FoodForm: a
+  cleared photo waits for Save (S-92a.6)`).
+- `onImageChanged` reports that form-local path, because a pick or a clear is
+  neither a rendered field nor an `EditableText` and is therefore invisible to
+  the probe's field walk. All three hosts mark a `FoodFormUnsavedProbe` with
+  it; the probe compares the reported path with the one the screen opened
+  with, so New Food (which starts from no photo) is dirty after a pick and
+  clean again after pick-then-clear, while the two edit screens start from the
+  stored `imagePath`. Verified by `test/nutrition_test.dart`, group
+  `AddFoodScreen — New Food form unsaved guard (S-2902)` ·
   "a picked photo counts as unsaved work (S-2902)" and "picking then
-  clearing the photo is clean again (S-2902)".
+  clearing the photo is clean again (S-2902)", and by
+  `test/food_photo_clear_legacy_edit_test.dart`.
 - **Select-all on focus is per-field, not form-wide** (S-004..S-006):
   the numeric entry fields each carry a per-field `FocusNode` wired
   to the shared `bindSelectAllOnFocus` helper, so tapping a
@@ -164,8 +167,7 @@ edits persist when focus leaves the form (see
   retype without first clearing it; empty fields are a no-op. The
   free-text name field and the multi-line notes field are
   intentionally NOT wired — they keep default cursor-placement
-  behaviour. The handler is separate from the form-level `FocusNode`
-  that drives `autoSaveOnBlur`; the two co-exist without conflict.
+  behaviour.
 - All colors come from `OmniTheme.colors` /
   `ThemeData.colorScheme`. No hardcoded colors.
 
@@ -186,7 +188,27 @@ both `@visibleForTesting` on the form's state. Production callers
 go through the OS picker via `_pickImage(ImageSource)` and the
 × overlay via the `FoodFormImageTile.onClear` callback; tests
 invoke the seams directly to bypass the platform channel and
-overlay tap.
+overlay tap. Neither seam saves — both move the form-local path
+and report it through `onImageChanged`.
+
+---
+
+### `FoodFormUnsavedProbe`
+
+**File**: `lib/features/nutrition/widgets/food_form_unsaved_probe.dart`
+
+The unsaved-work probe every `FoodForm` host shares: `EditFoodScreen`,
+`_NewFoodFormScreen` and the legacy library edit shim each build one with
+the form's `GlobalKey` and mark it from `FoodForm.onImageChanged`, so the
+three guards cannot drift apart. A plain class, not a widget. It reads the
+form's rendered `FormField`s for its baseline and reports a later difference
+as unsaved work; `initialImagePath` is the stored photo a pick or a clear is
+compared against. The blank-form and edited-form outcomes are verified by
+`test/nutrition_test.dart` (groups `AddFoodScreen — New Food form unsaved
+guard (S-2902)` and `AddFoodScreen — legacy edit shim unsaved guard
+(S-2902)`) and by `test/edit_food_save_test.dart` (`S-92a.3: back with edits
+asks; Discard drops them and Keep editing stays`, `S-92a.4: back on an
+untouched form closes with no dialog`).
 
 ---
 
