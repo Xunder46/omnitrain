@@ -167,7 +167,7 @@ final class WatchLoggedHapticTests: XCTestCase {
             .joined(separator: "\n")
     }
 
-    func testTheRestPingIsNotTheFaintPageSwipeClick() throws {
+    func testTheRestPingIsTwoSilentClicksNotAToneCarryingTap() throws {
         let logging = try engineSource("WatchLoggingView.swift")
         let ping = try XCTUnwrap(logging.range(of: "playRestPing()"), "WristHaptics maps playRestPing")
         let end = try XCTUnwrap(
@@ -175,8 +175,10 @@ final class WatchLoggedHapticTests: XCTestCase {
             "playLogged follows playRestPing"
         )
         let body = String(logging[ping.upperBound..<end.lowerBound])
-        XCTAssertTrue(body.contains(".notification"), "the rest ping plays the strong .notification tap")
-        XCTAssertFalse(body.contains(".click"), "the faint .click is the page swipe's tick, not the ping")
+        XCTAssertEqual(body.components(separatedBy: "play(.click)").count - 1, 2, "two clicks")
+        for toned in [".notification", ".success", ".directionUp", ".directionDown", ".start", ".stop", ".retry", ".failure"] {
+            XCTAssertFalse(body.contains("play(\(toned))"), "\(toned) can carry a system tone; the ping must stay silent")
+        }
     }
 
     func testS7805TheSurfacesPlayTheTapsAndNameTheListButton() throws {

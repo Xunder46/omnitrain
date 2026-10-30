@@ -45,12 +45,16 @@ public struct WristHaptics: WatchHaptics {
         }
     }
 
-    /// A rest ping is not a countdown ending (D-251), but `.click` — the page
-    /// swipe's own tick — was too faint to feel mid-workout. `.notification`
-    /// is the strongest built-in tap; a rest is a count-up with no round
-    /// timer running, so it never lands on top of the round-end cue.
+    /// A rest ping is not a countdown ending (D-251). `.click` is the only
+    /// built-in tap that never carries a system tone (`.notification` does,
+    /// even with the watch muted), but one click is too faint to feel
+    /// mid-workout. Two quick clicks are a gentle, silent tap that is easier
+    /// to feel.
     public func playRestPing() {
-        WKInterfaceDevice.current().play(.notification)
+        WKInterfaceDevice.current().play(.click)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            WKInterfaceDevice.current().play(.click)
+        }
     }
 
     /// A log the wrist recorded (plan 51e D-1).
