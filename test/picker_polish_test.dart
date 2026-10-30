@@ -1,6 +1,7 @@
 // Widget-level tests for the picker polish (plan 78, scenarios
 // S-13110..S-13118): the fixed Library heading order, the count line
-// under the search field, the + New Food CTA, the remove prompt
+// under the search field, the New Food create action (the header "+"
+// since plan 91, S-9165a), the remove prompt
 // title, the empty-ring hint, the primer copy, the Library tab
 // keeping its place and search across tab switches, and typing an
 // amount on an unlogged row logging it on Done.
@@ -274,12 +275,24 @@ void main() {
       expect(find.text('2 foods in your list'), findsOneWidget);
     });
 
-    testWidgets('S-13113: the Library CTA reads + New Food', (tester) async {
-      await _pumpCatalogTab(tester);
+    // Plan 91 (D-91.10, S-9165a) amends plan 78's D-3: the create
+    // action is the shared header "+", labelled New Food by its tooltip.
+    testWidgets(
+      'S-13113 / S-9165a: the Library create action is the header + '
+      'labelled New Food',
+      (tester) async {
+        await _pumpCatalogTab(tester);
 
-      expect(find.text('+ New Food'), findsOneWidget);
-      expect(find.text('+ Create new food'), findsNothing);
-    });
+        expect(
+          tester
+              .widget<IconButton>(find.byKey(const Key('new_food_button')))
+              .tooltip,
+          'New Food',
+        );
+        expect(find.text('+ New Food'), findsNothing);
+        expect(find.text('+ Create new food'), findsNothing);
+      },
+    );
 
     testWidgets('S-13114: the remove prompt names Foods I Eat', (
       tester,

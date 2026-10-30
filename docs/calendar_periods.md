@@ -107,6 +107,14 @@ unlocks four pieces of historical-aware behavior:
 
 ### Periods
 
+The Training periods list opens from the Calendar header's Training periods
+action (label `Training periods`, key `calendar_training_periods_button`). It
+goes to another place, so it is not a header "+"; how it looks is in
+[Design System](design_system.md), "Header actions". Returning from the list
+refreshes the calendar. Verified by `test/header_standardization_test.dart`
+(group `OmniBackHeader presence – CalendarScreen` · `S-9155`, `S-9156`,
+"S-9156: returning from the Training periods list refreshes the calendar").
+
 Period capabilities:
 - List name + date range
 - Create and edit

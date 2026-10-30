@@ -30,6 +30,7 @@ import 'package:omnitrain/features/nutrition/widgets/log_food_row.dart';
 import 'package:omnitrain/features/nutrition/widgets/food_thumbnail.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/widgets/buttons/omni_header_add_button.dart';
 import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
 import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
@@ -1942,8 +1943,8 @@ void main() {
         await tester.tap(find.byKey(const Key('food_library_manage_pencil')));
         await tester.pumpAndSettle();
 
-        // Tap the "+ New Food" button at the bottom.
-        await tester.tap(find.text('+ New Food'));
+        // Tap the header "+" (New Food).
+        await tester.tap(find.byKey(const Key('new_food_button')));
         await tester.pumpAndSettle();
 
         // Fill the form.
@@ -2028,8 +2029,8 @@ void main() {
         // Open the add flow via the pencil icon.
         await tester.tap(find.byKey(const Key('food_library_manage_pencil')));
         await tester.pumpAndSettle();
-        // Tap the "+ New Food" button at the bottom.
-        await tester.tap(find.text('+ New Food'));
+        // Tap the header "+" (New Food).
+        await tester.tap(find.byKey(const Key('new_food_button')));
         await tester.pumpAndSettle();
 
         // Save with no name entered.
@@ -2816,7 +2817,7 @@ void main() {
   // S-2902 — unsaved-work guard on the two FoodForm hosts
   // ═══════════════════════════════════════════════════════════════════════
   //
-  // `_NewFoodFormScreen` (the `+ New Food` CTA) and the legacy library
+  // `_NewFoodFormScreen` (the header "+" New Food) and the legacy library
   // edit shim both host the shared `FoodForm` full-screen. Both used to
   // drop the typed fields silently when the user backed out. S-2902
   // requires the three-choice "Unsaved changes" dialog on the way out —
@@ -2831,7 +2832,7 @@ void main() {
     Finder nameField() => find.byKey(const Key('food_form_name'));
 
     /// Pump Manage Food Library and push the New Food form off the
-    /// `+ New Food` CTA (the only production entry to that screen).
+    /// header "+" New Food (the only production entry to that screen).
     Future<FoodLibraryState> pumpNewFoodForm(
       WidgetTester tester, {
       MockWorkoutRepository? repo,
@@ -2862,7 +2863,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('+ New Food'));
+      await tester.tap(find.byKey(const Key('new_food_button')));
       await tester.pumpAndSettle();
       expect(find.text('New Food'), findsOneWidget);
       return foodLib;
@@ -3809,7 +3810,7 @@ void main() {
   // ─── Groups tab (R-2) ──────────────────────────────────────────
   // The Groups tab is reached via the third tab of the
   // AddFoodScreen. Verifies the tab renders the active groups, an
-  // Uncategorized row, and a "+ New Category" affordance.
+  // Uncategorized row, and the header "+" New Category.
 
   group('AddFoodScreen — Groups tab', () {
     Future<void> switchToGroupsTab(WidgetTester tester) async {
@@ -3861,7 +3862,7 @@ void main() {
       expect(find.byKey(Key('group_name_$vegetablesId')), findsOneWidget);
       // Ungrouped row visible.
       expect(find.text('Uncategorized'), findsOneWidget);
-      // + New Category button visible.
+      // Header "+" New Category visible.
       expect(find.byKey(const Key('new_group_button')), findsOneWidget);
     });
 
@@ -4206,175 +4207,19 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
-  // AddFoodScreen — shared bottom CTA across tabs (S-001, S-002, S-003)
+  // AddFoodScreen — header "+" (plan 91, S-9161..S-9166)
   // ═══════════════════════════════════════════════════════════════════════
   //
-  // Both the **Library** and **Categories** tabs of `AddFoodScreen`
-  // (the "Manage Food Library" screen) expose a primary bottom
-  // action — "+ New Food" and "+ New Category" respectively. Per
-  // the shared-CTA contract, both must route through
-  // `Scaffold.bottomNavigationBar: OmniBottomCTA` so the buttons
-  // sit at the same width, height, and vertical anchor as every
-  // other primary bottom CTA in the app.
+  // The Manage Food Library create action is the shared header "+"
+  // (`OmniHeaderAddButton`): New Food on Library, New Category on
+  // Categories. There is no bottom button, and the lists no longer
+  // reserve room for one.
 
-  group('AddFoodScreen — shared bottom CTA (S-001 / S-002 / S-003)', () {
-    testWidgets(
-      'anchors the Library tab\'s primary bottom CTA at the shared width and vertical anchor (S-001)',
-      (tester) async {
-        // Fixed surface so the test can assert exact pixel math.
-        const surface = Size(400, 800);
-        await tester.binding.setSurfaceSize(surface);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+  group('AddFoodScreen — header + (S-9161..S-9166)', () {
+    Future<FoodLibraryState> pumpManageLibrary(WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final repo = await _freshRepo();
-        final foodLib = FoodLibraryState(repo);
-        final nutrition = NutritionState(repo);
-        await foodLib.loadFoodGroups();
-        await foodLib.loadFoods();
-        await foodLib.loadCatalogFoods();
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: OmniGradientBackground(
-              child: AddFoodScreen(
-                foodLibraryState: foodLib,
-                nutritionState: nutrition,
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // The Library tab is the default; no tab switch needed.
-
-        // The host's Scaffold has a non-null bottomNavigationBar
-        // (a tab-aware AnimatedBuilder that renders the right CTA
-        // for the active tab).
-        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
-        expect(
-          scaffold.bottomNavigationBar,
-          isNotNull,
-          reason:
-              'Library tab must have a primary bottom CTA on the host '
-              'Scaffold.bottomNavigationBar',
-        );
-
-        // The My Foods CTA is an OmniBottomCTA. We look for it as a
-        // descendant of the bottomNavigationBar slot because the
-        // CTA is wrapped in an AnimatedBuilder for tab transitions.
-        final ctaFinder = find.descendant(
-          of: find.byType(Scaffold),
-          matching: find.byType(OmniBottomCTA),
-        );
-        expect(ctaFinder, findsOneWidget);
-
-        // The "+ New Food" label is rendered by the CTA.
-        expect(find.text('+ New Food'), findsOneWidget);
-
-        // The CTA sits at the shared width and vertical anchor,
-        // measured from the **centered content column's** edges
-        // (not the surface's) so the assertion holds on both
-        // phone- and tablet-class surfaces.
-        final buttonRect = tester.getRect(
-          find.descendant(of: ctaFinder, matching: find.byType(FilledButton)),
-        );
-        final column = contentColumnRectFor(surface.width);
-        final expectedLeft = column.left + OmniTheme.bottomCTAHorizontalPadding;
-        final expectedRight =
-            column.left + column.width - OmniTheme.bottomCTAHorizontalPadding;
-        expect(buttonRect.left, closeTo(expectedLeft, 0.5));
-        expect(buttonRect.right, closeTo(expectedRight, 0.5));
-        expect(buttonRect.height, closeTo(OmniTheme.buttonPrimaryHeight, 0.5));
-        final expectedBottom =
-            surface.height -
-            tester.view.padding.bottom / tester.view.devicePixelRatio -
-            OmniTheme.bottomCTAVerticalBottomPadding;
-        expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
-      },
-    );
-
-    testWidgets(
-      'anchors the Groups tab\'s primary bottom CTA at the shared width and vertical anchor (S-002)',
-      (tester) async {
-        // Fixed surface so the test can assert exact pixel math.
-        const surface = Size(400, 800);
-        await tester.binding.setSurfaceSize(surface);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-
-        final repo = await _freshRepo();
-        final foodLib = FoodLibraryState(repo);
-        final nutrition = NutritionState(repo);
-        await foodLib.loadFoodGroups();
-        await foodLib.loadFoods();
-        await foodLib.loadCatalogFoods();
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: OmniGradientBackground(
-              child: AddFoodScreen(
-                foodLibraryState: foodLib,
-                nutritionState: nutrition,
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Switch to the "Groups" tab.
-        await tester.tap(find.text('Categories'));
-        await tester.pumpAndSettle();
-
-        // The host's Scaffold has a non-null bottomNavigationBar
-        // (a tab-aware AnimatedBuilder that renders the right CTA
-        // for the active tab).
-        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
-        expect(
-          scaffold.bottomNavigationBar,
-          isNotNull,
-          reason:
-              'Groups tab must have a primary bottom CTA on the host '
-              'Scaffold.bottomNavigationBar',
-        );
-
-        // The Groups CTA is an OmniBottomCTA. We look for it as
-        // a descendant of the bottomNavigationBar slot because the
-        // CTA is wrapped in an AnimatedBuilder for tab transitions.
-        final ctaFinder = find.descendant(
-          of: find.byType(Scaffold),
-          matching: find.byType(OmniBottomCTA),
-        );
-        expect(ctaFinder, findsOneWidget);
-
-        // The `new_group_button` key is preserved on the rendered
-        // FilledButton so the existing test contract continues to work.
-        final newGroupKey = find.byKey(const Key('new_group_button'));
-        expect(newGroupKey, findsOneWidget);
-
-        // The CTA sits at the shared width and vertical anchor,
-        // measured from the **centered content column's** edges
-        // (not the surface's) so the assertion holds on both
-        // phone- and tablet-class surfaces.
-        final buttonRect = tester.getRect(
-          find.descendant(of: ctaFinder, matching: find.byType(FilledButton)),
-        );
-        final column = contentColumnRectFor(surface.width);
-        final expectedLeft = column.left + OmniTheme.bottomCTAHorizontalPadding;
-        final expectedRight =
-            column.left + column.width - OmniTheme.bottomCTAHorizontalPadding;
-        expect(buttonRect.left, closeTo(expectedLeft, 0.5));
-        expect(buttonRect.right, closeTo(expectedRight, 0.5));
-        expect(buttonRect.height, closeTo(OmniTheme.buttonPrimaryHeight, 0.5));
-        final expectedBottom =
-            surface.height -
-            tester.view.padding.bottom / tester.view.devicePixelRatio -
-            OmniTheme.bottomCTAVerticalBottomPadding;
-        expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
-      },
-    );
-
-    testWidgets('renders the New Food CTA on the Library tab (S-003)', (
-      tester,
-    ) async {
       final repo = await _freshRepo();
       final foodLib = FoodLibraryState(repo);
       final nutrition = NutritionState(repo);
@@ -4384,29 +4229,189 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: AddFoodScreen(
-            foodLibraryState: foodLib,
-            nutritionState: nutrition,
+          home: OmniGradientBackground(
+            child: AddFoodScreen(
+              foodLibraryState: foodLib,
+              nutritionState: nutrition,
+            ),
           ),
         ),
       );
       await tester.pumpAndSettle();
+      return foodLib;
+    }
 
-      // The Library tab is the default. The OmniBottomCTA renders
-      // the New Food action there.
+    Finder headerPlus() => find.byType(OmniHeaderAddButton);
+
+    testWidgets('S-9161: Library tab has the header + and no bottom button', (
+      tester,
+    ) async {
+      await pumpManageLibrary(tester);
+
+      expect(headerPlus(), findsOneWidget);
       expect(
-        find.descendant(
-          of: find.byType(Scaffold),
-          matching: find.byType(OmniBottomCTA),
-        ),
+        find.descendant(of: find.byType(AppBar), matching: headerPlus()),
         findsOneWidget,
       );
-      // The "+ New Food" label is present on the Library
-      // tab; "+ New Category" is not.
-      expect(find.text('+ New Food'), findsOneWidget);
+      final newFood = find.byKey(const Key('new_food_button'));
+      expect(newFood, findsOneWidget);
+      expect(tester.widget<IconButton>(newFood).tooltip, 'New Food');
+      expect(find.byKey(const Key('new_group_button')), findsNothing);
+
+      final scaffold = tester.widget<Scaffold>(
+        find
+            .descendant(
+              of: find.byType(AddFoodScreen),
+              matching: find.byType(Scaffold),
+            )
+            .first,
+      );
+      expect(scaffold.bottomNavigationBar, isNull);
+      expect(find.byType(OmniBottomCTA), findsNothing);
+      expect(find.text('+ New Food'), findsNothing);
       expect(find.text('+ New Category'), findsNothing);
-      // The old CTA label is gone everywhere.
       expect(find.text('+ Create new food'), findsNothing);
+    });
+
+    testWidgets('S-9163: Categories tab: New Category, twice', (tester) async {
+      final foodLib = await pumpManageLibrary(tester);
+
+      await tester.tap(find.text('Categories'));
+      await tester.pumpAndSettle();
+
+      final newGroup = find.byKey(const Key('new_group_button'));
+      expect(newGroup, findsOneWidget);
+      expect(tester.widget<IconButton>(newGroup).tooltip, 'New Category');
+      expect(find.byKey(const Key('new_food_button')), findsNothing);
+      expect(find.byType(OmniBottomCTA), findsNothing);
+
+      final before = find.byType(TextField).evaluate().length;
+
+      await tester.tap(newGroup);
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField).evaluate().length, before + 1);
+      expect(
+        foodLib.foodGroups.where((g) => g.name == 'New Category').length,
+        1,
+      );
+
+      await tester.tap(newGroup);
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField).evaluate().length, before + 2);
+      expect(
+        foodLib.foodGroups.where((g) => g.name == 'New Category').length,
+        2,
+      );
+    });
+
+    testWidgets('S-9164: a tab round trip keeps exactly one header +', (
+      tester,
+    ) async {
+      await pumpManageLibrary(tester);
+
+      void expectPlus(String key, String label) {
+        expect(headerPlus(), findsOneWidget);
+        final button = find.byKey(Key(key));
+        expect(button, findsOneWidget);
+        expect(tester.widget<IconButton>(button).tooltip, label);
+      }
+
+      expectPlus('new_food_button', 'New Food');
+
+      await tester.tap(find.text('Categories'));
+      await tester.pumpAndSettle();
+      expectPlus('new_group_button', 'New Category');
+      expect(find.byKey(const Key('new_food_button')), findsNothing);
+
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      expectPlus('new_food_button', 'New Food');
+      expect(find.byKey(const Key('new_group_button')), findsNothing);
+    });
+
+    testWidgets('S-9165: the header + stays when the search has no match', (
+      tester,
+    ) async {
+      await pumpManageLibrary(tester);
+
+      await tester.enterText(
+        find.byKey(const Key('catalog_search_field')),
+        'zzzz no match 91',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('No matches for "zzzz no match 91"'), findsOneWidget);
+      final newFood = find.byKey(const Key('new_food_button'));
+      expect(newFood, findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: newFood),
+        findsOneWidget,
+      );
+
+      await tester.tap(newFood);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('food_form_name')), findsOneWidget);
+      expect(find.text('New Food'), findsOneWidget);
+    });
+
+    testWidgets('S-9166: the list end leaves no room for the old button', (
+      tester,
+    ) async {
+      await pumpManageLibrary(tester);
+      // The test view has no bottom inset, so the padding is the 16 base.
+      expect(tester.view.viewPadding.bottom, 0);
+
+      double listBottomPadding() {
+        final list = find.descendant(
+          of: find.byType(TabBarView),
+          matching: find.byType(ListView),
+        );
+        expect(list, findsOneWidget);
+        return tester
+            .widget<ListView>(list)
+            .padding!
+            .resolve(TextDirection.ltr)
+            .bottom;
+      }
+
+      final libraryBottom = listBottomPadding();
+      expect(libraryBottom, 16);
+      expect(libraryBottom, lessThan(OmniTheme.formBottomCTAClearance));
+
+      await tester.tap(find.text('Categories'));
+      await tester.pumpAndSettle();
+      final groupsBottom = listBottomPadding();
+      expect(groupsBottom, 16);
+      expect(groupsBottom, lessThan(OmniTheme.formBottomCTAClearance));
+    });
+
+    testWidgets('S-9166: on a phone with a home indicator the list end clears '
+        'it (16 + the bottom inset)', (tester) async {
+      const inset = 34.0;
+      tester.view.viewPadding = FakeViewPadding(
+        bottom: inset * tester.view.devicePixelRatio,
+      );
+      addTearDown(tester.view.resetViewPadding);
+      await pumpManageLibrary(tester);
+
+      double listBottomPadding() {
+        final list = find.descendant(
+          of: find.byType(TabBarView),
+          matching: find.byType(ListView),
+        );
+        expect(list, findsOneWidget);
+        return tester
+            .widget<ListView>(list)
+            .padding!
+            .resolve(TextDirection.ltr)
+            .bottom;
+      }
+
+      expect(listBottomPadding(), 16 + inset);
+
+      await tester.tap(find.text('Categories'));
+      await tester.pumpAndSettle();
+      expect(listBottomPadding(), 16 + inset);
     });
   });
 

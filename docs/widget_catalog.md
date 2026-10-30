@@ -56,7 +56,7 @@ Note on home-screen nutrition summary card:
 
 | Page | Covers |
 |------|--------|
-| [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) | Foundational layout wrappers, card/section chrome, bottom CTA, input field wrappers, the shared message and empty-state widgets |
+| [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) | Foundational layout wrappers, card/section chrome, bottom CTA, the header "+", input field wrappers, the shared message and empty-state widgets |
 | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) | Home tiles, the home gauge card, and the calorie-ring / water / macro-donut cards |
 | [Session, Picker & Presentation Widgets](widget_catalog/session_widgets.md) | In-session metric editors, metric popups, PR toast, the effort rating sheet, picker dialogs, presentation models |
 | [Nutrition Widgets](widget_catalog/nutrition_widgets.md) | Primer sheet, food rows, thumbnails, the shared food form, group management |
@@ -106,6 +106,7 @@ Alphabetical. Use this rather than guessing which page a component lives on.
 | `OmniCardHeader` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniEmptyState` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniGradientBackground` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
+| `OmniHeaderAddButton` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniMessage` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniSurface` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `PRToast` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |

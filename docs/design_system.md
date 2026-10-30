@@ -296,6 +296,7 @@ Buttons use a **slightly-rounded rectangle**, never a pill (StadiumBorder). Mate
 | Utility | `OutlinedButton.icon` | `OmniTheme.buttonUtilityRadius` | Content-width |
 | Icon-only | `FilledButton` + icon | `OmniTheme.buttonIconRadius` | Square (`OmniTheme.buttonIconSize`) |
 | Dialog | `TextButton` / `FilledButton` | `OmniTheme.buttonUtilityRadius` | Content-width |
+| Header add | `OmniHeaderAddButton` (an `IconButton`) | none (icon only) | The `IconButton` default |
 
 ### Shape Rule (MANDATORY)
 
@@ -304,6 +305,8 @@ Every `FilledButton`, `OutlinedButton`, or `TextButton` MUST explicitly set `sha
 ### Press Feedback
 
 All buttons use the same press-scale system as tiles: track press state and wrap the button in an `AnimatedScale` that applies `OmniTheme.pressedScale` with `OmniTheme.animationDuration` and `OmniTheme.animationCurve` while pressed.
+
+The header add piece, `OmniHeaderAddButton`, carries this press shrink itself, so every header "+" reacts the same way.
 
 > Note: `FilledButton` / `OutlinedButton` already provide their own ink press feedback. Wrap in `AnimatedScale` only for high-prominence primary buttons where visceral feedback matters (e.g. "Finish Workout", "Start Workout"). Skip for utility and dialog buttons.
 
@@ -477,6 +480,7 @@ pattern.
 | Section / card label | `OmniCardHeader` | `lib/widgets/layout/omni_card_header.dart` |
 | Screen header | `OmniBackHeader` | `lib/widgets/layout/omni_back_header.dart` |
 | Primary bottom action | `OmniBottomCTA` | `lib/widgets/layout/omni_bottom_cta.dart` |
+| Header add action | `OmniHeaderAddButton` | `lib/widgets/buttons/omni_header_add_button.dart` |
 | Confirmation | `ConfirmationDialog` | `lib/widgets/dialogs/confirmation_dialog.dart` |
 | Small bottom message | `OmniMessage` | `lib/widgets/feedback/omni_message.dart` |
 | Empty state | `OmniEmptyState` | `lib/widgets/common/omni_empty_state.dart` |
@@ -653,6 +657,23 @@ to anchor to.
 
 *Unguarded.*
 
+### Header actions
+
+A "+" in a screen's header means one thing: create a new item for the list on
+this screen, and it is always the shared `OmniHeaderAddButton` (same size,
+colour, press shrink and spoken label everywhere; the Exercise Library and
+Manage Food Library use it). A header action that goes somewhere else uses an icon that reads as that
+place, never a "+" — the Calendar's Training periods icon is the example.
+Bottom buttons stay where adding is the screen's main job (the day session
+list, Periodization, My Routines).
+
+Verified by `test/ui_standards_contract_test.dart` (group `S-9158 header
+plus` · "S-9159: no header in lib/ builds a raw +") and
+`test/omni_header_add_button_test.dart` (group `S-9151..S-9153
+OmniHeaderAddButton`). Known limit: the scan reads each header call's own
+text, so actions assembled in a variable or a method outside that call are not
+seen.
+
 ### Accessibility and shape
 
 Every `IconButton` carries a tooltip; every button sets its `shape` explicitly;
@@ -672,7 +693,8 @@ where a test renders. Its groups: `S-2601 button shape`, `S-2603 no raw Card`,
 `S-2604 no raw colours`, `S-2606 IconButton tooltip`, `S-2607 colour ratchet`,
 `S-2702 one message look`, `S-2703 no exception text in a message`,
 `S-2804 one empty-state composition`, `S-3001 hand-built sheet ratchet`,
-`S-3001 hand-built dialog ratchet`, and `allowlist self-check`.
+`S-3001 hand-built dialog ratchet`, `S-9158 header plus`, and `allowlist
+self-check`.
 
 **The allowlist.** `test/helpers/ui_standards_allowlist.dart` is the one place
 a scan may excuse a site. Entries are only ever removed: a fixed violation

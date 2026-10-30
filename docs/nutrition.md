@@ -108,11 +108,14 @@ Verified by `test/nutrition_test.dart`, `test/nutrition_primer_test.dart`,
 
 Two tabs — Library and Categories. The old My Foods tab is gone: everything it
 showed lives in the Library list. Creating a new item is not a mode of this
-screen: the Library tab's `+ New Food` button (key `new_food_button`)
-pushes a separate full-screen New Food form (`_NewFoodFormScreen` in
-`lib/features/nutrition/add_food_screen.dart`); the Categories tab keeps
-`+ New Category` (`new_group_button`). Verified by `test/library_merge_test.dart`
-(`S-12810` two tabs, `S-12814` the CTA opens the form and Categories keeps its own).
+screen: on the Library tab the header "+" (`OmniHeaderAddButton`, read aloud
+`New Food`, key `new_food_button`) pushes a separate full-screen New Food form
+(`_NewFoodFormScreen` in `lib/features/nutrition/add_food_screen.dart`); on the
+Categories tab the same header "+" reads `New Category` (`new_group_button`).
+There is no bottom button. Verified by `test/library_merge_test.dart`
+(`S-12810` two tabs, `S-12814` the header "+" opens the form and Categories
+keeps its own) and `test/nutrition_test.dart` (group `AddFoodScreen — header +
+(S-9161..S-9166)`: `S-9161` no bottom button, `S-9163` New Category).
 
 The Library list holds every food, grouped under category headings while the search box is empty (headings alphabetical, `Uncategorized` last, foods alphabetical inside each, the same order as Foods I Eat via `foodsIEatSections`; a typed query shows the flat filtered list instead). Verified by `test/library_grouping_test.dart` (`S-12820`, `S-12821`, `S-12822`, `S-12823`, `S-12825`). The list is: bundled catalog foods,
 foods the user created, and older custom foods that exist only in the library.

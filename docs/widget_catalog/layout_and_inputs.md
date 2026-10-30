@@ -112,6 +112,30 @@ indicator and Android navigation bar uniformly. Geometry comes from `OmniTheme` 
 Hosts that need a stable test target forward a `Key` to the rendered button; the shared geometry is
 unaffected.
 
+### `OmniHeaderAddButton`
+
+**File**: `lib/widgets/buttons/omni_header_add_button.dart`
+
+The one header "+": it creates a new item for the list on the screen it sits on, and every header
+"+" in the app is this piece, so it has the same size, colour, press shrink and spoken label
+everywhere. A header action that goes somewhere else uses an icon for that place instead (see
+[Design System](../design_system.md), "Header actions").
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `label` | `String` | required | Tooltip and screen-reader label (no visible text) |
+| `onPressed` | `VoidCallback` | required | The create action |
+| `buttonKey` | `Key?` | `null` | Placed on the inner `IconButton`, so tests can read and tap the button |
+
+**Behavior**:
+- Its look is defined in [Design System](../design_system.md) ("Buttons", the `Header add` row, and
+  "Header actions"); the label never changes the size.
+- Shrinks to `OmniTheme.pressedScale` while a finger is down and returns on release or cancel;
+  with reduced motion the scale applies without animation. The shrink never delays `onPressed`.
+- Verified by `test/omni_header_add_button_test.dart` (group `S-9151..S-9153 OmniHeaderAddButton`);
+  a header that builds its own "+" fails `test/ui_standards_contract_test.dart` (group
+  `S-9158 header plus`).
+
 ### `NoiseOverlayPainter`
 
 **File**: `lib/widgets/layout/noise_overlay_painter.dart`

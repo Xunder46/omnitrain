@@ -8,6 +8,8 @@
 // into a message).
 // `docs/plans/2026-10-13-30-ui-standards-enforcement-plan` — S-3001 (the
 // hand-built sheet and hand-built dialog ratchets).
+// `docs/plans/2026-10-29-91-one-header-plus-plan` — S-9158/S-9159 (no header
+// builds its own "+"; every header "+" is `OmniHeaderAddButton`, D-91.9).
 // The rules themselves live in `docs/design_system.md`; the reasons are D-26.1
 // to D-26.8 and D-27.1 to D-27.5 in those plans' Decision Ledgers.
 //
@@ -84,6 +86,71 @@ List<String> emptyStateClassFindings(String path, String source) {
     );
   }
   return findings;
+}
+
+/// The header constructors whose actions S-9158 reads (D-91.9).
+const List<String> headerConstructorNames = <String>[
+  'OmniBackHeader',
+  'AppBar',
+  'SliverAppBar',
+];
+
+/// A raw add icon: `Icons.add` and its circle / box / outline variants, not a
+/// near-twin such as `Icons.add_a_photo` (D-91.9).
+final RegExp _rawAddIcon = RegExp(
+  r'\bIcons\.add(?:_circle|_box)?(?:_outline)?(?:_outlined|_rounded|_sharp)?\b',
+);
+
+/// Every header call in [source] that builds its own "+" instead of using
+/// `OmniHeaderAddButton` (S-9158, D-91.9): the call's code names a raw add
+/// icon, or one of its string literals is exactly `+` or starts with `+ `.
+/// One finding per offending header call.
+///
+/// Known limit: actions assembled in a variable or a method outside the
+/// header call's own text are not seen.
+List<String> headerPlusFindings(String path, String source) {
+  final findings = <({int line, String text})>[];
+  for (final name in headerConstructorNames) {
+    for (final call in constructorCalls(source, name)) {
+      final rawIcon = _rawAddIcon.hasMatch(call.code);
+      final plusText = _stringLiterals(call.text, call.code).any(
+        (content) => content == '+' || content.startsWith('+ '),
+      );
+      if (!rawIcon && !plusText) continue;
+      findings.add((
+        line: call.line,
+        text:
+            '$path:${call.line} $name builds a raw "+" '
+            '(use OmniHeaderAddButton)',
+      ));
+    }
+  }
+  findings.sort((a, b) => a.line.compareTo(b.line));
+  return [for (final finding in findings) finding.text];
+}
+
+/// The contents of every string literal in [text]. [code] is the same slice
+/// with literals and comments blanked: it keeps each literal's quotes and
+/// blanks comments entirely, so a quote inside a comment is never a literal.
+List<String> _stringLiterals(String text, String code) {
+  final contents = <String>[];
+  var i = 0;
+  while (i < code.length) {
+    final c = code[i];
+    if (c != "'" && c != '"') {
+      i++;
+      continue;
+    }
+    final triple =
+        i + 2 < code.length && code[i + 1] == c && code[i + 2] == c;
+    final quote = triple ? '$c$c$c' : c;
+    final start = i + quote.length;
+    final end = code.indexOf(quote, start);
+    if (end < 0) break;
+    contents.add(text.substring(start, end));
+    i = end + quote.length;
+  }
+  return contents;
 }
 
 /// Every `IconButton` in [source] with neither a `tooltip:` nor an enclosing
@@ -395,6 +462,19 @@ List<String> staleRatchetEntries(String member, Map<String, int> ratchet) {
   }
   return findings;
 }
+
+String _headerPlusWhy(List<String> findings) =>
+    '''
+A "+" in a screen's header means one thing: create a new item for the list on
+this screen (D-91.1). Every header "+" is the shared `OmniHeaderAddButton`
+(`lib/widgets/buttons/omni_header_add_button.dart`), so it has the same size,
+colour, press shrink and spoken label everywhere. A header action that goes
+somewhere else uses an icon for that place, never a "+". There is no allowlist
+for this rule.
+
+Findings:
+${findings.map((finding) => '  · $finding').join('\n')}
+''';
 
 String _buttonsWhy(List<String> findings) =>
     '''
@@ -1142,6 +1222,88 @@ void main() {
         findings.addAll(emptyStateClassFindings(file.path, file.source));
       }
       expect(findings, isEmpty, reason: _emptyStateWhy(findings));
+    });
+  });
+
+  group('S-9158 header plus', () {
+    const path = 'lib/features/x.dart';
+    const f1 =
+        "OmniBackHeader(title: 'A', actions: [IconButton(icon: const "
+        "Icon(Icons.add), tooltip: 'New', onPressed: f)])";
+    final fixtures = <String, (String, int)>{
+      'F1 raw Icons.add in OmniBackHeader': (f1, 1),
+      'F2 Text("+") in an AppBar': (
+        "AppBar(actions: [OutlinedButton(onPressed: f, child: const "
+            "Text('+'))])",
+        1,
+      ),
+      'F3 "+ Add" text in an AppBar': (
+        "AppBar(actions: [TextButton(onPressed: f, child: Text('+ Add'))])",
+        1,
+      ),
+      'F4 add_circle_outline in a SliverAppBar': (
+        "SliverAppBar(actions: [IconButton(icon: "
+            "Icon(Icons.add_circle_outline), tooltip: 'x', onPressed: f)])",
+        1,
+      ),
+      'F5 the shared piece': (
+        "AppBar(actions: [OmniHeaderAddButton(label: 'New Food', "
+            "onPressed: f)])",
+        0,
+      ),
+      'F6 a near-twin icon': (
+        "OmniBackHeader(title: 'A', actions: [IconButton(icon: "
+            "Icon(Icons.add_a_photo), tooltip: 'Photo', onPressed: f)])",
+        0,
+      ),
+      'F7 a comment': (
+        "AppBar(title: Text('A'), /* Icons.add '+' */ actions: [])",
+        0,
+      ),
+      'F8 not a header': (
+        "Row(children: [IconButton(icon: Icon(Icons.add), tooltip: 'Add', "
+            "onPressed: f), Text('+')])",
+        0,
+      ),
+      'F9 a +N badge': (r"AppBar(title: Text('+$count'))", 0),
+      'F10 a second header further down': (
+        "AppBar(title: Text('ok'))\n\n$f1",
+        1,
+      ),
+    };
+
+    for (final entry in fixtures.entries) {
+      test('S-9158: ${entry.key} -> ${entry.value.$2} finding(s)', () {
+        final findings = headerPlusFindings(path, entry.value.$1);
+        expect(findings, hasLength(entry.value.$2), reason: '$findings');
+      });
+    }
+
+    test('S-9158: a finding names the file, the line of the header call and '
+        'the header', () {
+      final findings = headerPlusFindings(
+        path,
+        "AppBar(title: Text('ok'))\n\n$f1",
+      );
+      expect(findings, [
+        '$path:3 OmniBackHeader builds a raw "+" (use OmniHeaderAddButton)',
+      ]);
+    });
+
+    test('S-9159: no header in lib/ builds a raw +', () {
+      for (final root in uiStandardRoots) {
+        expect(
+          Directory(root).existsSync(),
+          isTrue,
+          reason: '$root has to exist, or the scan passes in silence',
+        );
+      }
+
+      final findings = <String>[];
+      for (final file in dartSourcesUnder(uiStandardRoots)) {
+        findings.addAll(headerPlusFindings(file.path, file.source));
+      }
+      expect(findings, isEmpty, reason: _headerPlusWhy(findings));
     });
   });
 

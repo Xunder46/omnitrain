@@ -255,7 +255,7 @@ HomeScreen
 - **List state**: `ListView.builder` with `Card` widgets per routine
   - Each card shows: exercise icon, routine name, creation date (relative: "today", "3 days ago")
   - Built-in demo routines carry a subtle "Demo" badge (via `DemoRoutineBadge`) sourced from `OmniTheme` typography + `colorScheme.primary` tokens. The badge is purely informational; demo rows are still editable, startable, and deletable like user rows.
-- **Primary bottom CTA**: `OmniBottomCTA(label: '+ New Routine', ...)` anchored via `Scaffold.bottomNavigationBar` — the shared full-width, safe-area-anchored footer action (see [widget_catalog.md → OmniBottomCTA](widget_catalog.md)). The list's bottom padding uses `OmniTheme.formBottomCTAClearance` so the last routine card clears the CTA. Replaces the legacy `FloatingActionButton` so the routines screen matches the unified bottom-CTA pattern used by the calendar day list, food library, etc.
+- **Primary bottom CTA**: `OmniBottomCTA(label: '+ New Routine', ...)` anchored via `Scaffold.bottomNavigationBar` — the shared full-width, safe-area-anchored footer action (see [widget_catalog.md → OmniBottomCTA](widget_catalog.md)). The list's bottom padding uses `OmniTheme.formBottomCTAClearance` so the last routine card clears the CTA. Replaces the legacy `FloatingActionButton` so the routines screen matches the unified bottom-CTA pattern used by the calendar day list, Periodization, etc.
 - **Active session indicator**: If current session is a routine session (`intent == 'routine'`), the My Routines home tile glows active
 
 ### Built-in Demo Routines

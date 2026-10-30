@@ -27,6 +27,7 @@ import 'package:omnitrain/features/exercise/exercise_library_detail_screen.dart'
 import 'package:omnitrain/features/exercise/exercise_library_screen.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/buttons/omni_header_add_button.dart';
 import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/widgets/exercise/muscle_picker.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
@@ -568,6 +569,55 @@ void main() {
       final newButton = find.byKey(const Key('exercise_library_new_button'));
       expect(newButton, findsOneWidget);
       expect(tester.widget<IconButton>(newButton).tooltip, 'New Exercise');
+    });
+
+    // Plan 91 (`docs/plans/2026-10-29-91-one-header-plus-plan`): the header
+    // "+" is the one shared piece, in every list state.
+    testWidgets('S-9154: the header + is the shared OmniHeaderAddButton, '
+        'also after a search with no match', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final bundle = _buildState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExerciseLibraryScreen(
+            exerciseLibraryState: bundle.state,
+            workoutState: bundle.workout,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      void expectSharedPlus() {
+        final newButton = find.byKey(const Key('exercise_library_new_button'));
+        expect(
+          find.ancestor(
+            of: newButton,
+            matching: find.byType(OmniHeaderAddButton),
+          ),
+          findsOneWidget,
+        );
+        expect(tester.widget<IconButton>(newButton).tooltip, 'New Exercise');
+        expect(
+          find.descendant(
+            of: find.byType(OmniBackHeader),
+            matching: find.byIcon(Icons.add),
+          ),
+          findsOneWidget,
+        );
+      }
+
+      expectSharedPlus();
+
+      await tester.enterText(
+        find.byKey(const Key('exercise_library_search_field')),
+        'zzzz no match 91',
+      );
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expectSharedPlus();
     });
 
     testWidgets('S-4103: the action opens the editor in create mode', (

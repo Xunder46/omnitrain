@@ -13,6 +13,7 @@ import '../../state/nutrition_state.dart';
 import 'edit_food_screen.dart';
 import 'widgets/food_form.dart';
 import 'widgets/food_thumbnail.dart';
+import '../../widgets/buttons/omni_header_add_button.dart';
 import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
@@ -40,7 +41,8 @@ const Object _cancelledSentinel = Object();
 /// copy of the food, gets a primary-colour outline, and carries a
 /// pencil (edit) and a check (remove) on the right; a not-in-list
 /// row shows the shipped catalog entry and an **Add** button.
-/// A **+ New Food** button sits at the bottom.
+/// The header "+" ([OmniHeaderAddButton]) creates a New Food here and a
+/// New Category on the Categories tab; there is no bottom button.
 ///
 /// Both actions stay on the screen — the user can add and remove
 /// several foods in one visit and only leaves via the system back
@@ -97,21 +99,12 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     super.dispose();
   }
 
-  // ── Tab-aware primary bottom CTA ──────────────────────────────────────
+  // ── Tab-aware header "+" ──────────────────────────────────────────────
   //
-  // Each tab has one primary bottom action (Library: **+ Create new
-  // food**, Categories: **+ New Category**). Both are routed
-  // through the shared `OmniBottomCTA` on the host's
-  // `Scaffold.bottomNavigationBar` (see
-  // `docs/plans/add-food-screen-bottom-cta-plan.md` and
-  // `docs/plans/primary-bottom-cta-anchor-width-plan.md`)
-  // so they sit at the same width, height, and vertical anchor as
-  // every other primary bottom CTA in the app.
-  //
-  // The CTA rebuilds via `AnimatedBuilder` on the tab controller
-  // (the controller is a `Listenable`); when the user swipes or
-  // taps a different tab, the previous CTA fades out and the new
-  // one fades in over `OmniTheme.animationDuration`.
+  // Each tab has one create action, the shared header "+" (plan 91,
+  // D-91.4): New Food on Library, New Category on Categories. It
+  // rebuilds via `AnimatedBuilder` on the tab controller (a
+  // `Listenable`), so exactly one "+" is in the header at any moment.
 
   /// Index constants — must match the `TabBar` order below.
   static const int _libraryTabIndex = 0;
@@ -154,23 +147,23 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     }
   }
 
-  /// The tab-aware bottom CTA: **+ New Food** on Library,
-  /// **+ New Category** on Categories.
-  Widget _buildBottomCTA(BuildContext context) {
+  /// The tab-aware header "+": New Food on Library, New Category on
+  /// Categories.
+  Widget _buildHeaderAdd(BuildContext context) {
     return AnimatedBuilder(
       animation: _tabController,
       builder: (context, _) {
         switch (_tabController.index) {
           case _groupsTabIndex:
-            return OmniBottomCTA(
-              label: '+ New Category',
+            return OmniHeaderAddButton(
+              label: 'New Category',
               buttonKey: const Key('new_group_button'),
               onPressed: _createGroup,
             );
           case _libraryTabIndex:
           default:
-            return OmniBottomCTA(
-              label: '+ New Food',
+            return OmniHeaderAddButton(
+              label: 'New Food',
               buttonKey: const Key('new_food_button'),
               onPressed: () => _openNewFoodForm(context),
             );
@@ -184,6 +177,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manage Food Library'),
+        actions: [_buildHeaderAdd(context)],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -206,11 +200,6 @@ class _AddFoodScreenState extends State<AddFoodScreen>
           ),
         ],
       ),
-      // Tab-aware primary bottom CTA. The host owns the bottom CTA
-      // (not the individual tabs) so the shared placement + width
-      // apply uniformly across tabs. See
-      // `docs/plans/add-food-screen-bottom-cta-plan.md`.
-      bottomNavigationBar: _buildBottomCTA(context),
     );
   }
 }
@@ -669,11 +658,13 @@ class _FromCatalogTabState extends State<_FromCatalogTab>
             else
               Expanded(
                 child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(
+                  // The last row clears the home indicator; no bottom
+                  // button sits over the list (plan 91, D-91.6).
+                  padding: EdgeInsets.fromLTRB(
                     0,
                     8,
                     0,
-                    OmniTheme.formBottomCTAClearance,
+                    16 + MediaQuery.viewPaddingOf(context).bottom,
                   ),
                   itemCount: entries.length,
                   separatorBuilder: (_, i) =>
@@ -1604,8 +1595,8 @@ class _CatalogRowState extends State<_CatalogRow> {
 /// archived. Deleting an empty category also asks first, without a
 /// destination dropdown (there is nothing to reassign).
 ///
-/// A "+ New Category" button at the bottom of the list creates a new
-/// category with a default name and focuses the new row's `TextField`.
+/// The host's header "+" (New Category) creates a new category with a
+/// default name and focuses the new row's `TextField`.
 ///
 /// The synthetic "Uncategorized" row at the bottom of the list is
 /// informational (food count) and cannot be renamed or deleted.
@@ -1734,13 +1725,13 @@ class _GroupsTabState extends State<_GroupsTab> {
         }
 
         return ListView(
-          // Bottom padding clears the host's shared bottom CTA
-          // (+ New Category).
-          padding: const EdgeInsets.fromLTRB(
+          // The last row clears the home indicator; the create action
+          // is the host's header "+", not a bottom button (plan 91).
+          padding: EdgeInsets.fromLTRB(
             0,
             8,
             0,
-            OmniTheme.formBottomCTAClearance,
+            16 + MediaQuery.viewPaddingOf(context).bottom,
           ),
           children: [
             for (final g in groups)

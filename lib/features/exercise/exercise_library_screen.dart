@@ -25,6 +25,7 @@ import 'package:omnitrain/core/utils/muscle_display.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/buttons/omni_header_add_button.dart';
 import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/widgets/exercise/exercise_filter_row.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
@@ -117,16 +118,10 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
           appBar: OmniBackHeader(
             title: 'Exercise Library',
             actions: [
-              Semantics(
+              OmniHeaderAddButton(
                 label: 'New Exercise',
-                button: true,
-                child: IconButton(
-                  key: const Key('exercise_library_new_button'),
-                  icon: const Icon(Icons.add),
-                  tooltip: 'New Exercise',
-                  color: OmniTheme.colors.textDominant,
-                  onPressed: _openCreateExercise,
-                ),
+                buttonKey: const Key('exercise_library_new_button'),
+                onPressed: _openCreateExercise,
               ),
             ],
           ),

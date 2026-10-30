@@ -1,7 +1,8 @@
 // Widget-level tests for the Library merge (plan 77b, scenarios
 // S-12810..S-12818): the two-tab Manage Food Library screen, the
 // merged Library list (catalog rows + legacy customs), the Yours
-// tag, the tab-aware bottom CTA, and deleting a created food from
+// tag, the tab-aware create action (a header "+" since plan 91),
+// and deleting a created food from
 // its editor.
 
 import 'dart:io';
@@ -271,7 +272,15 @@ void main() {
         await pumpLibraryTab(tester);
 
         expect(find.byKey(const Key('new_food_button')), findsOneWidget);
-        expect(find.text('+ New Food'), findsOneWidget);
+        // Plan 91 (D-91.10): the create action is the header "+",
+        // labelled New Food by its tooltip; no visible "+ New Food".
+        expect(
+          tester
+              .widget<IconButton>(find.byKey(const Key('new_food_button')))
+              .tooltip,
+          'New Food',
+        );
+        expect(find.text('+ New Food'), findsNothing);
         expect(find.text('+ Create new food'), findsNothing);
 
         await tester.tap(find.byKey(const Key('new_food_button')));
@@ -527,15 +536,28 @@ void main() {
       isNot(contains("Tab(text: 'My Foods')")),
       reason: 'S-12818: the My Foods tab is gone from the TabBar',
     );
+    // Plan 91 (D-91.10) supersedes the `+ New Food` bottom label: the
+    // create action is the shared header "+".
+    for (final gone in [
+      "'+ New Food'",
+      "'+ New Category'",
+      '_buildBottomCTA',
+    ]) {
+      expect(
+        source,
+        isNot(contains(gone)),
+        reason: 'S-12818 / plan 91: the bottom create button is gone ($gone)',
+      );
+    }
     expect(
       source,
-      contains("label: '+ New Food',"),
-      reason: 'S-12818: the Library CTA label is + New Food',
+      contains('OmniHeaderAddButton('),
+      reason: 'S-12818 / plan 91: the create action is the header "+"',
     );
     expect(
       source,
       isNot(contains("'+ Create new food'")),
-      reason: 'S-12818: the old CTA label is replaced by + New Food',
+      reason: 'S-12818: the old CTA label stays gone',
     );
     expect(
       source,

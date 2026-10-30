@@ -9712,7 +9712,7 @@ void main() {
     // ── Navigation route alignment (Add Food) ─────────────────────
     //
     // The two Add Food sub-screens pushed from the host — the
-    // new-food entry form (via the `+ New Food` bottom CTA) and
+    // new-food entry form (via the header "+" `New Food`) and
     // the legacy library edit shim (via a row tap on a
     // pre-D-2 custom in the Library list) — must route through
     // `OmniNavigator.push` so the `OmniRoute` `opaque = true` +
@@ -9732,7 +9732,7 @@ void main() {
     // alignment (see plan file S-N3).
 
     testWidgets(
-      '+ New Food bottom CTA pushes the new-food form via OmniRoute (S-N1)',
+      'header + New Food pushes the new-food form via OmniRoute (S-N1, S-9162)',
       (WidgetTester tester) async {
         // Tall surface so the full-screen form's bottom CTA is
         // reachable without scrolling.
@@ -9761,13 +9761,13 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // The Library tab is the default, so the `+ Create new
-        // food` bottom CTA is the active CTA.
+        // The Library tab is the default, so the header "+" is
+        // New Food (plan 91, S-9162).
 
-        // Tap the `+ New Food` bottom CTA. The production
+        // Tap the header "+". The production
         // code path is `_AddFoodScreenState._openNewFoodForm` which
         // must route through `OmniNavigator.push`.
-        await tester.tap(find.text('+ New Food'));
+        await tester.tap(find.byKey(const Key('new_food_button')));
         await tester.pumpAndSettle();
 
         // The new-food form is on the navigator.
@@ -9780,7 +9780,7 @@ void main() {
           observer.lastPushed,
           isA<OmniRoute<void>>(),
           reason:
-              '`+ New Food` must route through OmniNavigator.push '
+              'New Food must route through OmniNavigator.push '
               'so the OmniRoute opaque + OmniGradientBackground '
               'wrapper applies (no overlap frame).',
         );

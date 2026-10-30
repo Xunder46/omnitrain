@@ -148,7 +148,7 @@ lib/
 │   ├── nutrition_state.dart     # NutritionState (targets, consumed log, water)
 │   └── food_library_state.dart  # FoodLibraryState (catalog + groups + personal library)
 ├── widgets/
-│   ├── buttons/          # (empty — reserved)
+│   ├── buttons/          # OmniHeaderAddButton (the one header "+")
 │   ├── cards/            # EnergyTile, EnergyCore, MaintenanceTile
 │   ├── chart/            # Shared chart primitives
 │   ├── common/           # InteractiveLogo

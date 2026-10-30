@@ -28,8 +28,8 @@ Exercise Library's header `+` passes none — the user picks the modality in the
 
 ## Entry Points
 
-- `ExerciseLibraryScreen` header `+` (`exercise_library_new_button`, tooltip
-  `New Exercise`) → `ExerciseEditorScreen(workoutState)` with no
+- `ExerciseLibraryScreen` header `+`, the shared `OmniHeaderAddButton`
+  (`exercise_library_new_button`, tooltip `New Exercise`) → `ExerciseEditorScreen(workoutState)` with no
   `contextModality`; on a created exercise the library clears that exercise's
   cached muscle links, puts its name in the search field, reloads and warms the
   cache. Verified by `test/pr8_exercise_library_test.dart` (group

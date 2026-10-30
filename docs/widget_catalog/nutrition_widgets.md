@@ -91,7 +91,7 @@ reads from the managed image directory, the web stub renders the placeholder.
 
 **File**: `lib/features/nutrition/widgets/food_form.dart`
 
-Shared form widget used by both the **+ New Item** flow on
+Shared form widget used by both the header **+ New Food** flow on
 `AddFoodScreen` and the **Edit Food** screen
 (`EditFoodScreen`). Parameterized by an optional `Food?` initial
 value: `null` → create mode, non-null → edit mode.
@@ -250,8 +250,8 @@ organize the user's library. Layout (top to bottom):
 - A scrollable list of `_GroupRow` widgets, one per active
   `FoodGroup` (alphabetical, case-insensitive).
 - A trailing read-only `_UngroupedRow` (foods with `groupId == null`).
-- A "+ New Category" bottom button (the shared `OmniBottomCTA`,
-  key `new_group_button`) that calls
+- No bottom button: the host's header "+" (`OmniHeaderAddButton`, read
+  aloud `New Category`, key `new_group_button`) calls
   `FoodLibraryState.createFoodGroup('New Category')`.
 
 The list rebuilds via `ListenableBuilder(listenable: foodLibraryState)`
