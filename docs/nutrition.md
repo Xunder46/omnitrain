@@ -122,7 +122,7 @@ section `FoodForm`). Verified by `test/food_form_label_test.dart`
 `S-92c.3: a new food starts with five blank boxes and a faint 0`,
 `S-92c.1: the calories line follows the macros`,
 `S-92c.7: the photo tile sits below the name, above Category`,
-`S-92c.8: an existing catalog name shows the note, Save works`). Verified by `test/library_merge_test.dart`(`S-12810` two tabs, `S-12814` the header "+" opens the form and Categories
+`S-92c.8: an existing catalog name shows the note, Save works`). Verified by `test/library_merge_test.dart` (`S-12810` two tabs, `S-12814` the header "+" opens the form and Categories
 keeps its own) and `test/nutrition_test.dart` (group `AddFoodScreen — header +
 (S-9161..S-9166)`: `S-9161` no bottom button, `S-9163` New Category).
 
