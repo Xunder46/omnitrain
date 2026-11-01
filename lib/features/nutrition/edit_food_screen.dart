@@ -114,7 +114,8 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
     final discard = await ConfirmationDialog.showUnsavedChanges(
       context: context,
       title: 'Unsaved changes',
-      body: 'You have unsaved edits. Discard them to return to the '
+      body:
+          'You have unsaved edits. Discard them to return to the '
           'food library.',
       keepEditingKey: const Key('edit-food-unsaved-keep'),
       discardKey: const Key('edit-food-unsaved-discard'),
@@ -168,7 +169,6 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final canReset =
         !widget.food.isCatalog &&
         widget.foodLibraryState.canResetLibraryFood(widget.food);
@@ -210,53 +210,24 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
                 ),
               ),
             ),
-            if (canReset || canDelete)
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    OmniTheme.bottomCTAHorizontalPadding,
-                    8,
-                    OmniTheme.bottomCTAHorizontalPadding,
-                    OmniTheme.bottomCTAVerticalBottomPadding,
-                  ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      key: Key(
-                        canReset
-                            ? 'food_reset_original'
-                            : 'food_delete_created',
-                      ),
-                      onPressed: canReset ? _onReset : _onDeleteCreated,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: canReset
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.error,
-                        side: BorderSide(
-                          color: canReset
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.error,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            OmniTheme.buttonBorderRadius,
-                          ),
-                        ),
-                      ),
-                      child: Text(
-                        canReset ? 'Reset to original' : 'Delete food',
-                      ),
-                    ),
-                  ),
-                ),
-              ),
           ],
         ),
         bottomNavigationBar: OmniBottomCTA(
           label: 'Save',
           buttonKey: const Key('food_form_save'),
           onPressed: _formController.submit,
+          // Reset / Delete sit above Save in the shared footer, so they
+          // share its height, margins and radius.
+          secondaryLabel: canReset
+              ? 'Reset to original'
+              : canDelete
+              ? 'Delete food'
+              : null,
+          secondaryButtonKey: Key(
+            canReset ? 'food_reset_original' : 'food_delete_created',
+          ),
+          onSecondaryPressed: canReset ? _onReset : _onDeleteCreated,
+          isSecondaryDestructive: !canReset,
         ),
       ),
     );

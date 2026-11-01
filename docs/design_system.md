@@ -293,10 +293,33 @@ Buttons use a **slightly-rounded rectangle**, never a pill (StadiumBorder). Mate
 |---------|--------|-------------|-------|
 | Primary | `FilledButton` | `OmniTheme.buttonBorderRadius` | Full-width (`double.infinity`) |
 | Row-pair | `FilledButton` / `OutlinedButton` | `OmniTheme.buttonBorderRadius` | `Expanded` (50/50 split) |
-| Utility | `OutlinedButton.icon` | `OmniTheme.buttonUtilityRadius` | Content-width |
+| Secondary bottom action | `OmniBottomCTA` (`secondaryLabel`) | `OmniTheme.buttonBorderRadius` | Full-width, same height and margins as the primary CTA |
+| Utility | `OmniUtilityButton` (an `OutlinedButton.icon`) | `OmniTheme.buttonUtilityRadius` | Content-width |
 | Icon-only | `FilledButton` + icon | `OmniTheme.buttonIconRadius` | Square (`OmniTheme.buttonIconSize`) |
 | Dialog | `TextButton` / `FilledButton` | `OmniTheme.buttonUtilityRadius` | Content-width |
 | Header add | `OmniHeaderAddButton` (an `IconButton`) | none (icon only) | The `IconButton` default |
+
+### Utility button — inline actions (MANDATORY)
+
+An inline action that sits among other controls (Change rating on the Session
+Summary, the package-serving switch on the food form) is the shared
+[`OmniUtilityButton`](widget_catalog/layout_and_inputs.md#omniutilitybutton):
+outlined in the primary colour, a small leading icon, the utility radius,
+content-width. It must read as a control, so a bare `TextButton` is not used
+for an inline action: a text-only link looks like a caption and users do not
+find it.
+
+* ❌ `TextButton(...)` for an inline action in a form or card
+* ❌ a hand-built `OutlinedButton.icon` with its own padding / icon size
+
+Not covered: the full-width bottom actions (`OmniBottomCTA`), icon-only
+buttons, and dialog buttons. The older hand-built utility buttons (Nutrition
+"Set target", exercise picker "New Exercise", exercise detail Edit / Remove,
+routine setup) predate the piece and move to it as their files are touched.
+
+*Guarded* by `test/omni_utility_button_test.dart` (group `S-94.1..2`), and the
+two migrated sites keep their keys (`omni_session_effort_rating_button`,
+`food_form_package_link`).
 
 ### Shape Rule (MANDATORY)
 
@@ -345,7 +368,7 @@ The two-tier classification serves the UX goal of drawing the eye to potentially
 
 ### OmniTheme Tokens
 
-Button geometry is tokenised on `OmniTheme`: `buttonBorderRadius` (primary and row-pair), `buttonUtilityRadius` (utility and dialog), `buttonIconRadius` (icon-only square), `buttonPrimaryHeight`, `buttonIconSize`, and the shared bottom-CTA insets `bottomCTAHorizontalPadding`, `bottomCTAVerticalTopPadding`, `bottomCTAVerticalBottomPadding`, and `formBottomCTAClearance`. Reference the token; never restate or hardcode its value.
+Button geometry is tokenised on `OmniTheme`: `buttonBorderRadius` (primary and row-pair), `buttonUtilityRadius` (utility and dialog), `buttonIconRadius` (icon-only square), `buttonPrimaryHeight`, `buttonIconSize`, and the shared bottom-CTA insets `bottomCTAHorizontalPadding`, `bottomCTAVerticalTopPadding`, `bottomCTAVerticalBottomPadding`, `bottomCTASecondaryGap`, and `formBottomCTAClearance`. Reference the token; never restate or hardcode its value.
 
 ### Primary Bottom CTA — shared width and vertical anchor (MANDATORY)
 
@@ -375,6 +398,25 @@ bottom of a screen:
 * ❌ Any inline `FilledButton` whose width is hard-coded or whose
   vertical anchor is derived from the body content (it moves with
   the scroll position).
+
+**Secondary bottom action (MANDATORY when a screen needs one).** An action
+that belongs with the primary one but must not compete with it (Delete food,
+Reset to original on the food editor) is the `secondaryLabel` /
+`onSecondaryPressed` pair of `OmniBottomCTA`, never a hand-made button in the
+body or above the footer. It renders an outlined button directly above the
+primary one with the same height (`OmniTheme.buttonPrimaryHeight`), width,
+margins, radius (`OmniTheme.buttonBorderRadius`) and vertical anchor, separated
+by `OmniTheme.bottomCTASecondaryGap`; `isSecondaryDestructive` swaps the primary accent for the error colour,
+and `secondaryButtonKey` forwards a test key. A screen has at most one
+secondary action.
+
+* ❌ `OutlinedButton(...)` with its own padding / `SizedBox` placed above a screen's `OmniBottomCTA`
+
+*Guarded* by `test/omni_bottom_cta_secondary_test.dart` (group
+`S-93.1..3`: `S-93.2: the secondary button has the primary height, width and
+radius, and sits directly above it`) and, for the food editor, by
+`test/edit_food_save_test.dart` (`S-92a.9: Reset and Delete remain above Save`,
+which also pins Delete food to Save's size).
 
 **Per-screen hosts** that need a stable test target (e.g. the
 food library `Key('food_form_save')`) use the `buttonKey` prop on
@@ -481,6 +523,7 @@ pattern.
 | Screen header | `OmniBackHeader` | `lib/widgets/layout/omni_back_header.dart` |
 | Primary bottom action | `OmniBottomCTA` | `lib/widgets/layout/omni_bottom_cta.dart` |
 | Header add action | `OmniHeaderAddButton` | `lib/widgets/buttons/omni_header_add_button.dart` |
+| Inline utility action | `OmniUtilityButton` | `lib/widgets/buttons/omni_utility_button.dart` |
 | Confirmation | `ConfirmationDialog` | `lib/widgets/dialogs/confirmation_dialog.dart` |
 | Small bottom message | `OmniMessage` | `lib/widgets/feedback/omni_message.dart` |
 | Empty state | `OmniEmptyState` | `lib/widgets/common/omni_empty_state.dart` |
@@ -653,7 +696,8 @@ which pins the four title-case labels.
 ### Bottom actions
 
 A screen's primary bottom action is one of three cases: the shared
-`OmniBottomCTA`; the Cancel + Save pair in the routine editor (a named
+`OmniBottomCTA` (which also carries the optional secondary action, see
+"Primary Bottom CTA"); the Cancel + Save pair in the routine editor (a named
 exception — the pair is the screen's content, not a single anchored action);
 or an inline button on a first-run or startup screen, where there is no screen
 to anchor to.

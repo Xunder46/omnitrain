@@ -25,6 +25,14 @@ import '../../core/constants/omni_theme.dart';
 /// * **Footer treatment** — theme-reactive fade gradient using
 ///   `colorScheme.surface` so the CTA lifts above scrollable content.
 ///
+/// * **Secondary action (optional)** — a quieter outlined button of the
+///   same height, width, radius and margins stacked directly above the
+///   primary one, for an action that belongs with the primary but must
+///   not compete with it (e.g. **Delete food** / **Reset to original**
+///   on the food editor). Give it `secondaryLabel` + `onSecondaryPressed`;
+///   `isSecondaryDestructive` swaps primary for error colours. Never
+///   build a hand-made button above the CTA instead.
+///
 /// Call sites must not override padding, radius, height, or color.
 /// Do not embed a `Spacer() + SizedBox + FilledButton` at the
 /// bottom of a screen — that pattern bypasses this contract and
@@ -48,12 +56,29 @@ class OmniBottomCTA extends StatelessWidget {
   /// host screens, which preserves the existing test contract).
   final Key? buttonKey;
 
+  /// Label of the optional secondary action shown above the primary one.
+  /// Null (the default) renders no secondary action.
+  final String? secondaryLabel;
+
+  /// Tap handler of the secondary action. `null` disables it.
+  final VoidCallback? onSecondaryPressed;
+
+  /// Error colours for the secondary action instead of the primary accent.
+  final bool isSecondaryDestructive;
+
+  /// Optional `Key` forwarded to the secondary `OutlinedButton`.
+  final Key? secondaryButtonKey;
+
   const OmniBottomCTA({
     super.key,
     required this.label,
     required this.onPressed,
     this.isDestructive = false,
     this.buttonKey,
+    this.secondaryLabel,
+    this.onSecondaryPressed,
+    this.isSecondaryDestructive = false,
+    this.secondaryButtonKey,
   });
 
   @override
@@ -97,38 +122,76 @@ class OmniBottomCTA extends StatelessWidget {
               OmniTheme.bottomCTAHorizontalPadding,
               OmniTheme.bottomCTAVerticalBottomPadding,
             ),
-            child: SizedBox(
-              width: double.infinity,
-              height: OmniTheme.buttonPrimaryHeight,
-              child: FilledButton(
-                key: buttonKey,
-                onPressed: onPressed,
-                style: ButtonStyle(
-                  backgroundColor: WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.disabled)) {
-                      return theme.colorScheme.onSurface.withOpacity(0.12);
-                    }
-                    return backgroundColor;
-                  }),
-                  foregroundColor: WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.disabled)) {
-                      return theme.colorScheme.onSurface.withOpacity(0.38);
-                    }
-                    return foregroundColor;
-                  }),
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonBorderRadius,
-                      ),
-                    ),
-                  ),
-                ),
-                child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (secondaryLabel != null) ...[
+                  _buildSecondary(theme),
+                  const SizedBox(height: OmniTheme.bottomCTASecondaryGap),
+                ],
+                _buildPrimary(theme, backgroundColor, foregroundColor),
+              ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSecondary(ThemeData theme) {
+    final color = isSecondaryDestructive
+        ? theme.colorScheme.error
+        : theme.colorScheme.primary;
+    return SizedBox(
+      width: double.infinity,
+      height: OmniTheme.buttonPrimaryHeight,
+      child: OutlinedButton(
+        key: secondaryButtonKey,
+        onPressed: onSecondaryPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          side: BorderSide(color: color),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+          ),
+        ),
+        child: FittedBox(fit: BoxFit.scaleDown, child: Text(secondaryLabel!)),
+      ),
+    );
+  }
+
+  Widget _buildPrimary(
+    ThemeData theme,
+    Color backgroundColor,
+    Color foregroundColor,
+  ) {
+    return SizedBox(
+      width: double.infinity,
+      height: OmniTheme.buttonPrimaryHeight,
+      child: FilledButton(
+        key: buttonKey,
+        onPressed: onPressed,
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.disabled)) {
+              return theme.colorScheme.onSurface.withOpacity(0.12);
+            }
+            return backgroundColor;
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.disabled)) {
+              return theme.colorScheme.onSurface.withOpacity(0.38);
+            }
+            return foregroundColor;
+          }),
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+            ),
+          ),
+        ),
+        child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
       ),
     );
   }

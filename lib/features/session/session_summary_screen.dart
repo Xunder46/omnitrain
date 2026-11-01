@@ -17,6 +17,7 @@ import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/period/period_state.dart';
+import '../../widgets/buttons/omni_utility_button.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
@@ -932,21 +933,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              TextButton(
+              OmniUtilityButton(
+                buttonKey: const Key('omni_session_effort_rating_button'),
                 onPressed: _openEffortRatingSheet,
-                style: ButtonStyle(
-                  shape: WidgetStatePropertyAll(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                  padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  ),
-                ),
-                child: Text(feeling != null ? 'Change rating' : 'Add rating'),
+                icon: feeling != null ? Icons.edit_outlined : Icons.add,
+                label: feeling != null ? 'Change rating' : 'Add rating',
               ),
             ],
           ),

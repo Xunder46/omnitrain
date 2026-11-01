@@ -107,6 +107,7 @@ Alphabetical. Use this rather than guessing which page a component lives on.
 | `OmniEmptyState` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniGradientBackground` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniHeaderAddButton` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
+| `OmniUtilityButton` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniMessage` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniSurface` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `PRToast` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |

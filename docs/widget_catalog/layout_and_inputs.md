@@ -112,6 +112,16 @@ indicator and Android navigation bar uniformly. Geometry comes from `OmniTheme` 
 Hosts that need a stable test target forward a `Key` to the rendered button; the shared geometry is
 unaffected.
 
+| Optional prop | Type | Default | Description |
+|---------------|------|---------|-------------|
+| `secondaryLabel` | `String?` | `null` | Renders a quieter outlined button above the primary one with the same height, width, radius and margins (separated by `OmniTheme.bottomCTASecondaryGap`). `null` renders none |
+| `onSecondaryPressed` | `VoidCallback?` | `null` | Tap handler; `null` disables it |
+| `isSecondaryDestructive` | `bool` | `false` | Error colours instead of the primary accent |
+| `secondaryButtonKey` | `Key?` | `null` | Forwarded to the secondary `OutlinedButton` |
+
+The food editor uses it for **Delete food** and **Reset to original**. Verified by
+`test/omni_bottom_cta_secondary_test.dart` (group `S-93.1..3`).
+
 ### `OmniHeaderAddButton`
 
 **File**: `lib/widgets/buttons/omni_header_add_button.dart`
@@ -135,6 +145,24 @@ everywhere. A header action that goes somewhere else uses an icon for that place
 - Verified by `test/omni_header_add_button_test.dart` (group `S-9151..S-9153 OmniHeaderAddButton`);
   a header that builds its own "+" fails `test/ui_standards_contract_test.dart` (group
   `S-9158 header plus`).
+
+### `OmniUtilityButton`
+
+**File**: `lib/widgets/buttons/omni_utility_button.dart`
+
+The one inline action control: an outlined, content-width button with a leading icon, so an
+action among other controls reads as a button and not as a caption. Used by Change rating /
+Add rating on the Session Summary and the package-serving switch on the food form. The look is
+defined in [Design System](../design_system.md) ("Utility button — inline actions").
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `label` | `String` | required | Button text; may wrap on a narrow screen |
+| `icon` | `IconData` | required | Leading icon at a small fixed size |
+| `onPressed` | `VoidCallback?` | required | Tap handler; `null` disables it |
+| `buttonKey` | `Key?` | `null` | Placed on the inner `OutlinedButton` |
+
+Verified by `test/omni_utility_button_test.dart` (group `S-94.1..2`).
 
 ### `NoiseOverlayPainter`
 

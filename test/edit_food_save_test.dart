@@ -433,7 +433,7 @@ void main() {
       lessThan(
         tester.getTopLeft(find.byKey(const Key('food_form_save'))).dy,
       ),
-      reason: 'Reset sits in the body, above the bottom Save CTA',
+      reason: 'Reset sits in the footer, directly above Save',
     );
 
     final createdFixture = await _seedTrailMix();
@@ -453,7 +453,12 @@ void main() {
       lessThan(
         tester.getTopLeft(find.byKey(const Key('food_form_save'))).dy,
       ),
-      reason: 'Delete sits in the body, above the bottom Save CTA',
+      reason: 'Delete sits in the footer, directly above Save',
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('food_delete_created'))),
+      tester.getSize(find.byKey(const Key('food_form_save'))),
+      reason: 'Delete food has the same height and width as Save',
     );
   });
 
