@@ -137,3 +137,87 @@ The 2 deletions are `calculateCalories`'s old body line and the doc line it repl
 
 `.github/copilot/scripts/macos/gateway.sh test` → `07:22 +5932 ~2: All tests passed!` (5932 passed, 2 skipped, 0 failed; baseline was 5918 pass / 2 skipped — the delta is this phase's 13 new tests plus the concurrent unit's catalog tests).
 
+## Phase 2A — the boxes (developer, base for proof `da266e05`)
+
+### Red before implementation
+
+`test/food_form_label_test.dart` written first (10 tests), then
+`.github/copilot/scripts/macos/gateway.sh test test/food_form_label_test.dart` → exit 1,
+`00:01 +2 -8: Some tests failed.` Eight failures, each for its scenario's seeded reason:
+
+| Test | Red failure at base |
+| --- | --- |
+| S-92c.2 order | `Expected: a value less than <484.0> Actual: <612.0>` (protein sits above fat) |
+| S-92c.3 blank boxes + hint | `Expected: empty Actual: '0.0'` |
+| S-92c.4 blank save | `Expected: null Actual: <0.0>` (fiber/sodium saved as 0.0) |
+| S-92c.5 prefill | `Expected: '31' Actual: '31.0'` |
+| S-92c.14 stored 0.0 fiber | `Expected: '0' Actual: '0.0'` |
+| S-92c.14 unrecorded fiber/sodium | `Expected: empty Actual: '0.0'` |
+| S-92c.15 select-all text | `Expected: '4' Actual: '4.0'` |
+| S-92c.16 faint 0 | `Found 0 widgets with text "0"` |
+
+The two passes are the red-independent legs: S-92c.6 (a lone `.` already returned
+`Must be a number` at base) and S-92c.14's type-then-clear leg. A first attempt failed to
+compile (`TextFormField.decoration` is private); the assertion was rewritten to read the
+descendant `InputDecorator.decoration`, which compiles at base, so the red above is behavioural.
+
+### Green
+
+- `test test/food_form_label_test.dart` → `00:00 +10: All tests passed!`
+- `test test/food_form_label_test.dart test/food_form_decimals_and_autofocus_test.dart test/food_form_serving_test.dart test/food_form_orphan_category_test.dart test/food_form_pick_saves_test.dart test/edit_food_save_test.dart test/nutrition_test.dart` → `00:17 +154: All tests passed!` (154 passed, 0 failed).
+- `test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` → `00:01 +54: All tests passed!`
+
+### Prove-red
+
+`.github/copilot/scripts/macos/gateway.sh prove-red da266e05 test test/food_form_label_test.dart` (Phase 1 commit, per the brief) →
+
+`gateway: prove-red: RED AT da266e05 (exit 1).` `00:01 +2 -8: Some tests failed.` with the
+eight assertion failures listed in the red table above (order, `0.0`, null fiber, `31.0`,
+`4.0`, no hint). Not a compile or load error.
+
+### Test inventory added (S-92c.2..6, 14..16)
+
+`test/food_form_label_test.dart` (10 `testWidgets`, Mock-first, 800×3000 surface):
+S-92c.2 order; S-92c.3 blank boxes + five `0` hints + no `0.0`; S-92c.4 blank save
+(0.0/0.0/0.0, fiber/sodium null); S-92c.5 edit prefill (`31`, `0`, `3.6`, empty, `74`) and
+untouched save; S-92c.6 lone `.` → `Must be a number`, no save; S-92c.14 three legs (stored
+0.0 stays 0.0, null stays empty/null, type-then-clear sodium saves null); S-92c.15 `4` +
+full selection; S-92c.16 five labels visible, five `0` hints, and the name/group decorations
+carry neither a hint nor `FloatingLabelBehavior.always` (the `InputDecorator` resolves an
+unset behaviour to `auto`, so the assertion is `isNot(always)`).
+
+### Existing test rewritten
+
+`test/food_form_decimals_and_autofocus_test.dart`:
+- S-003 now types `.` into carbs and expects `Must be a number` with `saveCalled` false (was `abc` → `Required`).
+- S-004 expects the prefilled fat `'4'` (was `'4.0'`).
+- S-001's stale comment ("Required macros default to 0") now says blanks save 0.0. No assertion changed.
+No other assertion in that file depended on the blank/prefill text.
+
+### Lint
+
+`lint` → **181 issues, 0 errors**, equal to the brief's 181 baseline (the one warning is the
+concurrent unit's `test/food_catalog_load_test.dart:270`). No issue names this phase's files.
+
+### Full suite
+
+`.github/copilot/scripts/macos/gateway.sh test` → `03:52 +5942 ~2: All tests passed!`
+(5942 passed, 2 skipped, 0 failed; Phase 1 left 5932, +10 from this phase's new file).
+
+### Residue sweeps
+
+- `grep '?? 0.0).toString()' lib/` → no matches.
+- `grep 'Required' lib/features/nutrition/widgets/food_form.dart` → the class doc's English
+  "Required" and `_validatePositiveDouble`'s `'Required'` (package amount) only.
+- `grep "find.text('Required')" test/` → `test/food_form_serving_test.dart` only (the package
+  amount leg).
+- `grep floatingLabelBehavior lib/features/nutrition/widgets/` → `_macroField` only.
+- `grep -r "hive_workout_repository" lib/` → `lib/main.dart` only (composition root, outside
+  the `lib/state`/`lib/features`/`lib/widgets`/`lib/core` invariant).
+
+### Diff footprint
+
+`git-diff --stat` → `lib/features/nutrition/widgets/food_form.dart | 96 +++---` and
+`test/food_form_decimals_and_autofocus_test.dart | 28 +++---`; `test/food_form_label_test.dart`
+is new. No formatter pass was run on the tracked files.
+

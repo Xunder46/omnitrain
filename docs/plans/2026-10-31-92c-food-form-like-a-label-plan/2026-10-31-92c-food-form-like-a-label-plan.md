@@ -245,7 +245,7 @@ Appended by the planner (conductor-v2) on base `3ed09c3f`. Everything above the 
 ### Progress
 
 - [x] Phase 1 — the two rules (**Complete**: 72/72 in `test/food_library_state_test.dart`; mutations (a) calories +1 and (b) drop archived skip proved red and restored)
-- [ ] Phase 2A — the boxes
+- [x] Phase 2A — the boxes (**Complete**: 10/10 in `test/food_form_label_test.dart`; 154/154 across the Phase 2A neighbours; prove-red RED AT `da266e05`; full suite 5942 passed / 2 skipped; lint 181 = baseline)
 - [ ] Phase 2B — calories, photo, duplicate note
 - [ ] Phase 3 — docs
 
@@ -254,6 +254,10 @@ Appended by the planner (conductor-v2) on base `3ed09c3f`. Everything above the 
 _Executors append: decision made, options considered, choice + why. Conductor marks each RATIFIED (promote to D-x) or REVERT (remediation)._
 
 - **A-92c.P1.1 Twin linkage uses cache membership, not the `isCatalog` flag.** `nameExistsInLibrary` knows each candidate's source map (`_catalogFoods` vs `_foods`) and skips a catalog row whose id equals `excluding.catalogId` / a library row whose `catalogId` equals `excluding.id`. Considered: branching on `excluding.isCatalog`/`candidate.isCatalog`; rejected because legacy rows can carry a stale flag (92a/92b import paths) while the cache is authoritative. Same rule as D-92c.13.
+- **A-92c.2A.1 `_macroField`'s validator returns null for empty text.** Phase 2A item 3 says "validator empty → `'Must be a number'`"; D-92c.5 and AC-5 say blank Protein/Carbs/Fat save 0 and blank Fiber/Sodium save null, so the item's wording is a slip. Followed D-92c.5 (the brief confirms the seeded definition wins).
+- **A-92c.2A.2 S-92c.16 reads the resolved `InputDecorator.decoration`.** `TextFormField.decoration` is private, and an unset `floatingLabelBehavior` resolves to `auto`. Considered asserting `isNull`; rejected because resolution never yields null. The guard is `hintText == null && floatingLabelBehavior != always` on the name and category fields.
+- **A-92c.2A.3 The class doc's field list was reordered with the code.** The header comment listed protein → … → sodium; leaving it would contradict D-92c.2 in the same file. `_macroField`'s doc comment now states the blank-save contract.
+- **A-92c.2A.4 S-003 and S-004 keep their ids in `test/food_form_decimals_and_autofocus_test.dart`.** S-003 now types `.` (was `abc`) and expects `Must be a number`; S-004 expects `'4'`. No other assertion in that file changed; S-001's comment was updated only.
 
 ### Feedback
 

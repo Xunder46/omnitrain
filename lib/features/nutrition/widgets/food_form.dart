@@ -40,11 +40,11 @@ export '../../../core/models/food_draft.dart' show FoodDraft;
 ///   * Category (group) dropdown
 ///   * Serving — "Nutrition facts are per" (100 g / 100 ml / 1 serving,
 ///     a package serving, or As saved), then the per-serving heading
-///   * Protein (g) — macro field
-///   * Carbs (g) — macro field
-///   * Fiber (g) — macro field (optional, blank = unset)
-///   * Fat (g) — macro field
-///   * Sodium (mg) — macro field (optional, blank = unset)
+///   * Fat (g) — macro field (blank saves 0)
+///   * Carbs (g) — macro field (blank saves 0)
+///   * Fiber (g) — macro field (blank saves "not recorded")
+///   * Protein (g) — macro field (blank saves 0)
+///   * Sodium (mg) — macro field (blank saves "not recorded")
 ///   * Notes (when [showNotesField] is true)
 ///
 /// **Primary bottom CTA**: the form no longer renders an inline
@@ -280,18 +280,27 @@ class _FoodFormState extends State<FoodForm> {
       },
     );
     _packageOpen = _servingChoice is PackageServing;
-    // Macros are stored as `double`; `(initial?.protein ?? 0).toString()`
-    // would fail to compile with an `int`-vs-`double` mismatch in
-    // the `?? 0` branch, so use `0.0` (double literal) explicitly.
-    // The string form keeps trailing-zero display as the user typed
-    // it because we only render `toString()` of the underlying value.
+    // A new food opens with blank boxes; an edit shows the stored value the
+    // way a label prints it (`31`, not `31.0`). A never-recorded fiber or
+    // sodium stays empty, so saving unchanged keeps it unrecorded
+    // (D-92c.3, D-92c.4).
+    final fiber = initial?.fiber;
+    final sodium = initial?.sodium;
     _protein = TextEditingController(
-      text: (initial?.protein ?? 0.0).toString(),
+      text: initial == null ? '' : formatGrams(initial.protein),
     );
-    _carbs = TextEditingController(text: (initial?.carbs ?? 0.0).toString());
-    _fiber = TextEditingController(text: (initial?.fiber ?? 0.0).toString());
-    _fat = TextEditingController(text: (initial?.fat ?? 0.0).toString());
-    _sodium = TextEditingController(text: (initial?.sodium ?? 0.0).toString());
+    _carbs = TextEditingController(
+      text: initial == null ? '' : formatGrams(initial.carbs),
+    );
+    _fiber = TextEditingController(
+      text: fiber == null ? '' : formatGrams(fiber),
+    );
+    _fat = TextEditingController(
+      text: initial == null ? '' : formatGrams(initial.fat),
+    );
+    _sodium = TextEditingController(
+      text: sodium == null ? '' : formatGrams(sodium),
+    );
     _notes = TextEditingController(text: initial?.notes ?? '');
     _groupId = initial?.groupId;
     _imagePath = initial?.imagePath;
@@ -441,9 +450,10 @@ class _FoodFormState extends State<FoodForm> {
       final fiberRaw = _fiber.text.trim();
       final sodiumRaw = _sodium.text.trim();
       // Macros are stored as `double` (Food / FoodDraft) so the
-      // user can enter fractional grams (e.g. `0.5` g of fat).
-      // Optional fields (fiber, sodium) keep their nullable
-      // contract: empty string -> null, otherwise `double.parse`.
+      // user can enter fractional grams (e.g. `0.5` g of fat). A blank
+      // Protein/Carbs/Fat means 0; a blank Fiber/Sodium means "not
+      // recorded" (null). Validation has already rejected non-numeric
+      // text, so `tryParse` only softens the blank case (D-92c.5).
       final (servingUnitType, servingAmount, servingLabel) =
           storedServingFrom(_currentChoice);
       final draft = FoodDraft(
@@ -452,11 +462,11 @@ class _FoodFormState extends State<FoodForm> {
         unitType: servingUnitType,
         referenceAmount: servingAmount,
         referenceLabel: servingLabel,
-        protein: double.parse(_protein.text.trim()),
-        carbs: double.parse(_carbs.text.trim()),
-        fiber: fiberRaw.isEmpty ? null : double.parse(fiberRaw),
-        fat: double.parse(_fat.text.trim()),
-        sodium: sodiumRaw.isEmpty ? null : double.parse(sodiumRaw),
+        protein: double.tryParse(_protein.text.trim()) ?? 0.0,
+        carbs: double.tryParse(_carbs.text.trim()) ?? 0.0,
+        fiber: fiberRaw.isEmpty ? null : double.tryParse(fiberRaw),
+        fat: double.tryParse(_fat.text.trim()) ?? 0.0,
+        sodium: sodiumRaw.isEmpty ? null : double.tryParse(sodiumRaw),
         notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
         imagePath: _imagePath,
       );
@@ -764,11 +774,10 @@ class _FoodFormState extends State<FoodForm> {
                 ],
                 const SizedBox(height: 8),
                 _macroField(
-                  key: const Key('food_form_protein'),
-                  controller: _protein,
-                  focusNode: _proteinFocus,
-                  label: 'Protein (g)',
-                  required: true,
+                  key: const Key('food_form_fat'),
+                  controller: _fat,
+                  focusNode: _fatFocus,
+                  label: 'Fat (g)',
                 ),
                 const SizedBox(height: 8),
                 _macroField(
@@ -776,7 +785,6 @@ class _FoodFormState extends State<FoodForm> {
                   controller: _carbs,
                   focusNode: _carbsFocus,
                   label: 'Carbs (g)',
-                  required: true,
                 ),
                 const SizedBox(height: 8),
                 _macroField(
@@ -784,15 +792,13 @@ class _FoodFormState extends State<FoodForm> {
                   controller: _fiber,
                   focusNode: _fiberFocus,
                   label: 'Fiber (g)',
-                  required: false,
                 ),
                 const SizedBox(height: 8),
                 _macroField(
-                  key: const Key('food_form_fat'),
-                  controller: _fat,
-                  focusNode: _fatFocus,
-                  label: 'Fat (g)',
-                  required: true,
+                  key: const Key('food_form_protein'),
+                  controller: _protein,
+                  focusNode: _proteinFocus,
+                  label: 'Protein (g)',
                 ),
                 const SizedBox(height: 8),
                 _macroField(
@@ -800,7 +806,6 @@ class _FoodFormState extends State<FoodForm> {
                   controller: _sodium,
                   focusNode: _sodiumFocus,
                   label: 'Sodium (mg)',
-                  required: false,
                 ),
                 if (widget.showNotesField) ...[
                   const SizedBox(height: 12),
@@ -830,9 +835,10 @@ class _FoodFormState extends State<FoodForm> {
     );
   }
 
-  /// Macro text field with decimal input. Required fields reject
-  /// empty input; optional fields allow empty (treated as "unset",
-  /// persisted as `null` on the model).
+  /// Macro text field with decimal input. Every box is optional: a blank
+  /// Protein, Carbs or Fat saves 0, a blank Fiber or Sodium saves "not
+  /// recorded" (null). Non-numeric text (a lone `.`) still surfaces
+  /// `"Must be a number"`.
   ///
   /// Accepts the same `^\d*\.?\d*$` pattern as the package-size field
   /// (one optional decimal point, digits on either side).
@@ -846,7 +852,6 @@ class _FoodFormState extends State<FoodForm> {
     required TextEditingController controller,
     required FocusNode focusNode,
     required String label,
-    required bool required,
   }) {
     return TextFormField(
       key: key,
@@ -856,15 +861,20 @@ class _FoodFormState extends State<FoodForm> {
       inputFormatters: [
         FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
       ],
+      // Rebuild as the box changes so readers derived from the text follow
+      // typing (D-92c.10).
+      onChanged: (_) => setState(() {}),
       decoration: InputDecoration(
         labelText: label,
+        hintText: '0',
+        // Material hides a hint while the label sits inside the box; `always`
+        // keeps the faint 0 visible without focus (D-92c.3, D-92c.14).
+        floatingLabelBehavior: FloatingLabelBehavior.always,
         border: const OutlineInputBorder(),
       ),
       validator: (v) {
         final trimmed = v?.trim() ?? '';
-        if (trimmed.isEmpty) {
-          return required ? 'Required' : null;
-        }
+        if (trimmed.isEmpty) return null;
         if (double.tryParse(trimmed) == null) {
           return 'Must be a number';
         }

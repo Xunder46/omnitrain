@@ -201,7 +201,8 @@ void main() {
         expect(capturedDraft, isNotNull);
         expect(capturedDraft!.fat, 0.5);
         expect(capturedDraft!.name, 'Half-fat snack');
-        // Required macros default to "0" and parse to 0.0.
+        // Blank macros save as 0.0 (D-92c.5): a blank Protein/Carbs/Fat
+        // is zero, not "required".
         expect(capturedDraft!.protein, 0.0);
         expect(capturedDraft!.carbs, 0.0);
       },
@@ -282,8 +283,8 @@ void main() {
     );
 
     testWidgets(
-      'the decimal input formatter strips letters, so a required macro '
-      'field shows the "Required" validator error (S-003)',
+      'a lone decimal point is not a number, so the validator shows '
+      '"Must be a number" (S-003)',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(_formSurface);
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -318,12 +319,10 @@ void main() {
           find.byKey(const Key('food_form_name')),
           'Bad input',
         );
-        // The decimal formatter strips every non-digit, non-dot
-        // character. The validator's "Required" branch is the
-        // first one triggered when the field is empty after
-        // stripping. This is the user-facing behaviour we
-        // exercise here.
-        await tester.enterText(find.byKey(const Key('food_form_carbs')), 'abc');
+        // The decimal formatter accepts a lone dot (it matches
+        // `^\d*\.?\d*$`), so it reaches the validator, which rejects
+        // it as non-numeric. Blank macros are valid (they save 0).
+        await tester.enterText(find.byKey(const Key('food_form_carbs')), '.');
         await tester.pump();
         controller.submit();
         await tester.pumpAndSettle();
@@ -333,12 +332,9 @@ void main() {
           isFalse,
           reason: 'save must be blocked by validator',
         );
-        // "Required" surfaces for required macros whose input
-        // was filtered down to empty. This is the visible
-        // behaviour of the `^\d*\.?\d*$` formatter + the
-        // `required ? "Required" : null` branch in the
-        // validator.
-        expect(find.text('Required'), findsOneWidget);
+        // Non-numeric text surfaces through the validator's
+        // `double.tryParse` branch.
+        expect(find.text('Must be a number'), findsOneWidget);
       },
     );
   });
@@ -396,7 +392,7 @@ void main() {
         find.byKey(const Key('food_form_fat')),
       );
       final controller = field.controller!;
-      expect(controller.text, '4.0');
+      expect(controller.text, '4');
       expect(
         controller.selection,
         TextSelection(baseOffset: 0, extentOffset: controller.text.length),
