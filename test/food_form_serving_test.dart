@@ -13,8 +13,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/features/nutrition/add_food_screen.dart';
+import 'package:omnitrain/features/nutrition/edit_food_screen.dart';
 import 'package:omnitrain/features/nutrition/widgets/food_form.dart';
 import 'package:omnitrain/state/food_library_state.dart';
+import 'package:omnitrain/state/nutrition_state.dart';
 
 /// Tall, wide surface so the whole form and every segment fit.
 const _formSurface = Size(800, 1800);
@@ -116,6 +119,124 @@ void _expectNoServingControls() {
   for (final word in _servingWords) {
     expect(find.byKey(Key('food_form_serving_chip_$word')), findsNothing);
   }
+}
+
+/// The edit-mode note, when present.
+String? _note(WidgetTester tester) {
+  final finder = find.byKey(const Key('food_form_per_note'));
+  if (finder.evaluate().isEmpty) return null;
+  return tester.widget<Text>(finder).data;
+}
+
+/// A catalog food for the edit-mode scenarios.
+Food _catalogFood({
+  required String id,
+  required String name,
+  FoodUnitType unitType = FoodUnitType.grams,
+  double referenceAmount = 100,
+  String referenceLabel = 'g',
+  double protein = 10,
+  double carbs = 20,
+  double fiber = 2,
+  double fat = 5,
+  double? sodium = 100,
+}) => Food(
+  id: id,
+  name: name,
+  groupId: null,
+  unitType: unitType,
+  referenceAmount: referenceAmount,
+  referenceLabel: referenceLabel,
+  isCatalog: true,
+  protein: protein,
+  carbs: carbs,
+  fiber: fiber,
+  fat: fat,
+  sodium: sodium,
+  createdAtMs: 1000,
+  updatedAtMs: 1000,
+);
+
+typedef _EditFixture = ({
+  MockWorkoutRepository repo,
+  FoodLibraryState state,
+  Food loaded,
+});
+
+/// Seeds [seed] into the catalog and returns the loaded copy.
+Future<_EditFixture> _seedEditFood(Food seed) async {
+  final repo = MockWorkoutRepository();
+  await repo.initialize();
+  await repo.seedCatalogFood(seed);
+  final state = FoodLibraryState(repo);
+  await state.loadCatalogFoods();
+  final loaded = state.catalogFoods.firstWhere((f) => f.id == seed.id);
+  return (repo: repo, state: state, loaded: loaded);
+}
+
+/// Pushes [EditFoodScreen] from a host route so a save can pop back to a
+/// real screen and the test can see it close.
+class _EditHost extends StatelessWidget {
+  const _EditHost({required this.food, required this.foodLibraryState});
+
+  final Food food;
+  final FoodLibraryState foodLibraryState;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: TextButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => EditFoodScreen(
+                food: food,
+                foodLibraryState: foodLibraryState,
+              ),
+            ),
+          ),
+          child: const Text('open editor'),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _openEditHost(
+  WidgetTester tester, {
+  required Food food,
+  required FoodLibraryState state,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(800, 1800));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(
+    MaterialApp(
+      key: UniqueKey(),
+      home: _EditHost(food: food, foodLibraryState: state),
+    ),
+  );
+  await tester.tap(find.text('open editor'));
+  await tester.pumpAndSettle();
+  expect(find.byType(EditFoodScreen), findsOneWidget);
+}
+
+/// Taps the edit host's bottom Save and waits for the screen to close.
+Future<void> _tapEditSave(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('food_form_save')));
+  await tester.pumpAndSettle();
+  expect(find.byType(EditFoodScreen), findsNothing);
+}
+
+void _expectStoredTriple(
+  Food? stored,
+  FoodUnitType unitType,
+  double amount,
+  String label,
+) {
+  expect(stored, isNotNull);
+  expect(stored!.unitType, unitType);
+  expect(stored.referenceAmount, amount);
+  expect(stored.referenceLabel, label);
 }
 
 void main() {
@@ -472,6 +593,368 @@ void main() {
         expect(find.text('Back to per 100 g'), findsOneWidget);
         expect(_fieldText(tester, 'food_form_package_amount'), '30');
         expect(_heading(tester), 'Nutrition per 30 g');
+      },
+    );
+
+    testWidgets(
+      'S-92b.6 an edited food opens on its stored serving and saves both ways',
+      (tester) async {
+        final egg = await _seedEditFood(
+          _catalogFood(
+            id: 'egg',
+            name: 'Egg',
+            unitType: FoodUnitType.count,
+            referenceAmount: 1.0,
+            referenceLabel: 'egg',
+          ),
+        );
+        await _openEditHost(tester, food: egg.loaded, state: egg.state);
+
+        expect(_selectedBasisLabels(tester), ['1 serving']);
+        expect(_fieldText(tester, 'food_form_serving_label'), 'egg');
+        expect(_heading(tester), 'Nutrition per 1 egg');
+
+        await tester.tap(find.text('100 g'));
+        await tester.pumpAndSettle();
+        await _tapEditSave(tester);
+        _expectStoredTriple(
+          await egg.repo.getCatalogFoodById('egg'),
+          FoodUnitType.grams,
+          100,
+          'g',
+        );
+
+        final rice = await _seedEditFood(
+          _catalogFood(id: 'rice', name: 'Rice'),
+        );
+        await _openEditHost(tester, food: rice.loaded, state: rice.state);
+        await tester.tap(find.text('1 serving'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('food_form_serving_label')),
+          'cup',
+        );
+        await tester.pumpAndSettle();
+        expect(_heading(tester), 'Nutrition per 1 cup');
+
+        await _tapEditSave(tester);
+        _expectStoredTriple(
+          await rice.repo.getCatalogFoodById('rice'),
+          FoodUnitType.count,
+          1,
+          'cup',
+        );
+      },
+    );
+
+    testWidgets(
+      'S-92b.7 a package-stored food opens with its amount and keeps it on save',
+      (tester) async {
+        final fixture = await _seedEditFood(
+          _catalogFood(
+            id: 'beef_jerky',
+            name: 'Beef jerky',
+            referenceAmount: 28,
+          ),
+        );
+        await _openEditHost(tester, food: fixture.loaded, state: fixture.state);
+
+        expect(_fieldText(tester, 'food_form_package_amount'), '28');
+        expect(_heading(tester), 'Nutrition per 28 g');
+
+        await _tapEditSave(tester);
+        _expectStoredTriple(
+          await fixture.repo.getCatalogFoodById('beef_jerky'),
+          FoodUnitType.grams,
+          28,
+          'g',
+        );
+      },
+    );
+
+    testWidgets(
+      'S-92b.8 As saved round trips and restores the opened triple',
+      (tester) async {
+        final fixture = await _seedEditFood(
+          _catalogFood(
+            id: 'as_saved_food',
+            name: 'Mayo',
+            unitType: FoodUnitType.count,
+            referenceAmount: 3,
+            referenceLabel: 'tbsp',
+          ),
+        );
+        await _openEditHost(tester, food: fixture.loaded, state: fixture.state);
+
+        expect(_selectedBasisLabels(tester), ['As saved: 3 tbsp']);
+        expect(_heading(tester), 'Nutrition per 3 tbsp');
+
+        await _tapEditSave(tester);
+        _expectStoredTriple(
+          await fixture.repo.getCatalogFoodById('as_saved_food'),
+          FoodUnitType.count,
+          3,
+          'tbsp',
+        );
+
+        // Reopen and walk away to 100 g and back.
+        final second = await _seedEditFood(
+          _catalogFood(
+            id: 'as_saved_food',
+            name: 'Mayo',
+            unitType: FoodUnitType.count,
+            referenceAmount: 3,
+            referenceLabel: 'tbsp',
+          ),
+        );
+        await _openEditHost(tester, food: second.loaded, state: second.state);
+
+        await tester.tap(find.text('100 g'));
+        await tester.pumpAndSettle();
+        expect(_heading(tester), 'Nutrition per 100 g');
+        expect(
+          find.text('As saved: 3 tbsp'),
+          findsOneWidget,
+          reason: 'the segment stays visible once the loaded choice was '
+              'as-saved',
+        );
+
+        // The fourth segment sits past the 800 px edge of the
+        // horizontally scrolling segments row.
+        await tester.ensureVisible(find.text('As saved: 3 tbsp'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('As saved: 3 tbsp'));
+        await tester.pumpAndSettle();
+        expect(_selectedBasisLabels(tester), ['As saved: 3 tbsp']);
+        expect(_heading(tester), 'Nutrition per 3 tbsp');
+
+        await _tapEditSave(tester);
+        _expectStoredTriple(
+          await second.repo.getCatalogFoodById('as_saved_food'),
+          FoodUnitType.count,
+          3,
+          'tbsp',
+        );
+      },
+    );
+
+    testWidgets(
+      'S-92b.9 the check line appears off the opened serving and hides again',
+      (tester) async {
+        final fixture = await _seedEditFood(
+          _catalogFood(id: 'note_food', name: 'Oats'),
+        );
+        await _openEditHost(tester, food: fixture.loaded, state: fixture.state);
+
+        expect(_note(tester), isNull);
+
+        final proteinBefore = _fieldText(tester, 'food_form_protein');
+        final carbsBefore = _fieldText(tester, 'food_form_carbs');
+        final fatBefore = _fieldText(tester, 'food_form_fat');
+
+        await tester.tap(find.text('1 serving'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('food_form_serving_label')),
+          'slice',
+        );
+        await tester.pumpAndSettle();
+
+        expect(_note(tester), 'Check these numbers are per 1 slice');
+        expect(_fieldText(tester, 'food_form_protein'), proteinBefore);
+        expect(_fieldText(tester, 'food_form_carbs'), carbsBefore);
+        expect(_fieldText(tester, 'food_form_fat'), fatBefore);
+
+        await tester.tap(find.text('100 g'));
+        await tester.pumpAndSettle();
+        expect(_note(tester), isNull);
+
+        await _tapEditSave(tester);
+        final stored = await fixture.repo.getCatalogFoodById('note_food');
+        expect(stored, isNotNull);
+        expect(stored!.protein, 10);
+        expect(stored.carbs, 20);
+        expect(stored.fat, 5);
+
+        // A New Food never shows the note.
+        await _pumpNewFoodForm(tester);
+        await tester.tap(find.text('1 serving'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('food_form_serving_label')),
+          'slice',
+        );
+        await tester.pumpAndSettle();
+        expect(_note(tester), isNull);
+      },
+    );
+
+    testWidgets(
+      'S-92b.11 a millilitre food opens on 100 ml and saves it unchanged',
+      (tester) async {
+        final fixture = await _seedEditFood(
+          _catalogFood(
+            id: 'milk',
+            name: 'Milk',
+            referenceAmount: 100,
+            referenceLabel: 'ml',
+          ),
+        );
+        await _openEditHost(tester, food: fixture.loaded, state: fixture.state);
+
+        expect(_selectedBasisLabels(tester), ['100 ml']);
+        expect(_heading(tester), 'Nutrition per 100 ml');
+
+        await _tapEditSave(tester);
+        _expectStoredTriple(
+          await fixture.repo.getCatalogFoodById('milk'),
+          FoodUnitType.grams,
+          100,
+          'ml',
+        );
+      },
+    );
+
+    testWidgets(
+      'S-92b.14 the package row survives a parent rebuild',
+      (tester) async {
+        await _pumpNewFoodForm(tester);
+
+        await tester.tap(find.byKey(const Key('food_form_package_link')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('food_form_package_amount')),
+          '30',
+        );
+        await tester.pumpAndSettle();
+
+        // Change another field so the form rebuilds.
+        await tester.enterText(
+          find.byKey(const Key('food_form_name')),
+          'My Trail Mix',
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Back to per 100 g'), findsOneWidget);
+        expect(_fieldText(tester, 'food_form_package_amount'), '30');
+        expect(_heading(tester), 'Nutrition per 30 g');
+      },
+    );
+
+    testWidgets(
+      'S-92b.16 both edit hosts render the same serving control',
+      (tester) async {
+        // EditFoodScreen host: a library copy of a bundled catalog food.
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+        await state.addCatalogFoodToLibrary('chicken_breast');
+        final copy = state.libraryFoodFor('chicken_breast')!;
+        await _openEditHost(tester, food: copy, state: state);
+
+        expect(find.byKey(const Key('food_form_basis')), findsOneWidget);
+        expect(_selectedBasisLabels(tester), ['100 g']);
+        expect(find.byKey(const Key('food_form_unit_type')), findsNothing);
+        expect(
+          find.byKey(const Key('food_form_reference_amount')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('food_form_reference_label')),
+          findsNothing,
+        );
+
+        // The legacy edit shim, reached by tapping an isCatalog: false row.
+        final legacyRepo = MockWorkoutRepository();
+        await legacyRepo.initialize();
+        final legacyState = FoodLibraryState(legacyRepo);
+        await legacyState.loadFoodGroups();
+        await legacyState.loadFoods();
+        await legacyState.loadCatalogFoods();
+        final nutrition = NutritionState(legacyRepo);
+        await nutrition.loadConsumedToday();
+        await nutrition.loadNutritionTarget();
+        await legacyState.createFood(
+          const Food(
+            id: '',
+            name: 'Legacy Oats',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            isCatalog: false,
+            protein: 10,
+            carbs: 20,
+            fiber: 2,
+            fat: 5,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await legacyState.loadFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            key: UniqueKey(),
+            home: AddFoodScreen(
+              foodLibraryState: legacyState,
+              nutritionState: nutrition,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('catalog_search_field')),
+          'Legacy Oats',
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.byType(ListView),
+            matching: find.text('Legacy Oats'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Edit Food'), findsOneWidget);
+
+        expect(find.byKey(const Key('food_form_basis')), findsOneWidget);
+        expect(_selectedBasisLabels(tester), ['100 g']);
+        expect(find.byKey(const Key('food_form_unit_type')), findsNothing);
+        expect(
+          find.byKey(const Key('food_form_reference_amount')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('food_form_reference_label')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'S-92b.19 the note is hidden while the package row reproduces the opened serving',
+      (tester) async {
+        final fixture = await _seedEditFood(
+          _catalogFood(
+            id: 'package_food',
+            name: 'Yoghurt pot',
+            referenceAmount: 30,
+          ),
+        );
+        await _openEditHost(tester, food: fixture.loaded, state: fixture.state);
+
+        expect(_fieldText(tester, 'food_form_package_amount'), '30');
+        expect(_heading(tester), 'Nutrition per 30 g');
+        expect(_note(tester), isNull);
+
+        await tester.enterText(
+          find.byKey(const Key('food_form_package_amount')),
+          '45',
+        );
+        await tester.pumpAndSettle();
+
+        expect(_heading(tester), 'Nutrition per 45 g');
+        expect(_note(tester), 'Check these numbers are per 45 g');
       },
     );
   });

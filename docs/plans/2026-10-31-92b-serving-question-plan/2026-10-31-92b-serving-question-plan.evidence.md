@@ -290,3 +290,90 @@ No doc update required: this run adds tests only and changes no screen, route, w
 - Not caused by this run: `.github/copilot/scripts/macos/gateway.sh prove-red HEAD test test/logger_feedback_controls_test.dart` → `00:01 +10: All tests passed!` / `gateway: prove-red: GREEN AT HEAD`. The file is unmodified and this run changed only `test/food_form_serving_test.dart`, so the red comes from the uncommitted hands-off sources already in the working tree (`lib/state/workout/workout_state.dart`, `session_core_entry.dart`, `lib/features/session/session_summary_screen.dart`, `lib/state/watch/watch_session_adoption_bridge.dart`).
 - Not fixed here: those files are outside this brief's hands-off list and the red test belongs to another feature (do not edit it). Reported to the governor.
 
+## Phase 2B execution (developer, base `c0201f0c`)
+
+Scope: the D-92b.6 note and the eight edit-mode scenarios. Files: `lib/features/nutrition/widgets/food_form.dart` (the only production file) and `test/food_form_serving_test.dart`.
+
+### Phase 0 — tests first, red evidence
+
+The register's eight 2B scenarios were written against the plan's fixtures (Egg count / 1.0 / `egg`, Rice grams / 100 / `g`, Beef jerky grams / 28 / `g`, Mayo count / 3 / `tbsp`, Oats grams / 100 / `g`, Milk grams / 100 / `ml`, a 30 g package food, the catalogue copy of `chicken_breast` and a legacy `isCatalog: false` food). The note is the only production behaviour 2B adds, and its two guards are proven red on base by `prove-red`; the six behaviour guards exercise 2A's shipped code, so the brief's mutations carry them (table below).
+
+### Red → green
+
+| Guard | Proof | Red evidence | Green |
+|---|---|---|---|
+| S-92b.6 | passes at HEAD (2A ships the edit-mode load); regression guard | — | passed |
+| S-92b.7 | mutation (b) | `Expected: '28' / Actual: '28.0'` | passed |
+| S-92b.8 | mutation (c) | `Expected: ['As saved: 3 tbsp'] / Actual: ['100 g']` | passed |
+| S-92b.9 | `prove-red HEAD` | `Expected: 'Check these numbers are per 1 slice' / Actual: <null>` | passed |
+| S-92b.11 | passes at HEAD; regression guard | — | passed |
+| S-92b.14 | passes at HEAD; regression guard | — | passed |
+| S-92b.16 | passes at HEAD; regression guard | — | passed |
+| S-92b.19 | `prove-red HEAD` + mutation (a) | `Expected: 'Check these numbers are per 45 g' / Actual: <null>`; then `Expected: null / Actual: 'Check these numbers are per 30 g'` | passed |
+
+Command: `.github/copilot/scripts/macos/gateway.sh prove-red HEAD test test/food_form_serving_test.dart`. Verdict lines, verbatim:
+
+```
+00:02 +14 -2: Some tests failed.
+gateway: prove-red: RED AT HEAD (exit 1). It proves the guard only if an assertion fails for the reason the test guards; a compile or load error means the test could not run there (use a mutation instead).
+```
+
+The two failing tests at base are the note guards; both fail with `Actual: <null>` where the note string is expected, i.e. for the guarded reason. The other six pass at base because Phase 2A already shipped the edit-mode load, the As-saved rendering, the package row and both hosts — they are kept as the regression net for those behaviours and are proven by the mutations below (A-92b.17).
+
+### Mutation proofs (one at a time, each restored exactly before the next)
+
+(a) `_perNote`: `if (storedServingFrom(choice) == opened) return null;` → `if (opened == null) return null;` (the note always shows in edit mode) — S-92b.19:
+
+```
+Expected: null
+  Actual: 'Check these numbers are per 30 g'
+00:00 +0 -1: Some tests failed.
+```
+
+restored → 16/16 green.
+
+(b) `_currentChoice` `PackageServing`: `formatGrams(amount)` → `amount.toString()` — S-92b.7:
+
+```
+Expected: '28'
+  Actual: '28.0'
+00:00 +0 -1: Some tests failed.
+```
+
+restored → 16/16 green.
+
+(c) `_onBasisChanged` As-saved case: `if (saved != null) _servingChoice = saved;` → `if (saved != null) _servingChoice = const Per100G();` (As saved no longer restores the opened triple) — S-92b.8:
+
+```
+Expected: ['As saved: 3 tbsp']
+  Actual: ['100 g']
+00:00 +0 -1: Some tests failed.
+```
+
+restored → 16/16 green.
+
+### One test fix during the phase
+
+S-92b.8's first run tapped the fourth segment at `Offset(889.6, 368.0)` on the 800-wide surface — outside the root render tree, so the tap missed (`Expected: ['As saved: 3 tbsp'] / Actual: ['100 g']`). Options: widen the test surface vs scroll the segment into view. Chose `tester.ensureVisible(find.text('As saved: 3 tbsp'))` before the tap: 800 px is what a phone shows, and the segments row is horizontally scrollable by design.
+
+### Suites
+
+- `gateway.sh test test/food_form_serving_test.dart` → `00:02 +16: All tests passed!` — **16 passed, 0 failed**.
+- `gateway.sh test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` → `00:01 +54: All tests passed!` — **54 passed, 0 failed**.
+- Full `gateway.sh test` (900 s) → `04:07 +5918 ~2: All tests passed!` — **5918 passed, 2 skipped, 0 failed**. The `logger_feedback_controls_test.dart` S-5115 red recorded in A-92b.15 is green in this working tree; this phase did not touch it.
+- `gateway.sh lint` → **180 issues, 0 errors** (equal to baseline; grep of the lint log for `food_form` → 0 hits).
+- `gateway.sh format test/food_form_serving_test.dart` → **refused** ("`format` only runs on files this change created; … is already tracked by git"); `lint` reports nothing in either touched file (A-92b.18).
+
+### Diff / residue sweeps
+
+- `gateway.sh git-diff --stat` → `lib/features/nutrition/widgets/food_form.dart` **34 insertions, 0 deletions**; `test/food_form_serving_test.dart` **483 insertions, 0 deletions**. The other modified paths in the working tree are the pre-existing hands-off files, untouched here.
+- `food_form_unit_type|food_form_reference_amount|food_form_reference_label` in `lib/` → **0 hits**; in `test/` → **6 hits, all inside `findsNothing` assertions** in `test/food_form_serving_test.dart`.
+- "Unit type" / "Reference amount" / "Reference label" / "Macros (the reference above)" in `lib/` → **3 hits**, all the stored-field doc comments in `lib/data/models/models.dart` (~L1946-1953), the D-92b.10 exception.
+- `MUTANT` in `lib/` and `test/` → **0 hits** (matches exist only under `docs/plans/**` and `.claude/`).
+- `import .*hive_workout_repository` over `lib/` → only `lib/main.dart` (the composition root); **0 hits** in `lib/state`, `lib/features`, `lib/widgets`, `lib/core`.
+
+### Docs
+
+No doc update required: this phase changes no screen, route, widget prop or state API (the note is private to `FoodForm`), and the plan assigns every doc write to Phase 3. `docs/navigation_and_screens.md`, `docs/state_management.md`, `docs/widget_catalog.md` → no update required (A-92b.19).
+
+

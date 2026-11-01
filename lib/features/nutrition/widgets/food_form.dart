@@ -219,6 +219,10 @@ class _FoodFormState extends State<FoodForm> {
   /// it verbatim (D-92b.5).
   AsSavedServing? _asSaved;
 
+  /// The triple the edited food was opened with; null for a New Food. The
+  /// D-92b.6 note compares the would-save triple against it.
+  (FoodUnitType, double, String)? _openedServing;
+
   /// Whether the package row is open under the 100 g / 100 ml segment
   /// (D-92b.11). The typed amount survives while the row is closed.
   bool _packageOpen = false;
@@ -250,6 +254,11 @@ class _FoodFormState extends State<FoodForm> {
     // their text: a device round-trip stores `100.0` / `1.0`, and the old
     // text comparison (`text == '100'`) silently missed them (D-92b.3).
     if (initial != null) {
+      _openedServing = (
+        initial.unitType,
+        initial.referenceAmount,
+        initial.referenceLabel,
+      );
       final loaded = servingChoiceFrom(
         initial.unitType,
         initial.referenceAmount,
@@ -504,6 +513,21 @@ class _FoodFormState extends State<FoodForm> {
     return label == 'ml' ? const Per100Ml() : const Per100G();
   }
 
+  /// The D-92b.6 line, or null when the numbers still describe the serving
+  /// the food was opened with or this is a New Food.
+  String? get _perNote {
+    final opened = _openedServing;
+    if (opened == null) return null;
+    final choice = _currentChoice;
+    if (storedServingFrom(choice) == opened) return null;
+    const prefix = 'Nutrition per ';
+    final heading = servingHeading(choice);
+    final per = heading.startsWith(prefix)
+        ? heading.substring(prefix.length)
+        : heading;
+    return 'Check these numbers are per $per';
+  }
+
   List<ButtonSegment<_ServingBasis>> _basisSegments() {
     final saved = _asSaved;
     return [
@@ -728,6 +752,16 @@ class _FoodFormState extends State<FoodForm> {
                     color: OmniTheme.colors.textSecondary,
                   ),
                 ),
+                if (_perNote case final note?) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    note,
+                    key: const Key('food_form_per_note'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: OmniTheme.colors.textSecondary,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 _macroField(
                   key: const Key('food_form_protein'),
