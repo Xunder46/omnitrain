@@ -244,7 +244,7 @@ Appended by the planner (conductor-v2) on base `3ed09c3f`. Everything above the 
 
 ### Progress
 
-- [ ] Phase 1 — the two rules
+- [x] Phase 1 — the two rules (**Complete**: 72/72 in `test/food_library_state_test.dart`; mutations (a) calories +1 and (b) drop archived skip proved red and restored)
 - [ ] Phase 2A — the boxes
 - [ ] Phase 2B — calories, photo, duplicate note
 - [ ] Phase 3 — docs
@@ -252,6 +252,8 @@ Appended by the planner (conductor-v2) on base `3ed09c3f`. Everything above the 
 ### Assumption Log
 
 _Executors append: decision made, options considered, choice + why. Conductor marks each RATIFIED (promote to D-x) or REVERT (remediation)._
+
+- **A-92c.P1.1 Twin linkage uses cache membership, not the `isCatalog` flag.** `nameExistsInLibrary` knows each candidate's source map (`_catalogFoods` vs `_foods`) and skips a catalog row whose id equals `excluding.catalogId` / a library row whose `catalogId` equals `excluding.id`. Considered: branching on `excluding.isCatalog`/`candidate.isCatalog`; rejected because legacy rows can carry a stale flag (92a/92b import paths) while the cache is authoritative. Same rule as D-92c.13.
 
 ### Feedback
 

@@ -660,6 +660,67 @@ class FoodLibraryState extends ChangeNotifier {
     return null;
   }
 
+  /// True when a non-archived food in the library or the catalog
+  /// already carries [name], ignoring case and surrounding spaces.
+  ///
+  /// Name-only on purpose (D-92c.7): the food form's duplicate note
+  /// asks "is there already a food called this?", so
+  /// [_matchesIdentity] (which needs every value to match) is not
+  /// used. This predicate never blocks a save.
+  ///
+  /// [excluding] is the food being edited: it and its `catalogId`
+  /// twins are skipped — a library copy ignores the catalog row it
+  /// was copied from, and a catalog row ignores its library copies
+  /// (D-92c.13). A legacy library row with no `catalogId` is a
+  /// separate row and still counts.
+  ///
+  /// A blank or whitespace-only [name] is `false`. Cold cache: rows
+  /// never loaded are not seen, so callers should await
+  /// [loadCatalogFoods] and [loadFoods] first.
+  bool nameExistsInLibrary(String name, {Food? excluding}) {
+    final key = name.trim().toLowerCase();
+    if (key.isEmpty) return false;
+    bool matches(Food candidate, {required bool candidateIsCatalog}) {
+      if (candidate.isArchived) return false;
+      if (_isExcludedRow(
+        candidate,
+        candidateIsCatalog: candidateIsCatalog,
+        excluding: excluding,
+      )) {
+        return false;
+      }
+      return candidate.name.trim().toLowerCase() == key;
+    }
+
+    for (final food in _catalogFoods.values) {
+      if (matches(food, candidateIsCatalog: true)) return true;
+    }
+    for (final food in _foods.values) {
+      if (matches(food, candidateIsCatalog: false)) return true;
+    }
+    return false;
+  }
+
+  /// True when [candidate] is [excluding] itself or a row linked to
+  /// it by `catalogId`, in either direction (D-92c.13).
+  static bool _isExcludedRow(
+    Food candidate, {
+    required bool candidateIsCatalog,
+    Food? excluding,
+  }) {
+    if (excluding == null) return false;
+    if (candidate.id == excluding.id) return true;
+    if (excluding.catalogId != null &&
+        candidateIsCatalog &&
+        candidate.id == excluding.catalogId) {
+      return true;
+    }
+    if (!candidateIsCatalog && candidate.catalogId == excluding.id) {
+      return true;
+    }
+    return false;
+  }
+
   /// Inverse of [libraryIdFor]: returns the catalog-food id that the
   /// given user-owned library row is a copy of, or `null` if the
   /// library row has no catalog twin.

@@ -1452,6 +1452,173 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
+  // nameExistsInLibrary (S-92c.9, D-92c.7 / D-92c.13)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('nameExistsInLibrary', () {
+    const catalogChicken = Food(
+      id: 'test-catalog-chicken',
+      name: 'Chicken Breast',
+      unitType: FoodUnitType.grams,
+      referenceAmount: 100.0,
+      referenceLabel: 'g',
+      isCatalog: true,
+      protein: 31,
+      carbs: 0,
+      fat: 3,
+      createdAtMs: 100,
+      updatedAtMs: 100,
+    );
+
+    Food libraryFood({
+      required String id,
+      required String name,
+      String? catalogId,
+    }) => Food(
+      id: id,
+      name: name,
+      unitType: FoodUnitType.grams,
+      referenceAmount: 100.0,
+      referenceLabel: 'g',
+      catalogId: catalogId,
+      protein: 10,
+      carbs: 20,
+      fat: 5,
+      createdAtMs: 100,
+      updatedAtMs: 100,
+    );
+
+    test('S-92c.9 returns true for a catalog food', () async {
+      final repo = await _freshRepo();
+      final state = FoodLibraryState(repo);
+      await repo.seedCatalogFood(catalogChicken);
+      await state.loadCatalogFoods();
+
+      expect(state.nameExistsInLibrary('Chicken Breast'), isTrue);
+    });
+
+    test('S-92c.9 returns true for a library-only food', () async {
+      final repo = await _freshRepo();
+      final state = FoodLibraryState(repo);
+      await state.createFood(libraryFood(id: '', name: 'My Bar'));
+
+      expect(state.nameExistsInLibrary('My Bar'), isTrue);
+    });
+
+    test('S-92c.9 returns false for an archived food', () async {
+      final repo = await _freshRepo();
+      final state = FoodLibraryState(repo);
+      final id = await state.createFood(libraryFood(id: '', name: 'My Bar'));
+      await state.archiveFood(id);
+
+      expect(state.nameExistsInLibrary('My Bar'), isFalse);
+    });
+
+    test('S-92c.9 returns false for the excluded library row itself', () async {
+      final repo = await _freshRepo();
+      final state = FoodLibraryState(repo);
+      final id = await state.createFood(libraryFood(id: '', name: 'My Bar'));
+      final food = state.foods.firstWhere((f) => f.id == id);
+
+      expect(state.nameExistsInLibrary('My Bar', excluding: food), isFalse);
+    });
+
+    test('S-92c.9 returns false for the excluded catalog row itself', () async {
+      final repo = await _freshRepo();
+      final state = FoodLibraryState(repo);
+      await repo.seedCatalogFood(catalogChicken);
+      await state.loadCatalogFoods();
+      final catalogRow = state.catalogFoods.firstWhere(
+        (f) => f.id == 'test-catalog-chicken',
+      );
+
+      expect(
+        state.nameExistsInLibrary('Chicken Breast', excluding: catalogRow),
+        isFalse,
+      );
+    });
+
+    test(
+      'S-92c.9 excluding a library copy ignores its catalog twin',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await repo.seedCatalogFood(catalogChicken);
+        await state.loadCatalogFoods();
+        await state.addCatalogFoodToLibrary('test-catalog-chicken');
+        final libraryCopy = state.foods.firstWhere(
+          (f) => f.catalogId == 'test-catalog-chicken',
+        );
+
+        expect(
+          state.nameExistsInLibrary('Chicken Breast', excluding: libraryCopy),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'S-92c.9 excluding a catalog row ignores its library copies',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await repo.seedCatalogFood(catalogChicken);
+        await state.loadCatalogFoods();
+        await state.addCatalogFoodToLibrary('test-catalog-chicken');
+        final catalogRow = state.catalogFoods.firstWhere(
+          (f) => f.id == 'test-catalog-chicken',
+        );
+
+        expect(
+          state.nameExistsInLibrary('Chicken Breast', excluding: catalogRow),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'S-92c.9 a legacy row with no catalogId is a separate food (D-92c.13)',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await repo.seedCatalogFood(catalogChicken);
+        await repo.createFood(
+          libraryFood(id: 'legacy-chicken', name: 'Chicken Breast'),
+        );
+        await state.loadCatalogFoods();
+        await state.loadFoods();
+        final catalogRow = state.catalogFoods.firstWhere(
+          (f) => f.id == 'test-catalog-chicken',
+        );
+
+        // The user's own Chicken Breast is not a catalogId twin, so it
+        // still counts even while the catalog row is excluded.
+        expect(
+          state.nameExistsInLibrary('Chicken Breast', excluding: catalogRow),
+          isTrue,
+        );
+      },
+    );
+
+    test('S-92c.9 returns false for a blank name', () async {
+      final repo = await _freshRepo();
+      final state = FoodLibraryState(repo);
+      await state.createFood(libraryFood(id: '', name: 'My Bar'));
+
+      expect(state.nameExistsInLibrary(''), isFalse);
+      expect(state.nameExistsInLibrary('   '), isFalse);
+    });
+
+    test('S-92c.9 ignores case and surrounding spaces', () async {
+      final repo = await _freshRepo();
+      final state = FoodLibraryState(repo);
+      await state.createFood(libraryFood(id: '', name: 'Chicken Breast'));
+
+      expect(state.nameExistsInLibrary('  CHICKEN breast  '), isTrue);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Food Helper Functions
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -1591,6 +1758,42 @@ void main() {
       );
 
       expect(food.netCarbs, calculateNetCarbs(food));
+    });
+
+    test('S-92c.9 caloriesFromMacros computes whole-number macros', () {
+      // 31 * 4 + 0 * 4 + 0 * 9 = 124
+      expect(caloriesFromMacros(protein: 31, carbs: 0, fat: 0), 124);
+    });
+
+    test('S-92c.9 caloriesFromMacros rounds half away from zero', () {
+      // 0.5 * 9 = 4.5 → 5 (D-92c.12)
+      expect(caloriesFromMacros(protein: 0, carbs: 0, fat: 0.5), 5);
+    });
+
+    test('S-92c.9 caloriesFromMacros matches calculateCalories', () {
+      final food = Food(
+        id: 'food-1',
+        name: 'Half-fat spread',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100.0,
+        referenceLabel: 'g',
+        protein: 12.5,
+        carbs: 30.25,
+        fat: 7.5,
+        createdAtMs: 100,
+        updatedAtMs: 100,
+      );
+
+      // 50 + 121 + 67.5 = 238.5 → 239
+      expect(calculateCalories(food), 239);
+      expect(
+        caloriesFromMacros(
+          protein: food.protein,
+          carbs: food.carbs,
+          fat: food.fat,
+        ),
+        calculateCalories(food),
+      );
     });
   });
 }

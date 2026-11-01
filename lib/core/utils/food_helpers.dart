@@ -1,5 +1,20 @@
 import '../../data/models/models.dart';
 
+/// Calories from raw macro grams — the single calorie formula.
+///
+/// Formula: protein * 4 + carbs * 4 + fat * 9
+/// All values in grams per serving; `.round()` is half away from
+/// zero (0.5 g of fat alone gives 4.5 → 5). Fiber is **not**
+/// subtracted: a food's calories count its total carbohydrate, and
+/// only [calculateNetCarbs] applies the fiber adjustment. The food
+/// form's live calories line calls this directly, so the line and
+/// every stored food render the same number.
+int caloriesFromMacros({
+  required double protein,
+  required double carbs,
+  required double fat,
+}) => (protein * 4 + carbs * 4 + fat * 9).round();
+
 /// Calculate calories for a food based on macronutrients.
 ///
 /// Formula: protein * 4 + carbs * 4 + fat * 9
@@ -7,9 +22,14 @@ import '../../data/models/models.dart';
 /// (S-001 — see
 /// `docs/plans/food-form-decimals-and-autofocus-plan.md`);
 /// the helper rounds to `int` at the boundary because calorie
-/// displays are always whole numbers.
+/// displays are always whole numbers. Delegates to
+/// [caloriesFromMacros] so there is one formula (D-92c.1).
 int calculateCalories(Food food) {
-  return (food.protein * 4 + food.carbs * 4 + food.fat * 9).round();
+  return caloriesFromMacros(
+    protein: food.protein,
+    carbs: food.carbs,
+    fat: food.fat,
+  );
 }
 
 /// Calculate net carbs for a food.

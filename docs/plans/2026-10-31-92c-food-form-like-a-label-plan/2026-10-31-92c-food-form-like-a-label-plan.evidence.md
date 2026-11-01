@@ -79,3 +79,61 @@ Verified unaffected (greps):
 - Research order: brief → seeded plan → series index → 92b plan (expansion pattern) + 92b evidence (evidence format) → 92a plan (pattern) → `food_form.dart` (full) → `food_helpers.dart` (full) → reader greps → `food_library_state.dart` (targeted) → test greps (`Required`, `0.0`, macro keys, select-all, fiber/sodium expectations) → docs (nutrition_widgets.md full; nutrition.md, nutrition_state.md, design_system.md targeted) → ui_standards_contract_test.dart scan list → seed fixture check.
 - Derived decisions flagged vetoable: D-92c.9 (slot conflict resolution), D-92c.13 (legacy twins). All other appended decisions restate or mechanically follow the seed.
 - The seed's phase outline is preserved verbatim above the `---`; the expansion's Phases 1/2A/2B/3 expand it without reordering.
+
+---
+
+# Developer runs
+
+## Phase 1 — the two rules (developer, base `3ed09c3f`)
+
+### Red before implementation
+
+`.github/copilot/scripts/macos/gateway.sh test test/food_library_state_test.dart` → exit 1, compilation failed (the new symbols do not exist yet):
+
+- `test/food_library_state_test.dart:1765:14: Error: Method not found: 'caloriesFromMacros'.` (and :1770, :1790)
+- `test/food_library_state_test.dart:1497:20: Error: The method 'nameExistsInLibrary' isn't defined for the type 'FoodLibraryState'.` (12 sites)
+- `00:00 +0 -1: Some tests failed.`
+
+### Green
+
+- `test test/food_library_state_test.dart` → `00:00 +72: All tests passed!` (72 passed, 0 failed).
+- Same command after each mutation restore → `00:00 +72: All tests passed!` again.
+
+### Mutation proofs (restored verbatim; `grep -rn MUTANT lib test` empty at the end)
+
+- **(a) `caloriesFromMacros` returns `(protein * 4 + carbs * 4 + fat * 9).round() + 1`** → `00:00 +66 -6: Some tests failed.`:
+  - `S-92c.9 caloriesFromMacros computes whole-number macros` — `Expected: <124> Actual: <125>`
+  - `S-92c.9 caloriesFromMacros rounds half away from zero` — `Expected: <5> Actual: <6>`
+  - `S-92c.9 caloriesFromMacros matches calculateCalories` — `Expected: <239> Actual: <240>`
+  - the three pre-existing `calculateCalories` legs also moved (151→152, 370→371, `Food.calories` parity)
+  - Original restored: `}) => (protein * 4 + carbs * 4 + fat * 9).round();`
+- **(b) archived skip removed from `nameExistsInLibrary`'s `matches`** → `00:00 +71 -1: Some tests failed.`:
+  - `S-92c.9 returns false for an archived food` — `Expected: false Actual: <true>` (the only failure)
+  - Original restored: `if (candidate.isArchived) return false;`
+
+### Restore check
+
+`.github/copilot/scripts/macos/gateway.sh git-diff HEAD --stat -- lib/core/utils/food_helpers.dart lib/state/food_library_state.dart test/food_library_state_test.dart`
+
+```
+lib/core/utils/food_helpers.dart  |  24 ++++-
+lib/state/food_library_state.dart |  62 ++++++++++++
+test/food_library_state_test.dart | 203 ++++++++++++++++++++++++++++++++++++++
+3 files changed, 287 insertions(+), 2 deletions(-)
+```
+
+The 2 deletions are `calculateCalories`'s old body line and the doc line it replaced; `food_library_state.dart` and the test file are additions only. The other unit's `'chicken_thigh_skin_on',` line is still present in the bundled-id list (grep finds it).
+
+### Lint and contracts
+
+- `lint` → **181 issues, 0 errors** vs the 180 baseline. The one extra is `test/food_catalog_load_test.dart:270` `unnecessary_non_null_assertion` in a file the concurrent food-catalog unit has modified (`git-status`: `M test/food_catalog_load_test.dart`), not one of this phase's files. No issue names `food_helpers.dart`, `food_library_state.dart` or `food_library_state_test.dart`.
+- `test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` → `00:02 +54: All tests passed!`.
+
+### Test inventory added (S-92c.9)
+
+`test/food_library_state_test.dart`, group `nameExistsInLibrary` (10 tests): catalog food true; library-only food true; archived false; excluded library row itself false; excluded catalog row itself false; library copy excludes its catalog twin; catalog row excludes its library copies; legacy row without `catalogId` is separate (D-92c.13); blank false; case + surrounding spaces ignored. Group `Food Helper Functions` adds 3: whole-number 31/0/0 → 124; fractional 0/0/0.5 → 5; delegation parity with `calculateCalories` (238.5 → 239).
+
+### Full suite after Phase 1
+
+`.github/copilot/scripts/macos/gateway.sh test` → `07:22 +5932 ~2: All tests passed!` (5932 passed, 2 skipped, 0 failed; baseline was 5918 pass / 2 skipped — the delta is this phase's 13 new tests plus the concurrent unit's catalog tests).
+
