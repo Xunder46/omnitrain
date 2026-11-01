@@ -102,10 +102,63 @@ that sources the categories dropdown (re-reading `activeFoodGroups` on
 every notification), a `saveLabel` for the host's CTA, an optional
 `showNotesField` flag (edit mode), a required `onSave` callback, and an
 optional `onImageChanged` callback (`ValueChanged<String?>` — the
-form-local photo path, `null` after the × overlay clears it). Its field set,
-per-field keys and defaults are the file's own — read them in
-`lib/features/nutrition/widgets/food_form.dart` rather than here; this
-page does not restate the control list.
+form-local photo path, `null` after the × overlay clears it). The serving
+control below is stated in full; the remaining fields' keys and defaults
+are the file's own.
+
+**Serving control.** One single-choice `SegmentedButton` (key
+`food_form_basis`) asks what the nutrition numbers are per: `100 g`,
+`100 ml`, `1 serving`, plus `As saved: <amount> <label>` only for a food
+whose stored serving the first three cannot express. Under `100 g` /
+`100 ml`, a link (key `food_form_package_link`) toggles a package row
+with a numeric amount (key `food_form_package_amount`, g or ml only);
+under `1 serving`, a label field (key `food_form_serving_label`) pairs
+with the chips `food_form_serving_chip_<word>` for slice, scoop, bar,
+piece and cup, which fill the field. The heading
+`food_form_per_heading` is `servingHeading(choice)` and follows typing;
+in edit mode a note `food_form_per_note` reads `Check these numbers are
+per <X>` while the serving differs from the one the food was opened
+with, and is absent when they match or on a New Food.
+
+The choice maps to the stored fields through the pure-Dart mapper
+`lib/core/utils/food_serving.dart` (`servingChoiceFrom`,
+`storedServingFrom`, `servingHeading`); the form never compares box text:
+
+| Choice | `unitType` | `referenceAmount` | `referenceLabel` |
+|---|---|---|---|
+| `100 g` | `grams` | `100` | `g` |
+| `100 ml` | `grams` | `100` | `ml` |
+| Package serving (e.g. `30 g`, `250 ml`) | `grams` | the typed amount | `g` / `ml` |
+| `1 serving` (e.g. slice) | `count` | `1` | the typed label, trimmed |
+| `As saved` | the stored triple, unchanged | | |
+
+Verified by `test/food_serving_test.dart` (group `food_serving`:
+`S-92b.1 round trip over every shipped catalog triple`, `S-92b.1 round
+trip over the odd stored servings`, `S-92b.1 stored serving loads as the
+matching choice`, `S-92b.1 odd stored servings load as As saved`,
+`S-92b.1 each choice stores its triple`, `S-92b.1 heading strings`) and by
+`test/food_form_serving_test.dart` (group `FoodForm serving (S-92b)`:
+`S-92b.2 New Food defaults to 100 g and saves grams / 100 / g`,
+`S-92b.3 100 ml saves grams / 100 / ml`, `S-92b.4 1 serving requires a
+label and the chips fill it`, `S-92b.5 package serving sets the amount,
+and Back restores 100 g`, `S-92b.6 an edited food opens on its stored
+serving and saves both ways`, `S-92b.7 a package-stored food opens with
+its amount and keeps it on save`, `S-92b.8 As saved round trips and
+restores the opened triple`, `S-92b.9 the check line appears off the
+opened serving and hides again`, `S-92b.11 a millilitre food opens on
+100 ml and saves it unchanged`, `S-92b.12 a padded serving label saves
+trimmed`, `S-92b.13 package amount 0 and . are rejected`, `S-92b.14 the
+package row survives a parent rebuild`, `S-92b.15 chips are hidden off
+the serving segment`, `S-92b.16 both edit hosts render the same serving
+control`, `S-92b.18 switching segments keeps the typed label and amount`,
+`S-92b.19 the note is hidden while the package row reproduces the opened
+serving`). A save whose serving differs from the stored one clears the
+library copy's remembered log amount, and one that leaves it equal keeps
+it — see [nutrition_state.md](../state_management/nutrition_state.md)
+and `test/food_library_copy_edit_test.dart` (`S-92b.10 a serving-changing
+edit clears the remembered amount`, `S-92b.10 a name-only edit keeps the
+remembered amount`, `S-92b.10 a reset after a serving-changing edit
+clears the remembered amount`).
 
 The form owns validation, the image picker, and the translation from
 controllers to a typed `FoodDraft`. The caller hands the draft to

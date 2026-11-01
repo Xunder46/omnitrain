@@ -220,7 +220,42 @@ the screen. Leaving with edits — typed values or a changed photo — asks
 `Unsaved changes` first (keys `edit-food-unsaved-keep` /
 `edit-food-unsaved-discard`), while an untouched form closes with no dialog.
 **Reset to original** and **Delete food** keep their own confirmation and pop
-directly, so they never raise the unsaved-changes dialog. Verified by
+directly, so they never raise the unsaved-changes dialog.
+
+The serving is asked once, as `Nutrition facts are per`: a segmented control
+(key `food_form_basis`) offers `100 g`, `100 ml` and `1 serving`, plus
+`As saved: <amount> <label>` only for a food whose stored serving those three
+cannot express. `100 g` / `100 ml` expose a package link
+(`food_form_package_link`) and numeric amount (`food_form_package_amount`, g
+and ml only); `1 serving` exposes a label field (`food_form_serving_label`)
+and the slice / scoop / bar / piece / cup chips
+(`food_form_serving_chip_<word>`). The heading `food_form_per_heading` follows
+typing, and in edit mode a note `food_form_per_note` reads `Check these
+numbers are per <X>` while the serving differs from the one the food opened
+with. The choice maps onto the unchanged `unitType` / `referenceAmount` /
+`referenceLabel` fields through `lib/core/utils/food_serving.dart`. Verified
+by `test/food_form_serving_test.dart` (group `FoodForm serving (S-92b)`:
+`S-92b.2 New Food defaults to 100 g and saves grams / 100 / g`,
+`S-92b.3 100 ml saves grams / 100 / ml`, `S-92b.4 1 serving requires a label
+and the chips fill it`, `S-92b.5 package serving sets the amount, and Back
+restores 100 g`, `S-92b.6 an edited food opens on its stored serving and
+saves both ways`, `S-92b.7 a package-stored food opens with its amount and
+keeps it on save`, `S-92b.8 As saved round trips and restores the opened
+triple`, `S-92b.9 the check line appears off the opened serving and hides
+again`, `S-92b.11 a millilitre food opens on 100 ml and saves it unchanged`,
+`S-92b.12 a padded serving label saves trimmed`, `S-92b.13 package amount 0
+and . are rejected`, `S-92b.14 the package row survives a parent rebuild`,
+`S-92b.15 chips are hidden off the serving segment`, `S-92b.16 both edit
+hosts render the same serving control`, `S-92b.18 switching segments keeps
+the typed label and amount`, `S-92b.19 the note is hidden while the package
+row reproduces the opened serving`) and by `test/food_serving_test.dart`
+(group `food_serving`: `S-92b.1 round trip over every shipped catalog
+triple`, `S-92b.1 round trip over the odd stored servings`, `S-92b.1 stored
+serving loads as the matching choice`, `S-92b.1 odd stored servings load as
+As saved`, `S-92b.1 each choice stores its triple`, `S-92b.1 heading
+strings`).
+
+Verified by
 `test/edit_food_save_test.dart` (`S-92a.1: Save writes the edited food and
 closes the screen`, `S-92a.3: back with edits asks; Discard drops them and Keep
 editing stays`, `S-92a.4: back on an untouched form closes with no dialog`,
@@ -233,8 +268,14 @@ Which save path runs depends on the food the screen is given. A library copy of 
 changes only the copy — the shipped catalog row and its seed-touched marker
 are untouched. A user-created catalog food (`isCatalog == true`) saves through
 `updateCatalogFood` as before, and that edit still propagates to the personal
-library rows linked to it through the durable `catalogId` linkage. Neither
-path touches already-logged snapshots — history stays frozen.
+library rows linked to it through the durable `catalogId` linkage — including
+the remembered log amount, which is cleared when the propagation changes the
+serving and kept otherwise. Neither path touches already-logged snapshots —
+history stays frozen. The two propagation legs are verified by
+`test/food_library_edit_test.dart` (`S-92b.10 a serving-changing catalog edit
+clears the linked copy's remembered amount`, `S-92b.10 a name-only catalog
+edit keeps the linked copy's remembered amount`, `S-92b.17 the legacy-upgrade
+propagation clears a changed serving and keeps an unchanged one`).
 
 The photograph is written on Save like every other field: a pick or a ×-clear
 stays local to the form until then, and the state method deletes the managed
@@ -249,7 +290,12 @@ differs from its bundled original, a `Reset to original` button (key
 original?` (keys `food-reset-cancel` / `food-reset-confirm`), and confirming
 calls `resetLibraryFood` — which restores the shipped name, group, unit,
 reference amount, macros, notes and photograph while keeping the copy's id,
-`catalogId`, last amount and creation time — and pops. The button is built
+`catalogId` and creation time; the remembered last amount survives only while
+the reset leaves the serving unchanged, and is cleared when the serving
+changes — and pops. The reset's keep leg is verified by
+`test/food_library_copy_edit_test.dart` (`resetLibraryFood restores the
+shipped values (S-12704)`) and its clearing leg by `S-92b.10 a reset after a
+serving-changing edit clears the remembered amount`. The button is built
 when the screen opens, so it appears the next time the editor is opened after
 an edit. Verified by `test/library_row_toggle_test.dart` (group `Library row
 toggle (plan 77a S-12710..S-12717)`: `S-12713: pencil on an in-list bundled

@@ -376,4 +376,39 @@ S-92b.8's first run tapped the fourth segment at `Offset(889.6, 368.0)` on the 8
 
 No doc update required: this phase changes no screen, route, widget prop or state API (the note is private to `FoodForm`), and the plan assigns every doc write to Phase 3. `docs/navigation_and_screens.md`, `docs/state_management.md`, `docs/widget_catalog.md` → no update required (A-92b.19).
 
+## Phase 3 execution (developer, docs only)
+
+### Docs written
+
+- `docs/widget_catalog/nutrition_widgets.md` — `FoodForm` → new **Serving control** block: the `food_form_basis` segments (`100 g`, `100 ml`, `1 serving`, `As saved: <amount> <label>` only for a stored serving the first three cannot express), the package link/field (`food_form_package_link`, `food_form_package_amount`, g and ml only), the serving label/chips (`food_form_serving_label`, `food_form_serving_chip_<word>`), the heading `food_form_per_heading`, the note `food_form_per_note` (edit mode, only while the serving differs from the opened one), the choice → `unitType` / `referenceAmount` / `referenceLabel` mapping table, and `lib/core/utils/food_serving.dart` as the mapper. 16 form tests and 6 mapper tests named verbatim.
+- `docs/nutrition.md` — `EditFoodScreen` describes the control; the reset paragraph now says the remembered last amount survives only while the serving is unchanged; the catalog-propagation paragraph carries the same conditional; tests named.
+- `docs/state_management/nutrition_state.md` — `updateCatalogFood` (propagation), `editLibraryFood` and `resetLibraryFood` rows state the D-92b.7 conditional instead of an unconditional keep; the library-pencil consumer bullet carries it too; tests named.
+
+### Checked-no-edit
+
+- `docs/data_models.md` L394 (`FoodUnitType`) — the enum and the `Food` triple are unchanged (D-92b.9); the form only chooses the same stored values differently.
+- `docs/db_integration.md` L520 (frozen snapshot contract) — `ConsumedFood` still freezes unit type and reference amount at log time; 92b changes the form's answer, not the snapshot.
+- `docs/documentation_standard.md` L253 (ownership rule for lifecycle prose) — no process change.
+- `docs/nutrition.md` L29 (snapshot invariant) — still true: logged food is a snapshot, not a reference.
+- `docs/state_management/nutrition_state.md` L50 (`logConsumedFood` row) — the snapshot fields and write-through are untouched; only which served triple the form produces changed.
+- `docs/design_system.md` — no new rule: the `SegmentedButton` precedent already exists in `nutrition_trend_card.dart`, and the control reuses the utility radius and theme colours.
+
+### Residue sweep (item 4)
+
+`grep -rn "Unit type|Reference amount|Reference label|food_form_unit_type|food_form_reference" docs` → **20 matching lines in 5 files, all under `docs/plans/`** (8 of them this plan's own verdict prose); **0 hits** in `docs/` outside `docs/plans/` and `docs/history/`. Nothing to fix.
+
+### Suites
+
+- `gateway.sh test test/docs_indexing_contract_test.dart` → `00:00 +13: All tests passed!` — **13 passed, 0 failed** (all docs inside the 64 KiB ceiling and outside the warning band).
+- `gateway.sh test test/ui_standards_contract_test.dart` → `00:01 +41: All tests passed!` — **41 passed, 0 failed**.
+- `gateway.sh lint` → **180 issues, 0 errors** (equal to the plan's 180 baseline; no doc is analyzed and no touched file carries a notice).
+- `gateway.sh test` (full suite) → `04:25 +5918 ~2: All tests passed!` — **5918 passed, 2 skipped, 0 failed**.
+- `test/docs_indexing_contract_test.dart` re-run after appending this evidence → **13 passed, 0 failed**.
+
+### Diff
+
+Docs only within this phase: `docs/widget_catalog/nutrition_widgets.md` (+61/−1), `docs/nutrition.md` (+54/−2), `docs/state_management/nutrition_state.md` (+8/−8), the plan and this evidence file. No source or test file touched by Phase 3.
+
+The working tree also carries unrelated in-progress changes (`docs/session_summary.md`, `docs/state_management/workout_state.md`, `lib/features/session/session_summary_screen.dart`, `lib/state/watch/watch_session_adoption_bridge.dart`, `lib/state/workout/`, `test/watch_*`), plus two untracked `scripts/` files. They predate this phase and were not edited here; the full suite above was green with them in the tree.
+
 
