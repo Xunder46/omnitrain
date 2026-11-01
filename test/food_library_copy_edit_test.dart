@@ -59,13 +59,16 @@ FoodDraft _draft({
   double protein = 99,
   String? imagePath,
   String? notes,
+  FoodUnitType unitType = FoodUnitType.count,
+  double referenceAmount = 1,
+  String referenceLabel = 'tbsp',
 }) {
   return FoodDraft(
     name: name,
     groupId: null,
-    unitType: FoodUnitType.count,
-    referenceAmount: 1,
-    referenceLabel: 'tbsp',
+    unitType: unitType,
+    referenceAmount: referenceAmount,
+    referenceLabel: referenceLabel,
     protein: protein,
     carbs: 3,
     fiber: 1.6,
@@ -73,6 +76,22 @@ FoodDraft _draft({
     sodium: 36,
     notes: notes,
     imagePath: imagePath,
+  );
+}
+
+/// A draft that changes the copy's serving triple: the almond butter
+/// copy is count / 1 / `tbsp` (bundled catalog seed), so grams / 100 /
+/// `g` replaces it. Used by the clearing legs of S-92b.10.
+FoodDraft _draftChangingServing({
+  String name = 'My almond',
+  double protein = 99,
+}) {
+  return _draft(
+    name: name,
+    protein: protein,
+    unitType: FoodUnitType.grams,
+    referenceAmount: 100,
+    referenceLabel: 'g',
   );
 }
 
@@ -152,6 +171,78 @@ void main() {
         final edited = state.foods.firstWhere((f) => f.id == libId);
         expect(edited.lastAmountConsumed, 250);
         expect(edited.catalogId, 'almond_butter');
+      },
+    );
+
+    test(
+      'S-92b.10 a serving-changing edit clears the remembered amount',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+        final libId = await state.addCatalogFoodToLibrary('almond_butter');
+        final copy = state.foods.firstWhere((f) => f.id == libId);
+        await state.updateFood(copy.copyWith(lastAmountConsumed: 150.0));
+        final before = state.foods.firstWhere((f) => f.id == libId);
+
+        // The copy is count / 1 / `tbsp`; the draft writes grams / 100 / `g`.
+        await state.editLibraryFood(before, _draftChangingServing());
+
+        final edited = state.foods.firstWhere((f) => f.id == libId);
+        expect(edited.referenceLabel, 'g');
+        expect(edited.lastAmountConsumed, isNull);
+        // The repository sees the cleared value too, not just the cache.
+        final fromRepo = await repo.getFoodById(libId);
+        expect(fromRepo!.lastAmountConsumed, isNull);
+      },
+    );
+
+    test(
+      'S-92b.10 a name-only edit keeps the remembered amount',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+        final libId = await state.addCatalogFoodToLibrary('almond_butter');
+        final copy = state.foods.firstWhere((f) => f.id == libId);
+        await state.updateFood(copy.copyWith(lastAmountConsumed: 150.0));
+        final before = state.foods.firstWhere((f) => f.id == libId);
+
+        await state.editLibraryFood(
+          before,
+          _draft(name: 'Renamed almond', protein: 10),
+        );
+
+        final edited = state.foods.firstWhere((f) => f.id == libId);
+        expect(edited.name, 'Renamed almond');
+        expect(edited.lastAmountConsumed, 150);
+      },
+    );
+
+    test(
+      'S-92b.10 a reset after a serving-changing edit clears the '
+      'remembered amount',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+        final libId = await state.addCatalogFoodToLibrary('almond_butter');
+        final copy = state.foods.firstWhere((f) => f.id == libId);
+        await state.updateFood(copy.copyWith(lastAmountConsumed: 150.0));
+        final before = state.foods.firstWhere((f) => f.id == libId);
+
+        // Move the copy off the catalog's serving, then re-seed a
+        // remembered amount so the reset is what has to clear it.
+        await state.editLibraryFood(before, _draftChangingServing());
+        final edited = state.foods.firstWhere((f) => f.id == libId);
+        expect(edited.referenceLabel, 'g');
+        await state.updateFood(edited.copyWith(lastAmountConsumed: 150.0));
+
+        await state.resetLibraryFood(libId);
+
+        final reset = state.foods.firstWhere((f) => f.id == libId);
+        expect(reset.referenceLabel, 'tbsp');
+        expect(reset.lastAmountConsumed, isNull);
       },
     );
 
@@ -456,5 +547,75 @@ void main() {
       final reset = state.foods.firstWhere((f) => f.id == libId);
       expect(state.canResetLibraryFood(reset), isFalse);
     });
+
+    test(
+      'S-92b.10 a serving-changing edit clears the remembered amount',
+      () async {
+        final repo = HiveWorkoutRepository();
+        await repo.initialize();
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+        final libId = await state.addCatalogFoodToLibrary('almond_butter');
+        final copy = state.foods.firstWhere((f) => f.id == libId);
+        await state.updateFood(copy.copyWith(lastAmountConsumed: 150.0));
+        final before = state.foods.firstWhere((f) => f.id == libId);
+
+        await state.editLibraryFood(before, _draftChangingServing());
+
+        final edited = state.foods.firstWhere((f) => f.id == libId);
+        expect(edited.referenceLabel, 'g');
+        expect(edited.lastAmountConsumed, isNull);
+        final fromRepo = await repo.getFoodById(libId);
+        expect(fromRepo!.lastAmountConsumed, isNull);
+      },
+    );
+
+    test(
+      'S-92b.10 a name-only edit keeps the remembered amount',
+      () async {
+        final repo = HiveWorkoutRepository();
+        await repo.initialize();
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+        final libId = await state.addCatalogFoodToLibrary('almond_butter');
+        final copy = state.foods.firstWhere((f) => f.id == libId);
+        await state.updateFood(copy.copyWith(lastAmountConsumed: 150.0));
+        final before = state.foods.firstWhere((f) => f.id == libId);
+
+        await state.editLibraryFood(
+          before,
+          _draft(name: 'Renamed almond', protein: 10),
+        );
+
+        final edited = state.foods.firstWhere((f) => f.id == libId);
+        expect(edited.name, 'Renamed almond');
+        expect(edited.lastAmountConsumed, 150);
+      },
+    );
+
+    test(
+      'S-92b.10 a reset after a serving-changing edit clears the '
+      'remembered amount',
+      () async {
+        final repo = HiveWorkoutRepository();
+        await repo.initialize();
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+        final libId = await state.addCatalogFoodToLibrary('almond_butter');
+        final copy = state.foods.firstWhere((f) => f.id == libId);
+        await state.updateFood(copy.copyWith(lastAmountConsumed: 150.0));
+        final before = state.foods.firstWhere((f) => f.id == libId);
+
+        await state.editLibraryFood(before, _draftChangingServing());
+        final edited = state.foods.firstWhere((f) => f.id == libId);
+        await state.updateFood(edited.copyWith(lastAmountConsumed: 150.0));
+
+        await state.resetLibraryFood(libId);
+
+        final reset = state.foods.firstWhere((f) => f.id == libId);
+        expect(reset.referenceLabel, 'tbsp');
+        expect(reset.lastAmountConsumed, isNull);
+      },
+    );
   });
 }

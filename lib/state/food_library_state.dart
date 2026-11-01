@@ -714,6 +714,25 @@ class FoodLibraryState extends ChangeNotifier {
     return a.name.toLowerCase() == b.name.toLowerCase();
   }
 
+  /// True when [draft] writes a different serving triple
+  /// (`unitType`, `referenceAmount`, `referenceLabel`) than [food] holds
+  /// (92b D-92b.7): a changed serving makes the remembered log amount
+  /// meaningless, so the caller clears it.
+  static bool _servingChanged(Food food, FoodDraft draft) {
+    return food.unitType != draft.unitType ||
+        food.referenceAmount != draft.referenceAmount ||
+        food.referenceLabel != draft.referenceLabel;
+  }
+
+  /// True when [before] and [after] differ in any of the three stored
+  /// serving fields. Same rule as [_servingChanged], for the
+  /// catalog-propagation and reset paths that compare two foods.
+  static bool _servingTripleChanged(Food before, Food after) {
+    return before.unitType != after.unitType ||
+        before.referenceAmount != after.referenceAmount ||
+        before.referenceLabel != after.referenceLabel;
+  }
+
   /// Propagates catalog food edits to all linked library foods.
   /// Called after [updateCatalogFood] saves the catalog change.
   ///
@@ -740,10 +759,14 @@ class FoodLibraryState extends ChangeNotifier {
   ///     link stays intact.
   ///   * `lastAmountConsumed` (per-user remembered portion from
   ///     `NutritionState`, food-last-amount plan) is preserved from
-  ///     the existing library row. Catalog rows are always `null`
-  ///     for this field, so the propagation must explicitly carry
-  ///     the library value forward — otherwise the write-through
-  ///     amount the user just logged would be silently wiped.
+  ///     the existing library row — unless the catalog's serving
+  ///     triple changed, in which case it is cleared (92b D-92b.7;
+  ///     verified by `test/food_library_edit_test.dart`, group
+  ///     'FoodLibraryState updateCatalogFood'). Catalog rows are
+  ///     always `null` for this field, so the propagation must
+  ///     explicitly carry the library value forward — otherwise the
+  ///     write-through amount the user just logged would be silently
+  ///     wiped.
   ///   * `updatedAtMs` is bumped so the next `notifyListeners()`
   ///     cycle reflects the propagation timestamp.
   Future<void> _propagateCatalogEditToLinkedFoods(
@@ -780,14 +803,19 @@ class FoodLibraryState extends ChangeNotifier {
 
       // Create updated library food with catalog's current values
       // but preserve the library food's own id, catalogId,
-      // lastAmountConsumed, and createdAtMs. The catalog's
+      // createdAtMs — and its remembered amount only while the
+      // serving it refers to is unchanged. The catalog's
       // groupId flows through (per the user-stated "any editable
       // field including group" contract).
+      final servingChanged = _servingTripleChanged(
+        libFood,
+        updatedCatalogFood,
+      );
       final updatedLibFood = updatedCatalogFood.copyWith(
         id: libFood.id,
         catalogId: libFood.catalogId,
         isCatalog: false,
-        lastAmountConsumed: libFood.lastAmountConsumed,
+        lastAmountConsumed: servingChanged ? null : libFood.lastAmountConsumed,
         createdAtMs: libFood.createdAtMs,
         updatedAtMs: now,
       );
@@ -799,11 +827,17 @@ class FoodLibraryState extends ChangeNotifier {
 
     // Upgrade and update legacy library foods (found via identity match)
     for (final legacyFood in legacyMatches) {
+      final servingChanged = _servingTripleChanged(
+        legacyFood,
+        updatedCatalogFood,
+      );
       final upgradedLibFood = updatedCatalogFood.copyWith(
         id: legacyFood.id,
         catalogId: catalogFoodId, // Upgrade to durable linkage
         isCatalog: false,
-        lastAmountConsumed: legacyFood.lastAmountConsumed,
+        lastAmountConsumed: servingChanged
+            ? null
+            : legacyFood.lastAmountConsumed,
         createdAtMs: legacyFood.createdAtMs,
         updatedAtMs: now,
       );
@@ -995,8 +1029,12 @@ class FoodLibraryState extends ChangeNotifier {
   /// Applies [draft] to the library row only: the catalog row, the
   /// seed-touched marker and the linked-foods propagation are all
   /// left untouched, so a bundled food's shipped values survive.
-  /// `id`, `catalogId`, `lastAmountConsumed` and `createdAtMs` are
-  /// kept; only the draft's fields and `updatedAtMs` change.
+  /// `id`, `catalogId`, `createdAtMs` and — while [draft] keeps the
+  /// same serving triple — `lastAmountConsumed` are kept; only the
+  /// draft's fields and `updatedAtMs` change. A draft that changes
+  /// the serving triple clears `lastAmountConsumed` (92b D-92b.7;
+  /// verified by `test/food_library_copy_edit_test.dart`, group
+  /// 'FoodLibraryState edit own copy (Mock)').
   ///
   /// Image handling mirrors [updateCatalogFood]: when the draft
   /// changes the image and the previous path is a managed file, it
@@ -1040,6 +1078,9 @@ class FoodLibraryState extends ChangeNotifier {
       sodium: draft.sodium,
       notes: draft.notes,
       imagePath: draft.imagePath,
+      lastAmountConsumed: _servingChanged(current, draft)
+          ? null
+          : current.lastAmountConsumed,
       updatedAtMs: now,
     );
     await _repository.updateFood(updated);
@@ -1075,8 +1116,10 @@ class FoodLibraryState extends ChangeNotifier {
 
   /// Restore a library copy's editable fields to the shipped values
   /// of its bundled catalog row (plan 77a D-2). Keeps `id`,
-  /// `catalogId`, `lastAmountConsumed`, `createdAtMs` (and
-  /// `isArchived`); sets `updatedAtMs` to now.
+  /// `catalogId`, `createdAtMs` (and `isArchived`), and
+  /// `lastAmountConsumed` only while the catalog row's serving triple
+  /// equals the copy's; a reset that changes the serving clears it
+  /// (92b D-92b.7). Sets `updatedAtMs` to now.
   ///
   /// Image: the same rule as [editLibraryFood] — the previous path
   /// is deleted only when it is a managed file the catalog row does
@@ -1124,7 +1167,9 @@ class FoodLibraryState extends ChangeNotifier {
       isArchived: copy.isArchived,
       notes: catalog.notes,
       imagePath: catalog.imagePath,
-      lastAmountConsumed: copy.lastAmountConsumed,
+      lastAmountConsumed: _servingTripleChanged(copy, catalog)
+          ? null
+          : copy.lastAmountConsumed,
       createdAtMs: copy.createdAtMs,
       updatedAtMs: now,
     );
