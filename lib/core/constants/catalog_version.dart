@@ -44,9 +44,11 @@
 ///   `parentId`, primary / secondary roles, the approved re-tagging and the
 ///   Trapezius → Traps rename) we bumped to `11`, so existing installs
 ///   receive the new groups, parent links, roles and renames on next launch.
+///   When `chicken_thigh_skin_on` ("Chicken thigh, with skin") was added we
+///   bumped to `12` so existing installs receive the new food on next launch.
 library;
 
-const int bundledCatalogVersion = 11;
+const int bundledCatalogVersion = 12;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///

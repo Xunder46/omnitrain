@@ -329,7 +329,7 @@ void main() {
       // This test asserts the on-disk catalog has the full bundled
       // shape, not the user-facing subset.
       final catalogFoods = await repo.getCatalogFoods(includeArchived: true);
-      expect(catalogFoods.length, 168);
+      expect(catalogFoods.length, 169);
       // All catalog rows must already carry the resolved groupId.
       for (final food in catalogFoods) {
         expect(

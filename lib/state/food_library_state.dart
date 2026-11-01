@@ -1556,6 +1556,7 @@ class FoodLibraryState extends ChangeNotifier {
     'chia_seeds',
     'chicken_breast',
     'chicken_thigh',
+    'chicken_thigh_skin_on',
     'chicken_wing',
     'chickpeas',
     'chocolate_chip_cookie',
