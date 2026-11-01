@@ -149,3 +149,54 @@ Restored verbatim, re-ran the three touched files: **44 passed, 0 failed** (`All
 
 - No doc edit in Phase 1: the plan assigns every doc write to Phase 3 (`docs/nutrition.md`, `docs/state_management/nutrition_state.md`, `docs/widget_catalog/nutrition_widgets.md`). Phase 1 changes no screen, route, widget or constructor dependency, so `docs/navigation_and_screens.md` and `docs/widget_catalog.md` need no update. The Phase 1 state behaviour is exercised by the S-92b.10 / S-92b.17 tests named above, which Phase 3 cites.
 
+## Phase 2A execution (developer, executed on base `2721dcaa`)
+
+Baselines taken from this file: lint 180 info notices / 0 errors; full suite green (Phase 1 closed at 5902 passed, 2 skipped).
+
+### Phase 0 — tests written first, confirmed red
+
+- Register read: the S-92b.2 leg belongs to this phase (the other 2A-visible scenarios S-92b.3–S-92b.9 are 2B behaviour, per `## Phase 2A` item 7 and `## Phase 2B` item 1). Its fixture is named: a New Food form with no initial entity, expected `100` / `g` / grams stored and saved.
+- `test/food_form_serving_test.dart` created with the S-92b.2 test before any implementation; it reaches the form only through `Key` lookups, so it compiles at base.
+- First run (pre-implementation): `+0 -1`, `Found 0 widgets with key [<'food_form_basis'>]` — red for the guarded reason (no segmented control exists), not a compile error.
+
+### Red → green
+
+| Guard | Red evidence | Green |
+|---|---|---|
+| S-92b.2 | `prove-red 2721dcaa` → RED AT (below) | `test/food_form_serving_test.dart` 1 passed, 0 failed |
+
+Prove-red verdict line, verbatim:
+
+```
+00:00 +0 -1: Some tests failed.
+gateway: prove-red: RED AT 2721dcaa (exit 1). It proves the guard only if an assertion fails for the reason the test guards; a compile or load error means the test could not run there (use a mutation instead).
+```
+
+The assertion at the failure, on `base-12175` (the base worktree, my test file carried over):
+
+```
+Expected: exactly one matching candidate
+  Actual: _KeyWidgetFinder:<Found 0 widgets with key [<'food_form_basis'>]: []>
+```
+
+Command: `.github/copilot/scripts/macos/gateway.sh prove-red 2721dcaa test test/food_form_serving_test.dart`
+
+### Suites
+
+- Targeted (8 files: the new file, `test/nutrition_test.dart`, the food library/state suites and the form' wiring tests) → **150 passed, 0 failed**.
+- `test test/food_form_serving_test.dart test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` → **55 passed, 0 failed**.
+- Full `gateway.sh test` (900 s) → `03:59 +5903 ~2: All tests passed!` — **5903 passed, 2 skipped, 0 failed**.
+
+### Residue sweeps (Phase 2A owns the `lib/` halves; 2B owns the rest)
+
+- `food_form_unit_type|food_form_reference_amount|food_form_reference_label` in `lib/features` → **0 hits**.
+- "Unit type" / "Reference amount" / "Reference label" / "Macros (the reference above)" in `lib/features` → **0 hits**.
+- The three old keys in `test/` → 3 hits, all negative assertions inside `test/food_form_serving_test.dart` (`findsNothing`).
+- `import .*hive_workout_repository` over `lib/state lib/features lib/widgets lib/core` → **0 hits**.
+
+### Lint / format / diff
+
+- `gateway.sh lint` → **180 issues, 0 errors** (equal to baseline). The first run reported 181: one new info for an unnecessary import of `food_draft.dart` in my new test file; the import was removed and the count returned to baseline. No notice names a file this phase touched.
+- `gateway.sh format test/food_form_serving_test.dart` → formatted. `format lib/features/nutrition/widgets/food_form.dart` is refused by the gateway (tracked files cannot be formatted), so that file was hand-formatted to the surrounding style; `lint` reports nothing in it.
+- `gateway.sh git-diff --stat -- lib/features/nutrition/widgets/food_form.dart` → **256 insertions, 107 deletions**. Large because the old ~130-line serving block (dropdown, reference Row, heading) is replaced by the new basis block; reviewed hunk by hunk, all intended. `test/nutrition_test.dart` → 25 lines changed.
+

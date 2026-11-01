@@ -1947,18 +1947,17 @@ void main() {
         await tester.tap(find.byKey(const Key('new_food_button')));
         await tester.pumpAndSettle();
 
-        // Fill the form.
+        // Fill the form. The serving control defaults to 100 g; this case
+        // goes through the package link so the stored serving is 50 g.
         await tester.enterText(
           find.byKey(const Key('food_form_name')),
           'My Trail Mix',
         );
+        await tester.tap(find.byKey(const Key('food_form_package_link')));
+        await tester.pumpAndSettle();
         await tester.enterText(
-          find.byKey(const Key('food_form_reference_amount')),
+          find.byKey(const Key('food_form_package_amount')),
           '50',
-        );
-        await tester.enterText(
-          find.byKey(const Key('food_form_reference_label')),
-          'g',
         );
         await tester.enterText(
           find.byKey(const Key('food_form_protein')),
@@ -1986,6 +1985,9 @@ void main() {
             .toList();
         expect(trail, hasLength(1));
         expect(trail.first.isCatalog, isTrue);
+        expect(trail.first.unitType, FoodUnitType.grams);
+        expect(trail.first.referenceAmount, 50);
+        expect(trail.first.referenceLabel, 'g');
 
         // …and IS in the personal library (D-2 auto-add).
         await foodLibraryState.loadFoods();
@@ -2085,18 +2087,11 @@ void main() {
         reason: 'the old label is gone',
       );
 
-      // The create flow behind the renamed button still works.
+      // The create flow behind the renamed button still works. The default
+      // serving (100 g) is kept — no old box is typed any more.
       await tester.enterText(
         find.byKey(const Key('food_form_name')),
         'Renamed CTA Mix',
-      );
-      await tester.enterText(
-        find.byKey(const Key('food_form_reference_amount')),
-        '50',
-      );
-      await tester.enterText(
-        find.byKey(const Key('food_form_reference_label')),
-        'g',
       );
       await tester.enterText(find.byKey(const Key('food_form_protein')), '10');
       await tester.enterText(find.byKey(const Key('food_form_carbs')), '18');
