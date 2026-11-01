@@ -103,8 +103,8 @@ every notification), a `saveLabel` for the host's CTA, an optional
 `showNotesField` flag (edit mode), a required `onSave` callback, and an
 optional `onImageChanged` callback (`ValueChanged<String?>` — the
 form-local photo path, `null` after the × overlay clears it). The serving
-control below is stated in full; the remaining fields' keys and defaults
-are the file's own.
+control and the label-like macro block below are stated in full; the
+remaining fields' keys and defaults are the file's own.
 
 **Serving control.** One single-choice `SegmentedButton` (key
 `food_form_basis`) asks what the nutrition numbers are per: `100 g`,
@@ -170,13 +170,71 @@ screen is given a library copy of a bundled catalog food
 `FoodLibraryState.editLibraryFood`, which changes only the copy
 (verified by `test/library_row_toggle_test.dart`, group
 `Library row toggle (plan 77a S-12710..S-12717)` · `S-12719: the Edit
-screen routes a bundled copy's save through editLibraryFood`). Macro and
-amount fields accept
-decimal entry, and macros are stored as `double` on `Food` /
-`FoodDraft` so fractional grams persist. Fiber is exposed alongside
-carbs, matching the `Food.fiber` field on the model;
-`calculateNetCarbs(food)` in `lib/core/utils/food_helpers.dart` handles
-the net-carb math.
+screen routes a bundled copy's save through editLibraryFood`).
+
+**Label-like macro block.** The five macro boxes run top to bottom in the
+order a package prints them — Fat (g), Carbs (g), Fiber (g), Protein (g),
+Sodium (mg) — with the keys `food_form_fat`, `food_form_carbs`,
+`food_form_fiber`, `food_form_protein` and `food_form_sodium`; create and
+edit share one order, and the photo tile `food_form_image_tile` sits below
+the name field rather than at the top of the list. A new food opens with
+all five boxes empty and a faint `0` hint; the hint and
+`FloatingLabelBehavior.always` belong to the macro boxes only. An edit
+prefills through `formatGrams`, so a stored `31.0` reads `31`, and a
+never-recorded fiber or sodium stays empty so an unchanged save keeps it
+unrecorded. The blank-save contract follows from that: a blank Protein,
+Carbs or Fat saves `0`, a blank Fiber or Sodium saves "not recorded"
+(`null`), and a lone `.` surfaces `Must be a number` without saving — the
+macro validator never requires a value, and amount fields keep `Required`
+for their own positive check. Calories are derived, never stored: the line
+under Sodium (key `food_form_calories`, `= <N> cal`) computes from the
+parsed boxes through `caloriesFromMacros` in
+`lib/core/utils/food_helpers.dart`, the same function `calculateCalories`
+delegates to, so the line and every stored food's `<cal> cal` agree. Macros
+are stored as `double` on `Food` / `FoodDraft` so fractional grams persist;
+fiber is exposed alongside carbs, matching `Food.fiber`, and
+`calculateNetCarbs(food)` owns the net-carb math.
+
+Verified by `test/food_form_label_test.dart` (top-level `testWidgets`, no
+group): `S-92c.2: the macros run top to bottom in package order`,
+`S-92c.3: a new food starts with five blank boxes and a faint 0`,
+`S-92c.4: a name-only food saves blanks as 0.0 and null`,
+`S-92c.5: edit prefills with formatGrams and keeps a null fiber empty`,
+`S-92c.6: a lone dot blocks Save with "Must be a number"`,
+`S-92c.14: a stored 0.0 fiber opens as 0 and stays 0.0`,
+`S-92c.14: an unrecorded fiber and sodium open empty and save null`,
+`S-92c.14: typing then clearing sodium saves null`,
+`S-92c.16: the always-on label and faint 0 are macro-only`,
+`S-92c.1: the calories line follows the macros`,
+`S-92c.13: fractional macros agree on the line and the row`,
+`S-92c.7: the photo tile sits below the name, above Category`; the formula
+itself by `test/food_library_state_test.dart` (group `Food Helper
+Functions`: `S-92c.9 caloriesFromMacros computes whole-number macros`,
+`S-92c.9 caloriesFromMacros rounds half away from zero`,
+`S-92c.9 caloriesFromMacros matches calculateCalories`).
+
+**Duplicate-name note.** While the live name text matches an existing food,
+`FoodLibraryState.nameExistsInLibrary(name, excluding: initial)` shows a
+quiet note (key `food_form_duplicate_note`) under the name, above the photo
+tile and the Category dropdown. It never blocks Save and never changes
+validation. The predicate is name-only — trimmed and case-folded — and skips
+the food being edited plus its `catalogId` twin in either direction, so
+editing a copy of a bundled food notes only a rename. Verified by
+`test/food_form_label_test.dart` (`S-92c.8: an existing catalog name shows
+the note, Save works`, `S-92c.8: editing a user-created food notes only a
+rename`, `S-92c.8: editing a library copy of a bundled food shows none`,
+`S-92c.10: padded and differently-cased names still match`,
+`S-92c.11: clearing the name hides the note`, `S-92c.12: two rows with the
+same name show one note`) and by `test/food_library_state_test.dart` (group
+`nameExistsInLibrary`: `S-92c.9 returns true for a catalog food`,
+`S-92c.9 returns true for a library-only food`, `S-92c.9 returns false for
+an archived food`, `S-92c.9 returns false for the excluded library row
+itself`, `S-92c.9 returns false for the excluded catalog row itself`,
+`S-92c.9 excluding a library copy ignores its catalog twin`,
+`S-92c.9 excluding a catalog row ignores its library copies`,
+`S-92c.9 a legacy row with no catalogId is a separate food (D-92c.13)`,
+`S-92c.9 returns false for a blank name`, `S-92c.9 ignores case and
+surrounding spaces`).
 
 **Save CTA**: the form does **not** render an inline save button. Every host
 owns a primary bottom CTA through the shared `OmniBottomCTA` (see

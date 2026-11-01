@@ -112,8 +112,17 @@ screen: on the Library tab the header "+" (`OmniHeaderAddButton`, read aloud
 `New Food`, key `new_food_button`) pushes a separate full-screen New Food form
 (`_NewFoodFormScreen` in `lib/features/nutrition/add_food_screen.dart`); on the
 Categories tab the same header "+" reads `New Category` (`new_group_button`).
-There is no bottom button. Verified by `test/library_merge_test.dart`
-(`S-12810` two tabs, `S-12814` the header "+" opens the form and Categories
+There is no bottom button. The form it opens is the shared label-like
+`FoodForm`: macro boxes blank with a faint `0`, printed in package order,
+a live `= <N> cal` line, the photo below the name and a quiet duplicate-name
+note that never blocks Save (see
+[`widget_catalog/nutrition_widgets.md`](widget_catalog/nutrition_widgets.md),
+section `FoodForm`). Verified by `test/food_form_label_test.dart`
+(`S-92c.2: the macros run top to bottom in package order`,
+`S-92c.3: a new food starts with five blank boxes and a faint 0`,
+`S-92c.1: the calories line follows the macros`,
+`S-92c.7: the photo tile sits below the name, above Category`,
+`S-92c.8: an existing catalog name shows the note, Save works`). Verified by `test/library_merge_test.dart`(`S-12810` two tabs, `S-12814` the header "+" opens the form and Categories
 keeps its own) and `test/nutrition_test.dart` (group `AddFoodScreen — header +
 (S-9161..S-9166)`: `S-9161` no bottom button, `S-9163` New Category).
 
@@ -254,6 +263,22 @@ triple`, `S-92b.1 round trip over the odd stored servings`, `S-92b.1 stored
 serving loads as the matching choice`, `S-92b.1 odd stored servings load as
 As saved`, `S-92b.1 each choice stores its triple`, `S-92b.1 heading
 strings`).
+
+The macro boxes and the duplicate-name note are the form's label-like block
+(see [`widget_catalog/nutrition_widgets.md`](widget_catalog/nutrition_widgets.md),
+section `FoodForm`): Fat, Carbs, Fiber, Protein, Sodium in package order, a
+blank box showing a faint `0`, blank Protein/Carbs/Fat saving as `0` and blank
+Fiber/Sodium saving as unset, a live `= <N> cal` line from
+`caloriesFromMacros`, and a note when
+the typed name already exists — name-only, ignoring the food being edited and
+its catalog/library twin, and never blocking Save. Verified by
+`test/food_form_label_test.dart` (`S-92c.2: the macros run top to bottom in
+package order`, `S-92c.4: a name-only food saves blanks as 0.0 and null`,
+`S-92c.5: edit prefills with formatGrams and keeps a null fiber empty`,
+`S-92c.1: the calories line follows the macros`, `S-92c.8: an existing
+catalog name shows the note, Save works`, `S-92c.8: editing a user-created
+food notes only a rename`, `S-92c.8: editing a library copy of a bundled food
+shows none`).
 
 Verified by
 `test/edit_food_save_test.dart` (`S-92a.1: Save writes the edited food and

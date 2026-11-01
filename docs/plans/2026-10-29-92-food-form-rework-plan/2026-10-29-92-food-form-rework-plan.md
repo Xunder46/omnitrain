@@ -1,6 +1,6 @@
 # Series 92 — New/Edit Food form: one serving question, a Save button on edit, a form that reads like a label
 
-> Status: PLANNED (series index, not yet handed off). Owner answers 2026-10-29 are binding (D-92.1..D-92.4). Owner approved defaults V-1..V-4 on 2026-10-29: they are now decisions, not vetoable. Phone app only (`lib/`); no data-model change, no watch change.
+> Status: 92a CLOSED, 92b CLOSED, 92c implemented, pending review; owner device checks pending. Owner answers 2026-10-29 are binding (D-92.1..D-92.4). Owner approved defaults V-1..V-4 on 2026-10-29: they are now decisions, not vetoable. Phone app only (`lib/`); no data-model change, no watch change.
 > Binding conventions: `docs/global_conventions.md`, `docs/design_system.md`, `.github/copilot/pr-scope-budget.md`. Branch: `claude_develop`; git belongs to the governor.
 > **Do not start until plan 91 is committed.** It has uncommitted edits in `add_food_screen.dart`, `nutrition_test.dart`, `screen_widget_test.dart` and the nutrition docs, which this series also touches.
 > Each PR below gets its own plan file when it is handed off; this index stays short.

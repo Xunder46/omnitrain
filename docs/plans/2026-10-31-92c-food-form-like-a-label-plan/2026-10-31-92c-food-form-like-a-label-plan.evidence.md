@@ -289,4 +289,105 @@ name. That leg is proved by the prove-red above, where no note exists at all.
 `test/food_form_label_test.dart | 363 ++++` (cumulative for Phases 2A+2B against `3ed09c3f`).
 No other file in this phase's diff. No formatter pass was run on the tracked files.
 
+## Phase 3 — docs (developer)
+
+Docs only; no source or test file was touched. Facts were read from
+`lib/features/nutrition/widgets/food_form.dart` (build order, `_macroField`,
+`_onSave`, `_parsed`), `lib/core/utils/food_helpers.dart`
+(`caloriesFromMacros`, `calculateCalories`, `formatGrams`) and
+`lib/state/food_library_state.dart` (`nameExistsInLibrary`, read-only).
+
+### Edits
+
+- `docs/widget_catalog/nutrition_widgets.md` · `### FoodForm`: the
+  "serving control is stated in full" hedge now covers the macro block too; a
+  new **Label-like macro block** paragraph states the order Fat, Carbs, Fiber,
+  Protein, Sodium (unchanged keys `food_form_fat`, `food_form_carbs`,
+  `food_form_fiber`, `food_form_protein`, `food_form_sodium`), the blank boxes
+  and faint `0` hint (`FloatingLabelBehavior.always`, macro boxes only), the
+  `formatGrams` prefill, the blank-save contract (blank P/C/F → `0`, blank
+  fiber/sodium → `null`, a lone `.` → `Must be a number`), the live
+  `food_form_calories` line and its `caloriesFromMacros` owner (the function
+  `calculateCalories` delegates to), and the photo tile below the name. A new
+  **Duplicate-name note** paragraph states `food_form_duplicate_note` +
+  `nameExistsInLibrary` (name-only, trimmed, case-folded, own food and
+  `catalogId` twin skipped, never blocks).
+- `docs/nutrition.md` · `### AddFoodScreen` New Food paragraph: one sentence on
+  the label-like form (blank faint-`0` boxes, package order, live calories line,
+  photo below the name, quiet duplicate note). `### EditFoodScreen`: one
+  paragraph covering the same block for edit mode.
+- `docs/state_management/nutrition_state.md` · library method table: a
+  `nameExistsInLibrary` row after `libraryIdFor` (read-only predicate,
+  name-only, twin exclusion, never blocks, `_matchesIdentity` not reused).
+
+Old-state sweeps on the three docs: `grep '0\.0|Required'` finds only the test
+names that contain `0.0` and the one clause saying amount fields keep
+`Required`; no sentence implies the old protein-first order, `0.0`-prefilled
+boxes or `Required` on the macro boxes.
+
+### Test names and keys written into the docs (each grepped)
+
+- `test/food_form_label_test.dart` (no group; top-level `testWidgets`): all 19
+  names quoted exist — S-92c.1/.2/.3/.4/.5/.6/.7/.8×3/.10/.11/.12/.13/.14×3/
+  .15/.16.
+- `test/food_library_state_test.dart`: groups `Food Helper Functions` and
+  `nameExistsInLibrary`; quoted S-92c.9 names (3 + 10) exist, including
+  `S-92c.9 a legacy row with no catalogId is a separate food (D-92c.13)`.
+- Keys quoted: `food_form_calories`, `food_form_duplicate_note`,
+  `food_form_image_tile`, the five macro keys — each has exactly one `Key(...)`
+  site in `food_form.dart`.
+
+### Checked-no-edit (recorded, no change made)
+
+- `docs/design_system.md` — `grep 'hintText|floatingLabel|hint|InputDecoration'`
+  finds one prose "hint" (the empty-state line), no hint/label decoration rule;
+  the form follows no rule this doc owns.
+- `docs/data_models.md` — no `FoodForm` / `caloriesFromMacros` /
+  `nameExistsInLibrary` mention, and no stored field changed (D-92c.8): the
+  form writes the same `FoodDraft` fields as before.
+- `docs/db_integration.md` — no `FoodForm` / `food_form` / `FoodDraft` mention;
+  no repository, box, schema or snapshot change (form-local until Save, same
+  write path).
+
+### Doc size band (52 KiB)
+
+`test test/docs_indexing_contract_test.dart` → `00:00 +13: All tests passed!`,
+including `no documentation file exceeds the indexing ceiling` and
+`no documentation file is within the warning band of the ceiling` — all three
+edited docs remain under the band, so no split. Exact byte counts could not be
+printed (`wc`/`ls` are outside the gateway's allowed commands); the two size
+guards are the measurement.
+
+### Contracts and lint
+
+- `test test/ui_standards_contract_test.dart` → `00:01 +41: All tests passed!`.
+- `test test/docs_indexing_contract_test.dart` → `00:01 +13: All tests passed!`.
+- `lint` → **181 issues, 0 errors**, equal to the brief's baseline (the one
+  warning is the concurrent unit's `test/food_catalog_load_test.dart:270`);
+  no issue names a doc or this phase's files.
+
+### Plan statuses updated
+
+- This plan (92c): `> Status: implementation complete, pending review. Next
+  handoff: @code-reviewer.`; Phase 3 ticked **Complete**.
+- 92b plan: status set to
+  `CLOSED — implemented and reviewed (APPROVE; 2 minor findings left: untested
+  g/ml package-amount carry-over, cosmetic heading fallback while an invalid
+  package amount is typed), committed`. Its Progress boxes were already all
+  `[x]` (Phases 1, 2A, 2B, 3 and the Status box) — `grep '\[ \]'` found none,
+  so nothing needed ticking.
+- Series index: `> Status: 92a CLOSED, 92b CLOSED, 92c implemented, pending
+  review; owner device checks pending.` The owner-approved-defaults sentence is
+  unchanged.
+
+### Diff footprint (Phase 3)
+
+`gateway.sh git-diff HEAD --stat` for this phase: `docs/nutrition.md +28`,
+`docs/widget_catalog/nutrition_widgets.md +76`, `docs/state_management/
+nutrition_state.md +1`, the three plan files `+2/+2/+4`, plus this evidence
+file. Other modified paths in the overall workspace diff belong to concurrent
+units (catalog seed/assets, session summary, watch bridge, constants reference)
+and were not touched.
+
+
 

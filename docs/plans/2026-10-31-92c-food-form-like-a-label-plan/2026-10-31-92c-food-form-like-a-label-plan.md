@@ -1,6 +1,6 @@
 # Feature: 92c — the food form reads like a nutrition label
 
-> Status: PLANNED — the planner's expansion is appended below (Iteration 1); the governor's seed above is kept verbatim. Next handoff: @developer (Phase 1). Series: `docs/plans/2026-10-29-92-food-form-rework-plan/` (92c of 92a/92b/92c; 92a and 92b are committed, last commit `3ed09c3f`). Base: `3ed09c3f` on `claude_develop`.
+> Status: implementation complete, pending review. Next handoff: @code-reviewer. The planner's expansion is appended below (Iteration 1); the governor's seed above is kept verbatim. Series: `docs/plans/2026-10-29-92-food-form-rework-plan/` (92c of 92a/92b/92c; 92a and 92b are committed, last commit `3ed09c3f`). Base: `3ed09c3f` on `claude_develop`.
 > Binding conventions: `docs/global_conventions.md`, `docs/design_system.md`, `.github/copilot/pr-scope-budget.md`. Never create or switch branches; git belongs to the governor.
 > Hands off (another unit's uncommitted work): `docs/session_summary.md`, `docs/state_management/workout_state.md`, `lib/features/session/session_summary_screen.dart`, `lib/state/watch/watch_session_adoption_bridge.dart`, `lib/state/workout/session_core_entry.dart`, `lib/state/workout/workout_state.dart`, `test/watch_live_refresh_screen_test.dart`, `test/watch_routine_adoption_test.dart`, `test/watch_session_merge_test.dart`, `scripts/*.sh`.
 > Owner-approved defaults (series plan V-1..V-3, approved 2026-10-29): calories read "= N cal" and are derived, not typeable; macro order follows a package label in create and edit; blank Protein/Carbs/Fat save as 0, blank Fiber/Sodium save as "not recorded". Owner decision D-92.3: a duplicate name shows a quiet note and never blocks. Category is NOT touched (D-92.2).
@@ -247,7 +247,7 @@ Appended by the planner (conductor-v2) on base `3ed09c3f`. Everything above the 
 - [x] Phase 1 — the two rules (**Complete**: 72/72 in `test/food_library_state_test.dart`; mutations (a) calories +1 and (b) drop archived skip proved red and restored)
 - [x] Phase 2A — the boxes (**Complete**: 10/10 in `test/food_form_label_test.dart`; 154/154 across the Phase 2A neighbours; prove-red RED AT `da266e05`; full suite 5942 passed / 2 skipped; lint 181 = baseline)
 - [x] Phase 2B — calories, photo, duplicate note (**Complete**: 19/19 in `test/food_form_label_test.dart`; 144/144 neighbours; 54/54 contracts; prove-red RED AT `9ce61a07`; full suite 5951 passed / 2 skipped; lint 181 = baseline)
-- [ ] Phase 3 — docs
+- [x] Phase 3 — docs (**Complete**: FoodForm order/blanks/prefill/blank-save/calories line/photo/duplicate note + keys in `docs/widget_catalog/nutrition_widgets.md`; label-form paragraph + New Food sentence in `docs/nutrition.md`; `nameExistsInLibrary` row in `docs/state_management/nutrition_state.md`; three checked-no-edits and the doc-size re-measure in the `.evidence.md`; series index + 92b statuses set)
 
 ### Assumption Log
 
