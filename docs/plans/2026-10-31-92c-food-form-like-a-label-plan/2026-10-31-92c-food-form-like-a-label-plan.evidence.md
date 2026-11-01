@@ -221,3 +221,72 @@ concurrent unit's `test/food_catalog_load_test.dart:270`). No issue names this p
 `test/food_form_decimals_and_autofocus_test.dart | 28 +++---`; `test/food_form_label_test.dart`
 is new. No formatter pass was run on the tracked files.
 
+## Phase 2B — calories, photo, duplicate note (developer, proof base `9ce61a07`)
+
+Nine `testWidgets` added to `test/food_form_label_test.dart` (Mock-first, 800×3000): S-92c.1
+calories line, S-92c.7 tile order, S-92c.8 three legs (catalog-name duplicate, user-food rename,
+library copy of a bundled food), S-92c.10 padded/case-insensitive match, S-92c.11 clearing hides
+the note, S-92c.12 near-duplicate twin, S-92c.13 fractional-agreement. The file now holds 19 tests.
+
+### Prove-red
+
+`.github/copilot/scripts/macos/gateway.sh prove-red 9ce61a07 test test/food_form_label_test.dart` →
+
+`gateway: prove-red: RED AT 9ce61a07 (exit 1).` `00:02 +10 -9: Some tests failed.` — all nine
+new tests fail on assertions, none on load or compile:
+
+| Scenario | Base assertion |
+|---|---|
+| S-92c.1 calories line | no `food_form_calories` widget |
+| S-92c.7 tile order | `Expected: a value less than <16.0> Actual: <128.0>` (tile above the name) |
+| S-92c.8 ×3 | `Found 0 widgets with key [<'food_form_duplicate_note'>]` |
+| S-92c.10 padded/cased | `Found 0 widgets with text "There's already a food called "chicken breast, skinless" in the Library"` |
+| S-92c.11 clearing hides | `Found 0 widgets with key [<'food_form_duplicate_note'>]` |
+| S-92c.12 twin | `Found 0 widgets with key [<'food_form_duplicate_note'>]` |
+| S-92c.13 fractions | `Bad state: No element` (no line to read) |
+
+### Mutation proofs (restored verbatim; `MUTANT` grep over `lib/` and `test/` empty at the end)
+
+| # | Original line | Mutant | Red |
+|---|---|---|---|
+| a | `fat: _parsed(_fat),` | `fat: 0, // MUTANT (a)` | S-92c.1 `Expected: '= 220 cal' Actual: '= 112 cal'`; S-92c.13 `Expected: '= 5 cal' Actual: '= 0 cal'` |
+| b | `_name.text.trim(),` (inside `nameExistsInLibrary`) | `_name.text, // MUTANT (b)` | **GREEN** — `FoodLibraryState.nameExistsInLibrary` trims its own argument, so this mutation changes nothing observable. The brief's mutation (b) proves nothing; see b'. |
+| b' | `'"${_name.text.trim()}" in the Library',` | `'"${_name.text}" in the Library', // MUTANT (b')` | S-92c.10 `Found 0 widgets with text "... "chicken breast, skinless" ..."` (note keeps the padding) |
+| c | tile block after the name/note, before the category dropdown | tile moved to first child, `// MUTANT (c)` | S-92c.7 `Expected: a value less than <16.0> Actual: <128.0>` |
+
+S-92c.10's case-insensitivity leg has no mutation inside the permitted files: the fold lives in
+`lib/state/food_library_state.dart` (out of scope for this phase) and the form only forwards the
+name. That leg is proved by the prove-red above, where no note exists at all.
+
+`test test/food_form_label_test.dart` after the restores → `00:01 +19: All tests passed!`
+
+### Green (Phase 2B)
+
+- `test test/food_form_label_test.dart` → `00:01 +19: All tests passed!`
+- Neighbours (`food_form_decimals_and_autofocus`, `food_form_serving`, `food_form_orphan_category`,
+  `food_form_pick_saves`, `edit_food_save`, `nutrition`) → `00:17 +144: All tests passed!`
+- `test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` →
+  `00:01 +54: All tests passed!`
+
+### Residue sweeps (Phase 2B)
+
+- `grep 'Required|food_form_calories|food_form_duplicate_note|floatingLabelBehavior' lib/` →
+  each new key at its single site in `food_form.dart`, `floatingLabelBehavior` in `_macroField`
+  only, `'Required'` in `_macroField` only (the rest is unrelated features and English prose).
+- `grep '?? 0.0).toString()' lib/` → no matches (the line formats from a number, not from text).
+- `grep "find.text('Required')" test/` → `test/food_form_serving_test.dart` only (package amount).
+- `grep 'hive_workout_repository' lib/` → `lib/main.dart` only (composition root).
+
+### Lint and full suite (Phase 2B)
+
+- `lint` → **181 issues, 0 errors**, equal to the plan baseline; no issue names `food_form.dart`
+  or `test/food_form_label_test.dart`.
+- `test` (full suite) → `03:58 +5951 ~2: All tests passed!` (5951 passed, 2 skipped, 0 failed).
+
+### Diff footprint (Phase 2B)
+
+`git-diff --stat` → `lib/features/nutrition/widgets/food_form.dart | 91 ++--` and
+`test/food_form_label_test.dart | 363 ++++` (cumulative for Phases 2A+2B against `3ed09c3f`).
+No other file in this phase's diff. No formatter pass was run on the tracked files.
+
+

@@ -33,10 +33,11 @@ export '../../../core/models/food_draft.dart' show FoodDraft;
 /// pre-populated with the food's values (edit mode).
 ///
 /// Form fields (top to bottom):
-///   * Image picker tile (`FoodFormImageTile`) — the very top of
-///     the form, before the name field. Square, 96×96, with a
-///     × overlay to clear.
-///   * Name
+///   * Name — with a quiet duplicate-name note underneath when the
+///     trimmed name already exists in the Library (D-92c.7).
+///   * Image picker tile (`FoodFormImageTile`) — directly below the
+///     name (and its note), before the category dropdown. Square,
+///     96×96, with a × overlay to clear (D-92c.6, D-92c.9).
 ///   * Category (group) dropdown
 ///   * Serving — "Nutrition facts are per" (100 g / 100 ml / 1 serving,
 ///     a package serving, or As saved), then the per-serving heading
@@ -45,6 +46,8 @@ export '../../../core/models/food_draft.dart' show FoodDraft;
 ///   * Fiber (g) — macro field (blank saves "not recorded")
 ///   * Protein (g) — macro field (blank saves 0)
 ///   * Sodium (mg) — macro field (blank saves "not recorded")
+///   * Calories — "= N cal", derived from protein/carbs/fat through
+///     `caloriesFromMacros` and live as the boxes change (D-92c.1)
 ///   * Notes (when [showNotesField] is true)
 ///
 /// **Primary bottom CTA**: the form no longer renders an inline
@@ -250,6 +253,9 @@ class _FoodFormState extends State<FoodForm> {
 
     final initial = widget.initial;
     _name = TextEditingController(text: initial?.name ?? '');
+    // The duplicate note is derived from the live name text, so the
+    // note appears and disappears while typing (D-92c.11).
+    _name.addListener(_onNameChanged);
     // The serving choice comes from the stored NUMERIC values, never from
     // their text: a device round-trip stores `100.0` / `1.0`, and the old
     // text comparison (`text == '100'`) silently missed them (D-92b.3).
@@ -340,6 +346,7 @@ class _FoodFormState extends State<FoodForm> {
     _fatFocus.dispose();
     _sodiumFocus.dispose();
     _notesFocus.dispose();
+    _name.removeListener(_onNameChanged);
     _name.dispose();
     _servingLabelController.dispose();
     _packageAmountController.dispose();
@@ -602,11 +609,21 @@ class _FoodFormState extends State<FoodForm> {
     });
   }
 
+  /// Rebuild for the derived duplicate-name note as the name changes.
+  void _onNameChanged() {
+    if (mounted) setState(() {});
+  }
+
   // ─── Build ───────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final calories = caloriesFromMacros(
+      protein: _parsed(_protein),
+      carbs: _parsed(_carbs),
+      fat: _parsed(_fat),
+    );
     return ListenableBuilder(
       listenable: widget.foodLibraryState,
       builder: (context, _) {
@@ -616,6 +633,39 @@ class _FoodFormState extends State<FoodForm> {
           child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                TextFormField(
+                  key: const Key('food_form_name'),
+                  controller: _name,
+                  focusNode: _nameFocus,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    border: OutlineInputBorder(),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Name is required';
+                    }
+                    return null;
+                  },
+                ),
+                // A quiet note, never a validation: the user may still save
+                // a name that already exists (D-92c.7).
+                if (widget.foodLibraryState.nameExistsInLibrary(
+                  _name.text.trim(),
+                  excluding: widget.initial,
+                )) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    "There's already a food called "
+                    '"${_name.text.trim()}" in the Library',
+                    key: const Key('food_form_duplicate_note'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: OmniTheme.colors.textSecondary,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
                 FoodFormImageTile(
                   key: const Key('food_form_image_tile'),
                   imagePath: _imagePath,
@@ -635,23 +685,6 @@ class _FoodFormState extends State<FoodForm> {
                   onClear: clearImage,
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
-                  key: const Key('food_form_name'),
-                  controller: _name,
-                  focusNode: _nameFocus,
-                  decoration: const InputDecoration(
-                    labelText: 'Name',
-                    border: OutlineInputBorder(),
-                  ),
-                  textCapitalization: TextCapitalization.words,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Name is required';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
                   key: const Key('food_form_group'),
                   initialValue: _groupId,
@@ -807,6 +840,17 @@ class _FoodFormState extends State<FoodForm> {
                   focusNode: _sodiumFocus,
                   label: 'Sodium (mg)',
                 ),
+                const SizedBox(height: 8),
+                // The derived calories, live as the boxes change. One
+                // formula for the form and every stored food (D-92c.1);
+                // fiber and sodium never enter it.
+                Text(
+                  '= $calories cal',
+                  key: const Key('food_form_calories'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: OmniTheme.colors.textSecondary,
+                  ),
+                ),
                 if (widget.showNotesField) ...[
                   const SizedBox(height: 12),
                   TextFormField(
@@ -834,6 +878,11 @@ class _FoodFormState extends State<FoodForm> {
       },
     );
   }
+
+  /// A blank or half-typed macro box counts as 0 for the calories line
+  /// (D-92c.1).
+  static double _parsed(TextEditingController controller) =>
+      double.tryParse(controller.text.trim()) ?? 0.0;
 
   /// Macro text field with decimal input. Every box is optional: a blank
   /// Protein, Carbs or Fat saves 0, a blank Fiber or Sodium saves "not

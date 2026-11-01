@@ -246,7 +246,7 @@ Appended by the planner (conductor-v2) on base `3ed09c3f`. Everything above the 
 
 - [x] Phase 1 — the two rules (**Complete**: 72/72 in `test/food_library_state_test.dart`; mutations (a) calories +1 and (b) drop archived skip proved red and restored)
 - [x] Phase 2A — the boxes (**Complete**: 10/10 in `test/food_form_label_test.dart`; 154/154 across the Phase 2A neighbours; prove-red RED AT `da266e05`; full suite 5942 passed / 2 skipped; lint 181 = baseline)
-- [ ] Phase 2B — calories, photo, duplicate note
+- [x] Phase 2B — calories, photo, duplicate note (**Complete**: 19/19 in `test/food_form_label_test.dart`; 144/144 neighbours; 54/54 contracts; prove-red RED AT `9ce61a07`; full suite 5951 passed / 2 skipped; lint 181 = baseline)
 - [ ] Phase 3 — docs
 
 ### Assumption Log
@@ -254,6 +254,11 @@ Appended by the planner (conductor-v2) on base `3ed09c3f`. Everything above the 
 _Executors append: decision made, options considered, choice + why. Conductor marks each RATIFIED (promote to D-x) or REVERT (remediation)._
 
 - **A-92c.P1.1 Twin linkage uses cache membership, not the `isCatalog` flag.** `nameExistsInLibrary` knows each candidate's source map (`_catalogFoods` vs `_foods`) and skips a catalog row whose id equals `excluding.catalogId` / a library row whose `catalogId` equals `excluding.id`. Considered: branching on `excluding.isCatalog`/`candidate.isCatalog`; rejected because legacy rows can carry a stale flag (92a/92b import paths) while the cache is authoritative. Same rule as D-92c.13.
+- **A-92c.2B.1 Calories computed once at the top of `build`.** `caloriesFromMacros` is called outside the `ListenableBuilder` builder so the line and any later reader see one value per frame; the macro boxes' own listeners already rebuild the form on every keystroke, so the listener set is unchanged.
+- **A-92c.2B.2 The duplicate note follows typing via a `_name` listener.** `TextEditingController` changes do not rebuild on their own; `_onNameChanged` calls `setState` (guarded by `mounted`) and is removed in `dispose`. Chosen over a `ValueListenableBuilder` wrapper so the note and the calories line share one rebuild path.
+- **A-92c.2B.3 The library-copy leg (S-92c.8) carries a positive control.** The original assertion was `findsNothing` against a form that had no note in any state, which would pass on a form that never shows a note; it now also renames to `Oats, dry` and expects the note, so the pair proves the twin exclusion rather than the absence of the feature.
+- **A-92c.2B.4 `--plain-name` matches by substring.** `--plain-name "S-92c.1"` also runs S-92c.10-.16; the mutation runs were read accordingly, not treated as single-test runs.
+- **A-92c.2B.5 The brief's mutation (b) does not discriminate.** Passing `_name.text` instead of `_name.text.trim()` to `nameExistsInLibrary` stays green because the state trims its own argument; the display trim (`"${_name.text.trim()}"`) is the observable one, so that is the mutation recorded. The case-folding leg is proved by the prove-red only, since `lib/state/food_library_state.dart` is outside this phase's files.
 - **A-92c.2A.1 `_macroField`'s validator returns null for empty text.** Phase 2A item 3 says "validator empty → `'Must be a number'`"; D-92c.5 and AC-5 say blank Protein/Carbs/Fat save 0 and blank Fiber/Sodium save null, so the item's wording is a slip. Followed D-92c.5 (the brief confirms the seeded definition wins).
 - **A-92c.2A.2 S-92c.16 reads the resolved `InputDecorator.decoration`.** `TextFormField.decoration` is private, and an unset `floatingLabelBehavior` resolves to `auto`. Considered asserting `isNull`; rejected because resolution never yields null. The guard is `hintText == null && floatingLabelBehavior != always` on the name and category fields.
 - **A-92c.2A.3 The class doc's field list was reordered with the code.** The header comment listed protein → … → sodium; leaving it would contradict D-92c.2 in the same file. `_macroField`'s doc comment now states the blank-save contract.
