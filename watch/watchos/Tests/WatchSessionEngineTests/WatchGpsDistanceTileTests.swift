@@ -502,7 +502,9 @@ final class WatchGpsDistanceTileTests: XCTestCase {
         let traitLines = tile.split(separator: "\n").filter { $0.contains(".isButton") }
         XCTAssertFalse(traitLines.isEmpty, "an unmeasured tile is still a button")
         for line in traitLines {
-            XCTAssertTrue(line.contains("isMeasured"), "the button trait depends on isMeasured: \(line)")
+            XCTAssertTrue(
+                line.contains("field.isMeasured ? [] : .isButton"),
+                "a measured tile has no button trait and every other tile keeps it: \(line)")
         }
     }
 

@@ -391,7 +391,7 @@ exercise's own numbers and a Log clears only the logged exercise's. Verified by
 **A timed effort shows a Distance tile only while GPS measures it (plan 93).**
 On an exercise with the distance capability, `WatchLoggingState.fields` holds a
 `distance` row only while the location subscription runs and the running work
-clock's own window has covered more than 0 m; otherwise the screen is the clock
+clock's own window has covered any distance; otherwise the screen is the clock
 and Start/Log alone; nothing is dialled. The tile is measured, read-only and
 drawn without − / +: the effort's own metres (never the session total) in the
 phone's distance unit; it never takes the Crown or moves the primary button. Before Start,

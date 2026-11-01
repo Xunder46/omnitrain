@@ -359,8 +359,8 @@ public final class WatchLoggingState {
 
     // MARK: - Live sensors
 
-    /// Whether the distance is being measured for the user rather than dialled
-    /// by them.
+    /// Whether the location subscription is running, so GPS can measure the
+    /// distance.
     public var isMeasuringDistance: Bool { sensors?.isMeasuringDistance ?? false }
 
     /// What the sensors are reading, resolved once so the whole readout costs
