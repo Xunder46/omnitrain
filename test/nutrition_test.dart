@@ -1971,14 +1971,11 @@ void main() {
         await tester.tap(find.byKey(const Key('food_form_save')));
         await tester.pumpAndSettle();
 
-        // After save, the form pops back to NutritionScreen
-        // (D-2 / S-030). The new food lives in BOTH the
-        // **global managed library** (the catalog) and the
-        // personal library: createCatalogFood writes the row to
-        // the catalog box, then addCatalogFoodToLibrary copies
-        // it into the user's personal library so the food is
-        // reachable from the Foods I Eat card without a second
-        // tap.
+        // After save, the form pops ONCE, back to the Manage Food Library
+        // screen (not on to the Nutrition screen). The new food lives in
+        // the global library (the catalog) and is NOT in Foods I Eat yet.
+        expect(find.text('Manage Food Library'), findsOneWidget);
+        expect(find.byKey(const Key('new_food_button')), findsOneWidget);
         await foodLibraryState.loadCatalogFoods();
         final trail = foodLibraryState.catalogFoods
             .where((f) => f.name == 'My Trail Mix')
@@ -1989,19 +1986,78 @@ void main() {
         expect(trail.first.referenceAmount, 50);
         expect(trail.first.referenceLabel, 'g');
 
-        // …and IS in the personal library (D-2 auto-add).
         await foodLibraryState.loadFoods();
-        final personalLib = foodLibraryState.foods
-            .where((f) => f.name == 'My Trail Mix')
-            .toList();
-        expect(personalLib, hasLength(1));
         expect(
-          personalLib.first.isCatalog,
-          isFalse,
-          reason: 'library copy must be isCatalog = false',
+          foodLibraryState.foods.where((f) => f.name == 'My Trail Mix'),
+          isEmpty,
+          reason: 'a newly created food is not added to Foods I Eat',
+        );
+
+        // The Library row offers Add, Edit and (through Edit) Delete.
+        final id = trail.first.id;
+        await tester.enterText(
+          find.byKey(const Key('catalog_search_field')),
+          'My Trail Mix',
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(Key('add_catalog_food_$id')), findsOneWidget);
+        expect(find.byKey(Key('edit_catalog_food_$id')), findsOneWidget);
+        await tester.tap(find.byKey(Key('edit_catalog_food_$id')));
+        await tester.pumpAndSettle();
+        expect(find.text('Edit Food'), findsOneWidget);
+        await tester.ensureVisible(find.byKey(const Key('food_delete_created')));
+        await tester.tap(find.byKey(const Key('food_delete_created')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('food-delete-confirm')));
+        await tester.pumpAndSettle();
+        expect(find.text('Manage Food Library'), findsOneWidget);
+        expect(
+          foodLibraryState.catalogFoods.where((f) => f.name == 'My Trail Mix'),
+          isEmpty,
         );
       },
     );
+
+    testWidgets('the New Food form has a Notes field that is saved', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final repo = await _freshRepo();
+      final foodLibraryState = FoodLibraryState(repo);
+      await foodLibraryState.loadFoodGroups();
+      await foodLibraryState.loadFoods();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AddFoodScreen(
+            foodLibraryState: foodLibraryState,
+            nutritionState: NutritionState(repo),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('new_food_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('food_form_notes')), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('food_form_name')),
+        'Noted Bar',
+      );
+      await tester.enterText(
+        find.byKey(const Key('food_form_notes')),
+        'Bought at the corner shop',
+      );
+      await tester.tap(find.byKey(const Key('food_form_save')));
+      await tester.pumpAndSettle();
+
+      await foodLibraryState.loadCatalogFoods();
+      final saved = foodLibraryState.catalogFoods.singleWhere(
+        (f) => f.name == 'Noted Bar',
+      );
+      expect(saved.notes, 'Bought at the corner shop');
+    });
 
     testWidgets(
       'with an empty name, the save button does not persist a row (S-005)',

@@ -117,9 +117,11 @@ void main() {
         searchFor: 'Chicken (toggle',
       );
 
-      // Before: the Add button is there, no pencil, no check icon.
+      // Before: the Add button is there, no check icon. The seeded food is
+      // not a shipped one, so it counts as the user's own ("Yours") and
+      // keeps its pencil even before it is added to the list.
       expect(find.byKey(Key('add_catalog_food_$catalogId')), findsOneWidget);
-      expect(find.byKey(Key('edit_catalog_food_$catalogId')), findsNothing);
+      expect(find.byKey(Key('edit_catalog_food_$catalogId')), findsOneWidget);
       expect(find.byIcon(Icons.check_circle), findsNothing);
 
       // Row tap (on the name text) adds the food.

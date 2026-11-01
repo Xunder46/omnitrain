@@ -722,21 +722,12 @@ class _FoodIdentity {
 
 /// Full-screen form for creating a new custom food.
 ///
-/// On save (D-2 / S-030): the draft is written to the **catalog** via
-/// [FoodLibraryState.createCatalogFood] (so the food becomes part of
-/// the Library list, tagged **Yours**), then immediately copied into
-/// the user's personal library via
-/// [FoodLibraryState.addCatalogFoodToLibrary] (so the food is
-/// reachable from the Foods I Eat card without a second tap).
-///
-/// Failure handling:
-///   * If `createCatalogFood` throws, the form stays open and reports
-///     the error via the snackbar — nothing was persisted.
-///   * If `addCatalogFoodToLibrary` throws after the catalog write
-///     succeeded, the catalog row is preserved (it remains in the
-///     Library and is editable from there) and a snackbar surfaces the
-///     library-add error. The form still pops, so the user is not
-///     trapped on a save screen.
+/// On save: the draft is written to the **catalog** via
+/// [FoodLibraryState.createCatalogFood], so the food becomes part of the
+/// Library list, tagged **Yours**. It is NOT added to Foods I Eat; the
+/// user taps **Add** on its row for that. The form then pops once, back
+/// to the Library tab. If the write throws, the form stays open and
+/// reports the error via the snackbar.
 class _NewFoodFormScreen extends StatefulWidget {
   final FoodLibraryState foodLibraryState;
 
@@ -817,6 +808,7 @@ class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
             initial: null,
             foodLibraryState: widget.foodLibraryState,
             saveLabel: 'Save',
+            showNotesField: true,
             controller: _formController,
             // Create mode never persists the photo until Save, so the
             // probe learns about a pick (or a clear) from the form.
@@ -824,35 +816,15 @@ class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
             onSave: (draft) async {
               final messenger = ScaffoldMessenger.of(context);
               final theme = Theme.of(context);
-              String? catalogId;
               try {
-                catalogId = await widget.foodLibraryState.createCatalogFood(
-                  draft,
-                );
+                await widget.foodLibraryState.createCatalogFood(draft);
               } catch (_) {
                 OmniMessage.errorOn(messenger, theme, 'Could not create food');
                 return false;
               }
-              try {
-                await widget.foodLibraryState.addCatalogFoodToLibrary(
-                  catalogId,
-                );
-              } catch (e) {
-                // Catalog row is preserved; the user can re-add to
-                // library from the Library tab. Surface the error so
-                // the user is not silently left without a library copy.
-                debugPrint('Add catalog food to library: $e');
-                OmniMessage.errorOn(
-                  messenger,
-                  theme,
-                  'Food saved, but adding to your library failed. Try again.',
-                );
-                // Pop so the user can see the Library and the new catalog
-                // row. The catalog write succeeded; only the library
-                // copy failed.
-                return true;
-              }
-              if (context.mounted) Navigator.of(context).pop();
+              // The form pops itself once this returns true, back to the
+              // Library tab; the new row is not in Foods I Eat until the
+              // user taps Add on it.
               return true;
             },
           ),
@@ -1278,7 +1250,9 @@ class _CatalogRowState extends State<_CatalogRow> {
               ),
             ),
             const SizedBox(width: 8),
-            if (inList) ...[
+            // A food the user created can be edited (and deleted, from the
+            // edit screen) whether or not it is in their list.
+            if (inList || isYours)
               IconButton(
                 key: Key('edit_catalog_food_${widget.food.id}'),
                 icon: const Icon(Icons.edit_outlined, size: 20),
@@ -1286,8 +1260,9 @@ class _CatalogRowState extends State<_CatalogRow> {
                 tooltip: 'Edit food',
                 onPressed: _busy ? null : () => _openEdit(context),
               ),
-              _buildInListIndicator(context),
-            ] else
+            if (inList)
+              _buildInListIndicator(context)
+            else
               _buildAddButton(context),
           ],
         ),
@@ -1317,19 +1292,20 @@ class _CatalogRowState extends State<_CatalogRow> {
     return inList ? _onRemove(context) : _onAdd(context);
   }
 
-  /// Open the Edit Food screen. Only reachable from an in-list row. A
-  /// bundled food edits the user's own copy (the shipped entry is never
-  /// altered); a food the user created has no shipped original, so its
-  /// catalog row is the thing edited.
+  /// Open the Edit Food screen. A bundled food edits the user's own copy
+  /// (the shipped entry is never altered; only reachable once it is in the
+  /// list); a food the user created has no shipped original, so its
+  /// catalog row is the thing edited, in the list or not.
   void _openEdit(BuildContext context) {
     final copy = widget.foodLibraryState.libraryFoodFor(widget.food.id);
-    if (copy == null) return;
     final bundled = widget.foodLibraryState.isBundledCatalogFood(
       widget.food.id,
     );
+    if (bundled && copy == null) return;
+    final edited = bundled ? copy! : widget.food;
     EditFoodScreen.push(
       context,
-      food: bundled ? copy : widget.food,
+      food: edited,
       foodLibraryState: widget.foodLibraryState,
       nutritionState: widget.nutritionState,
     );
