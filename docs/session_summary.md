@@ -14,6 +14,8 @@ Current hierarchy:
 
 The screen keeps existing summary navigation actions (edit, save as routine, discard) and the bottom Done action.
 
+A post-workout summary reports the finished session to its `onSessionSaved` hook (which links a planned session) once, when the screen opens — not on Done — so leaving with Back completes the plan too. A historical summary never calls it.
+
 ### Effort Rating Capture
 
 The **session effort rating** is how hard the whole session was: 1 is the easiest, 5 the hardest. It is stored in `TrainingSession.sessionFeeling` — the field name is historical; it is not a feeling score. Ratings recorded before the redefinition (when the prompt asked how the session felt) are read as effort ratings on the same scale with no conversion: an owner decision (Stats redesign D-5, `docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md`).

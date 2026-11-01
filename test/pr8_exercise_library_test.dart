@@ -761,7 +761,7 @@ void main() {
         'Zercher Squat 4104',
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save exercise'));
+      await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
       expect(find.byType(ExerciseEditorScreen), findsNothing);
@@ -1045,7 +1045,7 @@ void main() {
         'Renamed Move',
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save exercise'));
+      await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
       // The editor popped with the saved row, then the detail screen

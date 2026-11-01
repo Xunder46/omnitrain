@@ -622,7 +622,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
         ),
       ),
       bottomNavigationBar: OmniBottomCTA(
-        label: 'Save exercise',
+        label: 'Save',
         onPressed: _isSaving ? null : _validateAndSave,
       ),
     );

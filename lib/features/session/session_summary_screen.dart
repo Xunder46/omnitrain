@@ -162,6 +162,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _showFeelingSheet(context);
     });
+    _notifySessionSaved();
     widget.workoutState.wristSummary.addListener(_reloadHeartRateOnWristSummary);
     _loadAsyncData();
   }
@@ -173,6 +174,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _noteDebounce?.cancel();
     _noteController.dispose();
     super.dispose();
+  }
+
+  /// The workout is already stored when the summary opens (Finish ends it
+  /// first), so the saved-session hook — which links a planned session — runs
+  /// here and not on "Done": Back must not leave the plan uncompleted.
+  void _notifySessionSaved() {
+    if (_isHistoricalView) return;
+    final sessionId = widget.workoutState.currentSession?.id;
+    final onSaved = widget.onSessionSaved;
+    if (sessionId == null || onSaved == null) return;
+    onSaved(sessionId);
   }
 
   Future<void> _loadAsyncData() async {
@@ -464,10 +476,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     if (!_isHistoricalView) {
       await widget.workoutState.endSession();
-      final completedSessionId = widget.workoutState.currentSession?.id;
-      if (completedSessionId != null && widget.onSessionSaved != null) {
-        await widget.onSessionSaved!(completedSessionId);
-      }
     }
     widget.workoutState.clearSession();
 
@@ -717,7 +725,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                                 Navigator.pop(context);
                                 await _finishAndSaveSession();
                               },
-                        child: const Text('Save Routine'),
+                        child: const Text('Save'),
                       ),
                     ),
                   ],

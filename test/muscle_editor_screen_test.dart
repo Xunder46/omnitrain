@@ -165,7 +165,7 @@ Future<void> _fillValidForm(
 }
 
 Future<void> _save(WidgetTester tester) async {
-  await tester.tap(find.text('Save exercise'));
+  await tester.tap(find.text('Save'));
   await tester.pumpAndSettle();
 }
 
@@ -538,7 +538,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Save exercise'));
+      await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
       final viewport = Rect.fromLTWH(0, 0, 390, 700);
@@ -633,7 +633,7 @@ void main() {
 
       await _fillValidForm(tester);
 
-      await tester.tap(find.text('Save exercise'));
+      await tester.tap(find.text('Save'));
       await tester.pump();
       expect(repo.createCount, 1, reason: 'the write is still in flight');
 
@@ -689,7 +689,7 @@ void main() {
           reason: 'the stored links are loaded and nothing was tapped',
         );
 
-        await tester.tap(find.text('Save exercise'));
+        await tester.tap(find.text('Save'));
         await tester.pump();
         expect(repo.updateCount, 1, reason: 'the update is still in flight');
 
@@ -839,8 +839,8 @@ void main() {
 
       // The first write is still blocked, so the editor is on screen for both
       // taps and the second one is a real second press.
-      await tester.tap(find.text('Save exercise'));
-      await tester.tap(find.text('Save exercise'));
+      await tester.tap(find.text('Save'));
+      await tester.tap(find.text('Save'));
       expect(repo.createCount, 1);
 
       repo.release();

@@ -3515,7 +3515,7 @@ void main() {
       expect(find.text('CAPABILITIES'), findsOneWidget);
     });
 
-    testWidgets('shows Save exercise button', (WidgetTester tester) async {
+    testWidgets('shows Save button', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final repo = await _freshRepo();
       final workoutState = WorkoutState(repo);
@@ -3525,7 +3525,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Save exercise'), findsOneWidget);
+      expect(find.text('Save'), findsOneWidget);
     });
 
     testWidgets('extends body behind bottom CTA to avoid footer banding', (
@@ -7651,7 +7651,7 @@ void main() {
           'Zercher Squat 4110',
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Save exercise'));
+        await tester.tap(find.text('Save'));
         await tester.pumpAndSettle();
 
         expect(find.byType(ExerciseEditorScreen), findsNothing);

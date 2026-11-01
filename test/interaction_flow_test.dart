@@ -989,7 +989,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Save exercise'));
+      await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
       expect(find.text('Exercise name required.'), findsOneWidget);
@@ -1018,7 +1018,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilterChip, 'Reps'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Save exercise'));
+      await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
       final exercises = await repo.getExercises();
@@ -1054,7 +1054,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilterChip, 'Reps'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Save exercise'));
+      await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
       // The state's own error text carries the exception
