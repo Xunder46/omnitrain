@@ -11,6 +11,7 @@ import '../../../core/utils/food_helpers.dart';
 import '../../../core/utils/food_serving.dart';
 import '../../../data/models/models.dart';
 import '../../../state/food_library_state.dart';
+import '../../../widgets/buttons/omni_utility_button.dart';
 import '../../../widgets/feedback/omni_message.dart';
 import '../../../widgets/inputs/select_all_on_focus.dart';
 // The form's `FoodFormImageTile` now delegates its image body
@@ -176,6 +177,10 @@ class FoodFormController {
 enum _ServingBasis { per100g, per100ml, serving, asSaved }
 
 class _FoodFormState extends State<FoodForm> {
+  /// Vertical gap between the serving toggle and whatever it opens, and
+  /// between the package button and its size field.
+  static const double _servingGap = 12;
+
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _name;
   late final TextEditingController _servingLabelController;
@@ -237,6 +242,8 @@ class _FoodFormState extends State<FoodForm> {
     'bar',
     'piece',
     'cup',
+    'tbsp',
+    'tsp',
   ];
 
   String? _groupId; // null = Ungrouped
@@ -530,6 +537,13 @@ class _FoodFormState extends State<FoodForm> {
     return label == 'ml' ? const Per100Ml() : const Per100G();
   }
 
+  /// Whether the line above the macros adds anything to the toggle: false for
+  /// a plain 100 g / 100 ml, which the selected segment already says.
+  bool get _showPerHeading => switch (_currentChoice) {
+    Per100G() || Per100Ml() => false,
+    _ => true,
+  };
+
   /// The D-92b.6 line, or null when the numbers still describe the serving
   /// the food was opened with or this is a New Food.
   String? get _perNote {
@@ -716,45 +730,46 @@ class _FoodFormState extends State<FoodForm> {
                 ),
                 if (_basis == _ServingBasis.per100g ||
                     _basis == _ServingBasis.per100ml) ...[
-                  TextButton(
-                    key: const Key('food_form_package_link'),
-                    style: TextButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          OmniTheme.buttonUtilityRadius,
-                        ),
-                      ),
-                    ),
-                    onPressed: () =>
-                        setState(() => _packageOpen = !_packageOpen),
-                    child: Text(
-                      _packageOpen
+                  const SizedBox(height: _servingGap),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OmniUtilityButton(
+                      buttonKey: const Key('food_form_package_link'),
+                      onPressed: () =>
+                          setState(() => _packageOpen = !_packageOpen),
+                      icon: _packageOpen
+                          ? Icons.arrow_back
+                          : Icons.scale_outlined,
+                      label: _packageOpen
                           ? 'Back to per 100 $_packageLabel'
-                          : 'Enter package serving instead (e.g. 30 g)',
+                          : 'Enter package serving instead',
                     ),
                   ),
-                  if (_packageOpen)
-                    TextFormField(
-                      key: const Key('food_form_package_amount'),
-                      controller: _packageAmountController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d*\.?\d*$'),
+                  if (_packageOpen) ...[
+                    const SizedBox(height: _servingGap),
+                      TextFormField(
+                        key: const Key('food_form_package_amount'),
+                        controller: _packageAmountController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
                         ),
-                      ],
-                      decoration: InputDecoration(
-                        labelText: 'Serving size ($_packageLabel)',
-                        hintText: '30',
-                        border: const OutlineInputBorder(),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d*\.?\d*$'),
+                          ),
+                        ],
+                        decoration: InputDecoration(
+                          labelText: 'Serving size ($_packageLabel)',
+                          hintText: '30',
+                          border: const OutlineInputBorder(),
+                        ),
+                        validator: _validatePositiveDouble,
+                        onChanged: (_) => setState(() {}),
                       ),
-                      validator: _validatePositiveDouble,
-                      onChanged: (_) => setState(() {}),
-                    ),
+                  ],
                 ],
                 if (_basis == _ServingBasis.serving) ...[
+                  const SizedBox(height: _servingGap),
                   TextFormField(
                     key: const Key('food_form_serving_label'),
                     controller: _servingLabelController,
@@ -788,15 +803,20 @@ class _FoodFormState extends State<FoodForm> {
                   ),
                 ],
                 const SizedBox(height: 12),
-                Text(
-                  servingHeading(_currentChoice),
-                  key: const Key('food_form_per_heading'),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: OmniTheme.colors.textSecondary,
+                // The line above the macros names the serving only when the
+                // toggle does not already say it: a plain 100 g / 100 ml
+                // would repeat the selected segment.
+                if (_showPerHeading) ...[
+                  Text(
+                    servingHeading(_currentChoice),
+                    key: const Key('food_form_per_heading'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: OmniTheme.colors.textSecondary,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                ],
                 if (_perNote case final note?) ...[
-                  const SizedBox(height: 4),
                   Text(
                     note,
                     key: const Key('food_form_per_note'),
@@ -804,8 +824,8 @@ class _FoodFormState extends State<FoodForm> {
                       color: OmniTheme.colors.textSecondary,
                     ),
                   ),
+                  const SizedBox(height: 8),
                 ],
-                const SizedBox(height: 8),
                 _macroField(
                   key: const Key('food_form_fat'),
                   controller: _fat,

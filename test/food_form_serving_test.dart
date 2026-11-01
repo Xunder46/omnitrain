@@ -94,9 +94,12 @@ Future<void> _save(WidgetTester tester, FoodFormController controller) async {
   await tester.pumpAndSettle();
 }
 
-String _heading(WidgetTester tester) => tester
-    .widget<Text>(find.byKey(const Key('food_form_per_heading')))
-    .data!;
+/// The line above the macros, or null when it is hidden (a plain 100 g /
+/// 100 ml, which the selected toggle segment already says).
+String? _heading(WidgetTester tester) {
+  final finder = find.byKey(const Key('food_form_per_heading'));
+  return finder.evaluate().isEmpty ? null : tester.widget<Text>(finder).data;
+}
 
 String _fieldText(WidgetTester tester, String key) =>
     tester.widget<TextFormField>(find.byKey(Key(key))).controller?.text ?? '';
@@ -112,7 +115,15 @@ void _expectServing(
   expect(draft.referenceLabel, label);
 }
 
-const _servingWords = ['slice', 'scoop', 'bar', 'piece', 'cup'];
+const _servingWords = [
+  'slice',
+  'scoop',
+  'bar',
+  'piece',
+  'cup',
+  'tbsp',
+  'tsp',
+];
 
 void _expectNoServingControls() {
   expect(find.byKey(const Key('food_form_serving_label')), findsNothing);
@@ -278,14 +289,10 @@ void main() {
         // The one serving control is there, on its 100 g segment …
         expect(find.byKey(const Key('food_form_basis')), findsOneWidget);
         expect(_selectedBasisLabels(tester), ['100 g']);
-        // … the heading states it …
+        // … the label above it asks the question, and no second line
+        // repeats the answer …
         expect(find.text('Nutrition facts are per'), findsOneWidget);
-        expect(
-          tester
-              .widget<Text>(find.byKey(const Key('food_form_per_heading')))
-              .data,
-          'Nutrition per 100 g',
-        );
+        expect(_heading(tester), isNull);
         // … and the three old boxes are gone.
         expect(find.byKey(const Key('food_form_unit_type')), findsNothing);
         expect(
@@ -329,7 +336,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(_selectedBasisLabels(tester), ['100 ml']);
-        expect(_heading(tester), 'Nutrition per 100 ml');
+        expect(_heading(tester), isNull);
 
         await _save(tester, controller);
 
@@ -416,7 +423,7 @@ void main() {
           find.byKey(const Key('food_form_package_amount')),
           findsNothing,
         );
-        expect(_heading(tester), 'Nutrition per 100 g');
+        expect(_heading(tester), isNull);
 
         await _save(tester, controller);
         expect(saved, hasLength(2));
@@ -711,7 +718,7 @@ void main() {
 
         await tester.tap(find.text('100 g'));
         await tester.pumpAndSettle();
-        expect(_heading(tester), 'Nutrition per 100 g');
+        expect(_heading(tester), isNull);
         expect(
           find.text('As saved: 3 tbsp'),
           findsOneWidget,
@@ -803,7 +810,7 @@ void main() {
         await _openEditHost(tester, food: fixture.loaded, state: fixture.state);
 
         expect(_selectedBasisLabels(tester), ['100 ml']);
-        expect(_heading(tester), 'Nutrition per 100 ml');
+        expect(_heading(tester), isNull);
 
         await _tapEditSave(tester);
         _expectStoredTriple(
@@ -955,6 +962,68 @@ void main() {
 
         expect(_heading(tester), 'Nutrition per 45 g');
         expect(_note(tester), 'Check these numbers are per 45 g');
+      },
+    );
+
+    testWidgets(
+      'S-95.1 what the toggle opens sits clear of it, and the package '
+      'button reads on one line',
+      (tester) async {
+        await _pumpNewFoodForm(tester);
+        final toggleBottom = tester
+            .getBottomLeft(find.byKey(const Key('food_form_basis')))
+            .dy;
+
+        // Package button: below the toggle with a gap, one line tall.
+        final link = find.byKey(const Key('food_form_package_link'));
+        expect(tester.getTopLeft(link).dy - toggleBottom, greaterThan(8));
+        expect(tester.getSize(link).height, lessThan(56));
+
+        // Its size field: below the button with a gap.
+        await tester.tap(link);
+        await tester.pumpAndSettle();
+        final field = find.byKey(const Key('food_form_package_amount'));
+        expect(
+          tester.getTopLeft(field).dy - tester.getBottomLeft(link).dy,
+          greaterThan(8),
+        );
+
+        // "Called a…": below the toggle with a gap, so its label is not
+        // drawn over the toggle.
+        await tester.tap(find.text('1 serving'));
+        await tester.pumpAndSettle();
+        final called = find.byKey(const Key('food_form_serving_label'));
+        expect(tester.getTopLeft(called).dy - toggleBottom, greaterThan(8));
+      },
+    );
+
+    testWidgets(
+      'S-95.2 the line above the macros shows only when it adds to the toggle',
+      (tester) async {
+        await _pumpNewFoodForm(tester);
+        expect(_heading(tester), isNull, reason: '100 g repeats the toggle');
+
+        await tester.tap(find.text('100 ml'));
+        await tester.pumpAndSettle();
+        expect(_heading(tester), isNull, reason: '100 ml repeats the toggle');
+
+        await tester.tap(find.byKey(const Key('food_form_package_link')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('food_form_package_amount')),
+          '250',
+        );
+        await tester.pumpAndSettle();
+        expect(_heading(tester), 'Nutrition per 250 ml');
+
+        await tester.tap(find.text('1 serving'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('food_form_serving_label')),
+          'slice',
+        );
+        await tester.pumpAndSettle();
+        expect(_heading(tester), 'Nutrition per 1 slice');
       },
     );
   });

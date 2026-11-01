@@ -237,9 +237,11 @@ The serving is asked once, as `Nutrition facts are per`: a segmented control
 cannot express. `100 g` / `100 ml` expose a package link
 (`food_form_package_link`) and numeric amount (`food_form_package_amount`, g
 and ml only); `1 serving` exposes a label field (`food_form_serving_label`)
-and the slice / scoop / bar / piece / cup chips
+and the slice / scoop / bar / piece / cup / tbsp / tsp chips
 (`food_form_serving_chip_<word>`). The heading `food_form_per_heading` follows
-typing, and in edit mode a note `food_form_per_note` reads `Check these
+typing and is shown only when it adds to the toggle (a package amount or a named
+serving, e.g. `Nutrition per 30 g`); a plain 100 g / 100 ml hides it because the
+selected segment already says it (`S-95.2`). In edit mode a note `food_form_per_note` reads `Check these
 numbers are per <X>` while the serving differs from the one the food opened
 with. The choice maps onto the unchanged `unitType` / `referenceAmount` /
 `referenceLabel` fields through `lib/core/utils/food_serving.dart`. Verified

@@ -114,8 +114,9 @@ whose stored serving the first three cannot express. Under `100 g` /
 with a numeric amount (key `food_form_package_amount`, g or ml only);
 under `1 serving`, a label field (key `food_form_serving_label`) pairs
 with the chips `food_form_serving_chip_<word>` for slice, scoop, bar,
-piece and cup, which fill the field. The heading
-`food_form_per_heading` is `servingHeading(choice)` and follows typing;
+piece, cup, tbsp and tsp, which fill the field. The heading
+`food_form_per_heading` is `servingHeading(choice)` and follows typing; it is hidden for a
+plain 100 g / 100 ml, which the selected segment already says (`S-95.2`);
 in edit mode a note `food_form_per_note` reads `Check these numbers are
 per <X>` while the serving differs from the one the food was opened
 with, and is absent when they match or on a New Food.
