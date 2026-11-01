@@ -320,7 +320,8 @@ public struct WatchLoggingView: View {
     }
 
     /// One value as a tile. The one the Crown steps wears an outline in the
-    /// accent; a tap on a tile moves it.
+    /// accent; a tap on a tile moves it. A measured tile (GPS distance) is
+    /// live information, not a control: no tap, no button trait (plan 93 D-5).
     private func tile(_ field: WatchMetricField) -> some View {
         let armed = model.armedMetricKey == field.metricKey
         let outline: Color = armed ? (accent?.color ?? Color.white) : Color.clear
@@ -337,33 +338,37 @@ public struct WatchLoggingView: View {
                 model.arm(field.metricKey)
                 crownFocused = true
             }
-            .accessibilityAddTraits(.isButton)
+            .accessibilityAddTraits(field.isMeasured ? [] : .isButton)
             .accessibilityLabel("\(field.label) \(field.displayValue) \(field.unitLabel)")
     }
 
-    /// One value's row: − and + around its tile.
+    /// One value's row: − and + around its tile. A measured value is its tile
+    /// alone; − / + there would read as an input that does nothing (plan 93 D-5).
+    @ViewBuilder
     private func row(_ field: WatchMetricField) -> some View {
-        HStack {
-            stepButton(
-                systemName: "minus",
-                label: "Less \(field.label)",
-                enabled: !field.isMeasured,
-                width: Self.stepSide
-            ) {
-                model.arm(field.metricKey)
-                model.adjust(field.metricKey, detents: -1)
-            }
-
+        if field.isMeasured {
             tile(field)
+        } else {
+            HStack {
+                stepButton(
+                    systemName: "minus",
+                    label: "Less \(field.label)",
+                    width: Self.stepSide
+                ) {
+                    model.arm(field.metricKey)
+                    model.adjust(field.metricKey, detents: -1)
+                }
 
-            stepButton(
-                systemName: "plus",
-                label: "More \(field.label)",
-                enabled: !field.isMeasured,
-                width: Self.stepSide
-            ) {
-                model.arm(field.metricKey)
-                model.adjust(field.metricKey, detents: 1)
+                tile(field)
+
+                stepButton(
+                    systemName: "plus",
+                    label: "More \(field.label)",
+                    width: Self.stepSide
+                ) {
+                    model.arm(field.metricKey)
+                    model.adjust(field.metricKey, detents: 1)
+                }
             }
         }
     }

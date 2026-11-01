@@ -58,3 +58,48 @@
 | M11 | closing `}` of `if covered > 0` | `} else if let entered = dialled[…]?[distance], entered > 0 { …"entered" }` | S-16013 | S-16013 ✓ |
 
 M12 (− / + around a measured tile) belongs to Phase 2.
+
+## Phase 2 (2026-11-01, @developer)
+
+### Red on base (S-16011 written, `WatchLoggingView.swift` untouched)
+
+`swift test --package-path watch/watchos --filter WatchGpsDistanceTileTests` →
+`Executed 13 tests, with 1 failure (0 unexpected)`. The failure:
+`WatchGpsDistanceTileTests.swift:481: … testS16011AMeasuredTileHasNoStepButtons : XCTUnwrap failed … the row branches on a measured field first (D-5)`
+(base `row(_:)` always builds − / + around the tile, with `enabled: !field.isMeasured`). The other 12 passed.
+
+### Implementation (D-5)
+
+`row(_:)` is a `@ViewBuilder`: `if field.isMeasured { tile(field) } else { HStack { − tile + } }`; the unmeasured
+step buttons drop the now-always-true `enabled:` argument. `tile(_:)`:
+`.accessibilityAddTraits(field.isMeasured ? [] : .isButton)`; the tap guard and the accessibility label are unchanged.
+Shared pair untouched: `stepArmed(` still 2 call sites, `"Less \(label)"` / `"More \(label)"` kept (S-7514 green).
+
+The view is `#if os(watchOS)`, so `swift test` (macOS) does not compile it. Type-checked instead:
+`xcrun --sdk watchos swiftc -typecheck -module-name WatchSessionEngine -target arm64-apple-watchos9.0 -parse-as-library <all module sources>`
+→ exit 0, 0 errors. Proof the type-check sees the view: the same command on a scratch copy with the trait changed to
+`field.isMeasured ? 42 : .isButton` → `WatchLoggingView.swift:341:56: error: result values in '? :' expression have mismatching types 'Int' and 'AccessibilityTraits'`.
+Not run: `xcodebuild` of the watch app (governor).
+
+### Mutations (`--filter WatchGpsDistanceTileTests`; original copied aside, restored, `cmp` clean)
+
+| Id | Original | Mutant | Result |
+|---|---|---|---|
+| M12a | `if field.isMeasured {` / `tile(field)` | a disabled `stepButton(systemName: "minus", …)` added before `tile(field)` in the measured branch | `Executed 13 tests, with 1 failure` — killed |
+| M12b | `.accessibilityAddTraits(field.isMeasured ? [] : .isButton)` | `.accessibilityAddTraits(.isButton)` | `Executed 13 tests, with 1 failure` — killed |
+
+The failing test's name was cut by the output filter; S-16011 is the only test in the file that inspects the view's
+structure (S-16013 scans for `"entered"`, absent from both mutants), and both runs passed 12 of 13.
+
+### Green after Phase 2
+
+- `--filter 'WatchGpsDistanceTileTests|WatchLoggingStatusTests|WatchAccessibilitySourceTests|WatchExercisePageFitTests'`
+  → `Executed 39 tests, with 0 failures (0 unexpected)`.
+- Full `swift test --package-path watch/watchos` → `Executed 1139 tests, with 0 failures (0 unexpected)`, exit 0
+  (1138 + S-16011). `testS004NoMutatingOperationExistsAnywhereInTheModule`, `testS7514…` and `testS16011…` passed.
+- `flutter test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` → `+54: All tests passed!`.
+- `grep -rn "WatchHandDistanceTests\|testS9503\|S-950[0-9]\|S-9510" docs watch --exclude-dir=plans --exclude-dir=.build`
+  empty. Without `--exclude-dir=.build` the only hit is the gitignored stale build file
+  `watch/watchos/.build/…/WatchHandDistanceTests.d` (left by the Phase 1 deletion; not source).
+- `grep -rn '"entered"' watch/watchos/Sources` empty; hive import sweep empty.
+- `wc -c docs/state_management/watch_surface_wrist.md` = 52221 (≤ 52233); `docs/watch-app-setup-and-qa.md` = 48637.

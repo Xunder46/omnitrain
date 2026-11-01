@@ -1,7 +1,7 @@
 # Feature: 93 — the wrist shows a Distance tile only while GPS measures the effort (undo plan 65's dial)
 
-> Status: Iteration 1 active — Phase 1 complete 2026-11-01; Phase 2 not started.
-> Next handoff: @code-reviewer (Phase 1), then @developer (Phase 2)
+> Status: Iteration 1 active — Phase 1 complete 2026-11-01; Phase 2 complete 2026-11-01.
+> Next handoff: @code-reviewer (Phase 2); the governor runs the watch app `xcodebuild`
 > Binding conventions: docs/global_conventions.md; .github/copilot/pr-scope-budget.md; docs/state_management/watch_surface_wrist.md; docs/distance_source.md
 > Branch: the one checked out (`claude_develop`); never create or switch branches; never commit (the governor owns git).
 > Shared tree (2026-11-01): another session holds 14 uncommitted phone-side files (`lib/state/workout/*`, `lib/state/watch/watch_session_adoption_bridge.dart`, `lib/features/session/session_summary_screen.dart`, `lib/features/exercise/exercise_editor_screen.dart`, `docs/session_summary.md`, `docs/state_management/workout_state.md`, 7 test files) and two untracked `scripts/*.sh`. None is a predicted file here: do not edit, format, stage or revert them. Nothing under `watch/` is uncommitted; plan 65 is committed (`65a6a0de`).
@@ -222,11 +222,11 @@ Carried from plan 65 (adapted): M1 `measuredValue` → `readings.distanceMeters`
 
 ### Phase 2: the read-only tile's look and the owner QA step (@developer)
 
-1. [ ] Apply D-5 — `watch/watchos/Sources/WatchSessionEngine/WatchLoggingView.swift` · `row(_:)`, `tile(_:)`
-2. [ ] Add S-16011 (red on base) — `WatchGpsDistanceTileTests.swift`
-3. [ ] Add "drawn without − / +" to the Phase 1 paragraph, cutting words elsewhere in it to stay ≤ 52,233 bytes — `docs/state_management/watch_surface_wrist.md`
-4. [ ] Rewrite step 27 — `docs/watch-app-setup-and-qa.md` l.700-711. Title: "A run shows its distance only once GPS has measured it — (owner)." Content: Free workout, add a run or row, Start: only the clock and Log, no tile, the Crown changes nothing (S-16001, S-16012); indoors or with Location refused, Log, sync, phone Session Summary DISTANCE row reads `—`, tap it, enter 5.00 km, the session shows 5.00 km (`test/session_summary_distance_test.dart` S-817); outdoors on a real watch the tile appears within the first tens of metres, no − / +, this effort's distance, and the next effort starts with no tile (S-16006, S-16007, S-16011); the phone shows the metres with no "est." mark (`gps`); 40 mm: when the tile appears the Log button stays fully on screen. Replace every `WatchHandDistanceTests` / `testS9503` reference.
-5. [ ] Evidence: S-16011 red on base, M12, final counts — `<plan>.evidence.md`
+1. [x] Apply D-5 — `watch/watchos/Sources/WatchSessionEngine/WatchLoggingView.swift` · `row(_:)`, `tile(_:)`
+2. [x] Add S-16011 (red on base) — `WatchGpsDistanceTileTests.swift`
+3. [x] Add "drawn without − / +" to the Phase 1 paragraph, cutting words elsewhere in it to stay ≤ 52,233 bytes — `docs/state_management/watch_surface_wrist.md`
+4. [x] Rewrite step 27 — `docs/watch-app-setup-and-qa.md` l.700-711. Title: "A run shows its distance only once GPS has measured it — (owner)." Content: Free workout, add a run or row, Start: only the clock and Log, no tile, the Crown changes nothing (S-16001, S-16012); indoors or with Location refused, Log, sync, phone Session Summary DISTANCE row reads `—`, tap it, enter 5.00 km, the session shows 5.00 km (`test/session_summary_distance_test.dart` S-817); outdoors on a real watch the tile appears within the first tens of metres, no − / +, this effort's distance, and the next effort starts with no tile (S-16006, S-16007, S-16011); the phone shows the metres with no "est." mark (`gps`); 40 mm: when the tile appears the Log button stays fully on screen. Replace every `WatchHandDistanceTests` / `testS9503` reference.
+5. [x] Evidence: S-16011 red on base, M12, final counts — `<plan>.evidence.md`
 
 **Done Criteria**: the full `swift test` command of Phase 1 green; `bash .claude/scripts/macos/with-timeout.sh 900 flutter test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` green; `grep -rn "WatchHandDistanceTests\|testS9503\|S-950[0-9]\|S-9510" docs watch --exclude-dir=plans` empty; `wc -c docs/state_management/watch_surface_wrist.md` ≤ 52233. The governor runs the watch app `xcodebuild` (views compile only for watchOS).
 
@@ -253,7 +253,7 @@ Production: `WatchLoggingState.swift` (P1), `WatchLoggingView.swift` (P2) — un
 ## Progress
 
 - [x] Phase 1 — **Complete**: D-1 filter in `metricKeys`, `entered` branch deleted; 12 new tests red on base (9 red), green; full `swift test` 1138/0 failures (1140 − 14 + 12); flutter +81 all passed; M1-M11 killed except M5b (equivalent); doc 52209 B. Evidence file.
-- [ ] Phase 2 — not started
+- [x] Phase 2 — **Complete**: measured tile drawn alone, no button trait; S-16011 red on base, green; M12a/M12b killed; full `swift test` 1139/0 failures; flutter contracts +54 passed; view type-checked for watchOS (no `xcodebuild`); doc 52221 B; QA step 27 rewritten. Evidence file.
 
 ## Assumption Log
 

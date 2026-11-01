@@ -18,6 +18,7 @@
 //    S-16008 an exercise without distance never shows the tile     → `testS16008...`
 //    S-16009 a hold and a period never show the tile               → `testS16009...`
 //    S-16010 the tile reads in the phone's unit                    → `testS16010...`
+//    S-16011 a measured tile has no − / + (view source scan)       → `testS16011...`
 //    S-16012 nothing dialled on the wrist reaches the log (Crown)  → `testS16012...`
 //            (the plain-state half: WatchLoggingSurfacesTests S-006)
 //    S-16013 no source file produces "entered"                     → `testS16013...`
@@ -456,5 +457,72 @@ final class WatchGpsDistanceTileTests: XCTestCase {
             }
         }
         XCTAssertEqual(hits, [], "the wrist never produces distanceSource \"entered\" (I-2)")
+    }
+
+    // MARK: - S-16011 a measured tile has no − / +
+
+    func testS16011AMeasuredTileHasNoStepButtons() throws {
+        let url = Fixtures.repositoryRoot
+            .appendingPathComponent("watch/watchos/Sources/WatchSessionEngine/WatchLoggingView.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") { return "" }
+                return line.range(of: "//").map { String(line[..<$0.lowerBound]) } ?? String(line)
+            }
+            .joined(separator: "\n")
+
+        // The single-row path: a measured field leaves as its tile before any
+        // step button is built.
+        let row = try XCTUnwrap(
+            body(of: "private func row(_ field: WatchMetricField)", in: source),
+            "the single-row builder exists"
+        )
+        let measured = try XCTUnwrap(
+            row.range(of: "if field.isMeasured {"),
+            "the row branches on a measured field first (D-5)"
+        )
+        let other = try XCTUnwrap(
+            row.range(of: "} else {", range: measured.upperBound..<row.endIndex),
+            "the unmeasured branch keeps the − / + row"
+        )
+        let measuredBranch = row[measured.upperBound..<other.lowerBound]
+        XCTAssertTrue(measuredBranch.contains("tile(field)"), "a measured field renders as its tile")
+        XCTAssertFalse(measuredBranch.contains("stepButton("), "no − / + around a measured tile (D-5)")
+        XCTAssertFalse(
+            row[row.startIndex..<measured.lowerBound].contains("stepButton("),
+            "no step button is built before the measured branch"
+        )
+
+        // The tile: the button trait belongs to unmeasured tiles only.
+        let tile = try XCTUnwrap(
+            body(of: "private func tile(_ field: WatchMetricField)", in: source),
+            "the tile builder exists"
+        )
+        let traitLines = tile.split(separator: "\n").filter { $0.contains(".isButton") }
+        XCTAssertFalse(traitLines.isEmpty, "an unmeasured tile is still a button")
+        for line in traitLines {
+            XCTAssertTrue(line.contains("isMeasured"), "the button trait depends on isMeasured: \(line)")
+        }
+    }
+
+    /// The text between a declaration's opening brace and its matching close.
+    private func body(of declaration: String, in source: String) -> Substring? {
+        guard let start = source.range(of: declaration),
+              let open = source.range(of: "{", range: start.upperBound..<source.endIndex)
+        else { return nil }
+        var depth = 0
+        var index = open.lowerBound
+        while index < source.endIndex {
+            switch source[index] {
+            case "{": depth += 1
+            case "}":
+                depth -= 1
+                if depth == 0 { return source[open.upperBound..<index] }
+            default: break
+            }
+            index = source.index(after: index)
+        }
+        return nil
     }
 }

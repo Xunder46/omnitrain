@@ -697,18 +697,20 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     asked at the first distance exercise, not at the Start screen. A relaunch
     straight into a live session shows no Start screen, so Health still asks at
     the first workout open in that case.
-27. **A distance effort can be dialled by hand until GPS measures it —
-    (owner).** Start a **Free workout**, add a run or row exercise, press
-    **Start**: the logging screen shows a Distance tile. Turn the Crown on it
-    (or its − / +) and tap **Log**: the phone's session shows the distance you
-    entered (`WatchHandDistanceTests.swift` S-9501..S-9510, plus S-9504b, and
-    `WatchLoggingSurfacesTests.testS9503ADialledDistanceReachesTheObservation`
-    hold the row, the source and the clear-off at Log off-device). Then log an
-    effort on a real outdoor run: once GPS has measured movement inside the
-    effort, the tile shows the GPS value and cannot be turned, and the phone
-    receives the measured metres (`distanceSource: "gps"`). Check the 40 mm
-    layout while you are there: the Distance tile fits beside the exercise's
-    other rows.
+27. **A run shows its distance only once GPS has measured it — (owner).**
+    Start a **Free workout**, add a run or row exercise and press **Start**:
+    the screen shows only the clock and **Log**, no Distance tile, and turning
+    the Crown changes nothing. Indoors (or with Location refused), tap **Log**
+    and let it sync: on the phone's Session Summary the DISTANCE row for that
+    effort reads `—`; tap it, enter 5.00 km, and the session shows 5.00 km
+    (`WatchGpsDistanceTileTests` S-16001 and S-16012 hold the wrist half,
+    `test/session_summary_distance_test.dart` S-817 the phone half). Then run
+    outdoors with a real watch: within the first tens of metres a Distance
+    tile appears showing this effort's distance, with no − / + beside it; tap
+    **Log**, start the next effort, and it begins with no tile until GPS
+    measures it again (S-16006, S-16007, S-16011). The phone shows the
+    measured distance with no "est." mark. On a 40 mm watch, check that when
+    the tile appears mid-effort the **Log** button stays fully on screen.
 28. **The wrist's end-of-workout summary, and Skip — (owner).** With the phone's
     Effort Rating setting on, end a workout on the wrist: the question shows a
     small **Skip** under **Confirm**. Tap **Skip**: nothing is recorded — the
