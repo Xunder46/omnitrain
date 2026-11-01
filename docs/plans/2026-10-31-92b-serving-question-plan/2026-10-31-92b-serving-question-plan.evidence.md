@@ -200,3 +200,93 @@ Command: `.github/copilot/scripts/macos/gateway.sh prove-red 2721dcaa test test/
 - `gateway.sh format test/food_form_serving_test.dart` → formatted. `format lib/features/nutrition/widgets/food_form.dart` is refused by the gateway (tracked files cannot be formatted), so that file was hand-formatted to the surrounding style; `lint` reports nothing in it.
 - `gateway.sh git-diff --stat -- lib/features/nutrition/widgets/food_form.dart` → **256 insertions, 107 deletions**. Large because the old ~130-line serving block (dropdown, reference Row, heading) is replaced by the new basis block; reviewed hunk by hunk, all intended. `test/nutrition_test.dart` → 25 lines changed.
 
+## Phase 2A-ii execution (developer, tests only)
+
+Scope: `test/food_form_serving_test.dart` only. No `lib/` edit was kept; `gateway.sh git-diff --stat -- lib/features/nutrition/widgets/food_form.dart` is empty before and after the mutation proofs. The only other tracked diff under `lib/` is the four hands-off files that were already modified in the working tree before this run (`session_summary_screen.dart`, `watch_session_adoption_bridge.dart`, `session_core_entry.dart`, `workout_state.dart`) — none touched here.
+
+### Fixtures
+
+- New harness `_pumpNewFoodForm`: 800x3000 surface (the serving row and the package row push the form past S-92b.2's 1800), Mock `MockWorkoutRepository`, host `FoodFormController`, and a list of the drafts `onSave` receives.
+- `_fillRequiredMacros` fills name / protein / carbs / fat so a save attempt surfaces only the serving control's own error.
+- Every saved-draft assertion goes through `_expectServing(draft, unitType, amount, label)` and reads all three `FoodDraft` fields.
+- The save goes through the form's own path (`FoodFormController.submit()`), as S-92b.2 does.
+
+### Red → green
+
+These scenarios need the 2A keys (they did not exist at base; the file-level prove-red is recorded in the Part 2A-i section above), so per the brief each guard is proven by mutation against the committed production code.
+
+| Guard | Test | Red evidence | Green |
+|---|---|---|---|
+| S-92b.3 | `S-92b.3 100 ml saves grams / 100 / ml` | not mutated (positive path; see note) | passed |
+| S-92b.4 | `S-92b.4 1 serving requires a label and the chips fill it` | not mutated (positive path; see note) | passed |
+| S-92b.5 | `S-92b.5 package serving sets the amount, and Back restores 100 g` | mutation (c) → red | passed |
+| S-92b.12 | `S-92b.12 a padded serving label saves trimmed` | mutation (b) → red | passed |
+| S-92b.13 | `S-92b.13 package amount 0 and . are rejected` | mutation (a) → red | passed |
+| S-92b.15 | `S-92b.15 chips are hidden off the serving segment` | not mutated (positive path; see note) | passed |
+
+Note on the unmutated guards: (a) removes the `> 0` rule (S-92b.13), (b) removes the label trim (S-92b.12), (c) keeps the package row open (S-92b.5). S-92b.3, S-92b.4 and S-92b.15 exercise the same control's positive paths (a segment choice reaching the saved draft, the required label and its chips, chips visible only on `1 serving`); the brief asked for three mutation proofs and named those three.
+
+### Mutation proofs (one at a time, each restored before the next)
+
+(a) `food_form.dart` `_validatePositiveDouble`: `if (parsed <= 0)` → `if (parsed < 0)` (package amount `0` now accepted) — S-92b.13:
+
+```
+Expected: empty
+  Actual: [Instance of 'FoodDraft']
+...
+  S-92b.13 package amount 0 and . are rejected
+00:00 +0 -1: Some tests failed.
+```
+
+restored → 8/8 green.
+
+(b) `food_form.dart` `_currentChoice` `NamedServing`: `_servingLabelController.text.trim()` → `_servingLabelController.text` (label saved untrimmed) — S-92b.12:
+
+```
+Expected: 'slice'
+  Actual: ' slice '
+...
+  S-92b.12 a padded serving label saves trimmed
+00:00 +0 -1: Some tests failed.
+```
+
+`servingHeading` re-trims for display, so the heading assertion still passed; the saved `FoodDraft` is what caught the mutation (the guard the test exists for). Restored → 8/8 green.
+
+(c) `food_form.dart` package link `onPressed`: `setState(() => _packageOpen = !_packageOpen)` → `setState(() => _packageOpen = true)` (Back no longer closes the row) — S-92b.5:
+
+```
+Expected: no matching candidates
+  Actual: _KeyWidgetFinder:<Found 1 widget with key [<'food_form_package_amount'>]
+...
+  S-92b.5 package serving sets the amount, and Back restores 100 g
+00:00 +0 -1: Some tests failed.
+```
+
+restored → 8/8 green.
+
+Residue after restoration: `git-diff --stat -- lib/features/nutrition/widgets/food_form.dart` empty; `grep -rn MUTANT lib` → 0; `grep -rn MUTANT test` → 0.
+
+### Suites / lint / format
+
+- `gateway.sh test test/food_form_serving_test.dart` → `00:01 +8: All tests passed!` — **8 passed, 0 failed**.
+- `gateway.sh test test/ui_standards_contract_test.dart` → **41 passed, 0 failed**.
+- `gateway.sh lint` → **180 issues, 0 errors** (baseline; grep of the lint log for `food_form_serving_test.dart` → 0 hits).
+- `gateway.sh format test/food_form_serving_test.dart` → **refused**: "`format` only runs on files this change created; … is already tracked by git". The file was hand-formatted to the surrounding style; `lint` reports nothing in it (same recorded state as A-92b.11 for `food_form.dart`).
+- `import .*hive_workout_repository` in `lib/state`, `lib/features`, `lib/widgets`, `lib/core` → **0 hits** each.
+
+### Defects
+
+None. All seven scenarios passed against the committed production code; no fix was needed or made.
+
+### Docs
+
+No doc update required: this run adds tests only and changes no screen, route, widget, constructor dependency or behaviour. `docs/navigation_and_screens.md`, `docs/state_management.md`, `docs/widget_catalog.md` → no update required; Phase 3 owns the serving-control prose.
+
+### Full suite: one red outside this run's scope
+
+- `.github/copilot/scripts/macos/gateway.sh test` (full) → `04:12 +5909 ~2 -1: Some tests failed.` — **5909 passed, 2 skipped, 1 failed**.
+- The single failure is `test/logger_feedback_controls_test.dart`: `Forward arrow and rest chip (plan 44 T2a) S-5115: the rest chip keeps its running look on the rolling list view` at line 523: `Expected: exactly one matching candidate / Actual: _KeyWidgetFinder:<Found 0 widgets with key [<'rest-overlay-chip'>]: []>`.
+- Reproduced in isolation: `gateway.sh test test/logger_feedback_controls_test.dart --plain-name "the rest chip keeps its running look on the rolling list view"` → `00:00 +0 -1: Some tests failed.`
+- Not caused by this run: `.github/copilot/scripts/macos/gateway.sh prove-red HEAD test test/logger_feedback_controls_test.dart` → `00:01 +10: All tests passed!` / `gateway: prove-red: GREEN AT HEAD`. The file is unmodified and this run changed only `test/food_form_serving_test.dart`, so the red comes from the uncommitted hands-off sources already in the working tree (`lib/state/workout/workout_state.dart`, `session_core_entry.dart`, `lib/features/session/session_summary_screen.dart`, `lib/state/watch/watch_session_adoption_bridge.dart`).
+- Not fixed here: those files are outside this brief's hands-off list and the red test belongs to another feature (do not edit it). Reported to the governor.
+
