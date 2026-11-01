@@ -13,7 +13,7 @@
 //    S-002 log timed work (duration, optional distance)  → `testS002...`
 //    S-003 log a round                                   → `testS003...`
 //    S-004 log a hold / drill                            → `testS004...`
-//    S-9503 a dialled distance reaches the log           → `testS9503...`
+//    S-006 a manual distance never reaches the log      → `testS006...`
 //    S-007 metric stepping                               → WatchLoggingTimersTests
 //    S-008 terminology parity with the phone             → `testS008...`
 //    S-062 zero still means "no load claim"              → `testS062...`
@@ -447,12 +447,11 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         XCTAssertEqual(logged.event["extraLoadKg"] as? Double, -10)
     }
 
-    // MARK: - S-9503 a dialled distance reaches the observation
+    // MARK: - S-006 a manual distance never reaches the log
 
-    /// Plan 65 rewrote the old S-006 ("a manual distance never reaches the
-    /// observation"): a timed effort's distance row is dial-able until GPS
-    /// measures something, and the dialled metres travel marked "entered".
-    func testS9503ADialledDistanceReachesTheObservation() async throws {
+    /// Plan 93 S-16012, plain-state half: a timed surface without GPS offers no
+    /// distance row, so a dial attempt changes nothing and no distance travels.
+    func testS006AManualDistanceNeverReachesTheObservation() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
         _ = await engine.createSession(
@@ -468,12 +467,11 @@ final class WatchLoggingSurfacesTests: XCTestCase {
 
         let logged = try loggedEvent(harness)
         XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
-        XCTAssertEqual(
-            logged.event["distanceMeters"] as? Double,
-            5 * WatchMetricStepping.step(for: WatchMetricKey.distance),
-            "the dialled metres travel (plan 65 S-9503)"
+        XCTAssertNil(
+            logged.event["distanceMeters"],
+            "a timed surface without GPS has no distance row to dial (plan 93 D-1)"
         )
-        XCTAssertEqual(logged.event["distanceSource"] as? String, "entered")
+        XCTAssertNil(logged.event["distanceSource"], "and no source travels alone (D-2206)")
     }
 
     // MARK: - S-008 terminology parity with the phone
@@ -656,8 +654,7 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         )
         // The fixture's first timed event is a measured `gps` distance, and the
         // surface under these fixtures never dials: a fix arriving inside the
-        // effort's own window is what puts the keys there (D-2205, D-2206; a
-        // dialled distance is plan 65's other way in).
+        // effort's own window is what puts the keys there (D-2205, D-2206).
         let source = FakeSensorSource()
         let sensors = WatchSessionSensors(
             platform: WatchPlatformWorkout(store: FakePlatformStore()),

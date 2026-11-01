@@ -190,10 +190,12 @@ Notes that follow from the schemas:
   for a set, `startedAt` and `endedAt` for timed work, rounds and holds,
   `distanceMeters` for distance-capable work, and `extraLoadKg` for a hold's
   added or assisting load. Distance is entered by hand whenever the watch has no
-  fix: GPS is a separate concern and MUST NOT gate an entry. The wrist sends the
-  distance GPS measured inside the effort's own window (`distanceSource` `gps`)
-  and, only when GPS measured nothing, the distance the wearer dialled
-  (`distanceSource` `entered`); one effort carries one of the two, never both.
+  fix: GPS is a separate concern and MUST NOT gate an entry. The watchOS wrist
+  sends a distance only when GPS measured movement inside the effort's own
+  window (`distanceSource` `gps`); it has no distance dial, so a distance GPS
+  did not measure is entered afterwards on the phone's Session Summary.
+  `entered` stays valid on the wire: a wrist build from before 2026-11-01 sends
+  it for a dialled distance, and the phone stores it as sent.
   `fixtures/valid/observations_up_distance_and_load.json` is the shape in full.
 - A set's `loadKg` MAY be negative down to -200 kg: a band or partner assists
   the lift, so the logged resistance is below bodyweight. The same floor applies

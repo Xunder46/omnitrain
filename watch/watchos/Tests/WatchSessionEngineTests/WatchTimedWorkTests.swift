@@ -142,8 +142,8 @@ final class WatchTimedWorkTests: XCTestCase {
         let harness = Harness()
         harness.clock.now = instant("2026-07-13T10:00:00Z")
         let engine = await harness.runningEngine()
-        // plan 65: the timed surface of a distance exercise now offers one
-        // Distance row, so this no-row case uses a time-only exercise.
+        // The timed surface of a distance exercise shows a Distance row once
+        // GPS measured it (plan 93 D-1); this no-row case is time-only.
         _ = await engine.createSession(
             modality: "cardio_endurance",
             exercises: [slot("sx-run", capabilities: ["time"])]
@@ -772,8 +772,8 @@ final class WatchTimedWorkTests: XCTestCase {
             modality: nil,
             exercises: [
                 slot("sx-bench", capabilities: ["reps", "sets", "load"]),
-                // plan 65: the no-row half of this test is about a timed
-                // effort with nothing to step, so the fixture is time-only.
+                // The no-row half of this test is about a timed effort with
+                // nothing to step (plan 93 D-1), so the fixture is time-only.
                 slot("sx-run", capabilities: ["time"]),
             ]
         )

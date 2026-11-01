@@ -182,8 +182,8 @@ final class WatchCrownArmingTests: XCTestCase {
         let state = WatchLoggingState(engine: engine, clock: harness.clock.call, sensors: recorder)
         let model = WatchLoggingModel(state: state, haptics: RecordingHaptics())
 
-        // plan 65: the timed surface of a distance exercise offers one Distance
-        // row that is dialled until GPS measures this effort, so the
+        // Plan 93 D-1: the timed surface of a distance exercise shows its
+        // Distance row only once GPS measured movement in this effort, so the
         // never-armed case is the measured one: samples inside the window.
         await state.startWork()
         harness.clock.advance(60)
@@ -273,8 +273,9 @@ final class WatchCrownArmingTests: XCTestCase {
             modality: "cardio_endurance",
             exercises: [slot("sx-run", capabilities: ["time", "distance"])]
         )
-        // plan 65: arming the distance row now succeeds before Start, so the
-        // refusal that still exists is a metric the exercise does not carry.
+        // Plan 93 D-1: with no GPS measurement the timed surface has no row at
+        // all, so both a distance and a metric the exercise does not carry are
+        // refused.
         let cardio = WatchLoggingModel(
             state: WatchLoggingState(engine: cardioEngine, clock: cardioHarness.clock.call),
             haptics: RecordingHaptics()
@@ -285,12 +286,10 @@ final class WatchCrownArmingTests: XCTestCase {
             .sink { _ in cardioNotifications += 1 }
             .store(in: &cancellables)
 
+        cardio.arm(WatchMetricKey.distance)
+        XCTAssertNil(cardio.armedMetricKey, "an unmeasured distance is not a row the crown may drive")
         cardio.arm(WatchMetricKey.reps)
-        XCTAssertEqual(
-            cardio.armedMetricKey,
-            WatchMetricKey.distance,
-            "a metric the exercise does not carry is not a row: the armed row stays"
-        )
+        XCTAssertNil(cardio.armedMetricKey, "a metric the exercise does not carry is not a row")
         XCTAssertEqual(cardioNotifications, 0, "an arm that is refused publishes nothing")
 
         withExtendedLifetime(cancellables) {}

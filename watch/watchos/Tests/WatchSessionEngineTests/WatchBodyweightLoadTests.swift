@@ -93,8 +93,8 @@ final class WatchBodyweightLoadTests: XCTestCase {
             harness,
             exercises: [
                 slot("sx-pushup", capabilities: ["reps", "sets"]),
-                // plan 65: the timed-no-rows case is about an exercise with
-                // nothing to step, so the fixture is time-only.
+                // The timed-no-rows case is about an exercise with nothing to
+                // step (plan 93 D-1), so the fixture is time-only.
                 slot("sx-plank", capabilities: ["time", "hold"]),
                 slot("sx-run", capabilities: ["time"]),
             ]

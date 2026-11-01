@@ -317,17 +317,14 @@ final class WatchCaptureContractTests: XCTestCase {
 
     /// S-1303 (D-1305): the effort's own clock is its length, so neither the
     /// timed effort nor a period offers a length row to dial, and the replay
-    /// refuses the dial that the timeline used to carry. The timed effort's
-    /// one row is its distance (plan 65), which this timeline never dials.
+    /// refuses the dial that the timeline used to carry. A timed effort shows a
+    /// distance only once GPS measured it (plan 93 D-1), and this timeline has
+    /// no GPS, so it shows no row at all.
     func testS1303ATimedSurfaceHasNoLengthToDial() async throws {
         let timed = try CaptureReplay("full")
         try await timed.run(stoppingBefore: ["log"])
         XCTAssertEqual(timed.surface.effortKind, WatchEffortKind.timed, "S-1303: the timed effort is current")
-        XCTAssertEqual(
-            timed.surface.fields.map(\.metricKey),
-            [WatchMetricKey.distance],
-            "S-1303: a timed effort offers no length row, only its distance"
-        )
+        XCTAssertTrue(timed.surface.fields.isEmpty, "S-1303: a timed effort shows no row to dial")
         assertMalformed("the surface has no duration to dial") {
             try timed.dial(WatchMetricKey.duration, to: 1200)
         }

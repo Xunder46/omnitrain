@@ -138,8 +138,8 @@ final class WatchLoggingStatusTests: XCTestCase {
     func testS7512StepArmedWithNoRowsChangesNothing() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
-        // plan 65: a distance exercise's timed surface now offers a Distance
-        // row, so this nothing-to-step case uses a time-only exercise.
+        // A distance exercise's timed surface shows a Distance row once GPS
+        // measured it (plan 93 D-1); this nothing-to-step case is time-only.
         _ = await engine.createSession(
             modality: "cardio_endurance",
             exercises: [slot("sx-run", capabilities: ["time"])]
@@ -179,8 +179,8 @@ final class WatchLoggingStatusTests: XCTestCase {
         let state = WatchLoggingState(engine: engine, clock: harness.clock.call, sensors: recorder)
         let model = WatchLoggingModel(state: state, haptics: RecordingHaptics())
 
-        // plan 65: the row is measured once GPS samples are inside the effort's
-        // window, so the fix arrives after Start.
+        // The row is shown, measured, once GPS samples inside the effort's
+        // window measured movement (plan 93 D-1), so the fix arrives after Start.
         await state.startWork()
         harness.clock.advance(60)
         source.fix(400)

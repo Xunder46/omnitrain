@@ -388,19 +388,19 @@ exercise's own numbers and a Log clears only the logged exercise's. Verified by
 `WatchDialledPerExerciseTests.swift` (S-6410..S-6413) and
 `test/watch_dialled_per_exercise_test.dart` (groups S-6410..S-6413).
 
-**A timed effort on a distance exercise offers a Distance row.**
-`WatchLoggingState.metricKeysByKind` gives a timed effort on an exercise with
-the distance capability a `distance` row, dialled with the Crown or − / + — the
-unit and step follow the phone's distance unit, and the value is stored in
-metres — until GPS has measured movement inside this effort's own window; from
-then on the row is measured and read-only, showing the effort's own metres
-rather than the session total. At Log the GPS metres win when above zero
-(`distanceSource: "gps"`); otherwise a dialled distance above zero is sent as
-`distanceMeters` with `distanceSource: "entered"`, and with neither dialled nor
-measured neither field is sent. Logging clears the dialled value, so the next
-effort starts at zero; hold, round and set efforts are unchanged. Verified by
-`WatchHandDistanceTests.swift` (S-9501..S-9510, plus S-9504b) and
-`WatchLoggingSurfacesTests.testS9503ADialledDistanceReachesTheObservation`.
+**A timed effort shows a Distance tile only while GPS measures it (plan 93).**
+On an exercise with the distance capability, `WatchLoggingState.fields` holds a
+`distance` row only while the location subscription runs and the running work
+clock's own window has covered more than 0 m; otherwise the screen is the clock
+and Start/Log alone; nothing is dialled. The tile is measured and read-only:
+the effort's own metres (never the session total) in the phone's distance unit;
+it never takes the Crown, and the primary button keeps its role. Before Start,
+after Log and on the next effort until its own window measures movement there
+is no tile. A Log carries `distanceMeters` with `distanceSource: "gps"` exactly
+when the tile would show; otherwise neither key, and the distance is entered on
+the phone's Session Summary. The wrist never sends `entered`. Verified by
+`WatchGpsDistanceTileTests.swift` (S-16001..S-16013) and
+`WatchLoggingSurfacesTests.testS006…`.
 
 A set with two values (reps and weight) shows them as two side-by-side tiles
 with one shared − / + pair under them: the outlined tile is the one the Crown

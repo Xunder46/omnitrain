@@ -368,10 +368,7 @@ class WatchSensorRecordingTests: XCTestCase {
         XCTAssertEqual(logged.payload["distanceSource"] as? String, "gps")
     }
 
-    // plan 65: the timed surface of a distance exercise now offers one Distance
-    // row, dialled until GPS measures movement in this effort; without a fix it
-    // stays unmeasured at 0 and the log carries no distance.
-    func testS004WithoutAFixTheTimedSurfaceOffersAnUnmeasuredDistanceRow() async throws {
+    func testS004WithoutAFixTheTimedSurfaceOffersNoDistanceRow() async throws {
         source.locationGrant = .denied
         let engine = await harness.runningEngine()
         _ = await session(engine, modality: "cardio_endurance", capabilities: ["time", "distance"])
@@ -384,12 +381,11 @@ class WatchSensorRecordingTests: XCTestCase {
             sensors: sensors.recorder
         )
         XCTAssertFalse(state.isMeasuringDistance, "no fix, so nothing is measured")
-        let distance = try XCTUnwrap(
-            state.fields.first { $0.metricKey == WatchMetricKey.distance },
-            "the timed surface of a distance exercise offers one Distance row"
+        XCTAssertTrue(
+            state.fields.isEmpty,
+            "a timed surface shows a distance only once GPS measured it (plan 93 D-1)"
         )
-        XCTAssertFalse(distance.isMeasured, "without a fix the row is not measured")
-        XCTAssertEqual(distance.value, 0, "an unmeasured row reads 0")
+        state.adjust(WatchMetricKey.distance, detents: 15)
 
         await state.startWork()
         clock.advance(1200)
@@ -987,9 +983,9 @@ class WatchSensorRecordingTests: XCTestCase {
 
     // MARK: - Distance readout
 
-    // plan 65: the timed surface of a distance exercise now offers one Distance
-    // row that becomes measured once GPS samples are in the window; the
-    // observation still carries the GPS metres with source `gps`.
+    // Plan 93 D-1: the timed surface of a distance exercise shows its Distance
+    // row only once GPS samples in the effort's window measured movement, and
+    // then read-only; the observation carries the GPS metres with source `gps`.
     func testAMeasuredDistanceIsWhatTheObservationCarries() async throws {
         let engine = await harness.runningEngine()
         _ = await session(engine, modality: "cardio_endurance", capabilities: ["time", "distance"])
@@ -999,21 +995,9 @@ class WatchSensorRecordingTests: XCTestCase {
         let state = WatchLoggingState(engine: engine, clock: clock.call, sensors: sensors.recorder)
 
         XCTAssertTrue(state.isMeasuringDistance, "the fix is being kept")
-        XCTAssertEqual(
-            state.fields.map(\.metricKey),
-            [WatchMetricKey.distance],
-            "the timed surface of a distance exercise offers one Distance row"
-        )
-        XCTAssertFalse(
-            state.fields.first { $0.metricKey == WatchMetricKey.distance }!.isMeasured,
-            "before Start nothing is measured yet"
-        )
+        XCTAssertTrue(state.fields.isEmpty, "before Start nothing is measured, so no row")
         state.adjust(WatchMetricKey.distance, detents: 15)
-        XCTAssertEqual(
-            state.fields.first { $0.metricKey == WatchMetricKey.distance }?.value,
-            1500,
-            "the row is dialled until GPS has measured movement in this effort"
-        )
+        XCTAssertTrue(state.fields.isEmpty, "and a dial attempt does nothing")
 
         // The effort's distance is what its own window covered, so the fix
         // arrives after Start (D-2205).
@@ -1021,9 +1005,14 @@ class WatchSensorRecordingTests: XCTestCase {
         clock.advance(600)
         source.fix(3200)
         await eventually { sensors.recorder.readings.distanceMeters == 3200 }
+        XCTAssertEqual(
+            state.fields.map(\.metricKey),
+            [WatchMetricKey.distance],
+            "once samples in the window measured movement the row is shown"
+        )
         XCTAssertTrue(
             state.fields.first { $0.metricKey == WatchMetricKey.distance }!.isMeasured,
-            "once samples are in the window the row is measured"
+            "and it is measured"
         )
         state.adjust(WatchMetricKey.distance, detents: 15)
         XCTAssertEqual(
