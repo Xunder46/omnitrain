@@ -219,6 +219,10 @@ final class SuspendingStore: WatchSessionStore {
         await inner.pruneBests(keepingRecordId: keepingRecordId)
     }
 
+    func pruneWater(keepingRecordId: String) async -> [String] {
+        await inner.pruneWater(keepingRecordId: keepingRecordId)
+    }
+
     /// Consumes the arm and marks the store suspended, if it was armed.
     private func beginAppend() -> Bool {
         lock.lock()

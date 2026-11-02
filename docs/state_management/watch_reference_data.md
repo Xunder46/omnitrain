@@ -141,7 +141,7 @@ The sync orchestrator routes `exercises_down` to the start paths and reports
 `stored` as the arrival's result; every other message keeps its own route
 (`testS3818TheOrchestratorRoutesBatchesToThePaths`).
 
-`WatchSyncTransport.requestRoutines(since:exercisesVersion:holdsBests:)` carries
+`WatchSyncTransport.requestRoutines(since:exercisesVersion:holdsBests:wantsWater:)` carries
 the version of the list the wrist already holds, so the phone can send only what
 changed. The key is added to the frame **only when there is a version**: a wrist
 that holds no list sends exactly the frame it always did, so the contract's
@@ -160,6 +160,12 @@ its own contract row, `routinesBests`, beside `routines`, `routinesSince` and
 for byte (`test/watch_transport_test.dart`, `S-87c-16 a wrist that holds the
 bests says so`;
 `WatchConnectivityBridgeTests.testS87c16TheRoutinesRequestCarriesHoldsBestsOnlyWhenTheWristHoldsOne`).
+A request may also carry `wantsWater` — the boolean `true` when the wrist asks
+for the day's water count, omitted otherwise — read by the same rule: only the
+boolean `true` is asking. Its contract row is `routinesWater`
+(`test/watch_transport_test.dart`, `S-94a-26 a wrist that asks for the water
+count says so`, group `S-94a-22 the request says whether the wrist wants the
+water count`).
 The frame's contract is `watch/contract/watch_start_paths_contract.json`, read
 by both the Swift and the Dart suites.
 
@@ -280,6 +286,45 @@ and each frame is stamped with its own request's clock rather than the bundle's
 (`S-87a-12 each frame is stamped with that request's own clock`). The frame it
 sends validates against the contract (`S-87a-11 the sent frame validates, with
 and without history`).
+
+### The water count rides an answer that asks
+
+A routines request that asks for the water count (`wantsWater`) is answered
+with one `water_down` — the phone's own glass count for its today, plus the ids
+of the wrist taps that count already includes — after the exercise batches and
+before `bests_down`, so the bests stay last. It is sent on every such request,
+whatever `since`, the exercise-list version or the bests decide, because the
+count moves with every glass while the bundle's stamp does not. It is read from
+storage when the request arrives; a read that throws sends no count and a frame
+the radio did not carry is not retried, and neither changes the rest of the
+answer (plan 94, D-6, D-8(a);
+`test/watch_sync_request_handler_test.dart`, group `S-94a-21…S-94a-25 the water
+count rides an answer that asks`; the wiring hands the key over,
+`test/watch_session_projection_test.dart`, group `S-94a-26 the wrist's
+wantsWater reaches the handler`). The same frame also follows the receipt
+whenever a message carrying wrist taps arrives (`WatchWaterLogBridge`;
+`docs/nutrition.md`, "Glasses tapped on the watch").
+
+### The wrist holds one water count
+
+A wrist built with a `WatchWaterState` asks for the count on every sync, manual
+or catch-up; one built without it sends the request frames it always did, byte
+for byte (`WatchWaterSyncTests.testS94b17EverySyncOfAWristWithAWaterStateAsksForTheCount`,
+`…testS94b17TheBridgeCarriesTheKeyOnlyForAWristThatAsks`). The orchestrator
+routes `water_down` to that state, and the frame counts as a reply in the sync
+window (`…testS94b18TheFrameIsRoutedToTheWaterState`,
+`…testS94b18AWaterFrameExtendsARunningSyncLikeAnyReply`).
+
+The wrist holds ONE frame, as it holds one bests copy: a frame the validator
+refuses or the wrist cannot read stores nothing, an older one is dropped, one
+carrying the held content again writes nothing, and anything else is stored
+before `WatchSessionStore.pruneWater(keepingRecordId:)` drops the row it
+replaced; a relaunch holds the newest stored row
+(`WatchWaterStateTests.testS94b4OneFrameRowAfterEachApplyAndARelaunchHoldsTheNewest`,
+`…testS94b5TheNewestFrameWinsAndARepeatWritesNothing`,
+`…testS94b6AFrameTheWristCannotReadChangesNothing`). The wrist's own taps are
+never pruned — the count reads every one — so `pruneConfirmed()` has no caller
+(`WatchWaterBarSourceTests.testS94b25TapsAreNeverPruned`).
 
 ### The wrist keeps one copy
 

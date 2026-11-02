@@ -94,12 +94,17 @@ public final class WatchNutritionModel: ObservableObject {
 public struct WatchNutritionView: View {
     @ObservedObject private var model: WatchNutritionModel
 
+    /// The day's water, drawn under the list (plan 95 D-31). The bar observes
+    /// it; the list only hands it on.
+    private let water: WatchWaterModel
+
     /// Wrist-scale inset — the phone's spacing tokens are sized for a full-width
     /// screen.
     private static let surfaceInset = 4.0
 
-    public init(model: WatchNutritionModel) {
+    public init(model: WatchNutritionModel, water: WatchWaterModel) {
         self.model = model
+        self.water = water
     }
 
     public var body: some View {
@@ -108,6 +113,8 @@ public struct WatchNutritionView: View {
                 Text("No foods yet. On your phone, open Nutrition and tap Choose foods.")
                     .font(.footnote)
                     .multilineTextAlignment(.center)
+                    // Fills the space, so the water bar sits at the bottom here too.
+                    .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
                     VStack(spacing: Self.surfaceInset) {
@@ -117,6 +124,10 @@ public struct WatchNutritionView: View {
                     }
                 }
             }
+
+            // Plan 95 D-31: after the branch and outside the scroll, so it is
+            // pinned at the bottom with or without foods.
+            WatchWaterBar(model: water)
         }
         .padding(.horizontal, Self.surfaceInset)
         .navigationDestination(isPresented: showingFood) {
@@ -150,6 +161,68 @@ public struct WatchNutritionView: View {
             }
         }
         .buttonStyle(.bordered)
+    }
+}
+
+/// The day's glasses of water: minus, the drop and the count, plus, like the
+/// phone's water control (plan 95 D-31 to D-34). Each press that stores a tap
+/// clicks once; minus is off at 0 and both are off past the day's cap (D-27).
+/// The count is computed on every read, so the minute timeline is what turns
+/// it over at local midnight while the bar stays on screen.
+struct WatchWaterBar: View {
+    @ObservedObject private var model: WatchWaterModel
+
+    /// A wide count shrinks rather than wrapping on a 40 mm screen.
+    private static let countScale = 0.6
+
+    /// The drop sits tight against its number.
+    private static let dropSpacing = 2.0
+
+    init(model: WatchWaterModel) {
+        self.model = model
+    }
+
+    var body: some View {
+        TimelineView(.everyMinute) { _ in
+            HStack {
+                Button {
+                    Task {
+                        if await model.press(.remove) {
+                            WKInterfaceDevice.current().play(.click)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "minus")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!model.canRemove)
+                .accessibilityLabel(WatchWaterCopy.removeLabel)
+
+                HStack(spacing: Self.dropSpacing) {
+                    Image(systemName: "drop.fill")
+                    Text("\(model.glasses)")
+                        .lineLimit(1)
+                        .minimumScaleFactor(Self.countScale)
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(WatchWaterCopy.countLabel)
+                .accessibilityValue(model.spokenCount)
+
+                Button {
+                    Task {
+                        if await model.press(.add) {
+                            WKInterfaceDevice.current().play(.click)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!model.canAdd)
+                .accessibilityLabel(WatchWaterCopy.addLabel)
+            }
+        }
     }
 }
 

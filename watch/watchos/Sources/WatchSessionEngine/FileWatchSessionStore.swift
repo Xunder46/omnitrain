@@ -84,6 +84,10 @@ public final class FileWatchSessionStore: WatchSessionStore {
         locked { pruneBestsLocked(keepingRecordId) }
     }
 
+    public func pruneWater(keepingRecordId: String) async -> [String] {
+        locked { pruneWaterLocked(keepingRecordId) }
+    }
+
     // MARK: - The store's operations
 
     private func appendLocked(_ record: StoredWatchRecord) -> StoredWatchRecord {
@@ -123,6 +127,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
         var ratingPrompts: [WatchRatingPromptRecord] = []
         var exerciseBatches: [WatchExerciseBatchRecord] = []
         var bests: [WatchBestsRecord] = []
+        var water: [WatchWaterRecord] = []
 
         for row in loaded {
             switch row {
@@ -137,6 +142,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
             case .ratingPrompt(let value): ratingPrompts.append(value)
             case .exerciseBatch(let value): exerciseBatches.append(value)
             case .bests(let value): bests.append(value)
+            case .water(let value): water.append(value)
             }
         }
 
@@ -151,7 +157,8 @@ public final class FileWatchSessionStore: WatchSessionStore {
             preferences: preferences,
             ratingPrompts: ratingPrompts,
             exerciseBatches: exerciseBatches,
-            bests: bests
+            bests: bests,
+            water: water
         )
     }
 
@@ -245,6 +252,35 @@ public final class FileWatchSessionStore: WatchSessionStore {
         let drop = Set(dropped)
         let survivors = loaded.filter { row in
             guard case .bests(let value) = row else { return true }
+            return !drop.contains(value.recordId)
+        }
+
+        // A prune that finds nothing is not a write (D-3821): the file keeps
+        // every byte it had, marker and torn tail included.
+        guard !dropped.isEmpty else { return [] }
+        guard compact(survivors) else { return [] }
+        rows = survivors
+        return dropped
+    }
+
+    private func pruneWaterLocked(_ keepingRecordId: String) -> [String] {
+        let loaded = loadRows()
+        guard !unsupported else { return [] }
+
+        let stored = loaded.contains { row in
+            if case .water(let value) = row { return value.recordId == keepingRecordId }
+            return false
+        }
+        guard stored else { return [] }
+
+        let dropped = loaded.compactMap { row -> String? in
+            guard case .water(let value) = row,
+                  value.recordId != keepingRecordId else { return nil }
+            return value.recordId
+        }
+        let drop = Set(dropped)
+        let survivors = loaded.filter { row in
+            guard case .water(let value) = row else { return true }
             return !drop.contains(value.recordId)
         }
 

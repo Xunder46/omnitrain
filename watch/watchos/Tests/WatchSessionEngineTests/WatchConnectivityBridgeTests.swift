@@ -201,11 +201,21 @@ private final class WireLog: WatchSyncTransport {
     /// parallel to `requested` (S-87c-16).
     private(set) var requestedHoldsBests: [Bool] = []
 
+    /// Whether each routines request asked for the day's water count, parallel
+    /// to `requested` (plan 95 S-94b-17).
+    private(set) var requestedWantsWater: [Bool] = []
+
     private(set) var snapshotRequests = 0
 
-    func requestRoutines(since: Date?, exercisesVersion: String?, holdsBests: Bool) async {
+    func requestRoutines(
+        since: Date?,
+        exercisesVersion: String?,
+        holdsBests: Bool,
+        wantsWater: Bool
+    ) async {
         requested.append(since)
         requestedHoldsBests.append(holdsBests)
+        requestedWantsWater.append(wantsWater)
     }
 
     func requestSnapshot() async { snapshotRequests += 1 }
@@ -1409,6 +1419,10 @@ final class GatedTransport: WatchSyncTransport {
     /// parallel to `requested` (S-87c-16).
     private(set) var requestedHoldsBests: [Bool] = []
 
+    /// Whether each routines request asked for the day's water count, parallel
+    /// to `requested` (plan 95 S-94b-17).
+    private(set) var requestedWantsWater: [Bool] = []
+
     private(set) var sent: [[String: Any]] = []
     private(set) var snapshotRequests = 0
 
@@ -1423,9 +1437,15 @@ final class GatedTransport: WatchSyncTransport {
         self.isPhoneReachable = isPhoneReachable
     }
 
-    func requestRoutines(since: Date?, exercisesVersion: String?, holdsBests: Bool) async {
+    func requestRoutines(
+        since: Date?,
+        exercisesVersion: String?,
+        holdsBests: Bool,
+        wantsWater: Bool
+    ) async {
         requested.append(since)
         requestedHoldsBests.append(holdsBests)
+        requestedWantsWater.append(wantsWater)
     }
 
     func requestSnapshot() async { snapshotRequests += 1 }
@@ -1471,6 +1491,10 @@ final class GatedRequestTransport: WatchSyncTransport {
     /// parallel to `requested` (S-87c-16).
     private(set) var requestedHoldsBests: [Bool] = []
 
+    /// Whether each routines request asked for the day's water count, parallel
+    /// to `requested` (plan 95 S-94b-17).
+    private(set) var requestedWantsWater: [Bool] = []
+
     private(set) var sent: [[String: Any]] = []
     private(set) var snapshotRequests = 0
 
@@ -1485,7 +1509,12 @@ final class GatedRequestTransport: WatchSyncTransport {
         self.isPhoneReachable = isPhoneReachable
     }
 
-    func requestRoutines(since: Date?, exercisesVersion: String?, holdsBests: Bool) async {
+    func requestRoutines(
+        since: Date?,
+        exercisesVersion: String?,
+        holdsBests: Bool,
+        wantsWater: Bool
+    ) async {
         let shouldGate = lock.withLock { () -> Bool in
             let gate = !gateUsed
             gateUsed = true
@@ -1502,6 +1531,7 @@ final class GatedRequestTransport: WatchSyncTransport {
         }
         requested.append(since)
         requestedHoldsBests.append(holdsBests)
+        requestedWantsWater.append(wantsWater)
     }
 
     func requestSnapshot() async { snapshotRequests += 1 }

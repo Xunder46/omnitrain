@@ -53,6 +53,13 @@ final class WatchAppHost: ObservableObject {
     /// start screen's sheet presents this model (D-6, D-10).
     let nutritionModel: WatchNutritionModel
 
+    /// The day's water count and the bar's model, one of each for the life of
+    /// the app (plan 95 D-35): the orchestrator asks for the phone's count on
+    /// every sync and feeds the state, and the Nutrition sheet's bar observes
+    /// the model, so a frame or a tap redraws an open bar.
+    let water: WatchWaterState
+    let waterModel: WatchWaterModel
+
     /// The platform workout, following the session's life. One coordinator for
     /// the life of the app (D-1504, D-1508): it remembers the session it opened
     /// the workout for, so a refresh never opens a second one for the same
@@ -169,13 +176,18 @@ final class WatchAppHost: ObservableObject {
         // would reset the crown and drop the state's change observer, so a
         // foods_down would leave an open surface showing the old numbers.
         let nutritionModel = WatchNutritionModel(state: nutrition)
+        // The water count over the same engine and store (plan 95 D-35): its
+        // taps are the engine's own observations, its frame the store's row.
+        let water = WatchWaterState(engine: engine, store: store)
+        let waterModel = WatchWaterModel(state: water)
         let orchestrator = WatchSyncOrchestrator(
             transport: bridge,
             paths: paths,
             engine: engine,
             nutrition: nutrition,
             preferences: preferences,
-            bests: personalBests
+            bests: personalBests,
+            water: water
         )
         // The health store is built once and shared (D-2106): it owns the
         // workout builder and the sensor feed, so the workout coordinator and
@@ -220,6 +232,8 @@ final class WatchAppHost: ObservableObject {
         self.restPings = restPings
         self.nutrition = nutrition
         self.nutritionModel = nutritionModel
+        self.water = water
+        self.waterModel = waterModel
         self.workout = workout
         self.sensors = sensors
         self.orchestrator = orchestrator
@@ -314,7 +328,8 @@ final class WatchAppHost: ObservableObject {
     /// Reads whatever the wrist already holds, in the order the surfaces need it:
     /// the engine first (its session, the rows it logged and their timers) so a
     /// relaunch mid-session comes back before anything is asked of it, then the
-    /// quick-log's synced food list, then the routines, the phone's settings as the
+    /// quick-log's synced food list and the day's water frame (whose count folds
+    /// the engine's stored taps), then the routines, the phone's settings as the
     /// last `preferences_down` left them, the bests that ride beside them, and any
     /// rating the wrist's own End still owes. The routines, the settings and the
     /// rating are empty on a fresh install, because all three only arrive when the
@@ -324,6 +339,7 @@ final class WatchAppHost: ObservableObject {
         await recoverStrandedWorkout()
         await engine.restore()
         await nutrition.restore()
+        await water.restore()
         await paths.restore()
         await preferences.restore()
         await personalBests.restore()
@@ -510,7 +526,7 @@ struct ContentView: View {
         // root, so the surface is the one the phone's foods landed in.
         .sheet(isPresented: $showingFood) {
             NavigationStack {
-                WatchNutritionView(model: host.nutritionModel)
+                WatchNutritionView(model: host.nutritionModel, water: host.waterModel)
             }
         }
         .task {

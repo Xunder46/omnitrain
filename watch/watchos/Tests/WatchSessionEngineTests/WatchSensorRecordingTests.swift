@@ -1074,6 +1074,10 @@ final class ContendedWatchSessionStore: WatchSessionStore {
     func pruneBests(keepingRecordId: String) async -> [String] {
         await inner.pruneBests(keepingRecordId: keepingRecordId)
     }
+
+    func pruneWater(keepingRecordId: String) async -> [String] {
+        await inner.pruneWater(keepingRecordId: keepingRecordId)
+    }
 }
 
 /// One append at a time, counting the ones that had to wait.

@@ -254,8 +254,8 @@ reply has been quiet for `WatchSyncProgressCopy.quietSeconds`, or at
 `WatchSyncProgressCopy.capSeconds`, whichever is first. A reply of another type
 neither ends nor extends it, and the routines gate keeps a sync that received
 only foods open to the cap. The types that count are
-`WatchSyncProgressCopy.replyTypes` — the three reference frames, the exercise
-batches, the snapshot and, since plan 87b, `bests_down`: the phone sends the
+`WatchSyncProgressCopy.replyTypes` (`WatchSyncProgressTests`,
+`WatchWaterSyncTests.testS94b18AWaterFrameExtendsARunningSyncLikeAnyReply`). The phone sends the
 bests last in an answer whenever they changed or the wrist does not hold them,
 so the spinner waits for them as before, and a bests-last sync ends
 `quietSeconds` after the newest reply

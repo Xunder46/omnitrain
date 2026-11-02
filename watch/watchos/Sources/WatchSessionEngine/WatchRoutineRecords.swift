@@ -644,3 +644,96 @@ public struct WatchBestsRecord {
         )
     }
 }
+
+// MARK: - The phone's water count
+
+/// One `water_down` frame as the wrist stored it: the phone's glass count for
+/// its local `day` and the wrist taps it has already counted, in its order.
+///
+/// Like a bests row it belongs to the watch, not to a workout, so its
+/// `sessionId` is empty; its id is `water-<messageId>`. The one way water rows
+/// leave is `pruneWater(keepingRecordId:)`, once the caller has written the
+/// frame it holds as newest (plan 95 D-23, D-24).
+public struct WatchWaterRecord {
+    public let recordId: String
+    public let sessionId: String
+    public let recordedAt: Date
+    public let sequence: Int
+
+    /// When the phone generated this frame; the newest one is the copy held.
+    public let generatedAt: Date
+
+    /// The phone's local calendar date of the count, `YYYY-MM-DD`.
+    public let day: String
+
+    /// The phone's own displayed glass count for `day`.
+    public let glasses: Int
+
+    /// The wrist tap ids the phone has counted for `day`, in append order.
+    public let appliedTapIds: [String]
+
+    public init(
+        recordId: String,
+        recordedAt: Date,
+        generatedAt: Date,
+        day: String,
+        glasses: Int,
+        appliedTapIds: [String] = [],
+        sequence: Int = 0
+    ) {
+        self.recordId = recordId
+        self.sessionId = ""
+        self.recordedAt = recordedAt
+        self.sequence = sequence
+        self.generatedAt = generatedAt
+        self.day = day
+        self.glasses = glasses
+        self.appliedTapIds = appliedTapIds
+    }
+
+    public func withSequence(_ sequence: Int) -> WatchWaterRecord {
+        WatchWaterRecord(
+            recordId: recordId,
+            recordedAt: recordedAt,
+            generatedAt: generatedAt,
+            day: day,
+            glasses: glasses,
+            appliedTapIds: appliedTapIds,
+            sequence: sequence
+        )
+    }
+
+    public func toJson() -> [String: Any] {
+        [
+            "recordType": StoredWatchRecord.waterType,
+            "recordId": recordId,
+            "sessionId": sessionId,
+            "recordedAt": utcIso(recordedAt),
+            "sequence": sequence,
+            "generatedAt": utcIso(generatedAt),
+            "day": day,
+            "glasses": glasses,
+            "appliedTapIds": appliedTapIds,
+        ]
+    }
+
+    /// A row without a readable `day`, `glasses` or `appliedTapIds` is refused
+    /// rather than read as a zero count: the file store then skips it.
+    public static func fromJson(_ json: [String: Any]) throws -> WatchWaterRecord {
+        guard let glasses = (json["glasses"] as? NSNumber)?.intValue else {
+            throw WatchRecordError.malformed("field \"glasses\" is missing")
+        }
+        guard let appliedTapIds = json["appliedTapIds"] as? [String] else {
+            throw WatchRecordError.malformed("field \"appliedTapIds\" is missing")
+        }
+        return WatchWaterRecord(
+            recordId: try requiredString(json, "recordId"),
+            recordedAt: try parseUtcIso(json["recordedAt"]),
+            generatedAt: try parseUtcIso(json["generatedAt"]),
+            day: try requiredString(json, "day"),
+            glasses: glasses,
+            appliedTapIds: appliedTapIds,
+            sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
+        )
+    }
+}

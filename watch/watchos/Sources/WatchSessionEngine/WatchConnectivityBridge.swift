@@ -99,15 +99,23 @@ public enum WatchTransportRequest {
     /// `holdsBests: true` only when it is true: a wrist holding nothing omits
     /// the key rather than sending `false`, which is how the phone tells a
     /// wrist that cannot skip apart from one that can (87c, D-2, S-87c-10).
+    ///
+    /// `wantsWater` asks the phone for the day's water count, and adds
+    /// `wantsWater: true` only when it is true: a wrist that does not ask omits
+    /// the key rather than sending `false`, so its frames are the ones the
+    /// contract pinned before it existed (plan 95 D-28, plan 94 D-9, contract
+    /// row `routinesWater`).
     public static func routinesFrame(
         since: Date?,
         exercisesVersion: String? = nil,
-        holdsBests: Bool = false
+        holdsBests: Bool = false,
+        wantsWater: Bool = false
     ) -> [String: Any] {
         var frame: [String: Any] = ["request": routines]
         if let since { frame["since"] = utcIso(since) }
         if let exercisesVersion { frame["exercisesVersion"] = exercisesVersion }
         if holdsBests { frame["holdsBests"] = true }
+        if wantsWater { frame["wantsWater"] = true }
         return frame
     }
 
@@ -173,13 +181,15 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
     public func requestRoutines(
         since: Date?,
         exercisesVersion: String?,
-        holdsBests: Bool
+        holdsBests: Bool,
+        wantsWater: Bool
     ) async {
         await send(
             WatchTransportRequest.routinesFrame(
                 since: since,
                 exercisesVersion: exercisesVersion,
-                holdsBests: holdsBests
+                holdsBests: holdsBests,
+                wantsWater: wantsWater
             )
         )
     }

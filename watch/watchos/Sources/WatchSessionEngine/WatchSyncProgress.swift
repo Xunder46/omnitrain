@@ -9,7 +9,7 @@
 //
 //  `WatchSyncOrchestrator.sync` awaits only the sends: the phone's replies
 //  (`preferences_down`, `routines_down`, `foods_down`, `exercises_down`,
-//  `session_snapshot`, `bests_down`) arrive later through `receive`. So "still
+//  `session_snapshot`, `bests_down`, `water_down`) arrive later through `receive`. So "still
 //  syncing" cannot be read from the request — it is derived from the arrivals,
 //  and capped so a phone that never answers cannot leave the wrist spinning.
 //
@@ -33,6 +33,11 @@ public enum WatchSyncProgressCopy {
     /// whenever the bests changed or the wrist does not hold them (plan 87b
     /// D-8, plan 87c): stopping the spinner before it landed would say
     /// the wrist is up to date while its bests are still on their way.
+    ///
+    /// `water_down` belongs here because the phone sends it inside an answer
+    /// to a wrist that asks, before `bests_down` (plan 95 D-29, plan 94 D-8).
+    /// One sent after a tap's receipt cannot revive a finished sync:
+    /// `noteArrival` ignores replies once the sync is over.
     public static let replyTypes: Set<String> = [
         "preferences_down",
         "routines_down",
@@ -40,6 +45,7 @@ public enum WatchSyncProgressCopy {
         "exercises_down",
         "session_snapshot",
         "bests_down",
+        "water_down",
     ]
 }
 

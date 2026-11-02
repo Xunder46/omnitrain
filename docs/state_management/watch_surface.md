@@ -280,7 +280,8 @@ tests).
 `watch/watchos/Sources/WatchSessionEngine/WatchSyncOrchestrator.swift`
 
 Routes arriving messages to their owner — reference data to the start paths or
-the nutrition state, session state to the engine — and owns the connect
+the nutrition state, the water count to the water state, session state to the
+engine — and owns the connect
 exchange that `PROTOCOL.md`'s "Idempotency and reconciliation" section
 specifies. Verified by `test/live_mirroring_test.dart` (`S-009`) and by watchOS
 `WatchLiveMirroringTests.testJoiningAsksForASnapshotRatherThanOfferingOne`.
@@ -353,6 +354,26 @@ they must agree on are pinned by `watch/contract/watch_nutrition_contract.json`
 which `test/watch_nutrition_quick_log_test.dart` (S-003) and watchOS
 `WatchNutritionQuickLogTests.testTheWristDerivesTheContractsOrder` both read.
 A change to the ordering on either platform therefore fails the other's suite.
+
+### `WatchWaterState`
+
+**File**: `watch/watchos/Sources/WatchSessionEngine/WatchWater.swift` (wrist
+only; the Dart twin emits no taps)
+
+The day's glasses on the wrist. It stores no count: `glasses` is computed on
+every read — the newest `water_down` frame's count when its `day` is the wrist's
+local today, else 0, plus the wrist's own taps of that day the frame's
+`appliedTapIds` does not list, never below 0
+(`WatchWaterStateTests.testS94b7ThePhonesCountPlusTheWristsUncountedTaps`). A
+receipt does not take a tap out; the frame's list does
+(`…testS94b12TheReceiptArrivesTheFrameIsLost`). `press(_:)` stores one
+`water_glass` tap under the day's nutrition id, never a workout's
+(`WatchWaterStoreTests.testS94b2APressWhileASessionIsHeldNeverJoinsIt`), and
+none once the day's taps reach `WatchWaterLimits.tapsPerDay`
+(`…testS94b15TapsPastTheCap`). The host owns one state and one
+`WatchWaterModel` (`WatchWaterBarSourceTests.testS94b23TheHostOwnsOneWaterStateAndOneModel`);
+the watch's Nutrition screen carries the water count
+(`…testS94b22TheBarIsOnTheListOnlyEmptyListIncluded`).
 
 ### `WatchReferenceSync`
 
@@ -625,7 +646,7 @@ reaches the handler`), and the wrist's Sync button is pinned by
 
 The one place the phone's watch graph is built: transport, `WatchSessionInbox`,
 `LiveSessionMirrorState` (whose transport stages the phone's corrections in the
-inbox), `WatchIncomingRouter` (inbox + mirror + nutrition bridge), and
+inbox), `WatchIncomingRouter` (inbox + mirror + nutrition and water bridges), and
 `WatchSyncRequestHandler` (which reads the wrist-facing settings from
 `SettingsState`), with the transport's inbound handler dispatching between the
 last two. It resumes any import the phone had not run when it last stopped;
@@ -673,8 +694,9 @@ why the id is valid rather than empty.
 **File**: `lib/state/watch/watch_incoming_router.dart`
 
 The one place a message arriving from a wrist is handed to its owners:
-`WatchSessionInbox`, `LiveSessionMirrorState` and `WatchNutritionLogBridge`.
-Each is asked about every message, and each answers for itself which messages
+`WatchSessionInbox`, `LiveSessionMirrorState`, `WatchNutritionLogBridge` and
+`WatchWaterLogBridge` (a water tap never reaches workout history:
+`test/watch_water_log_test.dart`, S-94a-18). Each is asked about every message, and each answers for itself which messages
 are its own — the inbox by entry kind, the mirror by session identity, the day
 log by observation kind — so a message that belongs to several is not forced to
 pick one, and a caller does not have to know that a quick-log can be session
@@ -736,8 +758,11 @@ including the ones it could not place, since what a receipt asserts is that the
 phone holds the observation, not that the day log changed. It answers a message
 it refused to read with nothing at all. What the wrist does with the receipt is
 `WatchSessionEngine.confirmObservations` — an append of its own, so a relaunch
-can still tell what it may drop — and `pruneConfirmed`, which is the only way
-the observation box gives rows back. Both are exercised by
+can still tell what it may drop. The Swift wrist does not prune after a
+receipt: `pruneConfirmed`, the only way the observation box gives rows back, has
+no production caller there
+(`WatchWaterBarSourceTests.testS94b25TapsAreNeverPruned`). The receipt, and that a
+confirmed row is then droppable, are exercised by
 `test/watch_nutrition_quick_log_test.dart` ("the phone’s receipt is what lets the
 watch drop the row", "a food the phone cannot place is not owed forever") and by
 `WatchNutritionQuickLogTests.testThePhonesReceiptIsWhatLetsTheWatchDropTheRow`.

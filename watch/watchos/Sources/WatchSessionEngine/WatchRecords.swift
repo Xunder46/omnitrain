@@ -72,13 +72,25 @@ public enum WatchObservationKind {
     /// `efforts`, and the set block's span and the effort debt do not see it.
     public static let rest = "rest"
 
+    /// One glass of water added or removed on the wrist (`WatchGlassChange`).
+    /// Not tied to a session: it always travels under the day's nutrition id,
+    /// even while a workout runs, and it is never an effort (plan 95 D-22).
+    public static let waterGlass = "water_glass"
+
     public static let all = [
-        set, timed, round, hold, nutritionQuickLog, effortRating, sessionEnd, rest,
+        set, timed, round, hold, nutritionQuickLog, effortRating, sessionEnd, rest, waterGlass,
     ]
 
     /// The kinds that record work done in a slot — what "an effort entry" means
     /// to a set block's span and to whether an effort rating is owed.
     public static let efforts = [set, timed, round, hold]
+}
+
+/// The `glassChange` of a `water_glass` tap: one glass added or one removed.
+/// A string on the wire, never a signed number (plan 94 D-2).
+public enum WatchGlassChange: String {
+    case add
+    case remove
 }
 
 /// The ids of the two session-scoped observations. Derived from the session
@@ -695,6 +707,7 @@ public enum StoredWatchRecord {
     public static let ratingPromptType = "rating_prompt"
     public static let exerciseBatchType = "exercise_batch"
     public static let bestsType = "bests"
+    public static let waterType = "water"
 
     case session(WatchSessionRecord)
     case observation(WatchObservationRecord)
@@ -707,6 +720,7 @@ public enum StoredWatchRecord {
     case ratingPrompt(WatchRatingPromptRecord)
     case exerciseBatch(WatchExerciseBatchRecord)
     case bests(WatchBestsRecord)
+    case water(WatchWaterRecord)
 
     public var recordType: String {
         switch self {
@@ -721,6 +735,7 @@ public enum StoredWatchRecord {
         case .ratingPrompt: return Self.ratingPromptType
         case .exerciseBatch: return Self.exerciseBatchType
         case .bests: return Self.bestsType
+        case .water: return Self.waterType
         }
     }
 
@@ -737,6 +752,7 @@ public enum StoredWatchRecord {
         case .ratingPrompt(let row): return row.recordId
         case .exerciseBatch(let row): return row.recordId
         case .bests(let row): return row.recordId
+        case .water(let row): return row.recordId
         }
     }
 
@@ -753,6 +769,7 @@ public enum StoredWatchRecord {
         case .ratingPrompt(let row): return row.sessionId
         case .exerciseBatch(let row): return row.sessionId
         case .bests(let row): return row.sessionId
+        case .water(let row): return row.sessionId
         }
     }
 
@@ -769,6 +786,7 @@ public enum StoredWatchRecord {
         case .ratingPrompt(let row): return row.recordedAt
         case .exerciseBatch(let row): return row.recordedAt
         case .bests(let row): return row.recordedAt
+        case .water(let row): return row.recordedAt
         }
     }
 
@@ -785,6 +803,7 @@ public enum StoredWatchRecord {
         case .ratingPrompt(let row): return row.sequence
         case .exerciseBatch(let row): return row.sequence
         case .bests(let row): return row.sequence
+        case .water(let row): return row.sequence
         }
     }
 
@@ -801,6 +820,7 @@ public enum StoredWatchRecord {
         case .ratingPrompt(let row): return .ratingPrompt(row.withSequence(sequence))
         case .exerciseBatch(let row): return .exerciseBatch(row.withSequence(sequence))
         case .bests(let row): return .bests(row.withSequence(sequence))
+        case .water(let row): return .water(row.withSequence(sequence))
         }
     }
 
@@ -817,6 +837,7 @@ public enum StoredWatchRecord {
         case .ratingPrompt(let row): return row.toJson()
         case .exerciseBatch(let row): return row.toJson()
         case .bests(let row): return row.toJson()
+        case .water(let row): return row.toJson()
         }
     }
 
@@ -836,6 +857,7 @@ public enum StoredWatchRecord {
         case ratingPromptType: return .ratingPrompt(try WatchRatingPromptRecord.fromJson(json))
         case exerciseBatchType: return .exerciseBatch(try WatchExerciseBatchRecord.fromJson(json))
         case bestsType: return .bests(try WatchBestsRecord.fromJson(json))
+        case waterType: return .water(try WatchWaterRecord.fromJson(json))
         default: throw WatchRecordError.unknownRecordType(type)
         }
     }

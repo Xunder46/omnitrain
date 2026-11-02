@@ -427,3 +427,17 @@ frame (plan 87b, open question d;
     HealthKit refused the link to the watch's workout (plan 90 L-2). Held
     off-device by `test/health_effort_test.dart` and
     `test/health_effort_native_test.dart`.
+
+40. **Water on the watch's Nutrition screen — (owner, plan 95).** Watch Home,
+    Nutrition. (a) The water bar (minus, a drop and the count, plus) sits at the
+    bottom, both with foods and with an empty food list; opening a food shows no
+    bar. (b) + and − each move the count by one with a light click; at 0, − is
+    dim and does nothing. (c) Tap + twice on the phone, then Sync on the watch:
+    the watch shows the phone's count. (d) With the phone out of reach, tap +
+    twice and − once on the watch: the count moves at once and Home's line says
+    3 entries are waiting; back in reach, the phone's Nutrition screen shows one
+    glass more. (e) On a 40 mm watch the bar fits on one row. (f) With VoiceOver on,
+    the buttons read "Add one glass" and "Remove one glass", the middle "Water,
+    N glasses". Held off-device by `WatchWaterStateTests`, `WatchWaterSyncTests`
+    and `WatchWaterBarSourceTests`; the phone half by
+    `test/watch_water_log_test.dart`.

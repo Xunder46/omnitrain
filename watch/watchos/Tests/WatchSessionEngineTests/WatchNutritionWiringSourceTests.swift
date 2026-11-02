@@ -272,7 +272,7 @@ final class WatchNutritionWiringSourceTests: XCTestCase {
             "S-8311 no view body builds a model of its own"
         )
         XCTAssertTrue(
-            content.contains("WatchNutritionView(model: host.nutritionModel)"),
+            content.contains("WatchNutritionView(model: host.nutritionModel, water: host.waterModel)"),
             "S-8311 the sheet presents the surface over the host's one model"
         )
     }

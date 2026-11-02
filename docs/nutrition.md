@@ -421,6 +421,23 @@ totals accumulate as doubles and round once at the end, so a day of fractional
 servings does not drift from the per-row figures. The field-by-field contract is
 in [Nutrition State](state_management/nutrition_state.md).
 
+**Glasses tapped on the watch.** Each wrist tap arrives as one glass added or
+removed, never a total, so glasses tapped on the phone and on the watch while
+they were apart all count. The phone applies a tap once, however often it
+arrives, to the day the glass was tapped, even when it is delivered after
+midnight; the math is the phone's own buttons' (a minus at 0 ml stays at 0). An
+open Nutrition screen showing that day updates at once. The phone answers the
+watch with the day's glass count. Verified by `test/watch_water_log_test.dart` (S-94a-10 to S-94a-20).
+The watch's Nutrition screen carries the water count
+(`WatchWaterBarSourceTests.testS94b22TheBarIsOnTheListOnlyEmptyListIncluded`).
+It shows the phone's count plus the watch's own taps the phone has
+not counted yet, so a tap shows at once, even out of the phone's reach
+(`WatchWaterStateTests.testS94b7ThePhonesCountPlusTheWristsUncountedTaps`,
+`WatchWaterSyncTests.testS94b20APressWhileThePhoneIsOutOfReach`). A glass
+tapped on the phone reaches the watch at the watch's next sync, which always
+asks for the count
+(`WatchWaterSyncTests.testS94b17EverySyncOfAWristWithAWaterStateAsksForTheCount`).
+
 Verified by `test/state_test.dart` (the `NutritionState` group) and
 `test/nutrition_test.dart`.
 

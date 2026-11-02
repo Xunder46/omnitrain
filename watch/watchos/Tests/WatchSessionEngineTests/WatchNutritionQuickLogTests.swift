@@ -182,6 +182,10 @@ final class WatchNutritionQuickLogTests: XCTestCase {
         func pruneBests(keepingRecordId: String) async -> [String] {
             await backing.pruneBests(keepingRecordId: keepingRecordId)
         }
+
+        func pruneWater(keepingRecordId: String) async -> [String] {
+            await backing.pruneWater(keepingRecordId: keepingRecordId)
+        }
     }
 
     // MARK: - S-001 quick-logging a food with the phone out of reach
@@ -666,7 +670,7 @@ final class WatchNutritionQuickLogTests: XCTestCase {
             Set(WatchObservationKind.all),
             Set([
                 "set", "timed", "round", "hold", WatchObservationKind.nutritionQuickLog,
-                "effort_rating", "session_end", WatchObservationKind.rest,
+                "effort_rating", "session_end", WatchObservationKind.rest, "water_glass",
             ]),
             "what the phone can be sent is a list, not whatever a client happens to spell"
         )

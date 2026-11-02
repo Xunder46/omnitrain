@@ -1414,6 +1414,37 @@ public final class WatchSessionEngine: ObservableObject {
         storedObservations.filter { $0.kind == WatchObservationKind.nutritionQuickLog }
     }
 
+    /// Persists one glass of water added or removed on the wrist, and emits it
+    /// for the phone (plan 95 D-22, plan 94 D-2).
+    ///
+    /// Like a food log it needs no session, but unlike one it never rides a
+    /// running workout: its session id is always the day's nutrition id, so no
+    /// workout's observations, entries or snapshot ever hold a tap. Every press
+    /// is its own event, stored before it is emitted and re-sent by
+    /// `pendingObservations()` until a receipt names it.
+    @discardableResult
+    public func logWaterGlass(
+        _ change: WatchGlassChange,
+        loggedAt: Date? = nil
+    ) async throws -> WatchObservationRecord {
+        let now = loggedAt ?? clock()
+        let entryId = newId()
+        let event: [String: Any] = [
+            "entryId": entryId,
+            "eventId": entryId,
+            "kind": WatchObservationKind.waterGlass,
+            "loggedAt": utcIso(now),
+            "glassChange": change.rawValue,
+        ]
+        return try await appendObservation(event, sessionId: WatchNutritionSession.idFor(now))
+    }
+
+    /// The water taps the wrist has stored, in store order, confirmed or not —
+    /// what the wrist's water count folds over (plan 95 D-25).
+    public var waterLog: [WatchObservationRecord] {
+        storedObservations.filter { $0.kind == WatchObservationKind.waterGlass }
+    }
+
     /// Storage first, emission second — the order every log on the watch
     /// follows.
     @discardableResult

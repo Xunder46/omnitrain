@@ -41,6 +41,10 @@ final class RecordingTransport: WatchSyncTransport {
     /// parallel to `requested` (S-87c-16).
     private(set) var requestedHoldsBests: [Bool] = []
 
+    /// Whether each routines request asked for the day's water count, parallel
+    /// to `requested` (plan 95 S-94b-17).
+    private(set) var requestedWantsWater: [Bool] = []
+
     /// What the watch handed over: observations, timers, and snapshots.
     private(set) var sent: [[String: Any]] = []
 
@@ -51,10 +55,16 @@ final class RecordingTransport: WatchSyncTransport {
         self.isPhoneReachable = isPhoneReachable
     }
 
-    func requestRoutines(since: Date?, exercisesVersion: String?, holdsBests: Bool) async {
+    func requestRoutines(
+        since: Date?,
+        exercisesVersion: String?,
+        holdsBests: Bool,
+        wantsWater: Bool
+    ) async {
         requested.append(since)
         requestedVersions.append(exercisesVersion)
         requestedHoldsBests.append(holdsBests)
+        requestedWantsWater.append(wantsWater)
     }
 
     func requestSnapshot() async {
