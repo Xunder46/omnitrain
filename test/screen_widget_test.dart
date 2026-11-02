@@ -4428,7 +4428,7 @@ void main() {
         final titleText = tester.widget<Text>(
           find.descendant(
             of: find.byType(BottomSheet),
-            matching: find.text('+ New Planned Session'),
+            matching: find.text('New Planned Session'),
           ),
         );
         expect(titleText.style?.color, tokens.textMuted);

@@ -682,7 +682,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                 Expanded(
                   child: Text(
                     widget.initial == null
-                        ? '+ New Planned Session'
+                        ? 'New Planned Session'
                         : 'Edit Session',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
