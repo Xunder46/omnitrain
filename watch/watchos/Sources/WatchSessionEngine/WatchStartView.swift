@@ -91,9 +91,9 @@ public struct WatchStartView: View {
     /// screen; this surface carries its own value rather than scaling one down.
     private static let surfaceInset = 4.0
 
-    /// The home surface's way into the quick-log, which is reachable with no
+    /// The home surface's way into the foods list, which is reachable with no
     /// workout running.
-    public static let logFoodLabel = "Log food"
+    public static let nutritionLabel = "Nutrition"
 
     /// The user's explicit action — recovering a device that was out of reach
     /// and refreshing the routine list.
@@ -165,8 +165,13 @@ public struct WatchStartView: View {
                 .buttonStyle(.bordered)
 
                 if let onOpenNutrition {
-                    Button(Self.logFoodLabel, action: onOpenNutrition)
+                    Button(Self.nutritionLabel, action: onOpenNutrition)
                         .buttonStyle(.bordered)
+                }
+
+                // The start buttons end here; Sync below is housekeeping, set apart.
+                if onRequestSync != nil, phoneStatus.offersSync {
+                    Divider()
                 }
 
                 if let onRequestSync, phoneStatus.offersSync {

@@ -441,7 +441,7 @@ struct ContentView: View {
     /// list button opens it — the root hosts the one sheet both share.
     @State private var showingMenu = false
 
-    /// Whether the food quick-log sheet is up (D-2). The start screen's Log food
+    /// Whether the food quick-log sheet is up (D-2). The start screen's Nutrition
     /// button opens it; the sheet is the root's, so a session starting or a rest
     /// ending underneath it does not replace it.
     @State private var showingFood = false

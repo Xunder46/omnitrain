@@ -208,12 +208,12 @@ final class WatchNutritionWiringSourceTests: XCTestCase {
         )
     }
 
-    // MARK: - S-7205: Log food sits right under Free workout
+    // MARK: - S-7205: Nutrition sits right under Free workout, Sync is set apart
 
-    /// On the start screen the Log food button comes directly after Free
-    /// workout and before Sync, so it is above the fold rather than behind a
-    /// rarely used row.
-    func testS7205LogFoodSitsRightUnderFreeWorkout() throws {
+    /// On the start screen the Nutrition button comes directly after Free
+    /// workout and before Sync, with a separator line between Nutrition and
+    /// Sync, so the start buttons read first and Sync is housekeeping.
+    func testS7205NutritionSitsRightUnderFreeWorkout() throws {
         let start = try engineSource("WatchStartView.swift")
 
         let free = try XCTUnwrap(
@@ -222,15 +222,21 @@ final class WatchNutritionWiringSourceTests: XCTestCase {
         )
         let food = try XCTUnwrap(
             sourceLines(start).firstIndex { $0.contains("if let onOpenNutrition") },
-            "S-7205 the start screen carries the Log food button"
+            "S-7205 the start screen carries the Nutrition button"
+        )
+        let divider = try XCTUnwrap(
+            sourceLines(start).firstIndex { $0.contains("Divider()") },
+            "S-7205 the start screen sets Sync apart with a separator"
         )
         let sync = try XCTUnwrap(
             sourceLines(start).firstIndex { $0.contains("Self.syncLabel") },
             "S-7205 the start screen carries the Sync button"
         )
 
-        XCTAssertLessThan(free, food, "S-7205 Log food comes right after Free workout")
-        XCTAssertLessThan(food, sync, "S-7205 and before Sync")
+        XCTAssertLessThan(free, food, "S-7205 Nutrition comes right after Free workout")
+        XCTAssertLessThan(food, divider, "S-7205 the separator follows Nutrition")
+        XCTAssertLessThan(divider, sync, "S-7205 and Sync follows the separator")
+        XCTAssertTrue(start.contains("nutritionLabel = \"Nutrition\""), "S-7205 the button reads Nutrition")
     }
 
     // MARK: - S-8311: the host owns one model, and the sheet uses it

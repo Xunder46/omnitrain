@@ -667,9 +667,9 @@ The watch app builds one `WatchNutritionState` for its life — `WatchAppHost`'s
 `WatchNutritionModel` beside it (`nutritionModel`) that the start screen's sheet
 hands to the screen, so it reuses the one observable rather than building a model
 on each body pass (`WatchNutritionWiringSourceTests.testS8311TheHostOwnsTheOneNutritionModel`).
-The start screen shows `Log food` (`WatchStartView.logFoodLabel`) directly under Free
-workout and opens `WatchNutritionView` in a sheet. The session menu has no Log
-food row: food is logged from the start screen only, not while a session is in
+The start screen shows `Nutrition` (`WatchStartView.nutritionLabel`) directly under Free
+workout, then a separator line, then Sync, and opens `WatchNutritionView` in a sheet. The session menu has no Nutrition
+row: food is logged from the start screen only, not while a session is in
 progress (`…testS7202TheSessionMenuHasNoLogFoodRow`). A tapped food opens its
 own screen (`WatchFoodPortionView`: the portion row, the kcal and Log), and
 the portion's Crown turns the raising direction the logging screen's Crown does:
