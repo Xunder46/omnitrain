@@ -103,6 +103,8 @@ The template hierarchy cascades on delete: removing a template removes its segme
 | **Exercises** | `addExerciseToRoutine(exercise, effortKind)`, `removeExerciseFromRoutine(id)`, `reorderExercises(old, new)`, `updateEffortKind(id, kind)` |
 | **Targets** | `setTargetValue(...)`, `getEffortTargets(id)`, `addSetForEffort(id, kind)`, `removeLastSetForEffort(id)` |
 
+`saveRoutine()` also deletes the stored blocks, exercises and targets the user removed while editing, so a reopened routine matches what was saved.
+
 **Note**: Session creation (`startRoutineAsSession`) was removed in Phase 1 refactoring (Feb 15, 2026). This responsibility is now handled by `RoutineSessionService` (see Service Layer section below).
 
 ### Service Layer

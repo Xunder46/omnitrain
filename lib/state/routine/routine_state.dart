@@ -227,19 +227,7 @@ class RoutineState extends ChangeNotifier {
       // Save template
       await _repository.createTemplate(_currentTemplate!);
 
-      // Save segments and efforts
-      for (final segment in _currentSegments) {
-        await _repository.createTemplateSegment(segment);
-        final efforts = _segmentEfforts[segment.id] ?? [];
-        for (final effort in efforts) {
-          await _repository.createTemplateEffort(effort);
-        }
-      }
-
-      // Save all targets
-      for (final target in _currentTargets) {
-        await _repository.createTemplateTarget(target);
-      }
+      await _syncRowsToRepository();
 
       // Add to local cache
       if (!_routines.any((r) => r.id == _currentTemplate!.id)) {
@@ -1021,52 +1009,59 @@ class RoutineState extends ChangeNotifier {
         );
       }
 
-      final existingSegments = await _repository.getTemplateSegments(
-        _currentTemplate!.id,
-      );
-      final currentSegmentIds = _currentSegments.map((s) => s.id).toSet();
-      for (final segment in existingSegments) {
-        if (!currentSegmentIds.contains(segment.id)) {
-          await _repository.deleteTemplateSegment(segment.id);
-        }
-      }
-
-      for (final segment in _currentSegments) {
-        await _repository.createTemplateSegment(segment);
-        final existingEfforts = await _repository.getTemplateEfforts(
-          segment.id,
-        );
-        final currentEfforts = _segmentEfforts[segment.id] ?? [];
-        final currentEffortIds = currentEfforts.map((e) => e.id).toSet();
-
-        for (final effort in existingEfforts) {
-          if (!currentEffortIds.contains(effort.id)) {
-            await _repository.deleteTemplateEffort(effort.id);
-          }
-        }
-
-        for (final effort in currentEfforts) {
-          await _repository.createTemplateEffort(effort);
-
-          final existingTargets = await _repository.getTemplateTargets(
-            effort.id,
-          );
-          final currentTargets = getEffortTargets(effort.id);
-          final currentTargetIds = currentTargets.map((t) => t.id).toSet();
-
-          for (final target in existingTargets) {
-            if (!currentTargetIds.contains(target.id)) {
-              await _repository.deleteTemplateTarget(target.id);
-            }
-          }
-
-          for (final target in currentTargets) {
-            await _repository.createTemplateTarget(target);
-          }
-        }
-      }
+      await _syncRowsToRepository();
     } catch (_) {
       // Autosave failures should not block the UI.
+    }
+  }
+
+  /// Writes the in-memory segments, efforts and targets of the current
+  /// routine and deletes stored rows that are no longer in memory. Callers
+  /// own the error handling.
+  Future<void> _syncRowsToRepository() async {
+    final existingSegments = await _repository.getTemplateSegments(
+      _currentTemplate!.id,
+    );
+    final currentSegmentIds = _currentSegments.map((s) => s.id).toSet();
+    for (final segment in existingSegments) {
+      if (!currentSegmentIds.contains(segment.id)) {
+        await _repository.deleteTemplateSegment(segment.id);
+      }
+    }
+
+    for (final segment in _currentSegments) {
+      await _repository.createTemplateSegment(segment);
+      final existingEfforts = await _repository.getTemplateEfforts(
+        segment.id,
+      );
+      final currentEfforts = _segmentEfforts[segment.id] ?? [];
+      final currentEffortIds = currentEfforts.map((e) => e.id).toSet();
+
+      for (final effort in existingEfforts) {
+        if (!currentEffortIds.contains(effort.id)) {
+          await _repository.deleteTemplateEffort(effort.id);
+        }
+      }
+
+      for (final effort in currentEfforts) {
+        await _repository.createTemplateEffort(effort);
+
+        final existingTargets = await _repository.getTemplateTargets(
+          effort.id,
+        );
+        final currentTargets = getEffortTargets(effort.id);
+        final currentTargetIds = currentTargets.map((t) => t.id).toSet();
+
+        for (final target in existingTargets) {
+          if (!currentTargetIds.contains(target.id)) {
+            await _repository.deleteTemplateTarget(target.id);
+          }
+        }
+
+        for (final target in currentTargets) {
+          await _repository.createTemplateTarget(target);
+        }
+      }
     }
   }
 
