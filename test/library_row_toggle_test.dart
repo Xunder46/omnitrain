@@ -9,7 +9,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/catalog_version.dart';
-import 'package:omnitrain/core/utils/food_helpers.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/nutrition/add_food_screen.dart';
@@ -375,11 +374,10 @@ void main() {
           searchFor: 'Chicken (toggle',
         );
 
-        // Before the add the row shows the catalog food's macros,
-        // computed with the same helper the row uses.
-        final catalog = (await repo.getCatalogFoodById(catalogId))!;
-        final cal = calculateCalories(catalog);
-        expect(find.text('$cal cal per 100 g'), findsOneWidget);
+        // Before the add the row shows the catalog food's macros. The
+        // number is written out (31P + 0C + 3F = 124 + 27) so the row is
+        // checked against the formula, not against the helper it calls.
+        expect(find.text('151 cal per 100 g'), findsOneWidget);
         expect(find.text('31P · 0C · 3F'), findsOneWidget);
 
         await tester.tap(find.text('Chicken (toggle test)'));
@@ -404,10 +402,9 @@ void main() {
         await states.foodLib.editLibraryFood(copy, draft);
         await tester.pumpAndSettle();
 
-        final edited = states.foodLib.libraryFoodFor(catalogId)!;
-        final cal2 = calculateCalories(edited);
+        // 7P + 0C + 3F = 28 + 27.
         expect(find.text('Edited chicken'), findsOneWidget);
-        expect(find.text('$cal2 cal per 100 g'), findsOneWidget);
+        expect(find.text('55 cal per 100 g'), findsOneWidget);
         expect(find.text('7P · 0C · 3F'), findsOneWidget);
       },
     );

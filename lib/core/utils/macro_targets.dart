@@ -5,6 +5,8 @@
 /// edited by hand. Grams are whole numbers; carbs are TOTAL carbs.
 library;
 
+import 'macro_energy.dart';
+
 /// Share of calories given to protein by the default split.
 const int kDefaultProteinPercent = 30;
 
@@ -58,4 +60,4 @@ int impliedCalories({
   double protein = 0,
   double carbs = 0,
   double fat = 0,
-}) => (protein * 4 + carbs * 4 + fat * 9).round();
+}) => macroKcal(protein: protein, carbs: carbs, fat: fat).round();

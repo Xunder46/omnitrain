@@ -1026,5 +1026,74 @@ void main() {
         expect(_heading(tester), 'Nutrition per 1 slice');
       },
     );
+
+    testWidgets(
+      'switching g to ml and back with a package amount typed keeps the '
+      'amount and follows the unit',
+      (tester) async {
+        final (controller, saved) = await _pumpNewFoodForm(tester);
+        await _fillRequiredMacros(tester);
+
+        await tester.tap(find.byKey(const Key('food_form_package_link')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('food_form_package_amount')),
+          '250',
+        );
+        await tester.pumpAndSettle();
+        expect(_heading(tester), 'Nutrition per 250 g');
+
+        await tester.tap(find.text('100 ml'));
+        await tester.pumpAndSettle();
+        expect(_fieldText(tester, 'food_form_package_amount'), '250');
+        expect(_heading(tester), 'Nutrition per 250 ml');
+        await _save(tester, controller);
+        _expectServing(saved.last, FoodUnitType.grams, 250, 'ml');
+
+        await tester.tap(find.text('100 g'));
+        await tester.pumpAndSettle();
+        expect(_fieldText(tester, 'food_form_package_amount'), '250');
+        expect(_heading(tester), 'Nutrition per 250 g');
+        await _save(tester, controller);
+        _expectServing(saved.last, FoodUnitType.grams, 250, 'g');
+      },
+    );
+
+    testWidgets(
+      'an unusable package amount hides the heading and blocks Save',
+      (tester) async {
+        final (controller, saved) = await _pumpNewFoodForm(tester);
+        await _fillRequiredMacros(tester);
+
+        await tester.tap(find.text('100 ml'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('food_form_package_link')));
+        await tester.pumpAndSettle();
+
+        for (final (typed, error) in [
+          ('', 'Required'),
+          ('0', 'Must be greater than 0'),
+          ('.', 'Must be a number'),
+        ]) {
+          await tester.enterText(
+            find.byKey(const Key('food_form_package_amount')),
+            typed,
+          );
+          await tester.pumpAndSettle();
+          expect(_heading(tester), isNull, reason: 'typed "$typed"');
+
+          await _save(tester, controller);
+          expect(saved, isEmpty, reason: 'typed "$typed" must not save');
+          expect(find.text(error), findsOneWidget, reason: 'typed "$typed"');
+        }
+
+        // Going back to the plain 100 ml saves the base serving.
+        await tester.tap(find.byKey(const Key('food_form_package_link')));
+        await tester.pumpAndSettle();
+        await _save(tester, controller);
+        expect(saved, hasLength(1));
+        _expectServing(saved.last, FoodUnitType.grams, 100, 'ml');
+      },
+    );
   });
 }

@@ -1,4 +1,5 @@
 import '../../data/models/models.dart';
+import 'macro_energy.dart';
 
 /// Calories from raw macro grams — the single calorie formula.
 ///
@@ -13,7 +14,7 @@ int caloriesFromMacros({
   required double protein,
   required double carbs,
   required double fat,
-}) => (protein * 4 + carbs * 4 + fat * 9).round();
+}) => macroKcal(protein: protein, carbs: carbs, fat: fat).round();
 
 /// Calculate calories for a food based on macronutrients.
 ///
