@@ -658,7 +658,28 @@ abstract class WorkoutRepository {
   /// The row id is derived from [dateMs] via [WaterLogEntry.idForDate] so
   /// the same day always maps to the same storage key in both
   /// implementations.
+  ///
+  /// Keeps the day's applied-tap ledger ([getAppliedWaterTapIds]) as it is.
   Future<void> saveWaterVolumeForDate(int dateMs, int volumeMl);
+
+  /// Applies one watch tap to [dateMs] at most once (plan 94 D-3, D-5).
+  ///
+  /// [deltaMl] is `kWaterGlassMl` (add) or `-kWaterGlassMl` (remove). When
+  /// [tapId] is not yet in the day's ledger and the ledger holds fewer than
+  /// `kWatchWaterTapsPerDay` ids, ONE write sets the volume to
+  /// `volume + deltaMl` (floored at 0 ml, the [saveWaterVolumeForDate] clamp)
+  /// and appends [tapId], then returns `true`; a remove at 0 ml is applied
+  /// too (the row exists at 0 ml and records the id). A duplicate id or a full
+  /// ledger changes nothing and returns `false`.
+  Future<bool> applyWaterTap({
+    required int dateMs,
+    required String tapId,
+    required int deltaMl,
+  });
+
+  /// The ids of the watch taps applied to [dateMs], in append order; `[]`
+  /// when the day has no row or a row written before the ledger existed.
+  Future<List<String>> getAppliedWaterTapIds(int dateMs);
 
   // ─── Catalog Version + Seed-Entry Tombstones ─────────────────────────────
   //

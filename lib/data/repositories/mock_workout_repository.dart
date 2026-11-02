@@ -7,6 +7,7 @@ import '../../mock/seed_data.dart';
 import '../../mock/food_catalog_seed.dart';
 import '../../core/constants/data_version.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/constants/water_constants.dart';
 import '../../core/services/data_migration_service.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
@@ -1648,6 +1649,32 @@ class MockWorkoutRepository implements WorkoutRepository {
     }
   }
 
+  /// Per-day applied watch-tap ledger (plan 94 D-4), in append order. Kept
+  /// beside the volumes; [saveWaterVolumeForDate] never touches it, as the
+  /// Hive row carries its ledger through a save.
+  final Map<int, List<String>> _waterTapIdsByDate = {};
+
+  @override
+  Future<bool> applyWaterTap({
+    required int dateMs,
+    required String tapId,
+    required int deltaMl,
+  }) async {
+    final ledger = _waterTapIdsByDate[dateMs] ?? const <String>[];
+    if (ledger.contains(tapId) || ledger.length >= kWatchWaterTapsPerDay) {
+      return false;
+    }
+    final volume = _waterVolumesByDate[dateMs] ?? 0;
+    _waterVolumesByDate[dateMs] = volume + deltaMl < 0 ? 0 : volume + deltaMl;
+    _waterTapIdsByDate[dateMs] = [...ledger, tapId];
+    return true;
+  }
+
+  @override
+  Future<List<String>> getAppliedWaterTapIds(int dateMs) async {
+    return List<String>.of(_waterTapIdsByDate[dateMs] ?? const <String>[]);
+  }
+
   /// Clears all data (useful for testing)
   void clear() {
     _exercises.clear();
@@ -1681,6 +1708,7 @@ class MockWorkoutRepository implements WorkoutRepository {
     _catalogFoods.clear();
     _consumedFoods.clear();
     _waterVolumesByDate.clear();
+    _waterTapIdsByDate.clear();
     _watchInbox.clear();
     _sensorSummaries.clear();
     _initialized = false;

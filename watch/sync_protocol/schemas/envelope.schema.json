@@ -25,6 +25,7 @@
         "exercises_down",
         "foods_down",
         "bests_down",
+        "water_down",
         "preferences_down",
         "exercise_push",
         "structure_change",
@@ -218,7 +219,8 @@
             "nutrition_quick_log",
             "effort_rating",
             "session_end",
-            "rest"
+            "rest",
+            "water_glass"
           ]
         },
         "loggedAt": {
@@ -323,6 +325,10 @@
           "minItems": 1,
           "items": { "$ref": "#/$defs/setBlockHeartRate" },
           "description": "On a session_end entry only: one heart-rate summary per set block — the sets logged for one sessionExerciseId and exerciseId pair."
+        },
+        "glassChange": {
+          "enum": ["add", "remove"],
+          "description": "On a water_glass entry only: one glass added to or removed from the day's water. A closed string, never a signed number."
         }
       }
     },

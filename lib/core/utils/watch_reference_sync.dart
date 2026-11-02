@@ -27,8 +27,10 @@ import 'dart:ui' show Color;
 import '../constants/block_types.dart';
 import '../constants/capability.dart';
 import '../constants/metric_ids.dart';
+import '../constants/water_constants.dart';
 import '../sync_protocol/phone_envelope.dart';
 import '../sync_protocol/wire_timestamps.dart';
+import 'date_utils.dart';
 import 'food_helpers.dart';
 import 'foods_i_eat_order.dart';
 import '../../data/models/models.dart';
@@ -624,6 +626,57 @@ abstract final class WatchReferenceSync {
       payload: {'generatedAt': utcIso(generatedAt), 'bests': entries},
     );
   }
+
+  /// The day's water, as the `water_down` message the wrist reads (plan 94
+  /// D-6): the phone's own glass count for [volumeMl] and the wrist taps that
+  /// count already includes, so the wrist can add only the taps it has not
+  /// had counted. [localDay] is the phone's local calendar day the frame
+  /// describes; [generatedAt] stamps it and names it.
+  static Map<String, Object?> buildWaterDown({
+    required int volumeMl,
+    required List<String> appliedTapIds,
+    required DateTime localDay,
+    required DateTime generatedAt,
+  }) {
+    final glasses = waterGlassesFor(volumeMl);
+    return phoneEnvelope(
+      type: 'water_down',
+      messageId:
+          'msg-water-${generatedAt.toUtc().millisecondsSinceEpoch}'
+          '-$glasses-${appliedTapIds.length}',
+      sentAt: generatedAt,
+      payload: {
+        'generatedAt': utcIso(generatedAt),
+        'day': _isoDay(localDay),
+        'glasses': glasses,
+        'appliedTapIds': List<String>.of(appliedTapIds),
+      },
+    );
+  }
+
+  /// [buildWaterDown] for the phone's today at [generatedAt], read from
+  /// storage now — the day's volume and its applied-tap ledger (D-8).
+  static Future<Map<String, Object?>> readWaterDown({
+    required WorkoutRepository repository,
+    required DateTime generatedAt,
+  }) async {
+    final today = generatedAt.toLocal();
+    final dayMs = OmniDateUtils.startOfDayMs(today);
+    final volumeMl = await repository.getWaterVolumeForDate(dayMs);
+    final appliedTapIds = await repository.getAppliedWaterTapIds(dayMs);
+    return buildWaterDown(
+      volumeMl: volumeMl,
+      appliedTapIds: appliedTapIds,
+      localDay: today,
+      generatedAt: generatedAt,
+    );
+  }
+
+  /// A local calendar date as the wire's zero-padded `YYYY-MM-DD`.
+  static String _isoDay(DateTime local) =>
+      '${local.year.toString().padLeft(4, '0')}-'
+      '${local.month.toString().padLeft(2, '0')}-'
+      '${local.day.toString().padLeft(2, '0')}';
 
   /// One food, in the shape the schema pins. A food whose group the phone no
   /// longer holds has no category to name, which is a valid answer rather than

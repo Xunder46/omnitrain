@@ -13,6 +13,8 @@
 //   S-9208 the since a frame names is read back → `S-9208 ...` (plan 62, D-2)
 //   S-87c-9 the request says whether the wrist holds the bests
 //         → `S-87c-9 ...` (plan 87c, D-2)
+//   S-94a-22, S-94a-26 the request says whether the wrist wants the water
+//         count → `S-94a-22 ...`, `S-94a-26 ...` (plan 94, D-9)
 //   Phase 2 item 6: phone fixtures carry no null → `Phase 2 item 6: ...`
 //   S-253 every sync is answered with preferences → `S-253 ...`
 //         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
@@ -1652,6 +1654,27 @@ void main() {
       );
     });
 
+    test('S-94a-26 a wrist that asks for the water count says so', () {
+      final requests = _asObject(_contract()['transportRequests']);
+
+      expect(
+        WatchTransportRequest.routinesFrame(wantsWater: true),
+        _asObject(requests['routinesWater']),
+        reason: 'S-94a-26 the asking frame is the contract row, exactly',
+      );
+      expect(
+        WatchTransportRequest.routinesFrame(),
+        _asObject(requests['routines']),
+        reason: 'S-94a-26 a wrist that does not ask sends the routines row — '
+            'the key is omitted, never false and never null',
+      );
+      expect(
+        WatchTransportRequest.routinesFrame(wantsWater: false),
+        _asObject(requests['routines']),
+        reason: 'S-94a-26 an explicit false is byte-identical to omitting it',
+      );
+    });
+
     test('S-3856 a wrist that holds a list names its version the way the '
         'contract does', () {
       final requests = _asObject(_contract()['transportRequests']);
@@ -1853,6 +1876,57 @@ void main() {
           reason: 'S-87c-9 $frame leaves the phone sending the frame',
         );
       }
+    });
+  });
+
+  group('S-94a-22 the request says whether the wrist wants the water count', () {
+    test('S-94a-22 only the boolean true means asked', () {
+      expect(
+        WatchTransportRequest.wantsWaterOf(
+          WatchTransportRequest.routinesFrame(wantsWater: true),
+        ),
+        isTrue,
+        reason: 'S-94a-22 the key the builder writes reads back as asked',
+      );
+      expect(
+        WatchTransportRequest.wantsWaterOf(
+          const {'request': 'routines', 'wantsWater': true},
+        ),
+        isTrue,
+      );
+
+      final notAsked = <Map<String, Object?>>[
+        WatchTransportRequest.routinesFrame(wantsWater: false),
+        const {'request': 'routines', 'wantsWater': false},
+        const {'request': 'routines', 'wantsWater': 'true'},
+        const {'request': 'routines', 'wantsWater': 1},
+        const {'request': 'routines', 'wantsWater': null},
+        const {'request': 'routines'},
+      ];
+      for (final frame in notAsked) {
+        expect(
+          WatchTransportRequest.wantsWaterOf(frame),
+          isFalse,
+          reason: 'S-94a-22 $frame did not ask for the count (D-9)',
+        );
+      }
+    });
+
+    test('S-94a-22 the key rides beside the others and replaces none', () {
+      expect(
+        WatchTransportRequest.routinesFrame(
+          since: _syncedAt,
+          holdsBests: true,
+          wantsWater: true,
+        ),
+        {
+          ...WatchTransportRequest.routinesFrame(
+            since: _syncedAt,
+            holdsBests: true,
+          ),
+          'wantsWater': true,
+        },
+      );
     });
   });
 

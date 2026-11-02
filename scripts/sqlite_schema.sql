@@ -1447,7 +1447,7 @@ CREATE INDEX IF NOT EXISTS IX_consumed_food_logged ON app_consumed_food(logged_a
 -- effect immediately and survives closing and reopening the app on the
 -- same day. Prior days are never modified automatically.
 --
--- SqliteWorkoutRepository implementation notes:
+-- Contract notes (WorkoutRepository):
 --   getWaterVolumeForDate(dateMs):
 --     SELECT volume_ml FROM app_water_log WHERE date_ms = ?;
 --     (returns 0 when no row matches)
@@ -1457,17 +1457,29 @@ CREATE INDEX IF NOT EXISTS IX_consumed_food_logged ON app_consumed_food(logged_a
 --       ON CONFLICT(date_ms) DO UPDATE SET
 --         volume_ml = excluded.volume_ml,
 --         updated_at_ms = excluded.updated_at_ms;
+--     (applied_tap_ids is carried through unchanged)
+--   applyWaterTap(dateMs, tapId, deltaMl)  — plan 94 D-3 / D-5:
+--     one write per watch tap, at most once: when tapId is not yet in the
+--     day's applied_tap_ids and it holds fewer than 500 ids
+--     (kWatchWaterTapsPerDay), volume_ml becomes MAX(0, volume_ml + deltaMl)
+--     and tapId is appended, in the same row update; otherwise nothing
+--     changes. A remove at 0 ml still writes the row and records the id.
+--   getAppliedWaterTapIds(dateMs):
+--     SELECT applied_tap_ids FROM app_water_log WHERE date_ms = ?;
+--     (the JSON array in append order; [] when no row matches)
 --
 -- The `id` column is the deterministic storage key (`'water-<dateMs>'`),
 -- matching WaterLogEntry.idForDate. `volume_ml` is non-negative (the state
--- layer floors at 0 ml before persisting).
+-- layer floors at 0 ml before persisting). `applied_tap_ids` is a JSON array
+-- of watch tap ids (strings); a row written before plan 94 reads as `[]`.
 --
 CREATE TABLE app_water_log (
   id TEXT NOT NULL PRIMARY KEY,
   date_ms INTEGER NOT NULL UNIQUE,
   volume_ml INTEGER NOT NULL CHECK (volume_ml >= 0),
   created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
+  updated_at_ms INTEGER NOT NULL,
+  applied_tap_ids TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS IX_water_log_date ON app_water_log(date_ms DESC);
 

@@ -26,8 +26,7 @@ class NutritionState extends ChangeNotifier {
   // ─── Consumed foods (today's day-log) ──────────────────────────────────
   // Source of truth for the calorie ring on the nutrition page. Backed by
   // `WorkoutRepository.getConsumedFoodsForDate`, which both implementations
-  // (`HiveWorkoutRepository` and future `SqliteWorkoutRepository`) already
-  // provide. The state caches the result and notifies listeners on every
+  // (`HiveWorkoutRepository` and `MockWorkoutRepository`) provide. The state caches the result and notifies listeners on every
   // successful load so the ring rebuilds when the day's log changes.
 
   /// Cached list of consumed-food snapshots for today (local-time).
@@ -46,12 +45,12 @@ class NutritionState extends ChangeNotifier {
   // ─── Daily water log ───────────────────────────────────────────────────
   // Source of truth for the water tracker on the bottom-right of the
   // calorie-ring card. Backed by `WorkoutRepository.getWaterVolumeForDate`,
-  // which both implementations (`MockWorkoutRepository` and future
-  // `SqliteWorkoutRepository`) provide. The state caches the result and
+  // which both implementations (`MockWorkoutRepository` and
+  // `HiveWorkoutRepository`) provide. The state caches the result and
   // notifies listeners on every successful load / write so the count
   // rebuilds when the day's volume changes.
   //
-  // The on-screen glass count is derived (`_waterTodayMl ~/ kWaterGlassMl`)
+  // The on-screen glass count is derived (`waterGlassesFor(_waterTodayMl)`)
   // and never stored — the canonical unit is milliliters, so historical
   // totals stay unit-clean if the per-glass amount ever changes. Water
   // has no goal (no progress bar, no target); it is tracked and stored
@@ -69,13 +68,23 @@ class NutritionState extends ChangeNotifier {
   /// (so 250 ml → 1 glass, 750 ml → 3 glasses, 0 ml → 0 glasses).
   /// The icon + "250 ml" annotation carries the per-glass amount
   /// so the user can decode the unit at a glance.
-  int get waterTodayGlasses => _waterTodayMl ~/ kWaterGlassMl;
+  int get waterTodayGlasses => waterGlassesFor(_waterTodayMl);
+
+  /// The day [_waterTodayMl] belongs to: set by [loadWaterForDate], null
+  /// before the first load. A wrist tap updates the cache only for this day.
+  int? _waterDayMs;
+
+  /// Every water read-modify-write queues here (D-12).
+  Future<void> _waterChain = Future<void>.value();
 
   /// Load the water volume for a specific date from the repository into
   /// the cache, and notify listeners. Safe to call repeatedly; an empty
   /// repo returns `0` (no exception, no error state). Past dates are
   /// stored alongside today — the cache is replaced, not merged.
-  Future<void> loadWaterForDate(int dateMs) async {
+  ///
+  /// Queued behind any water write in flight, so a load cannot overwrite
+  /// the cache with a volume read before that write landed.
+  Future<void> loadWaterForDate(int dateMs) => _serialiseWater(() async {
     try {
       final ml = await _repository.getWaterVolumeForDate(dateMs);
       _waterTodayMl = ml;
@@ -84,8 +93,9 @@ class NutritionState extends ChangeNotifier {
       // for the freshly-loaded day so a stale value does not leak.
       _waterTodayMl = 0;
     }
+    _waterDayMs = dateMs;
     notifyListeners();
-  }
+  });
 
   /// Convenience: load today's water volume.
   Future<void> loadWaterForToday() =>
@@ -96,18 +106,18 @@ class NutritionState extends ChangeNotifier {
   /// amount is fixed by [kWaterGlassMl]. Always succeeds — the
   /// repository clamps at 0 ml as a final defense and `kWaterGlassMl`
   /// is always positive, so the resulting volume is always non-negative.
-  Future<void> incrementWaterForDate(int dateMs) async {
+  Future<void> incrementWaterForDate(int dateMs) => _serialiseWater(() async {
     final current = await _repository.getWaterVolumeForDate(dateMs);
     final next = current + kWaterGlassMl;
     await _repository.saveWaterVolumeForDate(dateMs, next);
     _waterTodayMl = next;
     notifyListeners();
-  }
+  });
 
   /// Remove one glass (250 ml) from [dateMs] and persist immediately.
   /// Floors at `0` ml — a minus at 0 ml is a no-op (no negative
   /// leak, no spurious row, no notification).
-  Future<void> decrementWaterForDate(int dateMs) async {
+  Future<void> decrementWaterForDate(int dateMs) => _serialiseWater(() async {
     final current = await _repository.getWaterVolumeForDate(dateMs);
     if (current <= 0) {
       // Already at zero — no write, no notification. This is the
@@ -118,6 +128,42 @@ class NutritionState extends ChangeNotifier {
     await _repository.saveWaterVolumeForDate(dateMs, next);
     _waterTodayMl = next;
     notifyListeners();
+  });
+
+  /// Applies one glass the wrist tapped on [dateMs] (plan 94 D-12), at most
+  /// once per [tapId]: [add] is a glass more, otherwise a glass less floored
+  /// at 0 ml — the same math as [incrementWaterForDate] /
+  /// [decrementWaterForDate], written with the tap id in one storage write.
+  ///
+  /// Returns whether storage changed (false for a tap already applied or a
+  /// full day). The cache and its listeners hear of it only when [dateMs] is
+  /// the day the cache was loaded for; a tap on any other day — or before
+  /// any load — leaves both alone.
+  Future<bool> applyWatchWaterTap({
+    required int dateMs,
+    required String tapId,
+    required bool add,
+  }) => _serialiseWater(() async {
+    final applied = await _repository.applyWaterTap(
+      dateMs: dateMs,
+      tapId: tapId,
+      deltaMl: add ? kWaterGlassMl : -kWaterGlassMl,
+    );
+    if (applied && _waterDayMs == dateMs) {
+      _waterTodayMl = await _repository.getWaterVolumeForDate(dateMs);
+      notifyListeners();
+    }
+    return applied;
+  });
+
+  /// Runs [write] after every water operation queued before it, so no
+  /// read-modify-write of the day's volume interleaves another (D-12). The
+  /// chain keeps moving when a write throws; the throw still reaches that
+  /// write's own caller.
+  Future<T> _serialiseWater<T>(Future<T> Function() write) {
+    final result = _waterChain.then((_) => write());
+    _waterChain = result.then((_) {}, onError: (_, _) {});
+    return result;
   }
 
   /// Load nutrition target for a specific date.

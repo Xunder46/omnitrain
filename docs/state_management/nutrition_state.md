@@ -55,11 +55,14 @@ and [Consumed-Food State Cache](../data_models.md#consumed-food-state-cache-nutr
 | `deleteConsumedFood(String id)` | Removes a consumed-food row via the repository and refreshes the cache. No-op (and returns `false`) if the id is not in the cache. |
 | `clearConsumedToday()` | Empties the consumed-food cache and notifies listeners. Intended for day rollover. |
 | `waterTodayMl` | Cached water volume in milliliters for the most recently loaded day. `0` until the first explicit load runs. Drives the bottom-right `WaterTrackerControl` on the calorie-ring card. The canonical unit is milliliters so the historical record stays unit-clean; the on-screen glass count is derived at the display boundary. |
-| `waterTodayGlasses` | Derived from `waterTodayMl ~/ kWaterGlassMl` (250). The widget's display count; never stored. |
-| `loadWaterForDate(int dateMs)` | Reloads the day's stored ml from the repository, replaces the cache, notifies listeners. Idempotent; safe to call repeatedly. |
+| `waterTodayGlasses` | Derived by `waterGlassesFor(waterTodayMl)` (whole glasses of `kWaterGlassMl`) — the same function the watch's count frame uses. The widget's display count; never stored. |
+| `loadWaterForDate(int dateMs)` | Reloads the day's stored ml from the repository, replaces the cache, records `dateMs` as the day the cache belongs to, notifies listeners. Idempotent; safe to call repeatedly. |
 | `loadWaterForToday()` | Convenience wrapper that delegates to `loadWaterForDate(todayMidnightMs)`. Called from `NutritionScreen.initState` alongside the target + consumed loads. |
 | `incrementWaterForDate(int dateMs)` | Adds `kWaterGlassMl` (250 ml), persists via the repository, updates the cache, and notifies listeners. Always succeeds — `kWaterGlassMl` is positive and the repository clamps at 0. |
 | `decrementWaterForDate(int dateMs)` | Subtracts `kWaterGlassMl` (floors at 0 ml), persists, updates the cache, notifies. A minus at 0 is a no-op (no write, no notification, no spurious row) — mirrors the disabled minus button in `WaterTrackerControl`. |
+| `applyWatchWaterTap({dateMs, tapId, add})` | A glass tapped on the watch (plan 94 D-12): `applyWaterTap` with ±`kWaterGlassMl`, so the volume and the tap id change in one write and a tap already applied changes nothing. Returns whether storage changed. Updates the cache and notifies once only when `dateMs` is the day the cache was loaded for; a tap on another day, or before any load, touches neither. |
+
+Water writes run one at a time: the load, the two buttons and `applyWatchWaterTap` queue on one internal chain, so a phone tap and a watch tap landing together both count, and a write that throws does not block the next. Verified by `test/watch_water_log_test.dart` (S-94a-10 to S-94a-12).
 
 ---
 

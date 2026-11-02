@@ -103,10 +103,14 @@ abstract final class WatchTransportRequest {
   /// [holdsBests] says the wrist holds a bests frame, and adds `holdsBests:
   /// true` only when it is true — a wrist holding nothing omits the key rather
   /// than sending `false` (87c, D-2).
+  ///
+  /// [wantsWater] asks for the day's water count, and adds `wantsWater: true`
+  /// only when it is true — omitted otherwise, never `false` (plan 94, D-9).
   static Map<String, Object?> routinesFrame({
     DateTime? since,
     String? exercisesVersion,
     bool holdsBests = false,
+    bool wantsWater = false,
   }) {
     final stamp = since == null ? null : utcIso(since);
     final version = exercisesVersion == null || exercisesVersion.isEmpty
@@ -117,6 +121,7 @@ abstract final class WatchTransportRequest {
       'since': ?stamp,
       'exercisesVersion': ?version,
       if (holdsBests) 'holdsBests': true,
+      if (wantsWater) 'wantsWater': true,
     };
   }
 
@@ -148,6 +153,14 @@ abstract final class WatchTransportRequest {
   /// has (87c, D-2).
   static bool holdsBestsOf(Map<String, Object?> frame) =>
       frame['holdsBests'] == true;
+
+  /// Whether [frame] asks for the day's water count (`water_down`).
+  ///
+  /// Only the boolean `true` counts as asked: a string, a number, `false`, null
+  /// and an absent key are all "not asked", the [holdsBestsOf] rule (plan 94,
+  /// D-9).
+  static bool wantsWaterOf(Map<String, Object?> frame) =>
+      frame['wantsWater'] == true;
 
   static Map<String, Object?> snapshotFrame() => const {'request': snapshot};
 }

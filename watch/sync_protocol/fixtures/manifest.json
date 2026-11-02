@@ -28,6 +28,24 @@
       "scenario": "S-87a-10",
       "note": "One entry may carry both axes: `ex-bench` holds a weighted best and a bodyweight rep best, so \"at least one axis\" is a floor, not an exclusive-or."
     },
+    {
+      "path": "valid/water_down.json",
+      "type": "water_down",
+      "scenario": "S-94a-1",
+      "note": "The family's shape: the phone's day, its own glass count, and the wrist taps that count already includes, in the order the phone applied them (plan 94 D-6)."
+    },
+    {
+      "path": "valid/water_down_empty_day.json",
+      "type": "water_down",
+      "scenario": "S-94a-1",
+      "note": "A day with no water is a frame like any other: `glasses: 0` and an empty `appliedTapIds` tell the wrist to count from 0."
+    },
+    {
+      "path": "valid/observations_up_water.json",
+      "type": "observations_up",
+      "scenario": "S-94a-1",
+      "note": "Two glass taps under the day's nutrition id: a `water_glass` entry names no slot and no exercise, and carries `glassChange` as a closed string, never a signed number (plan 94 D-2)."
+    },
     { "path": "valid/exercise_push.json", "type": "exercise_push" },
     { "path": "valid/structure_change.json", "type": "structure_change" },
     { "path": "valid/observations_up.json", "type": "observations_up" },
@@ -682,6 +700,94 @@
       "expectedCode": "constraint_violation",
       "expectedReasonContains": "expected at most 300 items, found 301",
       "note": "The frame is ONE message capped at 300 entries (D-9): 301 is refused by `maxItems`, and the phone's own builder neither batches nor exceeds the cap."
+    },
+    {
+      "path": "invalid/water_down_unknown_field.json",
+      "type": "water_down",
+      "scenario": "S-94a-2",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "field \"volumeMl\" is not defined by the schema",
+      "note": "The payload is closed: the count travels as glasses, never as a volume, and an unknown field refuses the frame."
+    },
+    {
+      "path": "invalid/water_down_negative_glasses.json",
+      "type": "water_down",
+      "scenario": "S-94a-2",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 0, found -1",
+      "note": "A glass count is never negative: the phone clamps its volume at 0."
+    },
+    {
+      "path": "invalid/water_down_fractional_glasses.json",
+      "type": "water_down",
+      "scenario": "S-94a-2",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected integer, found 2.5",
+      "note": "`glasses` is the phone's whole-glass count (volume divided by the glass, rounded down), so a fraction is refused rather than rounded."
+    },
+    {
+      "path": "invalid/water_down_bad_day.json",
+      "type": "water_down",
+      "scenario": "S-94a-2",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "does not match the required pattern",
+      "note": "`day` is a zero-padded `YYYY-MM-DD` calendar date, compared as a string with the wrist's own date; a locale-formatted date is refused."
+    },
+    {
+      "path": "invalid/water_down_duplicate_tap.json",
+      "type": "water_down",
+      "scenario": "S-94a-2",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "the same tap id appears twice: w-1",
+      "note": "The phone applies a tap once, so its id is listed once; a repeated id is a sender defect (plan 94 D-10)."
+    },
+    {
+      "path": "invalid/water_down_watch_origin.json",
+      "type": "water_down",
+      "scenario": "S-94a-2",
+      "expectedCode": "invalid_const_value",
+      "expectedReasonContains": "expected \"phone\", found \"watch\"",
+      "note": "The phone owns the day's water, so the count's origin is `phone` and a wrist-originated copy is refused."
+    },
+    {
+      "path": "invalid/water_down_over_500.json",
+      "type": "water_down",
+      "scenario": "S-94a-2",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at most 500 items, found 501",
+      "note": "The phone records at most 500 wrist taps a day, so a frame never lists more: 501 is refused by `maxItems`."
+    },
+    {
+      "path": "invalid/observations_up_water_missing_change.json",
+      "type": "observations_up",
+      "scenario": "S-94a-2",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "glassChange",
+      "note": "A glass tap without its direction says nothing the phone can apply, so the message is refused."
+    },
+    {
+      "path": "invalid/observations_up_water_unknown_change.json",
+      "type": "observations_up",
+      "scenario": "S-94a-2",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "\"double\" is not one of [\"add\",\"remove\"]",
+      "note": "`glassChange` is a closed enum: a tap is one glass added or removed, nothing else."
+    },
+    {
+      "path": "invalid/observations_up_water_extra_field.json",
+      "type": "observations_up",
+      "scenario": "S-94a-2",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "field \"volumeMl\" is not defined by the schema",
+      "note": "A tap is a one-glass change, never an amount: a volume on the event is a field the schema does not define, and the whole message is refused."
+    },
+    {
+      "path": "invalid/observations_up_glass_change_on_set.json",
+      "type": "observations_up",
+      "scenario": "S-94a-2",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "glassChange is carried only by water_glass entries",
+      "note": "`glassChange` belongs to a glass tap; on a set it is a sender defect (plan 94 D-10)."
     }
   ],
   "scenarios": [

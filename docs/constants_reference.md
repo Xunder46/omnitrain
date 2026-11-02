@@ -558,11 +558,13 @@ See [Design System](design_system.md) for the full token reference. Key categori
 | Constant | Value | Notes |
 |----------|-------|-------|
 | `kWaterGlassMl` | `250` | Milliliters per logged glass |
+| `kWatchWaterTapsPerDay` | `500` | Most watch water taps the phone records for one day |
+| `waterGlassesFor(volumeMl)` | function | The glass count for a stored volume; the one place it is derived |
 
 Water has **no goal** — like macros and sodium it is tracked for the historical
 record only. The day's stored **volume in ml** is the source of truth; the
 on-screen glass count is derived at the display boundary
-(`volumeMl ~/ kWaterGlassMl`). Never hardcode `250` — go through the constant
+(`waterGlassesFor(volumeMl)`). Never hardcode `250` — go through the constant
 so storage, unit, and widget agree.
 
 ### `catalog_version.dart`

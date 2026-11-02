@@ -28,6 +28,7 @@ import 'live_session_mirror_state.dart';
 import 'watch_nutrition_log_bridge.dart';
 import 'watch_session_adoption_bridge.dart';
 import 'watch_session_inbox.dart';
+import 'watch_water_log_bridge.dart';
 
 /// What happened to one message from the wrist.
 class WatchIncomingReceipt {
@@ -36,6 +37,7 @@ class WatchIncomingReceipt {
     required this.session,
     required this.nutrition,
     this.answeredReset = false,
+    this.water = WatchWaterLogOutcome.ignored,
   });
 
   /// The watch session inbox's verdict. [WatchInboxOutcome.ignored] is the
@@ -62,6 +64,11 @@ class WatchIncomingReceipt {
   /// the reset debt itself is untouched, so a step the radio did not carry is
   /// re-offered at the next trigger.
   final bool answeredReset;
+
+  /// What the day's water did with it. [WatchWaterLogOutcome.ignored] is the
+  /// ordinary answer for anything that is not a water tap, and the answer of a
+  /// router built without a water bridge.
+  final WatchWaterLogOutcome water;
 }
 
 class WatchIncomingRouter {
@@ -70,10 +77,12 @@ class WatchIncomingRouter {
     required LiveSessionMirrorState mirror,
     required WatchNutritionLogBridge nutrition,
     WatchSessionAdoptionBridge? adoption,
+    WatchWaterLogBridge? water,
   }) : _inbox = inbox,
        _mirror = mirror,
        _nutrition = nutrition,
-       _adoption = adoption;
+       _adoption = adoption,
+       _water = water;
 
   final WatchSessionInbox _inbox;
   final LiveSessionMirrorState _mirror;
@@ -82,6 +91,9 @@ class WatchIncomingRouter {
   /// Optional: a phone with no session state (a build flag, a test that only
   /// exercises the day log) adopts nothing.
   final WatchSessionAdoptionBridge? _adoption;
+
+  /// Optional: a router built without one ignores water taps (plan 94 D-13).
+  final WatchWaterLogBridge? _water;
 
   /// Applies one message from the wrist to each of its owners, the inbox
   /// first.
@@ -159,11 +171,16 @@ class WatchIncomingRouter {
       await _adoption?.onLifecycle(envelope);
     }
     final logged = await _nutrition.receive(envelope);
+    // A glass of water tapped on the wrist belongs to the day's water, never
+    // to a session: after the food, so a message carrying both is answered
+    // with the food's receipt first (plan 94 D-13).
+    final water = await _water?.receive(envelope);
     return WatchIncomingReceipt(
       inbox: staged.outcome,
       session: session,
       nutrition: logged.outcome,
       answeredReset: answeredReset,
+      water: water?.outcome ?? WatchWaterLogOutcome.ignored,
     );
   }
 }

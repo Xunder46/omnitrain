@@ -68,13 +68,23 @@
 //   S-87c-14 a request without the flag always sends, even with remembered
 //          state → `S-87c-14 ...`
 //
+// Plan: `docs/plans/2026-11-01-94-watch-water-logging-plan/` (D-6, D-8(a),
+// D-9, D-11). Scenario mapping:
+//   S-94a-21 a wrist that asks gets the count on every request → `S-94a-21 ...`
+//   S-94a-22 a wrist that does not ask gets none → `S-94a-22 ...`
+//   S-94a-23 no foods, no routines, still a count → `S-94a-23 ...`
+//   S-94a-24 the frame is the phone's own number → `S-94a-24 ...`
+//   S-94a-25 a lost or failed count never breaks the answer → `S-94a-25 ...`
+//
 // The transport here is a recorder, not the graph: this file is about what the
 // handler sends, and in what order. That the graph's inbound handler hands the
 // frame's version on is S-3855 in `test/watch_session_projection_test.dart`.
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/water_constants.dart';
 import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/services/stats_progress_service.dart';
@@ -83,6 +93,7 @@ import 'package:omnitrain/core/utils/watch_reference_sync.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/food_library_state.dart';
+import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/watch/watch_sync_request_handler.dart';
@@ -112,9 +123,15 @@ class _RecordingTransport implements WatchMirrorTransport {
   /// `queued` answer the real transport never gives it (S-87c-5).
   WatchDelivery? bestsDelivery;
 
+  /// Whether the radio refuses the `water_down` frame (S-94a-25).
+  bool undeliveredWater = false;
+
   @override
   Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     sent.add(envelope);
+    if (envelope['type'] == 'water_down' && undeliveredWater) {
+      return WatchDelivery.undelivered;
+    }
     if (envelope['type'] == 'bests_down' && bestsDelivery != null) {
       return bestsDelivery!;
     }
@@ -226,6 +243,14 @@ class _ThrowingOnceRepository extends MockWorkoutRepository {
     }
     return super.getFoodGroups(includeArchived: includeArchived);
   }
+}
+
+/// A repository whose water read throws, the way a storage failure does: the
+/// answer must go on without the count (S-94a-25).
+class _ThrowingWaterRepository extends MockWorkoutRepository {
+  @override
+  Future<int> getWaterVolumeForDate(int dateMs) =>
+      throw StateError('the water box is unavailable');
 }
 
 /// A completed session holding one set effort (reps × weight), the way the
@@ -1764,6 +1789,249 @@ void main() {
             'holds request still skips',
       );
       expect(repo.sessionReads, 0);
+    });
+  });
+
+  group('S-94a-21…S-94a-25 the water count rides an answer that asks', () {
+    // Shared fixture W (plan 94, D-16): the phone's local 2026-11-01, asked at
+    // local noon; the day string and dateMs derive from the same local date.
+    final day = DateTime(2026, 11, 1);
+    final dayMs = day.millisecondsSinceEpoch;
+    final dayText =
+        '${day.year.toString().padLeft(4, '0')}-'
+        '${day.month.toString().padLeft(2, '0')}-'
+        '${day.day.toString().padLeft(2, '0')}';
+
+    /// The payload of the one `water_down` frame sent so far.
+    Map<String, Object?> waterPayload() =>
+        asObject(transport.ofType('water_down').single['payload']);
+
+    setUp(() async {
+      current = DateTime(2026, 11, 1, 12).toUtc();
+      // D at 600 ml with the ledger ["w-1"]: 350 ml, then one wrist add.
+      await repository.saveWaterVolumeForDate(dayMs, 350);
+      expect(
+        await repository.applyWaterTap(
+          dateMs: dayMs,
+          tapId: 'w-1',
+          deltaMl: kWaterGlassMl,
+        ),
+        isTrue,
+      );
+      expect(await repository.getWaterVolumeForDate(dayMs), 600);
+    });
+
+    test('S-94a-21 a wrist that asks gets the count on every request, after '
+        'the batches and before the bests', () async {
+      final validator = loadProtocolValidator();
+
+      expect(
+        await handler.handle(WatchTransportRequest.routines, wantsWater: true),
+        isTrue,
+      );
+      expect(transport.ofType('water_down'), hasLength(1));
+      expect(waterPayload()['day'], dayText);
+      expect(waterPayload()['glasses'], 2, reason: 'S-94a-21 600 ~/ 250 = 2');
+      expect(waterPayload()['appliedTapIds'], ['w-1']);
+      expect(
+        validator.validateEnvelope(transport.ofType('water_down').single),
+        isEmpty,
+      );
+
+      final types = transport.types;
+      final lastBatch = types.lastIndexOf('exercises_down');
+      expect(lastBatch, greaterThanOrEqualTo(0));
+      expect(
+        types.indexOf('water_down'),
+        lastBatch + 1,
+        reason: 'S-94a-21 the count comes right after the last exercise batch',
+      );
+      expect(
+        types.last,
+        'bests_down',
+        reason: 'S-94a-21 the bests stay the last frame (87a D-11)',
+      );
+      expect(types.indexOf('bests_down'), types.indexOf('water_down') + 1);
+
+      final stamp = parseUtcIso(
+        asObject(
+          transport.ofType('routines_down').single['payload'],
+        )['generatedAt'],
+      );
+      final version = await currentVersion();
+      transport.sent.clear();
+
+      expect(
+        await handler.handle(
+          WatchTransportRequest.routines,
+          since: stamp,
+          exercisesVersion: version,
+          holdsBests: true,
+          wantsWater: true,
+        ),
+        isTrue,
+      );
+      expect(
+        transport.types,
+        ['water_down'],
+        reason: 'S-94a-21 no bundle, no batches, no bests — and still the one '
+            'count, whatever since, the version and the bests decided',
+      );
+      expect(waterPayload()['day'], dayText);
+      expect(waterPayload()['glasses'], 2);
+      expect(waterPayload()['appliedTapIds'], ['w-1']);
+      expect(
+        validator.validateEnvelope(transport.ofType('water_down').single),
+        isEmpty,
+      );
+    });
+
+    test('S-94a-22 a wrist that does not ask gets none', () async {
+      final notAsked = <Map<String, Object?>>[
+        const {'request': 'routines'},
+        const {'request': 'routines', 'wantsWater': false},
+        const {'request': 'routines', 'wantsWater': 'true'},
+        const {'request': 'routines', 'wantsWater': 1},
+        const {'request': 'routines', 'wantsWater': null},
+      ];
+      for (final frame in notAsked) {
+        transport.sent.clear();
+        expect(
+          await handler.handle(
+            WatchTransportRequest.routines,
+            wantsWater: WatchTransportRequest.wantsWaterOf(frame),
+          ),
+          isTrue,
+        );
+        expect(
+          transport.ofType('water_down'),
+          isEmpty,
+          reason: 'S-94a-22 $frame did not ask, so no count travels',
+        );
+        expect(transport.types.last, 'bests_down');
+      }
+
+      transport.sent.clear();
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+      expect(
+        transport.ofType('water_down'),
+        isEmpty,
+        reason: 'S-94a-22 a caller that passes nothing is not asking',
+      );
+    });
+
+    test('S-94a-23 no foods, no routines, still a count', () async {
+      repository = MockWorkoutRepository();
+      await repository.initialize();
+      handler = handlerFor(FoodLibraryState(repository));
+      expect(await repository.getFoods(includeArchived: true), isEmpty);
+      expect(await repository.getTemplates(), isEmpty);
+      expect(await repository.getWaterVolumeForDate(dayMs), 0);
+
+      expect(
+        await handler.handle(WatchTransportRequest.routines, wantsWater: true),
+        isTrue,
+      );
+      expect(transport.ofType('water_down'), hasLength(1));
+      expect(waterPayload()['day'], dayText);
+      expect(waterPayload()['glasses'], 0);
+      expect(waterPayload()['appliedTapIds'], isEmpty);
+      expect(
+        loadProtocolValidator().validateEnvelope(
+          transport.ofType('water_down').single,
+        ),
+        isEmpty,
+      );
+    });
+
+    test("S-94a-24 the frame is the phone's own number", () async {
+      expect(
+        await handler.handle(WatchTransportRequest.routines, wantsWater: true),
+        isTrue,
+      );
+      final frame = transport.ofType('water_down').single;
+
+      final nutrition = NutritionState(repository);
+      await nutrition.loadWaterForDate(dayMs);
+      expect(nutrition.waterTodayGlasses, 2);
+      expect(
+        waterPayload()['glasses'],
+        nutrition.waterTodayGlasses,
+        reason: 'S-94a-24 the wrist is told the number the phone shows',
+      );
+      expect(
+        frame['messageId'],
+        'msg-water-${current.millisecondsSinceEpoch}-2-1',
+      );
+    });
+
+    test('S-94a-24 only water_constants.dart turns milliliters into glasses '
+        '(code lines; comments may name the rule)', () {
+      final offenders = <String>[];
+      for (final entity in Directory('lib').listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) continue;
+        final codeLines = entity.readAsLinesSync().where(
+          (line) => !line.trimLeft().startsWith('//'),
+        );
+        if (codeLines.any((line) => line.contains('~/ kWaterGlassMl'))) {
+          offenders.add(entity.path.replaceAll(r'\', '/'));
+        }
+      }
+      expect(
+        offenders,
+        ['lib/core/constants/water_constants.dart'],
+        reason: 'S-94a-24 waterGlassesFor is the one owner of the glass count '
+            '(D-11)',
+      );
+    });
+
+    test('S-94a-25 a count the radio did not carry leaves the bests and the '
+        'answer as they were', () async {
+      transport.undeliveredWater = true;
+
+      expect(
+        await handler.handle(WatchTransportRequest.routines, wantsWater: true),
+        isTrue,
+      );
+      expect(transport.ofType('water_down'), hasLength(1));
+      expect(
+        transport.types.last,
+        'bests_down',
+        reason: 'S-94a-25 the bests still go out after the refused count',
+      );
+      expect(transport.types.indexOf('bests_down'),
+          transport.types.indexOf('water_down') + 1);
+    });
+
+    test('S-94a-25 a water read that throws sends no count and the rest of the '
+        'answer as if nobody asked', () async {
+      final throwing = _ThrowingWaterRepository();
+      await throwing.initialize();
+      repository = throwing;
+
+      transport = _RecordingTransport();
+      handler = handlerFor(FoodLibraryState(repository));
+      expect(
+        await handler.handle(WatchTransportRequest.routines, wantsWater: true),
+        isTrue,
+      );
+      final asked = transport.sent;
+      expect(
+        asked.where((frame) => frame['type'] == 'water_down'),
+        isEmpty,
+        reason: 'S-94a-25 a read that throws sends no frame',
+      );
+
+      transport = _RecordingTransport();
+      handler = handlerFor(FoodLibraryState(repository));
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+
+      expect(
+        jsonEncode(asked),
+        jsonEncode(transport.sent),
+        reason: 'S-94a-25 the rest of the answer is the one a wrist that did '
+            'not ask gets',
+      );
     });
   });
 }

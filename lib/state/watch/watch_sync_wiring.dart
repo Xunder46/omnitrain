@@ -43,6 +43,7 @@ import 'watch_session_inbox.dart';
 import 'watch_sync_request_handler.dart';
 import 'watch_timer_adoption.dart';
 import 'watch_timer_push.dart';
+import 'watch_water_log_bridge.dart';
 
 /// A phone with no session running: no ladder, nothing logged, nobody waiting.
 ///
@@ -279,6 +280,14 @@ Future<WatchSyncGraph?> createWatchSync({
       transport: resolved,
     ),
     adoption: adoption,
+    // A glass of water tapped on the wrist: applied once to the day it was
+    // tapped, acknowledged, answered with the day's count (plan 94 D-13).
+    water: WatchWaterLogBridge(
+      nutrition: nutritionState,
+      repository: repository,
+      transport: resolved,
+      clock: clock,
+    ),
   );
   final requests = WatchSyncRequestHandler(
     mirror: mirror,
@@ -323,12 +332,13 @@ Future<WatchSyncGraph?> createWatchSync({
       // The version the wrist holds rides the request frame; a wrist that
       // named none is sent the whole exercise list (D-3834). So does whether
       // it holds the bests: one that does is answered only when they moved
-      // (87c, D-5).
+      // (87c, D-5). And whether it wants the day's water count (plan 94, D-9).
       await requests.handle(
         request,
         exercisesVersion: WatchTransportRequest.exercisesVersionOf(frame),
         since: WatchTransportRequest.sinceOf(frame),
         holdsBests: WatchTransportRequest.holdsBestsOf(frame),
+        wantsWater: WatchTransportRequest.wantsWaterOf(frame),
       );
     } else {
       answeredReset = (await router.receive(frame)).answeredReset;

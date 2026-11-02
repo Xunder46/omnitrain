@@ -108,6 +108,7 @@ class SyncProtocolValidator {
     'exercises_down',
     'foods_down',
     'bests_down',
+    'water_down',
     'preferences_down',
     'exercise_push',
     'structure_change',
@@ -121,9 +122,11 @@ class SyncProtocolValidator {
   static const List<String> timerKinds = ['rest', 'round', 'hold', 'elapsed'];
 
   /// Entry kinds that are not logged against a slot: a nutrition quick-log,
-  /// and the two session-scoped kinds, which describe the whole session.
+  /// a glass of water, and the two session-scoped kinds, which describe the
+  /// whole session.
   static const Set<String> _slotlessKinds = {
     'nutrition_quick_log',
+    'water_glass',
     'effort_rating',
     'session_end',
   };
@@ -143,6 +146,7 @@ class SyncProtocolValidator {
     'status': ['session_end'],
     'modality': ['session_end'],
     'followed': ['session_end'],
+    'glassChange': ['water_glass'],
   };
 
   /// Every code this validator can emit. PROTOCOL.md documents each one, and
@@ -303,6 +307,8 @@ class SyncProtocolValidator {
         return _exerciseBatchRejections(payload);
       case 'bests_down':
         return _bestsRejections(payload);
+      case 'water_down':
+        return _waterRejections(payload);
       default:
         return const [];
     }
@@ -817,6 +823,23 @@ class SyncProtocolValidator {
     }
 
     return rejections;
+  }
+
+  /// The phone applies a wrist tap once, so the day's count lists its id once:
+  /// the dialect has no `uniqueItems`, so a repeated id is a semantic rule
+  /// (plan 94 D-10). The Swift twin reports it with the same words.
+  List<SyncProtocolRejection> _waterRejections(Map<String, Object?> payload) {
+    final tapIds = payload['appliedTapIds']! as List;
+    final seen = <String>{};
+    return [
+      for (final tapId in tapIds)
+        if (tapId is String && !seen.add(tapId))
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: '$_root.payload.appliedTapIds',
+            message: 'the same tap id appears twice: $tapId',
+          ),
+    ];
   }
 
   // ---------------------------------------------------------------------------

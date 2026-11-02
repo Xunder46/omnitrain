@@ -52,6 +52,7 @@ public final class SyncProtocolValidator {
         "exercises_down",
         "foods_down",
         "bests_down",
+        "water_down",
         "preferences_down",
         "exercise_push",
         "structure_change",
@@ -65,9 +66,11 @@ public final class SyncProtocolValidator {
     public static let timerKinds = ["rest", "round", "hold", "elapsed"]
 
     /// Entry kinds that are not logged against a slot: a nutrition quick-log,
-    /// and the two session-scoped kinds, which describe the whole session.
+    /// a glass of water, and the two session-scoped kinds, which describe the
+    /// whole session.
     private static let slotlessKinds: Set<String> = [
         "nutrition_quick_log",
+        "water_glass",
         "effort_rating",
         "session_end",
     ]
@@ -87,6 +90,7 @@ public final class SyncProtocolValidator {
         ("status", ["session_end"]),
         ("modality", ["session_end"]),
         ("followed", ["session_end"]),
+        ("glassChange", ["water_glass"]),
     ]
 
     /// Root of every message path, as a constant so `$` never needs escaping.
@@ -197,6 +201,8 @@ public final class SyncProtocolValidator {
             return exerciseBatchRejections(payload)
         case "bests_down":
             return bestsRejections(payload)
+        case "water_down":
+            return waterRejections(payload)
         default:
             return []
         }
@@ -683,6 +689,25 @@ public final class SyncProtocolValidator {
             }
         }
 
+        return rejections
+    }
+
+    /// The phone applies a wrist tap once, so the day's count lists its id
+    /// once: the dialect has no `uniqueItems`, so a repeated id is a semantic
+    /// rule (plan 94 D-10). The Dart twin reports it with the same words.
+    private func waterRejections(_ payload: [String: Any]) -> [SyncProtocolRejection] {
+        let tapIds = payload["appliedTapIds"] as? [Any] ?? []
+        var seen = Set<String>()
+        var rejections: [SyncProtocolRejection] = []
+        for case let tapId as String in tapIds where !seen.insert(tapId).inserted {
+            rejections.append(
+                rejection(
+                    SyncRejectionCode.semanticViolation,
+                    "\(Self.root).payload.appliedTapIds",
+                    "the same tap id appears twice: \(tapId)"
+                )
+            )
+        }
         return rejections
     }
 

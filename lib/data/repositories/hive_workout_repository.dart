@@ -10,6 +10,7 @@ import '../datasources/food_catalog_loader.dart';
 import '../../mock/seed_data.dart';
 import '../../core/constants/data_version.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/constants/water_constants.dart';
 import '../../core/services/data_migration_service.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
@@ -2518,8 +2519,51 @@ class HiveWorkoutRepository implements WorkoutRepository {
         'volume_ml': clamped,
         'created_at_ms': (existing['created_at_ms'] as int?) ?? now,
         'updated_at_ms': now,
+        'applied_tap_ids': _waterTapIdsOf(existing),
       });
     }
+  }
+
+  /// The applied-tap ledger a `water_log` row holds (a list); `[]` for a row
+  /// written before the ledger existed (plan 94 D-4).
+  List<String> _waterTapIdsOf(Map<String, dynamic>? row) {
+    final raw = row?['applied_tap_ids'];
+    return raw is List ? List<String>.from(raw) : <String>[];
+  }
+
+  @override
+  Future<bool> applyWaterTap({
+    required int dateMs,
+    required String tapId,
+    required int deltaMl,
+  }) async {
+    // Read and write with no await between them, so no other write can land
+    // between the ledger check and the put (D-5).
+    final key = dateMs.toString();
+    final raw = _waterLogBox.get(key);
+    final existing = raw == null ? null : _asStringMap(raw);
+    final ledger = _waterTapIdsOf(existing);
+    if (ledger.contains(tapId) || ledger.length >= kWatchWaterTapsPerDay) {
+      return false;
+    }
+    final volume = (existing?['volume_ml'] as int?) ?? 0;
+    final next = volume + deltaMl < 0 ? 0 : volume + deltaMl;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _waterLogBox.put(key, <String, dynamic>{
+      'id': WaterLogEntry.idForDate(dateMs),
+      'date_ms': dateMs,
+      'volume_ml': next,
+      'created_at_ms': (existing?['created_at_ms'] as int?) ?? now,
+      'updated_at_ms': now,
+      'applied_tap_ids': [...ledger, tapId],
+    });
+    return true;
+  }
+
+  @override
+  Future<List<String>> getAppliedWaterTapIds(int dateMs) async {
+    final raw = _waterLogBox.get(dateMs.toString());
+    return _waterTapIdsOf(raw == null ? null : _asStringMap(raw));
   }
 
   // ===== CATALOG VERSION + SEED-ENTRY TOMBSTONES =====

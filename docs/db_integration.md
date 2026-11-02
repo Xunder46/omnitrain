@@ -269,7 +269,9 @@ nutrition-target methods:
 | Method | Behaviour |
 |---|---|
 | `getWaterVolumeForDate(int dateMs)` | Returns the stored milliliter value for [dateMs]. Returns `0` when no row exists — the absence of a row is the same as a 0 ml day, callers never see `null`. |
-| `saveWaterVolumeForDate(int dateMs, int volumeMl)` | Upserts the row for [dateMs]. `volumeMl` is clamped to `>= 0` as a last line of defense against bad inputs. Past dates other than [dateMs] are never touched. |
+| `saveWaterVolumeForDate(int dateMs, int volumeMl)` | Upserts the row for [dateMs]. `volumeMl` is clamped to `>= 0` as a last line of defense against bad inputs. Past dates other than [dateMs] are never touched. The day's applied-tap ledger is kept as it is. |
+| `applyWaterTap({dateMs, tapId, deltaMl})` | Applies one watch tap (`deltaMl` = ±`kWaterGlassMl`) at most once: a new `tapId` changes the volume (floored at 0 ml) and is appended to the day's ledger in one write, and returns `true`; a remove at 0 ml still records the id. A known id, or a ledger already holding `kWatchWaterTapsPerDay` ids, changes nothing and returns `false` (plan 94 D-3, D-5). |
+| `getAppliedWaterTapIds(int dateMs)` | The day's applied tap ids in append order; `[]` with no row or a row written before the ledger. |
 
 The row id is deterministic (`'water-<dateMs>'`) so the same day always
 maps to the same storage key in both implementations. The per-glass
@@ -282,10 +284,16 @@ tracked and stored for the historical record only.
 Implementation requirements (both `HiveWorkoutRepository` and `MockWorkoutRepository`):
 - **Storage shape**:
   - Hive: a dedicated box `water_log` keyed by `dateMs.toString()`
-    with a `Map<String, dynamic>` value matching `WaterLogEntry.toMap()`.
-  - Mock: an in-memory `Map<int, int>` keyed by `dateMs` (just the ml value).
-  - SQLite: the `app_water_log` table is keyed by `date_ms` (`INTEGER
-    UNIQUE`) with `volume_ml INTEGER NOT NULL CHECK (volume_ml >= 0)`;
+    with a `Map<String, dynamic>` value holding `WaterLogEntry.toMap()`'s
+    keys, except that `applied_tap_ids` is a `List<String>` (absent, and read
+    as `[]`, on a row written before the ledger existed or created by the
+    phone's own +, until the row's next write), so volume and ledger change
+    in one `put`.
+  - Mock: an in-memory `Map<int, int>` keyed by `dateMs` (just the ml value)
+    and a `Map<int, List<String>>` ledger beside it.
+  - SQL contract: the `app_water_log` table is keyed by `date_ms` (`INTEGER
+    UNIQUE`) with `volume_ml INTEGER NOT NULL CHECK (volume_ml >= 0)` and
+    `applied_tap_ids TEXT NOT NULL DEFAULT '[]'` (a JSON array);
     see `scripts/sqlite_schema.sql` for the schema narrative.
 - **Past dates are immutable**: the repository never walks forward and
   modifies dates earlier than the explicitly-written [dateMs].
@@ -298,7 +306,10 @@ Tests: see `test/state_test.dart` (`NutritionState daily water log`
 group) for the per-day volume contract — increment / decrement,
 floor at 0, immediate persistence round-trip, date isolation, and the
 extended day-rollover test (the existing `rolloverToDate` test now
-also asserts water behavior).
+also asserts water behavior). The tap ledger — math, a remove at 0,
+duplicates across a relaunch, a save keeping the ledger, the 500 cap,
+day independence — runs on both implementations in
+`test/water_tap_ledger_test.dart` (S-94a-3..S-94a-8).
 
 ## Food Library & Catalog
 

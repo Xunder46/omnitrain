@@ -15,7 +15,8 @@
 /// demand, and nowhere else: nothing on the phone answers a request the wrist
 /// has not made (D-7). The bests ride the same answer, and are left out when
 /// the wrist says it holds them and nothing moved since the frame it holds
-/// (87c, D-5).
+/// (87c, D-5). The day's water count (`water_down`) rides the same answer,
+/// before the bests, only when the wrist asks for it (plan 94, D-8(a)).
 ///
 /// The same request is how the phone's settings reach the wrist: the three
 /// reference frames — the preferences, the foods, the routines — travel
@@ -96,6 +97,10 @@ class WatchSyncRequestHandler {
   /// still, and a wrist saying nothing is sent the frame as it always was
   /// (87c, D-2, D-5).
   ///
+  /// [wantsWater] is whether the wrist asked for the day's water count: a
+  /// wrist that asks is sent one `water_down` with every routines answer
+  /// (plan 94, D-8(a), D-9); one that does not is sent none.
+  ///
   /// False is not a failure: a phone holding no session has nothing to send
   /// and says nothing — the wrist's own copy is what it keeps. A request for
   /// routines is answered with the three reference frames when the wrist's
@@ -107,6 +112,7 @@ class WatchSyncRequestHandler {
     String? exercisesVersion,
     DateTime? since,
     bool holdsBests = false,
+    bool wantsWater = false,
   }) {
     switch (request) {
       case WatchTransportRequest.routines:
@@ -114,6 +120,7 @@ class WatchSyncRequestHandler {
           exercisesVersion: exercisesVersion,
           since: since,
           holdsBests: holdsBests,
+          wantsWater: wantsWater,
         );
       case WatchTransportRequest.snapshot:
         return _sendSnapshot();
@@ -167,6 +174,10 @@ class WatchSyncRequestHandler {
   /// The frame is built from storage read at request time, so a workout
   /// completed since the last request is what the wrist gets.
   ///
+  /// The day's water count (`water_down`) goes between the exercise list and
+  /// the bests, and only when the wrist asked: on every such request, whatever
+  /// `since`, the version or the bests decide (plan 94, D-8(a)).
+  ///
   /// The settings are `SettingsState`'s own — the one owner of them (D-115) —
   /// so nothing here reads or parses a stored preference; the accent is read
   /// the same way, from the theme that state holds rather than from a copy.
@@ -174,6 +185,7 @@ class WatchSyncRequestHandler {
     String? exercisesVersion,
     DateTime? since,
     required bool holdsBests,
+    required bool wantsWater,
   }) async {
     // Read once, before anything else: a write that lands while this request
     // runs leaves the stored number older than the data, so the next request
@@ -239,8 +251,30 @@ class WatchSyncRequestHandler {
       revision: revision,
     );
 
+    if (wantsWater) await _sendWater();
+
     await _sendBests(holdsBests: holdsBests);
     return true;
+  }
+
+  /// The water count for the phone's today, read from storage now (plan 94,
+  /// D-8(a)).
+  ///
+  /// Best effort: a read that throws sends no frame, and a frame the radio did
+  /// not carry is not retried — the wrist asks again at its next sync. Neither
+  /// changes the answer around it.
+  Future<void> _sendWater() async {
+    final Map<String, Object?> frame;
+    try {
+      frame = await WatchReferenceSync.readWaterDown(
+        repository: _repository,
+        generatedAt: _clock(),
+      );
+    } catch (_) {
+      // Deliberately swallowed — a failed read is no reason to withhold the rest.
+      return;
+    }
+    await _transport.send(frame);
   }
 
   /// The bests, the last frame of an answer that needs one.

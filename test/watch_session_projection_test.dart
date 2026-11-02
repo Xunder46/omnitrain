@@ -38,6 +38,8 @@
 //         (plan 2026-10-11-23e2, D-3834)
 //   S-9213 the wrist's since reaches the handler → `S-9213 ...`
 //         (plan 62, fix 1)
+//   S-94a-26 the wrist's wantsWater reaches the handler → `S-94a-26 ...`
+//         (plan 2026-11-01-94, D-9)
 //
 // S-42's "an entry the wire cannot carry is omitted" is now S-59/S-60: a
 // band-assisted set is carried with its sign, and only a row with no reps or a
@@ -849,6 +851,36 @@ void main() {
         hasLength(2),
         reason: 'S-87c-18 a request without the flag always sends, even with '
             'remembered state',
+      );
+    });
+  });
+
+  group('S-94a-26 the wrist\'s wantsWater reaches the handler', () {
+    test('S-94a-26 a raw request asking for water is answered with one '
+        'water_down, and one that does not ask with none', () async {
+      // The wiring half of S-94a-21/22: the raw frame's key must reach the
+      // handler, because the handler is what decides to send the count.
+      await radio.fromWrist(const {'request': 'routines', 'wantsWater': true});
+      await _settle();
+
+      expect(
+        radio.ofType('water_down'),
+        hasLength(1),
+        reason: 'S-94a-26 the wiring hands wantsWater to the handler',
+      );
+      expect(
+        radio.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-94a-26 the rest of the answer still travels',
+      );
+
+      await radio.fromWrist(WatchTransportRequest.routinesFrame());
+      await _settle();
+
+      expect(
+        radio.ofType('water_down'),
+        hasLength(1),
+        reason: 'S-94a-26 a wrist that does not ask is sent no count',
       );
     });
   });

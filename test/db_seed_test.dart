@@ -681,6 +681,83 @@ void main() {
     );
   });
 
+  // Plan 94 (PR 94a) Phase 2, D-4: the water tap ledger lives in the water row.
+  group('Water tap ledger schema contract (plan 94 D-4)', () {
+    late Database db;
+
+    setUp(() async {
+      db = await _openSchemaDatabase();
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test('S-94a-9 app_water_log carries applied_tap_ids (default []), and '
+        'WaterLogEntry agrees with it', () async {
+      final info = await db.rawQuery('PRAGMA table_info(app_water_log)');
+      final ledger = info.where((c) => c['name'] == 'applied_tap_ids');
+      expect(ledger, hasLength(1), reason: 'D-4: column missing');
+      expect(ledger.single['dflt_value'], "'[]'");
+      expect(ledger.single['notnull'], 1);
+
+      const withTap = WaterLogEntry(
+        id: 'water-1',
+        dateMs: 1,
+        volumeMl: 250,
+        createdAtMs: 2,
+        updatedAtMs: 3,
+        appliedTapIds: ['w-1'],
+      );
+      final legacy = WaterLogEntry.fromMap(<String, dynamic>{
+        'id': 'water-2',
+        'date_ms': 2,
+        'volume_ml': 750,
+        'created_at_ms': 2,
+        'updated_at_ms': 3,
+      });
+      expect(legacy.appliedTapIds, isEmpty);
+
+      final columns = await _columnsOf(db, 'app_water_log');
+      for (final entry in [withTap, legacy]) {
+        expect(
+          entry.toMap().keys.toSet().difference(columns),
+          isEmpty,
+          reason: 'D-4: WaterLogEntry.toMap writes keys app_water_log lacks',
+        );
+        expect(
+          await _insertRefusal(db, 'app_water_log', entry.toMap()),
+          isNull,
+          reason: 'D-4: app_water_log accepts ${entry.id} as-is',
+        );
+      }
+      final stored = await db.query('app_water_log', orderBy: 'date_ms');
+      expect(
+        stored.map((r) => WaterLogEntry.fromMap(r).appliedTapIds).toList(),
+        [
+          ['w-1'],
+          <String>[],
+        ],
+      );
+
+      // A row inserted without the column reads back as an empty ledger.
+      await db.insert('app_water_log', {
+        'id': 'water-3',
+        'date_ms': 3,
+        'volume_ml': 0,
+        'created_at_ms': 3,
+        'updated_at_ms': 3,
+      });
+      final bare = await db.query(
+        'app_water_log',
+        where: 'date_ms = ?',
+        whereArgs: [3],
+      );
+      expect(bare.single['applied_tap_ids'], '[]');
+      expect(WaterLogEntry.fromMap(bare.single).appliedTapIds, isEmpty);
+    });
+  });
+
   // Stats PR 3a, Phase 1 (D-301, D-311): a distance records where it came
   // from, the column belongs to the contract, and the CHECK refuses a source
   // that could not have been written.

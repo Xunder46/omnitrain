@@ -536,6 +536,8 @@ One row per calendar day, keyed by `dateMs` (local midnight). The day's water vo
 
 Water has no goal — like macros and sodium, it is tracked and stored for the historical record only. Each new day starts at 0; logging takes effect immediately and survives closing and reopening the app on the same day. Prior days are never modified automatically.
 
+`appliedTapIds` (`List<String>`, default `[]`) is the day's ledger of watch taps already applied, in append order. It sits in the same row as the volume so one write changes both and a redelivered tap is never counted twice; a day records at most `kWatchWaterTapsPerDay` taps (plan 94 D-3, D-4). `toMap` writes it as JSON text (`applied_tap_ids`); `fromMap` reads JSON text or a list, and an absent key as `[]`.
+
 Methods: `fromMap(Map)`, `toMap()`, `copyWith()`, and the static helper `WaterLogEntry.idForDate(int dateMs)`.
 
 ### Daily Water State Cache (`NutritionState`)
@@ -550,6 +552,7 @@ Methods: `fromMap(Map)`, `toMap()`, `copyWith()`, and the static helper `WaterLo
 | `loadWaterForToday()` | `Future<void>` | Convenience wrapper that delegates to `loadWaterForDate(todayMidnightMs)`. Called from `NutritionScreen.initState` alongside the target + consumed loads. |
 | `incrementWaterForDate(dateMs)` | `Future<void>` | Adds `kWaterGlassMl` (250 ml), persists, updates the cache, notifies. |
 | `decrementWaterForDate(dateMs)` | `Future<void>` | Subtracts `kWaterGlassMl` (floors at 0 ml), persists, updates the cache, notifies. A minus at 0 is a no-op (no write, no notification, no spurious row). |
+| `applyWatchWaterTap({dateMs, tapId, add})` | `Future<bool>` | Applies one watch tap at most once; updates the cache only for the day it was loaded for. Contract: [Nutrition State](state_management/nutrition_state.md). |
 
 Day rollover (`rolloverToDate(dateMs)`) clears the water cache (`_waterTodayMl = 0`) and reloads it for the new day via `loadWaterForDate(dateMs)`. Prior dates' stored ml are untouched — only the in-memory cache is cleared.
 

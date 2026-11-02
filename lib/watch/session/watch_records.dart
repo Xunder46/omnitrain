@@ -70,6 +70,10 @@ abstract final class WatchObservationKind {
   /// the set block's span and the effort debt do not see it.
   static const String rest = 'rest';
 
+  /// One glass added to or removed from the day's water (plan 94 D-2). The
+  /// phone reads it; this twin emits no taps, so it is not in [all] (D-14).
+  static const String waterGlass = 'water_glass';
+
   static const List<String> all = [
     set,
     timed,
