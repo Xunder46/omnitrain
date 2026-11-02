@@ -975,6 +975,8 @@ void main() {
         for (final surface in const [
           'WatchLoggingView.swift',
           'WatchNutritionView.swift',
+          // The water bar's spoken copy (plan 96 D-46, S-94c-6).
+          'WatchWater.swift',
         ])
           File(
             '${Directory.current.path}/watch/watchos/Sources/'

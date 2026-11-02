@@ -427,7 +427,10 @@ that id is not stored
 (`WatchPersonalBestsStoreTests.testS87b11ThreeFramesLeaveTheNewestOneAfterThePrune`,
 `WatchPersonalBestsStoreTests.testS87b19APruneNamingAnAbsentRowDropsNothing`), and
 the water prune likewise
-(`WatchWaterStoreTests.testS94b4APruneNamingAnAbsentRowDropsNothingAndWritesNothing`).
+(`WatchWaterStoreTests.testS94b4APruneNamingAnAbsentRowDropsNothingAndWritesNothing`);
+the water-tap prune drops only taps a receipt names that are older than
+`WatchWaterLimits.confirmedTapRetention`
+(`WatchWaterPruneTests.testS94c10TheLaunchDropsOnlyOldConfirmedTapsInMemory`).
 Verified by
 `test/watch_session_engine_test.dart` (`S-004 append-only enforcement at the
 storage API`) and by watchOS

@@ -7,14 +7,15 @@
 //
 //  Append-only by construction (PROTOCOL.md, authority rule 1): a store offers
 //  no update, no delete and no remove. `append` is the only way anything enters,
-//  and there are exactly five ways anything leaves it — all of them prunes,
+//  and there are exactly six ways anything leaves it — all of them prunes,
 //  each gated on nothing left to lose: `pruneConfirmed` drops observations the
 //  phone has acknowledged, `pruneSensorSamples` drops the raw sensor log of a
 //  session the phone has recorded in full, `pruneExerciseBatches` drops the
 //  stored exercise batches of every list version but the one that just became
 //  active, `pruneBests` drops the bests frames the wrist has replaced with the
-//  copy it holds as newest, and `pruneWater` does the same for the water
-//  frames.
+//  copy it holds as newest, `pruneWater` does the same for the water frames,
+//  and `pruneWaterTaps` drops the water taps the phone has acknowledged that
+//  are too old for any count to read.
 //
 //  `WatchSessionEngineTests` (S-004) fails the build if a mutating method is
 //  declared anywhere in this module or if the engine reaches for a store method
@@ -154,8 +155,37 @@ public protocol WatchSessionStore {
     /// copy nothing reads any more (plan 95 D-23). A record id that is not
     /// stored drops nothing, and a prune that drops nothing writes nothing.
     /// No other record kind is touched — the wrist's taps are observations and
-    /// stay (D-37).
+    /// leave only through `pruneWaterTaps` (plan 96 D-43).
     func pruneWater(keepingRecordId: String) async -> [String]
+
+    /// Drops every `water_glass` observation a receipt names whose `loggedAt`
+    /// is strictly earlier than `cutoff`, returning the record ids that were
+    /// dropped.
+    ///
+    /// The gate is the receipt plus the age: the phone holds the tap, and the
+    /// caller's cutoff lies before the start of any local today, so no count
+    /// can still read it (plan 96 D-43, D-44). An unconfirmed tap, a tap whose
+    /// `loggedAt` cannot be read, every other kind of row and the confirmation
+    /// rows themselves stay. A prune that drops nothing writes nothing.
+    func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String]
+}
+
+/// The record ids `pruneWaterTaps(loggedBefore:)` drops from `observations`
+/// (confirmations already folded in), in store order: water taps with a
+/// receipt and a readable `loggedAt` strictly earlier than `cutoff`. One rule
+/// for both stores, so they cannot drift apart.
+func confirmedWaterTapIds(
+    in observations: [WatchObservationRecord],
+    loggedBefore cutoff: Date
+) -> [String] {
+    observations.compactMap { observation -> String? in
+        guard observation.kind == WatchObservationKind.waterGlass,
+              observation.confirmedAt != nil,
+              let loggedAt = try? parseUtcIso(observation.payload["loggedAt"]),
+              loggedAt < cutoff
+        else { return nil }
+        return observation.recordId
+    }
 }
 
 /// Folds confirmations into observations as their `confirmedAt` receipt.
@@ -339,6 +369,16 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             if case .water(let value) = row {
                 return drop.contains(value.recordId)
             }
+            return false
+        }
+        return dropped
+    }
+
+    public func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String] {
+        let dropped = confirmedWaterTapIds(in: await readAll().observations, loggedBefore: cutoff)
+        let drop = Set(dropped)
+        rows.removeAll { row in
+            if case .observation(let value) = row { return drop.contains(value.recordId) }
             return false
         }
         return dropped

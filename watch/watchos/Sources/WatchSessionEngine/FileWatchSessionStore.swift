@@ -88,6 +88,10 @@ public final class FileWatchSessionStore: WatchSessionStore {
         locked { pruneWaterLocked(keepingRecordId) }
     }
 
+    public func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String] {
+        locked { pruneWaterTapsLocked(cutoff) }
+    }
+
     // MARK: - The store's operations
 
     private func appendLocked(_ record: StoredWatchRecord) -> StoredWatchRecord {
@@ -281,6 +285,36 @@ public final class FileWatchSessionStore: WatchSessionStore {
         let drop = Set(dropped)
         let survivors = loaded.filter { row in
             guard case .water(let value) = row else { return true }
+            return !drop.contains(value.recordId)
+        }
+
+        // A prune that finds nothing is not a write (D-3821): the file keeps
+        // every byte it had, marker and torn tail included.
+        guard !dropped.isEmpty else { return [] }
+        guard compact(survivors) else { return [] }
+        rows = survivors
+        return dropped
+    }
+
+    private func pruneWaterTapsLocked(_ cutoff: Date) -> [String] {
+        let loaded = loadRows()
+        guard !unsupported else { return [] }
+
+        let confirmations = loaded.compactMap { row -> WatchConfirmationRecord? in
+            guard case .confirmation(let value) = row else { return nil }
+            return value
+        }
+        let observations = loaded.compactMap { row -> WatchObservationRecord? in
+            guard case .observation(let value) = row else { return nil }
+            return value
+        }
+        let dropped = confirmedWaterTapIds(
+            in: applyConfirmations(observations, confirmations),
+            loggedBefore: cutoff
+        )
+        let drop = Set(dropped)
+        let survivors = loaded.filter { row in
+            guard case .observation(let value) = row else { return true }
             return !drop.contains(value.recordId)
         }
 

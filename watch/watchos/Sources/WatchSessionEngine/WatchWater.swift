@@ -13,7 +13,9 @@
 //  The phone owns the day's water. The wrist sends taps, never a total, and
 //  stores no count: the number shown is computed on every read from the held
 //  frame and the stored taps, so a relaunch, a receipt or a local midnight
-//  never leaves a stale number behind (I-6).
+//  never leaves a stale number behind (I-6). A launch drops the taps the phone
+//  confirmed long before any local today began (plan 96
+//  `docs/plans/2026-11-01-96-watch-water-follow-up-plan/`, D-43).
 //
 
 import Combine
@@ -27,6 +29,16 @@ public enum WatchWaterLimits {
     /// day, so a wrist that never taps past it has every receipted tap listed.
     /// `WatchWaterStateTests.testS94b15TapsPastTheCap` reads the schema.
     public static let tapsPerDay = 500
+
+    /// How long a tap the phone confirmed is kept; a launch drops the older
+    /// ones (plan 96 D-43). The count reads only taps of local today, and a
+    /// local day in any zone contains now and lasts at most 25 h, so a tap
+    /// logged before now − 25 h is unreadable by every count in every zone. The
+    /// retention adds at least a day of margin (it must be ≥ 49 h); this one
+    /// lets a launch clock run up to 47 h fast without dropping a tap a count
+    /// can read. Plain instant arithmetic, so a zone change cannot move it.
+    /// `WatchWaterPruneTests.testS94c10TheRetentionOutlastsTheLongestLocalDayByADay`.
+    public static let confirmedTapRetention: TimeInterval = 72 * 3600
 }
 
 /// The owner of the water count on the wrist.
@@ -51,6 +63,12 @@ public final class WatchWaterState {
     private let clock: () -> Date
     private let calendar: Calendar
 
+    /// Plan 96 D-45: where a read takes the stored taps from, and how it reads
+    /// a tap's `loggedAt`. Not public: the host builds the state with the
+    /// defaults, and tests count reads and parses through these.
+    private let tapLog: () -> [WatchObservationRecord]
+    private let parseLoggedAt: (Any?) throws -> Date
+
     private let stateLock = NSLock()
     private let gate = WatchAsyncMutex()
 
@@ -64,27 +82,53 @@ public final class WatchWaterState {
     /// stored nothing (D-24, D-27).
     public var onWaterChanged: (() -> Void)?
 
-    public init(
+    public convenience init(
         engine: WatchSessionEngine,
         store: WatchSessionStore,
         validator: SyncProtocolValidator? = nil,
         clock: @escaping () -> Date = { Date() },
         calendar: Calendar = .current
     ) {
+        self.init(
+            engine: engine,
+            store: store,
+            validator: validator,
+            clock: clock,
+            calendar: calendar,
+            tapLog: { engine.waterLog },
+            parseLoggedAt: parseUtcIso
+        )
+    }
+
+    init(
+        engine: WatchSessionEngine,
+        store: WatchSessionStore,
+        validator: SyncProtocolValidator?,
+        clock: @escaping () -> Date,
+        calendar: Calendar,
+        tapLog: @escaping () -> [WatchObservationRecord],
+        parseLoggedAt: @escaping (Any?) throws -> Date
+    ) {
         self.engine = engine
         self.store = store
         self.validator = validator
         self.clock = clock
         self.calendar = calendar
+        self.tapLog = tapLog
+        self.parseLoggedAt = parseLoggedAt
     }
 
     // MARK: - The frame
 
-    /// Reads the held frame back out of storage: the row with the greatest
-    /// (`generatedAt`, `sequence`). Call on launch, after the engine's own
-    /// restore (the count folds the engine's stored taps).
+    /// Drops the confirmed taps older than `confirmedTapRetention` (plan 96
+    /// D-43), then reads the held frame back out of storage: the row with the
+    /// greatest (`generatedAt`, `sequence`). Call on launch, after the engine's
+    /// own restore (the count folds the engine's stored taps). The tap prune
+    /// runs here only, once per launch, never on the radio path.
     public func restore() async {
         await gate.exclusive {
+            let cutoff = clock().addingTimeInterval(-WatchWaterLimits.confirmedTapRetention)
+            _ = await engine.pruneWaterTaps(loggedBefore: cutoff)
             let rows = await store.readAll().water
             let newest = rows.max {
                 ($0.generatedAt, $0.sequence) < ($1.generatedAt, $1.sequence)
@@ -172,36 +216,43 @@ public final class WatchWaterState {
 
     // MARK: - The count
 
-    /// The glasses shown (D-25, plan 94 D-7): the held frame's count when its
-    /// day is the wrist's local today, else 0; then the wrist's taps of local
-    /// today that the frame does not list — confirmed or not, because only the
-    /// frame's list takes a tap out — folded in `loggedAt` order, ties by
-    /// store order: add +1, remove −1 but never below 0. Computed on every
-    /// read, never cached.
-    public var glasses: Int {
+    /// The count and both buttons' rules, from one clock read and one read of
+    /// the stored taps (plan 96 D-40). Computed on every read, never cached:
+    /// a cache would need to hear of every receipt, minute and zone change.
+    public var snapshot: WatchWaterSnapshot {
         let now = clock()
         let frame = stateLock.withLock { held }
+        let taps = todaysTaps(now)
         let listed = Set(frame?.appliedTapIds ?? [])
         var count = frame?.day == localDay(now) ? frame?.glasses ?? 0 : 0
-        for tap in todaysTaps(now) where !listed.contains(tap.id) {
+        for tap in taps where !listed.contains(tap.id) {
             switch tap.change {
             case .add: count += 1
             case .remove: count = max(0, count - 1)
             }
         }
-        return count
+        let canAdd = taps.count < WatchWaterLimits.tapsPerDay
+        return WatchWaterSnapshot(
+            glasses: count,
+            canAdd: canAdd,
+            canRemove: canAdd && count > 0,
+            spokenCount: WatchWaterCopy.spokenCount(count)
+        )
     }
 
+    /// The glasses shown (D-25, plan 94 D-7): the held frame's count when its
+    /// day is the wrist's local today, else 0; then the wrist's taps of local
+    /// today that the frame does not list — confirmed or not, because only the
+    /// frame's list takes a tap out — folded in `loggedAt` order, ties by
+    /// store order: add +1, remove −1 but never below 0.
+    public var glasses: Int { snapshot.glasses }
+
     /// Whether a plus stores a tap: today's own taps are under the cap (D-27).
-    public var canAdd: Bool {
-        todaysTaps(clock()).count < WatchWaterLimits.tapsPerDay
-    }
+    public var canAdd: Bool { snapshot.canAdd }
 
     /// Whether a minus stores a tap: the count is above 0 and the cap is not
     /// reached (D-27).
-    public var canRemove: Bool {
-        canAdd && glasses > 0
-    }
+    public var canRemove: Bool { snapshot.canRemove }
 
     // MARK: - The presses
 
@@ -211,10 +262,11 @@ public final class WatchWaterState {
     @discardableResult
     public func press(_ change: WatchGlassChange) async -> Bool {
         let stored: Bool = await gate.exclusive {
+            let current = snapshot
             let allowed: Bool
             switch change {
-            case .add: allowed = canAdd
-            case .remove: allowed = canRemove
+            case .add: allowed = current.canAdd
+            case .remove: allowed = current.canRemove
             }
             guard allowed else { return false }
             guard let tap = try? await engine.logWaterGlass(change, loggedAt: clock()) else {
@@ -238,11 +290,15 @@ public final class WatchWaterState {
 
     /// The wrist's own taps whose `loggedAt` falls on the local day of `now`,
     /// in fold order: `loggedAt`, then store sequence, then store position.
+    /// Only a tap stored under a session id local today can carry is parsed
+    /// (plan 96 D-41); the rest of the history is skipped unread.
     private func todaysTaps(_ now: Date) -> [Tap] {
-        engine.waterLog.enumerated().compactMap { position, record -> Tap? in
+        let candidates = sessionIds(on: now)
+        return tapLog().enumerated().compactMap { position, record -> Tap? in
+            if let candidates, !candidates.contains(record.sessionId) { return nil }
             guard let raw = record.payload["glassChange"] as? String,
                   let change = WatchGlassChange(rawValue: raw),
-                  let loggedAt = try? parseUtcIso(record.payload["loggedAt"]),
+                  let loggedAt = try? parseLoggedAt(record.payload["loggedAt"]),
                   calendar.isDate(loggedAt, inSameDayAs: now)
             else { return nil }
             return Tap(
@@ -255,6 +311,26 @@ public final class WatchWaterState {
         }
         .sorted { ($0.loggedAt, $0.sequence, $0.position) < ($1.loggedAt, $1.sequence, $1.position) }
     }
+
+    /// The session ids a tap of local today can be stored under: a tap is
+    /// stored under `WatchNutritionSession.idFor(loggedAt)`, its UTC date
+    /// (D-22), so these are the UTC dates local today touches — at most three,
+    /// since a local day lasts at most 25 h. Nil when the calendar gives no
+    /// interval for the day: then every tap is read, as before plan 96.
+    private func sessionIds(on now: Date) -> Set<String>? {
+        guard let day = calendar.dateInterval(of: .day, for: now) else { return nil }
+        var ids: Set<String> = []
+        var instant = day.start
+        while instant < day.end {
+            ids.insert(WatchNutritionSession.idFor(instant))
+            // The next UTC midnight: Unix time has no leap seconds.
+            let utcDay = (instant.timeIntervalSince1970 / Self.secondsPerDay).rounded(.down)
+            instant = Date(timeIntervalSince1970: (utcDay + 1) * Self.secondsPerDay)
+        }
+        return ids
+    }
+
+    private static let secondsPerDay: TimeInterval = 86_400
 
     /// The zero-padded `YYYY-MM-DD` of `instant` in the injected calendar —
     /// the form a frame's `day` is written in.
@@ -275,6 +351,22 @@ public final class WatchWaterState {
     }
 }
 
+/// One read of the water bar (plan 96 D-40): the count, both buttons' rules
+/// and the count as spoken, all from the same instant and the same taps.
+public struct WatchWaterSnapshot: Equatable {
+    public let glasses: Int
+    public let canAdd: Bool
+    public let canRemove: Bool
+    public let spokenCount: String
+
+    public init(glasses: Int, canAdd: Bool, canRemove: Bool, spokenCount: String) {
+        self.glasses = glasses
+        self.canAdd = canAdd
+        self.canRemove = canRemove
+        self.spokenCount = spokenCount
+    }
+}
+
 /// What VoiceOver says about the water bar (plan 95 D-33), worded after the
 /// phone's own tooltips. Platform-independent so `swift test` holds the words.
 public enum WatchWaterCopy {
@@ -290,7 +382,7 @@ public enum WatchWaterCopy {
 }
 
 /// The water bar's observable wrapper (plan 95 D-35): every read goes to the
-/// state, which computes the count afresh, and every change the state
+/// state, which computes the snapshot afresh, and every change the state
 /// announces — a stored tap, an applied frame, a restore — is handed to
 /// SwiftUI on the main queue, since the state can announce it from the
 /// radio's thread. Outside any `#if`, so `swift test` covers it.
@@ -304,14 +396,9 @@ public final class WatchWaterModel: ObservableObject {
         }
     }
 
-    public var glasses: Int { state.glasses }
-
-    public var canAdd: Bool { state.canAdd }
-
-    public var canRemove: Bool { state.canRemove }
-
-    /// The count as VoiceOver reads it.
-    public var spokenCount: String { WatchWaterCopy.spokenCount(glasses) }
+    /// The count, both buttons' rules and the spoken count, read once per
+    /// redraw (plan 96 D-42): the only read the bar makes.
+    public var snapshot: WatchWaterSnapshot { state.snapshot }
 
     /// One press of plus or minus; true when a tap was stored, which is when
     /// the bar plays its click (D-32).

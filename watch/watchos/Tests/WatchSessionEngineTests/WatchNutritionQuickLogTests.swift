@@ -186,6 +186,10 @@ final class WatchNutritionQuickLogTests: XCTestCase {
         func pruneWater(keepingRecordId: String) async -> [String] {
             await backing.pruneWater(keepingRecordId: keepingRecordId)
         }
+
+        func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String] {
+            await backing.pruneWaterTaps(loggedBefore: cutoff)
+        }
     }
 
     // MARK: - S-001 quick-logging a food with the phone out of reach

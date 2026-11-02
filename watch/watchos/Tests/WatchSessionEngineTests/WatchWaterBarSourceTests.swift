@@ -4,8 +4,11 @@
 //
 //  Phase 4 of `docs/plans/2026-11-01-95-watch-water-bar-plan/`: the water bar
 //  on the wrist's Nutrition screen, the host that owns its state and model, and
-//  the rule that no stored tap is ever pruned. Scenarios S-94b-22 to S-94b-25
-//  (decisions D-31 to D-35 and D-37).
+//  the rule on which taps may be pruned. Scenarios S-94b-22 to S-94b-24
+//  (decisions D-31 to D-35). Plan 96
+//  (`docs/plans/2026-11-01-96-watch-water-follow-up-plan/`) adds S-94c-5: the
+//  bar reads one snapshot per redraw (D-42); and S-94b-25a replaces S-94b-25:
+//  D-43 (supersedes D-37) lets only the launch prune old confirmed taps.
 //
 //  The bar and the host compile only for watchOS, so what `swift test` can hold
 //  is the text they are made of. Every guard reads a file with its comment
@@ -229,7 +232,7 @@ final class WatchWaterBarSourceTests: XCTestCase {
             "S-94b-22 the middle shows the water drop (Q3)"
         )
         let count = try XCTUnwrap(
-            offset(of: "Text(\"\\(model.glasses)\")", in: barSource),
+            offset(of: "Text(\"\\(snapshot.glasses)\")", in: barSource),
             "S-94b-22 the middle shows the count"
         )
         let plus = try XCTUnwrap(offset(of: "press(.add)", in: barSource), "S-94b-22 plus adds a glass")
@@ -335,7 +338,7 @@ final class WatchWaterBarSourceTests: XCTestCase {
         let minus = String(bar.dropFirst(minusStart).prefix(middle - minusStart))
         let plus = String(bar.dropFirst(plusStart))
 
-        XCTAssertTrue(minus.contains(".disabled(!model.canRemove)"), "S-94b-24 minus is off while it would do nothing")
+        XCTAssertTrue(minus.contains(".disabled(!snapshot.canRemove)"), "S-94b-24 minus is off while it would do nothing")
         XCTAssertTrue(
             minus.contains(".accessibilityLabel(WatchWaterCopy.removeLabel)"),
             "S-94b-24 minus speaks Remove one glass"
@@ -343,7 +346,7 @@ final class WatchWaterBarSourceTests: XCTestCase {
         XCTAssertTrue(minus.contains(".buttonStyle(.bordered)"), "S-94b-24 bordered like the portion row")
         XCTAssertFalse(minus.contains("Text("), "S-94b-24 the minus button is icon-only")
 
-        XCTAssertTrue(plus.contains(".disabled(!model.canAdd)"), "S-94b-24 plus is off past the cap")
+        XCTAssertTrue(plus.contains(".disabled(!snapshot.canAdd)"), "S-94b-24 plus is off past the cap")
         XCTAssertTrue(
             plus.contains(".accessibilityLabel(WatchWaterCopy.addLabel)"),
             "S-94b-24 plus speaks Add one glass"
@@ -362,12 +365,12 @@ final class WatchWaterBarSourceTests: XCTestCase {
             "S-94b-24 the middle is labelled Water"
         )
         XCTAssertTrue(
-            center.contains(".accessibilityValue(model.spokenCount)"),
+            center.contains(".accessibilityValue(snapshot.spokenCount)"),
             "S-94b-24 the middle's value is the spoken count"
         )
 
         // The count's own chain fits a 40 mm screen.
-        let countLine = try XCTUnwrap(lines.firstIndex { $0.contains("Text(\"\\(model.glasses)\")") })
+        let countLine = try XCTUnwrap(lines.firstIndex { $0.contains("Text(\"\\(snapshot.glasses)\")") })
         let chain = lines[(countLine + 1)...]
             .prefix { $0.trimmingCharacters(in: .whitespaces).hasPrefix(".") }
             .joined(separator: "\n")
@@ -380,28 +383,107 @@ final class WatchWaterBarSourceTests: XCTestCase {
         )
     }
 
-    // MARK: - S-94b-25: taps are never pruned
+    // MARK: - S-94c-5: the bar reads one snapshot per redraw
 
-    /// The count reads every stored tap (D-25, D-26), so nothing in the module
-    /// or the app may call `pruneConfirmed()`: its declarations and the engine's
-    /// own delegation to its store are the only occurrences.
-    func testS94b25TapsAreNeverPruned() throws {
-        var callers: [String] = []
+    /// Plan 96 D-42: the bar binds the model's snapshot once, first inside the
+    /// minute timeline, and every control reads that one value; the model has
+    /// no separate accessors left for a view to re-read.
+    func testS94c5TheBarReadsOneSnapshotPerRedraw() throws {
+        let bar = try barBody()
+        XCTAssertEqual(
+            occurrences(of: "model.snapshot", in: bar),
+            1,
+            "S-94c-5 the bar reads the model's snapshot exactly once per redraw"
+        )
+        let lines = sourceLines(bar)
+        let timeline = try XCTUnwrap(
+            lines.firstIndex { $0.contains("TimelineView(.everyMinute) {") },
+            "S-94c-5 the bar keeps its minute timeline (D-34)"
+        )
+        let first = lines[(timeline + 1)...]
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty }
+        XCTAssertEqual(
+            first,
+            "let snapshot = model.snapshot",
+            "S-94c-5 the snapshot is bound first inside the timeline, so the minute tick re-reads it"
+        )
+
         for file in try everySource() {
-            for line in sourceLines(file.text) where line.contains("pruneConfirmed(") {
-                if line.contains("func pruneConfirmed") { continue }
-                if file.name == "WatchSessionEngine.swift",
-                   line.trimmingCharacters(in: .whitespaces) == "let pruned = await store.pruneConfirmed()" {
-                    continue
+            for accessor in ["glasses", "canAdd", "canRemove", "spokenCount"] {
+                XCTAssertEqual(
+                    occurrences(of: "model.\(accessor)", in: file.text),
+                    0,
+                    "S-94c-5 \(file.name) reads model.\(accessor); read it from one snapshot instead"
+                )
+            }
+        }
+
+        let model = try XCTUnwrap(
+            braceBody(
+                ofLineContaining: "public final class WatchWaterModel",
+                in: try engineSource("WatchWater.swift")
+            ),
+            "S-94c-5 the water model exists"
+        )
+        for accessor in ["glasses", "canAdd", "canRemove", "spokenCount"] {
+            XCTAssertFalse(
+                model.contains("var \(accessor)"),
+                "S-94c-5 WatchWaterModel declares no var \(accessor): views read the snapshot"
+            )
+        }
+    }
+
+    // MARK: - S-94b-25a: pruneConfirmed() has no caller; only launch prunes taps
+
+    /// `pruneConfirmed()` would drop today's confirmed taps the count still
+    /// reads, so nothing in the module or the app may call it: its declarations
+    /// and the engine's own delegation to its store are the only occurrences.
+    /// Taps leave only through `pruneWaterTaps(loggedBefore:)`, called once, by
+    /// `WatchWaterState.restore()` (plan 96 D-43, I-12).
+    func testS94b25aPruneConfirmedHasNoCallerAndOnlyLaunchPrunesTaps() throws {
+        var callers: [String] = []
+        var tapPruneCallers: [String] = []
+        for file in try everySource() {
+            for line in sourceLines(file.text) {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if line.contains("pruneConfirmed("), !line.contains("func pruneConfirmed"),
+                   !(file.name == "WatchSessionEngine.swift"
+                       && trimmed == "let pruned = await store.pruneConfirmed()") {
+                    callers.append("\(file.name): \(trimmed)")
                 }
-                callers.append("\(file.name): \(line.trimmingCharacters(in: .whitespaces))")
+                if line.contains("pruneWaterTaps("), !line.contains("func pruneWaterTaps"),
+                   !(file.name == "WatchSessionEngine.swift"
+                       && trimmed == "let pruned = await store.pruneWaterTaps(loggedBefore: cutoff)") {
+                    tapPruneCallers.append("\(file.name): \(trimmed)")
+                }
             }
         }
         XCTAssertEqual(
             callers,
             [],
-            "S-94b-25 plan 95 D-37 (series 94): the water count reads every stored tap, so pruneConfirmed() "
-                + "has no production caller; wiring one needs a superseding decision that keeps today's taps"
+            "S-94b-25a plan 96 D-43 (supersedes plan 95 D-37): pruneConfirmed() would drop taps the "
+                + "water count still reads, so it has no production caller"
+        )
+        XCTAssertEqual(
+            tapPruneCallers.count,
+            1,
+            "S-94b-25a plan 96 D-43: the tap prune has exactly one caller, the launch; found \(tapPruneCallers)"
+        )
+        XCTAssertTrue(
+            tapPruneCallers.first?.hasPrefix("WatchWater.swift: ") ?? false,
+            "S-94b-25a plan 96 D-43: the one tap-prune caller is WatchWater.swift; found \(tapPruneCallers)"
+        )
+
+        let water = try engineSource("WatchWater.swift")
+        let restore = try XCTUnwrap(
+            braceBody(ofLineContaining: "public func restore() async {", in: water),
+            "WatchWaterState declares restore()"
+        )
+        XCTAssertEqual(
+            occurrences(of: "pruneWaterTaps(", in: restore),
+            1,
+            "S-94b-25a plan 96 D-43: the tap prune runs inside WatchWaterState.restore(), once per launch"
         )
     }
 }

@@ -15,7 +15,8 @@
 //     memory, so a suspension, an OS kill, or a reboot costs the user nothing.
 //  2. The watch never edits or deletes. The engine appends new rows; it cannot
 //     rewrite one. Position and timer state advance by appending, and data is
-//     dropped only through `pruneConfirmed()`, gated on the phone's receipt.
+//     dropped only through the store's prunes, each gated on a rule the store
+//     states (`WatchSessionStore.swift`'s header lists them all).
 //
 
 import Combine
@@ -2016,6 +2017,21 @@ public final class WatchSessionEngine: ObservableObject {
     /// acknowledges them.
     public func pruneConfirmed() async -> [String] {
         let pruned = await store.pruneConfirmed()
+        trimPrunedObservations(pruned)
+        return pruned
+    }
+
+    /// Drops the water taps the phone confirmed that were logged before
+    /// `cutoff`; unconfirmed taps and every other kind of row stay (plan 96
+    /// D-43, D-44). Its one caller is `WatchWaterState.restore()`, at launch.
+    public func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String] {
+        let pruned = await store.pruneWaterTaps(loggedBefore: cutoff)
+        trimPrunedObservations(pruned)
+        return pruned
+    }
+
+    /// Takes the rows a prune dropped out of memory too.
+    private func trimPrunedObservations(_ pruned: [String]) {
         let dropped = Set(pruned)
         storedObservations.removeAll { dropped.contains($0.recordId) }
         // D-52: a pruned row takes its projection lens with it. A correction or
@@ -2026,7 +2042,6 @@ public final class WatchSessionEngine: ObservableObject {
             replacedEntryIds.remove(recordId)
             deletedEntryIds.remove(recordId)
         }
-        return pruned
     }
 
     // MARK: - Emission

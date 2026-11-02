@@ -759,9 +759,8 @@ phone holds the observation, not that the day log changed. It answers a message
 it refused to read with nothing at all. What the wrist does with the receipt is
 `WatchSessionEngine.confirmObservations` — an append of its own, so a relaunch
 can still tell what it may drop. The Swift wrist does not prune after a
-receipt: `pruneConfirmed`, the only way the observation box gives rows back, has
-no production caller there
-(`WatchWaterBarSourceTests.testS94b25TapsAreNeverPruned`). The receipt, and that a
+receipt: `pruneConfirmed` has no production caller there
+(`WatchWaterBarSourceTests.testS94b25aPruneConfirmedHasNoCallerAndOnlyLaunchPrunesTaps`). The receipt, and that a
 confirmed row is then droppable, are exercised by
 `test/watch_nutrition_quick_log_test.dart` ("the phone’s receipt is what lets the
 watch drop the row", "a food the phone cannot place is not owed forever") and by

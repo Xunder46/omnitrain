@@ -376,12 +376,14 @@ final class WatchWaterSyncTests: XCTestCase {
             "S-94b-18 quiet after the water frame: the sync is finished"
         )
 
-        progress.noteArrival(type: "water_down", at: t0.addingTimeInterval(30))
+        // S-94b-18a (plan 96 D-46): the straggler lands after the quiet end
+        // and inside the cap, so only `noteArrival`'s guard keeps it out.
+        progress.noteArrival(type: "water_down", at: t0.addingTimeInterval(5))
         XCTAssertFalse(
-            progress.isActive(at: t0.addingTimeInterval(30)),
-            "S-94b-18 a water frame after a tap never revives a finished sync"
+            progress.isActive(at: t0.addingTimeInterval(5)),
+            "S-94b-18a a water frame after a tap never revives a finished sync"
         )
-        XCTAssertFalse(progress.isActive(at: t0.addingTimeInterval(31)))
+        XCTAssertFalse(progress.isActive(at: t0.addingTimeInterval(6)))
     }
 
     // MARK: - S-94b-19 unsent taps count in the waiting line (Q1, D-30)

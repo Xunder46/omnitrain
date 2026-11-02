@@ -322,9 +322,14 @@ before `WatchSessionStore.pruneWater(keepingRecordId:)` drops the row it
 replaced; a relaunch holds the newest stored row
 (`WatchWaterStateTests.testS94b4OneFrameRowAfterEachApplyAndARelaunchHoldsTheNewest`,
 `…testS94b5TheNewestFrameWinsAndARepeatWritesNothing`,
-`…testS94b6AFrameTheWristCannotReadChangesNothing`). The wrist's own taps are
-never pruned — the count reads every one — so `pruneConfirmed()` has no caller
-(`WatchWaterBarSourceTests.testS94b25TapsAreNeverPruned`).
+`…testS94b6AFrameTheWristCannotReadChangesNothing`). A launch drops the
+wrist's own taps that a receipt names and that were logged more than
+`WatchWaterLimits.confirmedTapRetention` ago, before any local today began, so
+no count can read them; unconfirmed taps, other rows and the confirmation rows
+stay (`WatchWaterPruneTests.testS94c10TheLaunchDropsOnlyOldConfirmedTapsInMemory`,
+`…OnFile`). `WatchWaterState.restore()` is that prune's only caller and
+`pruneConfirmed()` has none
+(`WatchWaterBarSourceTests.testS94b25aPruneConfirmedHasNoCallerAndOnlyLaunchPrunesTaps`).
 
 ### The wrist keeps one copy
 

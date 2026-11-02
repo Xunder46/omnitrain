@@ -320,7 +320,7 @@ final class WatchSessionEngineTests: XCTestCase {
     // MARK: - S-004 append-only enforcement at the storage API
 
     func testS004NoMutatingOperationExistsAnywhereInTheModule() throws {
-        // Exactly seven names are deliberate. `pruneConfirmed` and
+        // Exactly eight names are deliberate. `pruneConfirmed` and
         // `pruneSensorSamples` are two ways anything leaves the store, each
         // gated on having nothing left to lose: confirmed observations for the
         // first, and for the second a session that is over whose numbers the
@@ -331,8 +331,11 @@ final class WatchSessionEngineTests: XCTestCase {
         // replaced: its caller names the one copy it holds as newest, having just
         // written it (D-11, D-17). The fifth, `pruneWater`, is added on purpose
         // with the same gate for the water frames: its caller names the one copy
-        // it holds as newest (plan 95 D-23). A sixth prune, or a wider gate, has
-        // to be added here on purpose.
+        // it holds as newest (plan 95 D-23). The sixth, `pruneWaterTaps`, is
+        // added on purpose (plan 96 D-43, D-44): it drops only water taps the
+        // phone confirmed and that were logged before the caller's cutoff, which
+        // no count can still read. A seventh prune, or a wider gate, has to be
+        // added here on purpose.
         let allowed: Set<String> = [
             "append",
             "readAll",
@@ -341,6 +344,7 @@ final class WatchSessionEngineTests: XCTestCase {
             "pruneExerciseBatches",
             "pruneBests",
             "pruneWater",
+            "pruneWaterTaps",
         ]
         let verbs = "update|delete|remove|replace|edit|overwrite|write|clear"
             + "|purge|wipe|reset|drop|truncate|erase|forget|modify|mutate|destroy|set"

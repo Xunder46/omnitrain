@@ -669,10 +669,10 @@ final class WatchWaterStateTests: XCTestCase {
         await x.launch()
         let model = WatchWaterModel(state: x.water)
 
-        XCTAssertEqual(model.glasses, 0, "S-94b-21 0 before anything")
-        XCTAssertFalse(model.canRemove, "S-94b-21 minus is off at 0")
-        XCTAssertTrue(model.canAdd)
-        XCTAssertEqual(model.spokenCount, "0 glasses", "S-94b-21 VoiceOver reads 0 glasses")
+        XCTAssertEqual(model.snapshot.glasses, 0, "S-94b-21 0 before anything")
+        XCTAssertFalse(model.snapshot.canRemove, "S-94b-21 minus is off at 0")
+        XCTAssertTrue(model.snapshot.canAdd)
+        XCTAssertEqual(model.snapshot.spokenCount, "0 glasses", "S-94b-21 VoiceOver reads 0 glasses")
 
         let afterTap = expectation(description: "S-94b-21 a stored tap redraws on the main queue")
         var tapOnMain = false
@@ -684,9 +684,9 @@ final class WatchWaterStateTests: XCTestCase {
         XCTAssertTrue(added, "S-94b-21 a plus returns that it stored a tap")
         await fulfillment(of: [afterTap], timeout: 5)
         XCTAssertTrue(tapOnMain, "S-94b-21 the nudge after a tap is on the main queue")
-        XCTAssertEqual(model.glasses, 1)
-        XCTAssertEqual(model.spokenCount, "1 glass", "S-94b-21 one glass is singular")
-        XCTAssertTrue(model.canRemove)
+        XCTAssertEqual(model.snapshot.glasses, 1)
+        XCTAssertEqual(model.snapshot.spokenCount, "1 glass", "S-94b-21 one glass is singular")
+        XCTAssertTrue(model.snapshot.canRemove)
         sink.cancel()
 
         let afterFrame = expectation(description: "S-94b-21 an applied frame redraws on the main queue")
@@ -699,8 +699,8 @@ final class WatchWaterStateTests: XCTestCase {
         XCTAssertTrue(result.applied)
         await fulfillment(of: [afterFrame], timeout: 5)
         XCTAssertTrue(frameOnMain, "S-94b-21 the nudge after a frame is on the main queue")
-        XCTAssertEqual(model.glasses, 3, "S-94b-21 the phone's 3, w-1 listed")
-        XCTAssertEqual(model.spokenCount, "3 glasses")
+        XCTAssertEqual(model.snapshot.glasses, 3, "S-94b-21 the phone's 3, w-1 listed")
+        XCTAssertEqual(model.snapshot.spokenCount, "3 glasses")
         sink.cancel()
 
         XCTAssertEqual(WatchWaterCopy.addLabel, "Add one glass", "S-94b-21 D-33")

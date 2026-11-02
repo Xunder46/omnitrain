@@ -168,7 +168,8 @@ public struct WatchNutritionView: View {
 /// phone's water control (plan 95 D-31 to D-34). Each press that stores a tap
 /// clicks once; minus is off at 0 and both are off past the day's cap (D-27).
 /// The count is computed on every read, so the minute timeline is what turns
-/// it over at local midnight while the bar stays on screen.
+/// it over at local midnight while the bar stays on screen; each redraw reads
+/// one snapshot of the model and every control shows that one (plan 96 D-42).
 struct WatchWaterBar: View {
     @ObservedObject private var model: WatchWaterModel
 
@@ -184,6 +185,7 @@ struct WatchWaterBar: View {
 
     var body: some View {
         TimelineView(.everyMinute) { _ in
+            let snapshot = model.snapshot
             HStack {
                 Button {
                     Task {
@@ -195,19 +197,19 @@ struct WatchWaterBar: View {
                     Image(systemName: "minus")
                 }
                 .buttonStyle(.bordered)
-                .disabled(!model.canRemove)
+                .disabled(!snapshot.canRemove)
                 .accessibilityLabel(WatchWaterCopy.removeLabel)
 
                 HStack(spacing: Self.dropSpacing) {
                     Image(systemName: "drop.fill")
-                    Text("\(model.glasses)")
+                    Text("\(snapshot.glasses)")
                         .lineLimit(1)
                         .minimumScaleFactor(Self.countScale)
                 }
                 .frame(maxWidth: .infinity)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(WatchWaterCopy.countLabel)
-                .accessibilityValue(model.spokenCount)
+                .accessibilityValue(snapshot.spokenCount)
 
                 Button {
                     Task {
@@ -219,7 +221,7 @@ struct WatchWaterBar: View {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(.bordered)
-                .disabled(!model.canAdd)
+                .disabled(!snapshot.canAdd)
                 .accessibilityLabel(WatchWaterCopy.addLabel)
             }
         }

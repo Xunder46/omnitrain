@@ -1078,6 +1078,10 @@ final class ContendedWatchSessionStore: WatchSessionStore {
     func pruneWater(keepingRecordId: String) async -> [String] {
         await inner.pruneWater(keepingRecordId: keepingRecordId)
     }
+
+    func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String] {
+        await inner.pruneWaterTaps(loggedBefore: cutoff)
+    }
 }
 
 /// One append at a time, counting the ones that had to wait.
