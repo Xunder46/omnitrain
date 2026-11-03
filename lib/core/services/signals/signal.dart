@@ -25,6 +25,10 @@ abstract class Signal {
   /// and may speak from the first session (D-17501).
   bool get needsRatedWeeks;
 
+  /// One sentence on what the user can supply to wake this signal, or null when
+  /// it is not short of anything the user can supply (D-17601).
+  Future<String?> waitingFor(SignalContext context);
+
   /// Proposes this signal's card, or null to abstain (D-1008).
   Future<SignalCard?> evaluate(SignalContext context);
 }

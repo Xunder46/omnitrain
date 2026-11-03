@@ -63,6 +63,34 @@ class SignalsService {
     return cards;
   }
 
+  /// What the quiet signals are waiting for, one line each, in registry order
+  /// (D-17602). The gate is not read: a signal answers for itself. A signal
+  /// whose answer cannot be read is skipped, so a courtesy line never breaks
+  /// the screen.
+  Future<List<String>> waitingLines({
+    required DateTime now,
+    required StatsWindow window,
+    required MixLayerData? mix,
+  }) async {
+    final context = SignalContext(
+      now: now,
+      window: window,
+      mix: mix,
+      progressService: _progressService,
+      repository: _repository,
+    );
+    final lines = <String>[];
+    for (final signal in _signals) {
+      try {
+        final line = await signal.waitingFor(context);
+        if (line != null) lines.add(line);
+      } catch (_) {
+        // Absent rather than broken.
+      }
+    }
+    return lines.take(kSignalMaxWaitingLines).toList(growable: false);
+  }
+
   /// The stored dismissal map, read through the repository preference API
   /// (D-1009). Never throws.
   Future<Map<String, int>> loadDismissals() async {

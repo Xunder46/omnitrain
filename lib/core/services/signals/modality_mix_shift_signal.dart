@@ -32,6 +32,9 @@ class ModalityMixShiftSignal implements Signal {
   bool get needsRatedWeeks => true;
 
   @override
+  Future<String?> waitingFor(SignalContext context) async => null;
+
+  @override
   Future<SignalCard?> evaluate(SignalContext context) async {
     // D-1201: the 28 local calendar days ending with today, built from
     // calendar components so a DST transition cannot shift a boundary.

@@ -69,6 +69,7 @@ class _StatsScreenState extends State<StatsScreen> {
   MixLayerData? _mixLayer;
 
   SignalsData? _signalsData;
+  List<String> _signalsWaiting = const [];
   List<SignalCard> _signalsCandidates = const [];
   Map<String, int> _signalsDismissedAtMs = const {};
   SignalsService? _signalsService;
@@ -158,6 +159,13 @@ class _StatsScreenState extends State<StatsScreen> {
               gateMet: gateMet,
             )
           : null;
+      final signalsWaiting = evaluateSignals
+          ? await signalsService.waitingLines(
+              now: now,
+              window: window,
+              mix: mixLayer,
+            )
+          : const <String>[];
 
       if (!mounted) return;
 
@@ -171,6 +179,7 @@ class _StatsScreenState extends State<StatsScreen> {
         _signalsCandidates = signalsCandidates;
         _signalsDismissedAtMs = signalsDismissedAtMs;
         _signalsData = signalsData;
+        _signalsWaiting = signalsWaiting;
         _isLoading = false;
       });
     } catch (_) {
@@ -300,6 +309,7 @@ class _StatsScreenState extends State<StatsScreen> {
                                 data: _signalsData!,
                                 themeColors: themeColors,
                                 onDismiss: _dismissSignal,
+                                waiting: _signalsWaiting,
                                 lockedRatedWeeks: signalsGateMet(_mixLayer)
                                     ? null
                                     : (_mixLayer?.ratedWeeks ?? 0),
@@ -310,6 +320,7 @@ class _StatsScreenState extends State<StatsScreen> {
                               SignalsLockedSection(
                                 ratedWeeks: _mixLayer!.ratedWeeks,
                                 themeColors: themeColors,
+                                waiting: _signalsWaiting,
                               ),
                               const SizedBox(height: 24),
                             ],

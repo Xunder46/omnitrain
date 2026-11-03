@@ -127,6 +127,33 @@ so a caller can tell "nothing to say" from "not yet speaking". Verified by
 line`, group `Structural guard — the quiet line needs the gate` › `an unmet
 gate with no candidates is never the quiet line`).
 
+## The waiting lines
+
+Each signal can say what it is waiting for
+— one sentence on what the user can supply to wake it, or null when it is not
+short of anything the user can supply. `SignalsService.waitingLines` asks every
+registered signal in registry order, drops the nulls, skips a signal whose
+answer cannot be read and returns at most `kSignalMaxWaitingLines` (3) lines;
+it does not read the gate. Verified by `test/signals_waiting_test.dart` (group
+`S-17603 SignalsService.waitingLines`).
+
+Two signals answer today. `proteinConsistencyWaitingLine` in
+`lib/core/models/protein_consistency.dart` returns
+`Protein Consistency: log food on N more days of the last 14.` — `1 more day`
+for one — for 1 to 9 logged days in the 14 local days ending today, and null
+with none (a user who does not log food is not nagged) and from 10, when the
+signal can speak. Verified by `test/signals_waiting_test.dart` (group
+`S-17601 proteinConsistencyWaitingLine`) and, for the count the adapter feeds
+it, groups `S-17604 the Protein Consistency count — Mock` and `S-17604 the
+Protein Consistency count — Hive`.
+
+`cardioEfficiencyWaitingLine` in `lib/core/models/cardio_efficiency_drift.dart`
+returns `Cardio Efficiency: needs heart rate from the watch on at least 3
+workouts of the same kind in each of two periods.` for 1 to 5 eligible efforts
+— cardio workouts that already carry a measured distance and an average heart
+rate — and null with none (no watch, nothing to do) and from 6. Verified by
+`test/signals_waiting_test.dart` (group `S-17602 cardioEfficiencyWaitingLine`).
+
 ## The dismissal store
 
 Dismissals persist through the `WorkoutRepository` preference API under the key
@@ -184,11 +211,17 @@ the single registration point. The layer, the service and the screen never name
 a concrete signal, so adding one is one line in one file.
 
 `lib/core/services/signals/signal.dart` declares the contract: an id, a kind, a
-priority and `evaluate`. `SignalContext` carries everything one evaluation may
+priority, `needsRatedWeeks`, `evaluate` and `waitingFor`. `waitingFor` answers
+what it is waiting for
+— one sentence on what the user can supply to wake the signal, or null when it
+is not short of anything the user can supply. `SignalContext` carries
+everything one evaluation may
 read — the load's `now`, the resolved window, the resolved mix, the
 `StatsProgressService` and the `WorkoutRepository` — so a signal added later
 needs no change to the contract. Verified by `test/signals_service_test.dart`,
-whose stub signals implement the contract and are driven through the service.
+whose stub signals implement the contract and are driven through the service,
+and by `test/signals_waiting_test.dart` (group `S-17603
+SignalsService.waitingLines`).
 
 ## Registered signals
 

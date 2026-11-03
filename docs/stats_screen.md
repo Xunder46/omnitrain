@@ -287,9 +287,34 @@ Verified by `test/signals_layer_screen_test.dart` (`S-1704`–`S-1708`) and
 `D-1005 priority order within a kind`).
 
 **The quiet line.** When the gate is met and no card qualifies, the layer shows
-its header and `kSignalQuietLine` and nothing else. The layer is never hidden
+its header and `kSignalQuietLine`, then
+one line for each signal that is still waiting for data
+(see [Signals](signals.md#the-waiting-lines)). The layer is never hidden
 once the gate is met, because "nothing to say" is a state the user can see.
-Verified by `test/signals_layer_screen_test.dart` (`S-1703`, `S-1708`).
+Verified by `test/signals_layer_screen_test.dart` (`S-1703`, `S-1708`) and,
+for the waiting lines' place under the quiet line, group `S-17605 the waiting
+lines sit under whatever the block shows` › `the quiet line keeps its copy and
+the line follows it`.
+
+**The waiting lines.** Under whatever the block shows — the cards and the hint,
+the quiet line or the locked line — the screen draws up to
+`kSignalMaxWaitingLines` (3) lines, one per signal still
+short of something the user can supply, each keyed `signals_waiting_N`, under
+everything else in the block. The
+screen computes them whenever there is at least one completed session, the same
+condition that evaluates the signals; with no completed session the empty state
+shows alone and no line is computed. Two exist today:
+`Protein Consistency: log food on N more days of the last 14.`
+(`1 more day` for one) when food was logged on 1 to 9 of the last 14 days, and
+`Cardio Efficiency: needs heart rate from the watch on at least 3 workouts of
+the same kind in each of two periods.` when 1 to 5 cardio workouts carry a
+measured distance and an average heart rate. Verified by
+`test/signals_layer_screen_test.dart` (group `S-17605 the waiting lines sit
+under whatever the block shows`) and `test/signals_waiting_test.dart` (groups
+`S-17601 proteinConsistencyWaitingLine`, `S-17602 cardioEfficiencyWaitingLine`,
+`S-17603 SignalsService.waitingLines`); the empty state by group
+`the empty-state branch` › `a profile with no sessions shows the empty state
+and no layer, even with stubs registered`.
 
 **Dismissing a card.** A card's dismiss control removes the card in the frame of
 the tap: the screen resolves the held candidates against the new store with
@@ -734,9 +759,9 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `lib/state/stats/stats_primer_state.dart` | `StatsPrimerState` — the `primer_seen_stats` seen flag over the repository preference API, hydrated before `runApp` |
 | `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, used by Records & Trends and Exercise Progress, not by this screen |
 | `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the explainer sentence, the modality bar and its legend, the usual bar and its two labels, the note, the week strip, the strip's title and caption, the empty-strip line and the empty-window card's one line |
-| `lib/features/stats/widgets/signals_layer.dart` | `SignalsLayerSection` — the Signals layer: the header, the signal cards and the quiet line; `SignalsLockedSection` — the locked line a gate-unmet screen with no unlocked card shows in the layer's slot |
+| `lib/features/stats/widgets/signals_layer.dart` | `SignalsLayerSection` — the Signals layer: the header, the signal cards, the quiet line and the waiting lines; `SignalsLockedSection` — the locked line a gate-unmet screen with no unlocked card shows in the layer's slot, with the waiting lines under it |
 | `lib/core/models/signals.dart` | The Signals value types (`SignalKind`, `SignalCard`, `SignalsData`), the selection, the gate and the dismissal maths; declares `kSignalMaxCards` and `kSignalDismissalDays` |
-| `lib/core/services/signals_service.dart` | `SignalsService` — loads the dismissal store, evaluates the registered signals for one load and writes a dismissal back |
+| `lib/core/services/signals_service.dart` | `SignalsService` — loads the dismissal store, evaluates the registered signals for one load, collects the waiting lines and writes a dismissal back |
 | `lib/features/stats/widgets/instrument_list.dart` | The Instruments list: one section per kind of work, capped rows, the expand control; declares `kInstrumentRowCap` |
 | `lib/features/stats/widgets/instrument_row.dart` | One Instruments row (name, figure, change chip, trend line) and `InstrumentChangeChip` |
 | `lib/features/stats/widgets/instrument_sparkline.dart` | The row's trend line, drawn only when the window holds at least two points |

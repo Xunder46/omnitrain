@@ -154,6 +154,8 @@ class _StubSignal implements Signal {
   @override
   final bool needsRatedWeeks;
 
+  final String? waiting;
+
   final bool abstains;
   bool flag = true;
 
@@ -161,12 +163,14 @@ class _StubSignal implements Signal {
   final String? suggestion;
 
   int evaluations = 0;
+  int waitingCalls = 0;
 
   _StubSignal({
     required this.id,
     required this.kind,
     this.priority = 10,
     this.needsRatedWeeks = true,
+    this.waiting,
     this.abstains = false,
     String? observation,
     this.suggestion,
@@ -184,6 +188,12 @@ class _StubSignal implements Signal {
       observation: observation,
       suggestion: suggestion,
     );
+  }
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async {
+    waitingCalls++;
+    return waiting;
   }
 }
 
@@ -673,6 +683,115 @@ void main() {
           );
           expect(open.evaluations, 1);
           expect(locked.evaluations, 0);
+        });
+      });
+
+      // ─── S-17605 ───────────────────────────────────────────────────────────
+
+      group('S-17605 the waiting lines sit under whatever the block shows', () {
+        double top(WidgetTester tester, String key) =>
+            tester.getTopLeft(find.byKey(Key(key))).dy;
+
+        group('gate unmet, nothing speaking: under the locked line', () {
+          setUp(() => _seedGateUnmet(repo));
+
+          testWidgets('two lines, in order, below the locked line', (
+            tester,
+          ) async {
+            final first = _StubSignal(
+              id: 'w-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              waiting: 'Waiting line one',
+            );
+            final second = _StubSignal(
+              id: 'w-2',
+              kind: SignalKind.caution,
+              priority: 10,
+              waiting: 'Waiting line two',
+            );
+            await pumpStats(tester, signals: [first, second]);
+
+            expect(find.byKey(const Key('signals_locked')), findsOneWidget);
+            expect(
+              tester.widget<Text>(find.byKey(const Key('signals_waiting_0'))).data,
+              'Waiting line one',
+            );
+            expect(
+              tester.widget<Text>(find.byKey(const Key('signals_waiting_1'))).data,
+              'Waiting line two',
+            );
+            expect(
+              top(tester, 'signals_waiting_0'),
+              greaterThan(top(tester, 'signals_locked_line')),
+            );
+            expect(
+              top(tester, 'signals_waiting_1'),
+              greaterThan(top(tester, 'signals_waiting_0')),
+            );
+            // The locked line keeps its copy.
+            expect(
+              tester.widget<Text>(find.byKey(const Key('signals_locked_line'))).data,
+              signalsLockedLine(0),
+            );
+          });
+        });
+
+        group('gate unmet, an unlocked card showing: under the hint', () {
+          setUp(() => _seedGateUnmet(repo));
+
+          testWidgets('the line is below the card and the hint', (tester) async {
+            final open = _StubSignal(
+              id: 'p-open',
+              kind: SignalKind.positive,
+              priority: 10,
+              needsRatedWeeks: false,
+            );
+            final waits = _StubSignal(
+              id: 'w-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              waiting: 'Waiting line one',
+            );
+            await pumpStats(tester, signals: [open, waits]);
+
+            expect(_cardKeys(), ['signal_card_p-open']);
+            expect(
+              top(tester, 'signals_waiting_0'),
+              greaterThan(top(tester, 'signals_locked_hint')),
+            );
+            expect(
+              top(tester, 'signals_locked_hint'),
+              greaterThan(top(tester, 'signal_card_p-open')),
+            );
+          });
+        });
+
+        group('gate met, nothing speaking: under the quiet line', () {
+          setUp(() => _seedGateMet(repo));
+
+          testWidgets('the quiet line keeps its copy and the line follows it', (
+            tester,
+          ) async {
+            final waits = _StubSignal(
+              id: 'w-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              abstains: true,
+              waiting: 'Waiting line one',
+            );
+            await pumpStats(tester, signals: [waits]);
+
+            expect(
+              tester.widget<Text>(find.byKey(const Key('signals_quiet_line'))).data,
+              kSignalQuietLine,
+            );
+            expect(
+              top(tester, 'signals_waiting_0'),
+              greaterThan(top(tester, 'signals_quiet_line')),
+            );
+            expect(find.byKey(const Key('signals_locked')), findsNothing);
+          });
         });
       });
 
@@ -1471,6 +1590,7 @@ void main() {
             kind: SignalKind.positive,
             priority: 10,
             needsRatedWeeks: false,
+            waiting: 'Waiting line one',
           );
           await pumpStats(tester, signals: [positive]);
 
@@ -1481,6 +1601,8 @@ void main() {
           expect(_cardKeys(), isEmpty);
           expect(find.text('ALL TIME'), findsNothing);
           expect(positive.evaluations, 0);
+          expect(positive.waitingCalls, 0);
+          expect(find.byKey(const Key('signals_waiting_0')), findsNothing);
         });
       });
 

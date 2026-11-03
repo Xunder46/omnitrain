@@ -14,6 +14,9 @@ const String kSignalCautionLabel = 'Worth a look';
 /// The most cards the layer ever shows at once (D-1004).
 const int kSignalMaxCards = 2;
 
+/// The most waiting lines the Signals block ever shows (D-17602).
+const int kSignalMaxWaitingLines = 3;
+
 /// How many local calendar days a dismissal hides its signal (D-1011).
 const int kSignalDismissalDays = 14;
 

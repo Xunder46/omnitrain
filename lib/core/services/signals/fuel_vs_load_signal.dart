@@ -34,6 +34,9 @@ class FuelVsLoadSignal implements Signal {
   bool get needsRatedWeeks => true;
 
   @override
+  Future<String?> waitingFor(SignalContext context) async => null;
+
+  @override
   Future<SignalCard?> evaluate(SignalContext context) async {
     // D-1405: the 21 local calendar days ending with today, and the 21
     // immediately before them. Calendar arithmetic, so a DST transition cannot

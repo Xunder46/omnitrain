@@ -57,6 +57,9 @@ class _StubSignal implements Signal {
       suggestion: 'suggestion $id',
     );
   }
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async => null;
 }
 
 final StatsWindow _window = StatsWindow(

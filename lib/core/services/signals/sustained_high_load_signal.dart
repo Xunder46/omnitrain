@@ -34,6 +34,9 @@ class SustainedHighLoadSignal implements Signal {
   bool get needsRatedWeeks => true;
 
   @override
+  Future<String?> waitingFor(SignalContext context) async => null;
+
+  @override
   Future<SignalCard?> evaluate(SignalContext context) async {
     // D-1703: the completed weeks the service returns, oldest first, with the
     // week containing `now` already excluded.

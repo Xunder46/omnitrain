@@ -26,6 +26,25 @@ const double _kCardGap = 12;
 /// The tooltip and semantic label the dismiss control carries (D-1018).
 const String _kDismissLabel = 'Dismiss signal';
 
+/// One quiet line per signal still waiting for something the user can supply
+/// (D-17605), each 8 dp under whatever came before it.
+List<Widget> _waitingLines(
+  List<String> waiting,
+  ThemeData theme,
+  OmniThemeColors themeColors,
+) => [
+  for (var i = 0; i < waiting.length; i++) ...[
+    const SizedBox(height: 8),
+    Text(
+      waiting[i],
+      key: Key('signals_waiting_$i'),
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: themeColors.textSecondary,
+      ),
+    ),
+  ],
+];
+
 /// The Signals slot while the gate is unmet (D-4001, D-4002).
 ///
 /// The section the layer will occupy, saying what it is waiting for. Like the
@@ -35,10 +54,14 @@ class SignalsLockedSection extends StatelessWidget {
   final int ratedWeeks;
   final OmniThemeColors themeColors;
 
+  /// What the sleeping signals wait for (D-17605); empty by default.
+  final List<String> waiting;
+
   const SignalsLockedSection({
     super.key,
     required this.ratedWeeks,
     required this.themeColors,
+    this.waiting = const [],
   });
 
   @override
@@ -59,6 +82,7 @@ class SignalsLockedSection extends StatelessWidget {
             color: themeColors.textSecondary,
           ),
         ),
+        ..._waitingLines(waiting, theme, themeColors),
       ],
     );
   }
@@ -76,12 +100,16 @@ class SignalsLayerSection extends StatelessWidget {
   /// (D-17504). Null once the gate is met.
   final int? lockedRatedWeeks;
 
+  /// What the sleeping signals wait for (D-17605); empty by default.
+  final List<String> waiting;
+
   const SignalsLayerSection({
     super.key,
     required this.data,
     required this.themeColors,
     required this.onDismiss,
     this.lockedRatedWeeks,
+    this.waiting = const [],
   });
 
   /// The kind's icon. Kind is carried by the label and the icon, never by a
@@ -119,6 +147,7 @@ class SignalsLayerSection extends StatelessWidget {
             ),
           ],
         ],
+        ..._waitingLines(waiting, Theme.of(context), themeColors),
       ],
     );
   }

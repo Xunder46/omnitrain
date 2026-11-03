@@ -33,6 +33,9 @@ class InterferenceSignal implements Signal {
   bool get needsRatedWeeks => true;
 
   @override
+  Future<String?> waitingFor(SignalContext context) async => null;
+
+  @override
   Future<SignalCard?> evaluate(SignalContext context) async {
     final sessions = await context.progressService.interferenceSessions();
     final result = crossModalityInterference(
