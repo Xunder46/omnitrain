@@ -9,8 +9,9 @@ registered signals' definitions and adapters:
 `lib/core/models/modality_mix_shift.dart`, `lib/core/models/interference.dart`,
 `lib/core/models/fuel_vs_load.dart`,
 `lib/core/models/protein_consistency.dart`,
-`lib/core/models/sustained_high_load.dart` and
-`lib/core/models/cardio_efficiency_drift.dart`, and the adapters under
+`lib/core/models/sustained_high_load.dart`,
+`lib/core/models/cardio_efficiency_drift.dart`,
+`lib/core/models/consistency.dart`, and the adapters under
 `lib/core/services/signals/`. It does not cover the Stats screen or
 any widget that draws a signal; that surface belongs to
 [Stats Screen](stats_screen.md).
@@ -84,19 +85,27 @@ Stats body a signal can displace.
 
 **The caution order.** Within a kind, a signal's place in the order is carried
 by its own `k…Priority` constant rather than by the selection rule, so the order
-is a property of the signals. Six cautions are registered today, in ascending
-priority: Cardio Efficiency Drift (`kCardioEfficiencyDriftPriority`), Sustained
-High Load (`kSustainedHighLoadPriority`), Protein Consistency
+is a property of the signals. Seven cautions are registered today, in ascending
+priority: Training Gap (`kTrainingGapPriority`), Cardio Efficiency Drift
+(`kCardioEfficiencyDriftPriority`), Sustained High Load
+(`kSustainedHighLoadPriority`), Protein Consistency
 (`kProteinConsistencyPriority`), Fuel vs Load (`kFuelVsLoadPriority`), Modality
 Mix Shift (`kModalityMixShiftPriority`) and Cross-Modality Interference
-(`kCrossModalityInterferencePriority`). The registered positive is Progression
-Rate, whose priority is `kProgressionRatePriority`. The list is the priority
+(`kCrossModalityInterferencePriority`). The registered positives are Progression
+Rate, whose priority is `kProgressionRatePriority`, and Consistency, whose
+priority is `kConsistencyPriority`. The list is the priority
 order, not the render order: when two cautions qualify together the framework
 draws the higher priority first, so Protein Consistency renders above Sustained
 High Load, and Sustained High Load renders above Cardio Efficiency Drift.
 Verified by `test/interference_test.dart` (`the caution order holds
 and the registry is ordered by it`), which asserts the registry lists the
-cautions in ascending priority; by `test/sustained_high_load_test.dart` (`the
+cautions in ascending priority with Training Gap first; by
+`test/signals_service_test.dart` (group `S-17503 which registered signals need
+rated weeks`), which pins the nine registered ids; by
+`test/consistency_signal_test.dart` (group `S-17809 the signals on real
+sessions — Mock` › `Consistency proposes its card from fixture A, Monday
+weeks`) for the Consistency entry's kind and priority; by
+`test/sustained_high_load_test.dart` (`the
 registry lists the cautions in strictly ascending priority`); by
 `test/sustained_high_load_signal_screen_test.dart` (`S-2412 two cautions
 qualifying` › `renders the higher-priority caution above the Sustained High Load
@@ -217,17 +226,23 @@ what it is waiting for
 is not short of anything the user can supply. `SignalContext` carries
 everything one evaluation may
 read — the load's `now`, the resolved window, the resolved mix, the
-`StatsProgressService` and the `WorkoutRepository` — so a signal added later
-needs no change to the contract. Verified by `test/signals_service_test.dart`,
+`StatsProgressService` and the `WorkoutRepository` — plus the `startOfWeek`
+Start of Week setting (`monday` or `sunday`), which `evaluateCandidates` and
+`waitingLines` pass through and the Stats screen supplies from the setting — so
+a signal added later needs no change to the contract. Verified by
+`test/signals_service_test.dart` (group `S-17811 the start of week reaches the
+signals`) and `test/signals_layer_screen_test.dart` (group `S-17812 the Start
+of Week setting reaches the signals`). The contract itself is verified by
+`test/signals_service_test.dart`,
 whose stub signals implement the contract and are driven through the service,
 and by `test/signals_waiting_test.dart` (group `S-17603
 SignalsService.waitingLines`).
 
 ## Registered signals
 
-The seven registered signals — Progression Rate, Modality Mix Shift,
-Cross-Modality Interference, Fuel vs Load, Protein Consistency, Sustained
-High Load and Cardio Efficiency Drift — are described in
+The nine registered signals — Training Gap, Progression Rate, Consistency,
+Modality Mix Shift, Cross-Modality Interference, Fuel vs Load, Protein
+Consistency, Sustained High Load and Cardio Efficiency Drift — are described in
 [Registered Signals](signals_registered.md): each one's definition, adapter,
 gate, copy and the tests that pin them. This page keeps the framework.
 

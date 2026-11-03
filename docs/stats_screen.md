@@ -340,7 +340,7 @@ deliberately replaces that, limited to these signal rules, rather than leaving
 it as a gap. Verified by `test/signals_layer_screen_test.dart` (`S-1716`) and
 `test/stats_legacy_removal_test.dart` (`S-1210`, no chart primitive).
 
-**The registered signals.** `buildSignalRegistry()` lists seven, described here in the order they shipped rather than in registry order (the registry order is in [Signals](signals.md#selection-and-the-card-cap)). The first is the
+**The registered signals.** `buildSignalRegistry()` lists nine, described here in the order they shipped rather than in registry order (the registry order is in [Signals](signals.md#selection-and-the-card-cap)). The first is the
 Progression Rate: it compares each exercise's own metric across two adjacent
 windows and proposes a positive card only when the recent window improves on the
 prior one. Its rules — the two windows, what a sample is, the zero fallback, the
@@ -435,6 +435,16 @@ key, below the Mix layer`, `S-2511 the card is dismissible` › `one tap removes
 the card in the tap frame, the store holds the id, and the next open is still
 quiet`) and, for the definition itself,
 `test/cardio_efficiency_drift_test.dart`.
+
+The eighth is the Consistency: last week held more sessions than usual, a
+positive card; its rules live in
+[Registered Signals](signals_registered.md). Verified by
+`test/consistency_test.dart` (group `S-17801 consistency, a Monday week`).
+
+The ninth is the Training Gap: five or more days without a session, longer
+than any gap in eight weeks, a caution card; its rules live in
+[Registered Signals](signals_registered.md). Verified by
+`test/consistency_test.dart` (group `S-17807 the training gap`).
 
 ### Instruments list
 

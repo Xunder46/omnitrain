@@ -38,6 +38,7 @@ class SignalsService {
     required StatsWindow window,
     required MixLayerData? mix,
     Map<String, int>? dismissedAtMs,
+    String startOfWeek = 'monday',
   }) async {
     final gateMet = signalsGateMet(mix);
     final dismissed = dismissedAtMs ?? await loadDismissals();
@@ -47,6 +48,7 @@ class SignalsService {
       mix: mix,
       progressService: _progressService,
       repository: _repository,
+      startOfWeek: startOfWeek,
     );
     final cards = <SignalCard>[];
     for (final signal in _signals) {
@@ -71,6 +73,7 @@ class SignalsService {
     required DateTime now,
     required StatsWindow window,
     required MixLayerData? mix,
+    String startOfWeek = 'monday',
   }) async {
     final context = SignalContext(
       now: now,
@@ -78,6 +81,7 @@ class SignalsService {
       mix: mix,
       progressService: _progressService,
       repository: _repository,
+      startOfWeek: startOfWeek,
     );
     final lines = <String>[];
     for (final signal in _signals) {

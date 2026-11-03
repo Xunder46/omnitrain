@@ -164,6 +164,8 @@ class _StubSignal implements Signal {
 
   int evaluations = 0;
   int waitingCalls = 0;
+  String? seenOnEvaluate;
+  String? seenOnWaiting;
 
   _StubSignal({
     required this.id,
@@ -178,6 +180,7 @@ class _StubSignal implements Signal {
 
   @override
   Future<SignalCard?> evaluate(SignalContext context) async {
+    seenOnEvaluate = context.startOfWeek;
     evaluations++;
     if (abstains || !flag) return null;
     return SignalCard(
@@ -192,6 +195,7 @@ class _StubSignal implements Signal {
 
   @override
   Future<String?> waitingFor(SignalContext context) async {
+    seenOnWaiting = context.startOfWeek;
     waitingCalls++;
     return waiting;
   }
@@ -791,6 +795,49 @@ void main() {
               greaterThan(top(tester, 'signals_quiet_line')),
             );
             expect(find.byKey(const Key('signals_locked')), findsNothing);
+          });
+        });
+      });
+
+      // ─── S-17812 ───────────────────────────────────────────────────────────
+
+      group('S-17812 the Start of Week setting reaches the signals', () {
+        group('the default', () {
+          setUp(() => _seedGateMet(repo));
+
+          testWidgets('a Monday start', (tester) async {
+            final stub = _StubSignal(
+              id: 'w-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              abstains: true,
+              waiting: 'Waiting line one',
+            );
+            await pumpStats(tester, signals: [stub]);
+
+            expect(stub.seenOnEvaluate, 'monday');
+            expect(stub.seenOnWaiting, 'monday');
+          });
+        });
+
+        group('Sunday', () {
+          setUp(() async {
+            await _seedGateMet(repo);
+            await settingsState.setStartOfWeek('sunday');
+          });
+
+          testWidgets('a Sunday start', (tester) async {
+            final stub = _StubSignal(
+              id: 'w-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              abstains: true,
+              waiting: 'Waiting line one',
+            );
+            await pumpStats(tester, signals: [stub]);
+
+            expect(stub.seenOnEvaluate, 'sunday');
+            expect(stub.seenOnWaiting, 'sunday');
           });
         });
       });

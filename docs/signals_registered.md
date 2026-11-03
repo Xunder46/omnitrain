@@ -1,13 +1,14 @@
 # Signals — The Registered Signals
 
-**Scope.** The seven registered signals' definitions and adapters, split out of
+**Scope.** The nine registered signals' definitions and adapters, split out of
 [Signals](signals.md) to keep each page under the documentation size ceiling:
 `lib/core/models/progression_rate.dart`,
 `lib/core/models/modality_mix_shift.dart`, `lib/core/models/interference.dart`,
 `lib/core/models/fuel_vs_load.dart`,
 `lib/core/models/protein_consistency.dart`,
 `lib/core/models/sustained_high_load.dart`,
-`lib/core/models/cardio_efficiency_drift.dart` and the adapters under
+`lib/core/models/cardio_efficiency_drift.dart`,
+`lib/core/models/consistency.dart` and the adapters under
 `lib/core/services/signals/`. The framework they plug into — the gate, the
 card cap and selection, the quiet line, the waiting lines, the dismissal store
 and the `Signal` contract — is in [Signals](signals.md).
@@ -419,8 +420,8 @@ usually manage, or short of their own daily target.
   `kProteinConsistencyPriority`, above Sustained High Load and below Fuel vs
   Load. Verified by `test/protein_consistency_test.dart`
   (`the constant contracts`) and
-  `test/modality_mix_shift_signal_screen_test.dart` (`the registry lists exactly
-  the seven shipped signals, in order`).
+  `test/interference_test.dart` (`the structural guards` › `the caution order
+  holds and the registry is ordered by it`).
 - **Copy.** `proteinConsistencyCopy` builds the observation from the average and
   a span derived from `kProteinConsistencyWindowDays` — never written as a
   literal — and, in target mode, the whole-percent shortfall and the target; the
@@ -572,6 +573,100 @@ walks no history of its own and calls no personal-record API. Verified by
 ordered by start`, `S-2512 Hive and Mock return identical eligible efforts`) and
 `test/cardio_efficiency_drift_signal_screen_test.dart` (`S-2501 the card on the
 layer` › `the service reads the eight efforts and the rule reports 7%`).
+
+`consistency({required sessionStarts, required now, required startOfWeek})` in
+`lib/core/models/consistency.dart` is the Consistency signal's definition, and
+`ConsistencySignal` in `lib/core/services/signals/consistency_signal.dart` is
+its adapter. The signal reports that the last completed week held more sessions
+than the user's usual, and proposes a positive card.
+
+- **The completed weeks.** The rule reads completed weeks only: the week
+  containing `now` is never one of them, whatever it holds, and the weeks start
+  on the `startOfWeek` setting (`monday` or `sunday`) — a Monday start ends the
+  week on Sunday, a Sunday start on Saturday. Verified by
+  `test/consistency_test.dart` (`S-17803 the running week is never counted`,
+  `S-17802 the week ends on the day the setting says`).
+- **The history floor.** The signal needs at least
+  `kConsistencyMinHistoryWeeks` completed weeks of history, counted from the
+  week of the first session. Verified by `test/consistency_test.dart`
+  (`S-17804 six completed weeks of history`).
+- **The comparison.** The last completed week must hold at least
+  `kConsistencyMinWeekSessions` sessions and at least one more than the average
+  of the completed weeks — at most `kConsistencyWeeks`, the last one included —
+  and the boundary is inclusive, so exactly one above the average is enough.
+  Verified by `test/consistency_test.dart` (`S-17806 at least three sessions
+  last week`, `S-17805 exactly one above the average is enough`).
+- **Kind and priority.** The kind is positive; the priority is
+  `kConsistencyPriority`. Verified by `test/consistency_test.dart` (`the
+  constants the rules are built from are the ones the plan names`) and
+  `test/consistency_signal_test.dart` (group `S-17809 the signals on real
+  sessions — Mock` › `Consistency proposes its card from fixture A, Monday
+  weeks`).
+- **Copy.** `consistencyObservation` builds the observation from the last
+  week's session count, the average and the weeks averaged, and the card
+  carries no suggestion line. Verified by `test/consistency_test.dart`
+  (`S-17808 the copy` › `the consistency sentence, a decimal and a whole
+  average`) and `test/consistency_signal_test.dart` (group `S-17809 the signals
+  on real sessions — Mock` › `Consistency proposes its card from fixture A,
+  Monday weeks`).
+
+The definition reads no clock, no repository and no service — `now`, the
+session starts and the week's first day are arguments. The adapter asks
+`completedSessionStarts` (`lib/core/services/signals/session_history.dart`) for
+the start of every completed session — a session still in progress is not a
+session yet — so it walks no history of its own. The signal reads no ratings
+(`needsRatedWeeks` is false) and waits for nothing. Verified by
+`test/consistency_signal_test.dart` (group `S-17809 the signals on real
+sessions — Mock` › `a session still in progress is not a session`, `both
+signals read no ratings and wait for nothing`).
+
+`trainingGap({required sessionStarts, required now, required startOfWeek})` in
+`lib/core/models/consistency.dart` is the Training Gap signal's definition, and
+`TrainingGapSignal` in `lib/core/services/signals/training_gap_signal.dart` is
+its adapter. The signal reports that the user has not trained for at least five
+days, a gap longer than any between two session days in their last eight weeks,
+and proposes a caution card.
+
+- **The gap.** The gap is the whole local days from the last session day to
+  `now`'s day; it must reach `kTrainingGapMinDays`, the boundary inclusive.
+  Verified by `test/consistency_test.dart` (`S-17807 the training gap` › `five
+  days is the floor, inclusive`, `four days is too soon`).
+- **Longer than every earlier gap.** The gap must be strictly longer than every
+  gap between two session days in the `kTrainingGapWindowDays` local days
+  ending today; a gap that only equals the longest earlier one does not fire.
+  Verified by `test/consistency_test.dart` (`S-17807 the training gap` › `a gap
+  that only equals the longest earlier one is not longer`, `an earlier 12-day
+  hole is a longer gap than six days`).
+- **The pattern floor.** The window must hold at least
+  `kTrainingGapMinSessionDays` session days — several sessions on one day are
+  one day — for the gaps to mean anything. Verified by
+  `test/consistency_test.dart` (`S-17807 the training gap` › `fewer than four
+  session days in the window is no pattern`, `several sessions on one day are
+  one day, and none is a gap`).
+- **The history floor.** The same `kConsistencyMinHistoryWeeks` completed weeks
+  of history, counted from the week of the first session on the
+  `startOfWeek` setting. Verified by `test/consistency_test.dart` (`S-17807 the
+  training gap` › `five completed weeks of history is too little`).
+- **Kind and priority.** The kind is caution; the priority is
+  `kTrainingGapPriority`, the lowest caution. Verified by
+  `test/consistency_test.dart` (`the constants the rules are built from are the
+  ones the plan names`) and `test/interference_test.dart` (`the structural
+  guards` › `the caution order holds and the registry is ordered by it`).
+- **Copy.** `trainingGapObservation` builds the observation from the gap's days
+  and the longest earlier gap, plural and singular, and the card carries no
+  suggestion line. Verified by `test/consistency_test.dart` (`S-17808 the copy`
+  › `the gap sentence, plural and singular`) and
+  `test/consistency_signal_test.dart` (group `S-17809 the signals on real
+  sessions — Mock` › `the Training Gap proposes its card from fixture G`).
+
+The definition reads no clock, no repository and no service — `now`, the
+session starts and the week's first day are arguments. The adapter asks the
+same `completedSessionStarts` for the completed sessions, so an open session
+does not close the gap. The signal reads no ratings (`needsRatedWeeks` is
+false) and waits for nothing. Verified by `test/consistency_signal_test.dart`
+(group `S-17809 the signals on real sessions — Mock` › `an open session
+yesterday does not close the gap`, `both signals read no ratings and wait for
+nothing`).
 
 ---
 

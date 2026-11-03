@@ -154,6 +154,7 @@ class _StatsScreenState extends State<StatsScreen> {
               window: window,
               mix: mixLayer,
               dismissedAtMs: signalsDismissedAtMs,
+              startOfWeek: widget.settingsState.startOfWeek,
             )
           : const <SignalCard>[];
       final signalsData = evaluateSignals
@@ -169,6 +170,7 @@ class _StatsScreenState extends State<StatsScreen> {
               now: now,
               window: window,
               mix: mixLayer,
+              startOfWeek: widget.settingsState.startOfWeek,
             )
           : const <String>[];
 

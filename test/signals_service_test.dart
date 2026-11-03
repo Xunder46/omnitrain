@@ -62,6 +62,36 @@ class _StubSignal implements Signal {
   Future<String?> waitingFor(SignalContext context) async => null;
 }
 
+/// A signal that records the start-of-week it was handed.
+class _RecordingSignal implements Signal {
+  String? evaluatedWith;
+  String? waitedWith;
+
+  @override
+  String get id => 'recording';
+
+  @override
+  SignalKind get kind => SignalKind.caution;
+
+  @override
+  int get priority => 1;
+
+  @override
+  bool get needsRatedWeeks => false;
+
+  @override
+  Future<SignalCard?> evaluate(SignalContext context) async {
+    evaluatedWith = context.startOfWeek;
+    return null;
+  }
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async {
+    waitedWith = context.startOfWeek;
+    return null;
+  }
+}
+
 final StatsWindow _window = StatsWindow(
   fromMs: DateTime(2026, 3, 1),
   toMs: DateTime(2026, 3, 31),
@@ -342,6 +372,8 @@ void main() {
           signal.id: signal.needsRatedWeeks,
       };
       expect(byId, {
+        'training-gap': false,
+        'consistency': false,
         'cardio-efficiency-drift': false,
         'progression-rate': false,
         'protein-consistency': false,
@@ -350,6 +382,55 @@ void main() {
         'modality-mix-shift': true,
         'cross-modality-interference': true,
       });
+    });
+  });
+
+  group('S-17811 the start of week reaches the signals', () {
+    late MockWorkoutRepository repo;
+
+    setUp(() async {
+      repo = MockWorkoutRepository();
+      await repo.initialize();
+    });
+
+    test('Monday by default, in both methods', () async {
+      final signal = _RecordingSignal();
+      final service = _service(repo, [signal]);
+
+      await service.evaluateCandidates(
+        now: DateTime(2026, 3, 18, 12),
+        window: _window,
+        mix: _mixReady,
+      );
+      await service.waitingLines(
+        now: DateTime(2026, 3, 18, 12),
+        window: _window,
+        mix: _mixReady,
+      );
+
+      expect(signal.evaluatedWith, 'monday');
+      expect(signal.waitedWith, 'monday');
+    });
+
+    test('the given value, in both methods', () async {
+      final signal = _RecordingSignal();
+      final service = _service(repo, [signal]);
+
+      await service.evaluateCandidates(
+        now: DateTime(2026, 3, 18, 12),
+        window: _window,
+        mix: _mixReady,
+        startOfWeek: 'sunday',
+      );
+      await service.waitingLines(
+        now: DateTime(2026, 3, 18, 12),
+        window: _window,
+        mix: _mixReady,
+        startOfWeek: 'sunday',
+      );
+
+      expect(signal.evaluatedWith, 'sunday');
+      expect(signal.waitedWith, 'sunday');
     });
   });
 }

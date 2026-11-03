@@ -35,7 +35,7 @@ abstract class Signal {
 
 /// Everything a signal may read during one evaluation (D-1015).
 ///
-/// All five members are carried from the start so a later signal needs no
+/// All six members are carried from the start so a later signal needs no
 /// change to the contract.
 class SignalContext {
   final DateTime now;
@@ -44,11 +44,15 @@ class SignalContext {
   final StatsProgressService progressService;
   final WorkoutRepository repository;
 
+  /// The Start of Week setting, `monday` or `sunday` (D-17802).
+  final String startOfWeek;
+
   const SignalContext({
     required this.now,
     required this.window,
     required this.mix,
     required this.progressService,
     required this.repository,
+    this.startOfWeek = 'monday',
   });
 }
