@@ -83,6 +83,10 @@ the code for it. If the brief says a docs phase is still in flight, missing docs
 Read a file in ranges of at least 100 lines (or whole), at most twice; ten-line slices of one file are
 how two review runs were stopped for a loop (unit 36c). When the brief states a fact, do not re-read
 its sources to check it; write your verdict and first findings into the review file after one pass.
+When the plan has a `## Docs delta`, add a "Docs delta" block to the review file with one line per row
+(`<doc> <change> -> applied | MISSING | marker differs`), and list a doc edit the table does not name. A MISSING row,
+or a stale old term the keeper reported and nobody fixed, is a Major; the governor already ran the marker check, so
+judge whether the sentences are true and tied to a test, not whether the markers match.
 
 ## Docs keeper (crew-docs-keeper)
 
@@ -91,6 +95,12 @@ the test file this run) or is removed. Follow docs/documentation_standard.md. Ke
 under 52 KB; split before that and keep the old path as an index. When auditing, list each claim you
 could not tie to code or a test. `.work/` is not yours to search or glob (a brief that names a path
 under it is wrong: ask for the facts in the brief instead; a search loop stopped one run in unit 36b).
+
+When the plan has a `## Docs delta`, an Update run executes that table row by row and nothing else: a New marker must
+appear in the doc exactly as written (write the sentence around it and cite its test as above), an Old marker of a
+MODIFIED or REMOVED row must be gone. Then search `docs/` once for the plan's old terms and report any other hit as
+"Stale claim" with `doc:line` instead of editing it, unless the brief allows that doc. In the report, one line per
+row: `<doc> <change> -> done | not done: <why>`. A marker you cannot place is a finding, not a reworded marker.
 
 ## UI standards (crew-builder-app, crew-reviewer, crew-docs-keeper)
 
@@ -116,6 +126,15 @@ keep every seeded entry exactly as written, append new D/S entries after them, e
 seeded entry looks wrong, keep it and raise it under Open questions with file:line evidence. Write only
 at the paths the brief gives. Every phase item names its file and the symbol it changes; no phase has
 more than 8 items (split into part A and part B). Do not measure or maintain line counts.
+
+The plan has a `## Docs delta` section: the change to the written behaviour, decided before any code. One table,
+one row per sentence that is added, changed or removed in `docs/`:
+`| Doc | Change | Old marker | New marker | Backed by |` where Change is ADDED, MODIFIED or REMOVED; a marker is a short
+exact phrase (a few words, on one line of the doc) or `-`; Old marker must be in the doc today (open the doc and copy it,
+never write it from memory); New marker is what the doc will say; Backed by names the `S-n` or `D-n` that proves it.
+A seeded row stays as written. Complete the table: for every term, label, constant or concept the change makes false,
+search `docs/` (excluding `docs/plans`, `docs/history`, `docs/releases`) and add a REMOVED or MODIFIED row for each
+hit. A change with no behaviour change says `Docs delta: none - <why>`. The last docs phase lists the table as its items.
 
 ## Scout (crew-scout)
 

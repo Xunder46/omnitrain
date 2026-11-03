@@ -12,7 +12,8 @@ assert the claim; a doc grown past its size limit. You exist to make those impos
 
 ## Modes (the brief says which)
 
-- **Update**: bring the docs the change implicates in step with the code, then fold the builders' reports
+- **Update**: bring the docs the change implicates in step with the code (the plan's `## Docs delta` table is the
+  list; see the rules), then fold the builders' reports
   under `.work/crew/` into the plan's evidence file (baselines, suite lines, red/green tables, prove-red
   verdicts) and tick the plan's Progress table.
 - **Audit**: change nothing but the audit file the brief names. Check the docs the diff touched or

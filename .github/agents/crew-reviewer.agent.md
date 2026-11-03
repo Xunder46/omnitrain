@@ -38,7 +38,8 @@ No style opinions. No findings about code the diff did not touch, unless the dif
 - `scripts/sqlite_schema.sql` follows `lib/data/models/models.dart`.
 - Buttons set `shape:` explicitly with `OmniTheme` radius tokens; no hex literals outside the theme files.
 - Docs: every behaviour sentence names an existing test; no doc over 64 KB; the docs the change implicates
-  were updated (`navigation_and_screens.md`, `state_management.md`, `widget_catalog.md`, the feature doc).
+  were updated (`navigation_and_screens.md`, `state_management.md`, `widget_catalog.md`, the feature doc), and
+  every row of the plan's `## Docs delta` is applied (see the rules).
 - A guard in the diff is real only if the prover's `prove-red` verdict says RED AT for the right reason; if
   the brief has no verdict for it, say "unproven" in the finding.
 - Assumption Log: rule on each entry (ratify, revert, escalate). An empty log after a complex phase is a

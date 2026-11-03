@@ -49,14 +49,19 @@ what the team will do, in plain language, before spending any run.
 3. **Seed.** Write the seed into the plan file yourself (Goal and acceptance, Decision Ledger citing
    `file:symbol`, core scenarios with exact fixtures and why they fail without the change, phase outline
    with owner agent, write scope and parallel/serial marks, code pointers). Copy to `.work/<slug>/seed.md`.
-   `mkdir -p` the plan folder first. Re-derive every fixture number with a throwaway script. When the seed
+   `mkdir -p` the plan folder first. Seed the **Docs delta** too: the doc sentences this change adds, changes or
+   removes (`## Docs delta` table, format in `crew-rules.md`), with Old markers copied from the doc and a stale-term
+   sweep (`grep -rIn "<old label|constant|concept>" docs | grep -v "docs/plans\|docs/history\|docs/releases"`; every
+   hit is a REMOVED or MODIFIED row). Re-derive every fixture number with a throwaway script. When the seed
    changes a shared fixture or contract file, grep for every reader and list them (an unlisted reader cost a
    fix round in 23a-c); for a handler that concurrent messages can reach, name how they are dispatched and
    seed an interleaving test.
 4. **Plan.** Brief `crew-architect` (`brief-plan.md`; paths exact; "this plan is seeded"; scout sheets
    named). Validate: seed intact (diff against `seed.md`), numbers re-derived, "the framework does X"
    claims checked in code, no phase over 8 items, each guard has a stated way to be proven, scope guard
-   run. Revise at most twice (`brief-plan-rev<N>.md`). Over budget: split, never grow.
+   run, and `python3 -I .claude/scripts/macos/plan-lint.py before <plan>` is clean (sections present, every
+   scenario says why it fails without the change, every Docs delta Old marker really is in its doc, every
+   "Backed by" id exists). Revise at most twice (`brief-plan-rev<N>.md`). Over budget: split, never grow.
 5. **Build.** One phase per run. For each: create the directories and make the deletions the phase lists;
    write `brief-<agent>-<phase>.md` (approved plan path; the plan sections to read; code pointers with
    the CURRENT lines quoted for changing logic; the exact `--scope`; the base commit; the report path).
@@ -84,7 +89,10 @@ what the team will do, in plain language, before spending any run.
    the scratchpad and `cmp` it), re-run green. A guard stays unproven until one of these is observed.
 8. **Review and docs.** `crew-docs-keeper` first when the unit writes docs, then `crew-reviewer` (a reviewer run
    beside an unfinished docs phase reported the missing docs as a Blocker); in parallel only when the unit has
-   no docs phase, or the reviewer's brief says the docs are in flight. Then fix rounds as closed briefs: the defect, the change,
+   no docs phase, or the reviewer's brief says the docs are in flight. After the docs phase run
+   `python3 -I .claude/scripts/macos/plan-lint.py after <plan>` yourself: every New marker is in its doc and every
+   Old marker is gone (the keeper's "done" is a claim); fix any defect before the reviewer starts, and hand the
+   keeper's "Stale claim" lines to a closed fix brief. Then fix rounds as closed briefs: the defect, the change,
    the one check that proves it, "touch nothing else". At most 3 fix rounds, then stop and report.
    Re-run the scope guard after the review.
 9. **Report to the owner** in terms of what the app now does; blockers and risks plainly; what they must
