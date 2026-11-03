@@ -405,7 +405,7 @@ double _sectionMeasure(List<MixSegment> segments, ExerciseSection section) =>
 /// its twelve baseline blocks.
 ///
 /// Nothing is rated, so `computeMixPeriod(day(27)…now)` measures TIME by
-/// construction — `ratedBaselineWeeks` is 0, below `kTrainingLoadMinRatedWeeks`
+/// construction — `ratedWeeks` is 0, below `kTrainingLoadMinRatedWeeks`
 /// (D-908) — and, in the time measure, carries **no** baseline segments at all.
 /// The twelve baseline sessions' 720 minutes are therefore dropped before the
 /// adapter ever sees them, while the window still holds 300 resistance minutes.
@@ -478,7 +478,7 @@ class _TimeMeasuredPayload extends StatsProgressService {
       segments: payload.segments,
       baselineSegments: payload.baselineSegments,
       unratedSessionCount: payload.unratedSessionCount,
-      ratedBaselineWeeks: payload.ratedBaselineWeeks,
+      ratedWeeks: payload.ratedWeeks,
       weeks: payload.weeks,
     );
   }

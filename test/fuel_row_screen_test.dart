@@ -2,6 +2,10 @@
 // training/rest split, the target comparison, the visibility rule and the
 // entry point into the full-history nutrition trend.
 //
+// The row's window is the seven days ending yesterday (days 1..7 ago; today
+// is in neither it nor the previous range, D-17201), and with fewer than
+// three logged days it draws a sentence instead of figures (D-17205).
+//
 // Scenarios S-1101…S-1108, S-1111, S-1112, the entry-point half of S-1109
 // (the stacked-charts half lives in `nutrition_trend_screen_test.dart`, which
 // pumps the screen directly), and S-1259/S-1260/S-1261 (narrow width, large text, the
@@ -182,15 +186,16 @@ Future<void> _seedLoggedDaysOnly(WorkoutRepository repo) async {
   await _seedDay(repo, id: 'food-5', daysAgo: 5, protein: 125, calories: 2500);
 }
 
-/// S-1102's variant: every day of the row's window logged — today and the six
-/// days before it — with day `k` days back carrying `100 × (k + 1)` kcal and
-/// `10 × (k + 1)` g protein.
+/// S-1102's variant: every day of the row's window logged — the seven days
+/// ending yesterday (days 1..7 ago; today is in neither range, D-17201) —
+/// with day `k` days back carrying `100 × (k + 1)` kcal and `10 × (k + 1)` g
+/// protein, so the window holds 200…800 kcal and 20…80 g.
 ///
 /// The only session is a month old, so the screen is not in its empty state
 /// while the training/rest split stays out of the fixture's way.
 Future<void> _seedEveryDayLogged(WorkoutRepository repo) async {
   await seedSession(repo, sessionId: 's-fuel', daysAgo: 30);
-  for (var k = 0; k <= 6; k++) {
+  for (var k = 1; k <= 7; k++) {
     await _seedDay(
       repo,
       id: 'food-$k',
@@ -426,18 +431,21 @@ void main() {
 
         testWidgets('the split covers every logged day exactly once, and a '
             'running session is not a training day', (tester) async {
-          // The seven window days carry 100…700 kcal and 10…70 g.
-          // Training days 1 and 3: (200 + 400) / 2 kcal, (20 + 40) / 2 g.
+          // The seven window days carry 200…800 kcal and 20…80 g.
+          // Training days 1 and 3: (200 + 400) / 2 = 300 kcal,
+          // (20 + 40) / 2 = 30 g.
           expect(model.trainingCaloriesAverage, 300);
           expect(model.trainingProteinAverage, 30);
-          // Every other day, day 5 included: (100 + 300 + 500 + 600 + 700) / 5.
-          expect(model.restCaloriesAverage, 440);
-          expect(model.restProteinAverage, 44);
+          // Every other day, the running day 5 included:
+          // (300 + 500 + 600 + 700 + 800) / 5 = 580 kcal,
+          // (30 + 50 + 60 + 70 + 80) / 5 = 58 g.
+          expect(model.restCaloriesAverage, 580);
+          expect(model.restProteinAverage, 58);
 
           await pumpStats(tester);
 
           expect(_fuelText('fuel_split_training'), 'Training 300 kcal · 30 g');
-          expect(_fuelText('fuel_split_rest'), 'Rest 440 kcal · 44 g');
+          expect(_fuelText('fuel_split_rest'), 'Rest 580 kcal · 58 g');
         });
       });
 
@@ -446,8 +454,12 @@ void main() {
       group('S-1106', () {
         group('every logged day is a training day', () {
           setUp(() async {
+            // Three logged days, all of them training days, so the split
+            // draws (D-17204): a window with fewer than three logged days
+            // draws no figures and no split.
             await seedSession(repo, sessionId: 's-1', daysAgo: 1);
             await seedSession(repo, sessionId: 's-3', daysAgo: 3);
+            await seedSession(repo, sessionId: 's-5', daysAgo: 5);
             await _seedDay(
               repo,
               id: 'food-1',
@@ -462,10 +474,21 @@ void main() {
               protein: 30,
               calories: 300,
             );
+            await _seedDay(
+              repo,
+              id: 'food-5',
+              daysAgo: 5,
+              protein: 50,
+              calories: 500,
+            );
             model = await readModel();
           });
 
           testWidgets('the rest side reads a dash', (tester) async {
+            // Training days 1, 3 and 5: (100 + 300 + 500) / 3 = 300 kcal,
+            // (10 + 30 + 50) / 3 = 30 g.
+            expect(model.trainingCaloriesAverage, 300);
+            expect(model.trainingProteinAverage, 30);
             expect(model.restCaloriesAverage, isNull);
             expect(model.restProteinAverage, isNull);
 
@@ -473,7 +496,7 @@ void main() {
 
             expect(
               _fuelText('fuel_split_training'),
-              'Training 200 kcal · 20 g',
+              'Training 300 kcal · 30 g',
             );
             expect(_fuelText('fuel_split_rest'), 'Rest $_kAbsent');
           });
@@ -485,6 +508,8 @@ void main() {
             // training day — while the screen still has a session, and so is
             // not in its empty state.
             await seedSession(repo, sessionId: 's-old', daysAgo: 30);
+            // Three logged days so the split draws (D-17204), none of them a
+            // training day.
             await _seedDay(
               repo,
               id: 'food-1',
@@ -499,6 +524,13 @@ void main() {
               protein: 30,
               calories: 300,
             );
+            await _seedDay(
+              repo,
+              id: 'food-5',
+              daysAgo: 5,
+              protein: 50,
+              calories: 500,
+            );
             model = await readModel();
           });
 
@@ -509,7 +541,9 @@ void main() {
             await pumpStats(tester);
 
             expect(_fuelText('fuel_split_training'), 'Training $_kAbsent');
-            expect(_fuelText('fuel_split_rest'), 'Rest 200 kcal · 20 g');
+            // Rest days 1, 3 and 5: (100 + 300 + 500) / 3 = 300 kcal,
+            // (10 + 30 + 50) / 3 = 30 g.
+            expect(_fuelText('fuel_split_rest'), 'Rest 300 kcal · 30 g');
           });
         });
       });
@@ -541,7 +575,22 @@ void main() {
 
             expect(_fuelSection, findsOneWidget);
             expect(_fuelText('fuel_logged_days'), '0/7 days logged');
-            expect(_fuelText('fuel_calories'), _kAbsent);
+            // Fewer than three logged days: the sentence instead of the
+            // figures (D-17205).
+            expect(
+              _fuelText('fuel_not_enough_days'),
+              'Log food on 3 days to see a weekly average',
+            );
+            expect(find.byKey(const Key('fuel_calories')), findsNothing);
+            expect(find.byKey(const Key('fuel_protein')), findsNothing);
+            expect(find.byKey(const Key('fuel_carbs')), findsNothing);
+            expect(find.byKey(const Key('fuel_fat')), findsNothing);
+            expect(find.byKey(const Key('fuel_calories_change')), findsNothing);
+            expect(find.byKey(const Key('fuel_protein_change')), findsNothing);
+            expect(find.byKey(const Key('fuel_carbs_change')), findsNothing);
+            expect(find.byKey(const Key('fuel_fat_change')), findsNothing);
+            expect(find.byKey(const Key('fuel_split_training')), findsNothing);
+            expect(find.byKey(const Key('fuel_split_rest')), findsNothing);
           });
         });
 
@@ -679,8 +728,9 @@ void main() {
           model = await readModel();
         });
 
-        testWidgets('the row renders with an empty window, every figure a '
-            'dash', (tester) async {
+        testWidgets('the row renders with an empty window and no figures', (
+          tester,
+        ) async {
           expect(model, isNotNull);
           expect(model.loggedDays, 0);
           expect(model.caloriesAverage, isNull);
@@ -692,12 +742,22 @@ void main() {
 
           expect(_fuelSection, findsOneWidget);
           expect(_fuelText('fuel_logged_days'), '0/7 days logged');
-          expect(_fuelText('fuel_calories'), _kAbsent);
-          expect(_fuelText('fuel_calories_change'), _kAbsent);
-          expect(_fuelText('fuel_protein'), _kAbsent);
-          expect(_fuelText('fuel_protein_change'), _kAbsent);
-          expect(_fuelText('fuel_split_training'), 'Training $_kAbsent');
-          expect(_fuelText('fuel_split_rest'), 'Rest $_kAbsent');
+          // Fewer than three logged days: the sentence instead of the
+          // figures (D-17205).
+          expect(
+            _fuelText('fuel_not_enough_days'),
+            'Log food on 3 days to see a weekly average',
+          );
+          expect(find.byKey(const Key('fuel_calories')), findsNothing);
+          expect(find.byKey(const Key('fuel_protein')), findsNothing);
+          expect(find.byKey(const Key('fuel_carbs')), findsNothing);
+          expect(find.byKey(const Key('fuel_fat')), findsNothing);
+          expect(find.byKey(const Key('fuel_calories_change')), findsNothing);
+          expect(find.byKey(const Key('fuel_protein_change')), findsNothing);
+          expect(find.byKey(const Key('fuel_carbs_change')), findsNothing);
+          expect(find.byKey(const Key('fuel_fat_change')), findsNothing);
+          expect(find.byKey(const Key('fuel_split_training')), findsNothing);
+          expect(find.byKey(const Key('fuel_split_rest')), findsNothing);
           expect(_fuelTexts(), isNot(contains('0 kcal')));
           expect(_fuelTexts(), isNot(contains('0 g')));
         });
@@ -759,16 +819,18 @@ void main() {
           });
 
           testWidgets('the Fuel header carries no chip and the chip-carrying '
-              'headers are the Mix layer and the Instruments list', (
+              'headers read · Last 4 weeks even with a period in force', (
             tester,
           ) async {
             await pumpStats(tester);
 
+            // The period no longer names the Stats window (99a): both chips
+            // read the four-week label with Block A in force.
             final chips = find.byKey(const Key('stats_window_chip'));
             expect(chips, findsNWidgets(2));
             expect(
               _textsUnder(chips),
-              everyElement('· Block A'),
+              everyElement('· Last 4 weeks'),
             );
             expect(
               tester
@@ -828,17 +890,6 @@ void main() {
       // ─── S-1259/S-1260/S-1261: narrow width, large text, the label ────────
 
       group('S-1259/S-1260/S-1261', () {
-        setUp(() async {
-          await seedSession(repo, sessionId: 's-fuel', daysAgo: 2);
-          await _seedDay(
-            repo,
-            id: 'food-today',
-            daysAgo: 0,
-            protein: 100,
-            calories: 2000,
-          );
-          await _seedTarget(repo, calories: 2000, protein: 100);
-        });
 
         /// Pumps the Stats screen at [size] dp with [scale] text, then brings
         /// the Fuel row into the viewport — the list builds its children
@@ -871,65 +922,141 @@ void main() {
           await tester.pumpAndSettle();
         }
 
-        testWidgets('renders at 320x568 dp without overflowing', (
-          tester,
-        ) async {
-          await pumpAt(tester, const Size(320, 568), 1.0);
+        group('a row with three logged days', () {
+          setUp(() async {
+            await seedSession(repo, sessionId: 's-fuel', daysAgo: 2);
+            // Three logged days inside the window (days 1..7 ago), so the row
+            // draws its figures (D-17204). Every day is 2000 kcal / 100 g
+            // protein, so each average is the day value itself.
+            await _seedDay(
+              repo,
+              id: 'food-1',
+              daysAgo: 1,
+              protein: 100,
+              calories: 2000,
+            );
+            await _seedDay(
+              repo,
+              id: 'food-2',
+              daysAgo: 2,
+              protein: 100,
+              calories: 2000,
+            );
+            await _seedDay(
+              repo,
+              id: 'food-3',
+              daysAgo: 3,
+              protein: 100,
+              calories: 2000,
+            );
+            await _seedTarget(repo, calories: 2000, protein: 100);
+          });
 
-          expect(tester.takeException(), isNull);
-          expect(_fuelSection, findsOneWidget);
-          expect(_fuelText('fuel_calories'), '2000 kcal');
-          expect(_fuelText('fuel_protein'), '100 g');
-          expect(_fuelText('fuel_logged_days'), '1/7 days logged');
-          expect(
-            find.byWidgetPredicate(
+          testWidgets('renders at 320x568 dp without overflowing', (
+            tester,
+          ) async {
+            await pumpAt(tester, const Size(320, 568), 1.0);
+
+            expect(tester.takeException(), isNull);
+            expect(_fuelSection, findsOneWidget);
+            expect(_fuelText('fuel_calories'), '2000 kcal');
+            expect(_fuelText('fuel_protein'), '100 g');
+            expect(_fuelText('fuel_logged_days'), '3/7 days logged');
+            expect(
+              find.byWidgetPredicate(
+                (w) =>
+                    w is Semantics && w.properties.label == 'Nutrition trend',
+              ),
+              findsOneWidget,
+            );
+          });
+
+          testWidgets('renders at 390x844 dp and 2.0 text scale without '
+              'overflowing', (tester) async {
+            await pumpAt(tester, const Size(390, 844), 2.0);
+
+            expect(tester.takeException(), isNull);
+            expect(_fuelSection, findsOneWidget);
+            expect(_fuelText('fuel_calories'), '2000 kcal');
+            expect(_fuelText('fuel_protein'), '100 g');
+            expect(
+              tester.getSize(find.byKey(const Key('fuel_row'))).height,
+              greaterThanOrEqualTo(44),
+              reason: 'the row must stay a tappable target at large text',
+            );
+          });
+
+          testWidgets('exposes its label and still opens the trend screen', (
+            tester,
+          ) async {
+            await pumpAt(tester, const Size(320, 568), 1.0);
+
+            final label = find.byWidgetPredicate(
               (w) => w is Semantics && w.properties.label == 'Nutrition trend',
-            ),
-            findsOneWidget,
-          );
+            );
+            expect(label, findsOneWidget);
+            expect(tester.widget<Semantics>(label).properties.button, isTrue);
+
+            await tester.tap(find.byKey(const Key('fuel_row')));
+            await tester.pumpAndSettle();
+
+            expect(find.byType(NutritionTrendScreen), findsOneWidget);
+          });
         });
 
-        testWidgets('renders at 390x844 dp and 2.0 text scale without '
-            'overflowing', (tester) async {
-          await pumpAt(tester, const Size(390, 844), 2.0);
+        group('a row with fewer than three logged days', () {
+          setUp(() async {
+            await seedSession(repo, sessionId: 's-fuel', daysAgo: 2);
+            // One logged day: the row draws the not-enough-days sentence
+            // instead of the figures (D-17205).
+            await _seedDay(
+              repo,
+              id: 'food-1',
+              daysAgo: 1,
+              protein: 100,
+              calories: 2000,
+            );
+          });
 
-          expect(tester.takeException(), isNull);
-          expect(_fuelSection, findsOneWidget);
-          expect(_fuelText('fuel_calories'), '2000 kcal');
-          expect(_fuelText('fuel_protein'), '100 g');
-          expect(
-            tester.getSize(find.byKey(const Key('fuel_row'))).height,
-            greaterThanOrEqualTo(44),
-            reason: 'the row must stay a tappable target at large text',
-          );
-        });
+          testWidgets('the sentence renders at 320x568 dp and 2.0 text scale '
+              'without overflowing', (tester) async {
+            await pumpAt(tester, const Size(320, 568), 2.0);
 
-        testWidgets('exposes its label and still opens the trend screen', (
-          tester,
-        ) async {
-          await pumpAt(tester, const Size(320, 568), 1.0);
+            expect(tester.takeException(), isNull);
+            expect(_fuelSection, findsOneWidget);
+            expect(
+              _fuelText('fuel_not_enough_days'),
+              'Log food on 3 days to see a weekly average',
+            );
+            expect(_fuelText('fuel_logged_days'), '1/7 days logged');
+            expect(find.byKey(const Key('fuel_calories')), findsNothing);
+          });
 
-          final label = find.byWidgetPredicate(
-            (w) => w is Semantics && w.properties.label == 'Nutrition trend',
-          );
-          expect(label, findsOneWidget);
-          expect(tester.widget<Semantics>(label).properties.button, isTrue);
+          testWidgets('the sentence renders at 390x844 dp and 2.0 text scale '
+              'without overflowing', (tester) async {
+            await pumpAt(tester, const Size(390, 844), 2.0);
 
-          await tester.tap(find.byKey(const Key('fuel_row')));
-          await tester.pumpAndSettle();
-
-          expect(find.byType(NutritionTrendScreen), findsOneWidget);
+            expect(tester.takeException(), isNull);
+            expect(_fuelSection, findsOneWidget);
+            expect(
+              _fuelText('fuel_not_enough_days'),
+              'Log food on 3 days to see a weekly average',
+            );
+            expect(_fuelText('fuel_logged_days'), '1/7 days logged');
+          });
         });
       });
 
       // ─── Fuel row — carbs and fat (plan 80): S-14040, S-14041 ─────────────
 
-      /// S-14040's fixture: two logged days whose carbs and fat the test
-      /// names outright. Day 1's food carries fibre 10 g beside carbs 50 g —
+      /// S-14040's fixture: three logged days whose carbs and fat the tests
+      /// name outright. Day 1's food carries fibre 10 g beside carbs 50 g —
       /// TOTAL carbs, so the day counts all 50 and the fibre is not
       /// subtracted (D-1). The `calories` arguments document each day's kcal
       /// (`4 × (protein + carbs) + 9 × fat`); with carbs explicit they are
-      /// not used to derive anything.
+      /// not used to derive anything. The third day carries carbs 60 g and
+      /// fat 35 g so the three-day means stay the figures the assertions
+      /// name: (50 + 70 + 60) / 3 = 60 and (40 + 30 + 35) / 3 = 35.
       Future<void> seedCarbFatDays() async {
         await seedSession(repo, sessionId: 's-fuel', daysAgo: 3);
         await _seedDay(
@@ -951,6 +1078,15 @@ void main() {
           carbs: 70,
           fat: 30,
         );
+        await _seedDay(
+          repo,
+          id: 'food-c3',
+          daysAgo: 3,
+          protein: 50,
+          calories: 755,
+          carbs: 60,
+          fat: 35,
+        );
       }
 
       group('Fuel row — carbs and fat (plan 80)', () {
@@ -970,10 +1106,10 @@ void main() {
           testWidgets('the averages are means of TOTAL carbs and fat over '
               'the logged days, against the saved targets', (tester) async {
             // Day 1 counts all 50 g of carbs (fibre 10 g included, D-1);
-            // day 2 carries 70 g. Mean over the two logged days:
-            // (50 + 70) / 2 = 60.
+            // days 2 and 3 carry 70 g and 60 g. Mean over the three logged
+            // days: (50 + 70 + 60) / 3 = 60.
             expect(model.carbsAverage, closeTo(60, 0.001));
-            // Fat: (40 + 30) / 2 = 35.
+            // Fat: (40 + 30 + 35) / 3 = 35.
             expect(model.fatAverage, closeTo(35, 0.001));
             expect(model.targetCarbs, 250);
             expect(model.targetFat, 70);
@@ -1023,10 +1159,10 @@ void main() {
                 'against their targets', (tester) async {
               await pumpStats(tester);
 
-              // (50 + 70) / 2 = 60.
+              // (50 + 70 + 60) / 3 = 60.
               expect(_fuelText('fuel_carbs'), '60 g');
               expect(_fuelText('fuel_carbs_target'), 'of 250 g target');
-              // (40 + 30) / 2 = 35.
+              // (40 + 30 + 35) / 3 = 35.
               expect(_fuelText('fuel_fat'), '35 g');
               expect(_fuelText('fuel_fat_target'), 'of 70 g target');
             });
@@ -1035,13 +1171,32 @@ void main() {
           group('with no carbs or fat target', () {
             setUp(() async {
               await seedSession(repo, sessionId: 's-fuel', daysAgo: 2);
-              // Window: carbs 100 g, fat 40 g. Previous window: carbs 50 g,
-              // fat 20 g — so a comparison against the previous window reads
-              // differently from a dash.
+              // Three logged days in the window, each carbs 100 g / fat 40 g,
+              // so the window means stay 100 g and 40 g. Previous window:
+              // carbs 50 g, fat 20 g — so a comparison against the previous
+              // window reads differently from a dash.
               await _seedDay(
                 repo,
                 id: 'food-w1',
                 daysAgo: 1,
+                protein: 100,
+                calories: 2000,
+                carbs: 100,
+                fat: 40,
+              );
+              await _seedDay(
+                repo,
+                id: 'food-w2',
+                daysAgo: 2,
+                protein: 100,
+                calories: 2000,
+                carbs: 100,
+                fat: 40,
+              );
+              await _seedDay(
+                repo,
+                id: 'food-w3',
+                daysAgo: 3,
                 protein: 100,
                 calories: 2000,
                 carbs: 100,

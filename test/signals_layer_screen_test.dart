@@ -387,7 +387,7 @@ Future<void> _seedFood(
 }
 
 /// Fixture U (gate unmet): three completed unrated sessions, no period, so
-/// `ratedBaselineWeeks` is below `kTrainingLoadMinRatedWeeks` and the layer must
+/// `ratedWeeks` is below `kTrainingLoadMinRatedWeeks` and the layer must
 /// not exist — the locked section takes its slot instead (S-1702, D-4001). The
 /// Instruments list and the Fuel row are seeded anyway, so their presence is
 /// asserted on the same load.
@@ -403,8 +403,9 @@ Future<void> _seedGateUnmet(WorkoutRepository repo) async {
 
 /// Fixture U's window with three rated baseline weeks (S-4013): one unrated
 /// session per day inside the window, so the Mix layer exists, and three rated
-/// baseline sessions 30, 50 and 70 days back — three of the twelve 7-day blocks
-/// `baselineBlockStarts` tiles, so `ratedBaselineWeeks == 3` and the gate is
+/// baseline sessions 30, 50 and 70 days back — three of the twelve 7-day
+/// blocks `ratedWeekBlockStarts` (anchored at today) tiles, so
+/// `ratedWeeks == 3` and the gate is
 /// unmet while the layer's slot is occupied.
 Future<void> _seedGateUnmetThreeRatedWeeks(WorkoutRepository repo) async {
   await _seedPeriod(repo, name: 'Test Block', daysAgo: 10);

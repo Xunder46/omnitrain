@@ -356,9 +356,13 @@ names) — or `null` when the window holds no time at all. It is the only histor
 those figures: the window, the baseline and the strip are all served from the
 one cached snapshot, so the surface pays for no extra repository read.
 
-- **The measure is load only when the baseline is rated enough and the window is
-  rated enough**; otherwise it is time. The baseline's segments are built in the
-  load measure only, and only when the baseline's total load is above zero.
+- **The measure is load only when the window has at least
+  `kTrainingLoadMinRatedWeeks` rated weeks and its unrated share of time is at
+  most `kTrainingLoadMaxUnratedShare`**; otherwise it is time. `ratedWeeks`
+  counts the 12 seven-day weeks ending at the payload's end day, current ones
+  included, that hold a rated completed session; the baseline's ratedness gates
+  nothing. The baseline's segments are built in the load measure only, and only
+  when the baseline's total load is above zero.
 - **The baseline is the 12 calendar blocks before the window's start day** and
   never uses the start-of-week setting; that setting moves the strip's weeks and
   nothing else. The blocks are calendar arithmetic, so a DST transition cannot
@@ -378,7 +382,8 @@ documented in [Training Load & Mix Definitions](../training_load.md).
 Verified by `test/mix_layer_service_test.dart` (S-1501, S-1502, S-1503, S-1505,
 S-1509, S-1510 A–E, S-1511 and its start-of-week twin, S-1513 and its
 Sunday-start twin, S-1514, S-1515, S-1516, S-1517, and the Mock/Hive
-value-for-value parity group).
+value-for-value parity group) and by `test/stats_rated_weeks_service_test.dart`
+(`S-17101 rated sessions in four different current weeks count 4`).
 
 `computeMixPeriod({required DateTime fromMs, required DateTime toMs})` returns
 the same payload shape for an arbitrary period rather than a `StatsWindow`, and
@@ -391,11 +396,16 @@ period is not anchored to a week.
   the `kTrainingLoadBaselineWeeks` calendar blocks before the period's start
   day, exactly as the window's is. The two reads therefore agree about the
   measure, the bar and the baseline for the same range.
-- **The measure gate is the same one** — load only when the baseline is rated
-  enough and the period is rated enough, otherwise time.
+- **The measure gate is the same one** — load only when the period has at least
+  `kTrainingLoadMinRatedWeeks` rated weeks and its unrated share of time is at
+  most `kTrainingLoadMaxUnratedShare`, otherwise time. The rated weeks are the
+  12 seven-day weeks ending at the period's end day, current ones included, that
+  hold a rated completed session; the baseline's ratedness gates nothing.
 
 Verified by `test/modality_mix_period_service_test.dart` (S-1904a, S-1907,
-S-1913, over both repository implementations).
+S-1913, over both repository implementations) and by
+`test/stats_rated_weeks_service_test.dart` (`S-17105 the period counts weeks
+anchored at its own end day`).
 
 `startOfWeekSetting()` is the saved start-of-week preference, normalized the way
 `SettingsState` normalizes it when it writes, so the weeks the service returns

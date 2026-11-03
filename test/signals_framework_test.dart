@@ -30,13 +30,13 @@ SignalCard _positive(String id, int priority) =>
 SignalCard _caution(String id, int priority) =>
     _card(id, SignalKind.caution, priority);
 
-MixLayerData _mix({required int ratedBaselineWeeks, MixMeasure? measure}) =>
+MixLayerData _mix({required int ratedWeeks, MixMeasure? measure}) =>
     MixLayerData(
       measure: measure ?? MixMeasure.time,
       segments: const [],
       baselineSegments: const [],
       unratedSessionCount: 0,
-      ratedBaselineWeeks: ratedBaselineWeeks,
+      ratedWeeks: ratedWeeks,
       weeks: const [],
     );
 
@@ -52,7 +52,7 @@ void main() {
     test('signalsGateMet is false one rated week below the minimum', () {
       expect(
         signalsGateMet(
-          _mix(ratedBaselineWeeks: kTrainingLoadMinRatedWeeks - 1),
+          _mix(ratedWeeks: kTrainingLoadMinRatedWeeks - 1),
         ),
         isFalse,
       );
@@ -60,7 +60,7 @@ void main() {
 
     test('signalsGateMet is true at the minimum rated weeks', () {
       expect(
-        signalsGateMet(_mix(ratedBaselineWeeks: kTrainingLoadMinRatedWeeks)),
+        signalsGateMet(_mix(ratedWeeks: kTrainingLoadMinRatedWeeks)),
         isTrue,
       );
     });
@@ -69,7 +69,7 @@ void main() {
       expect(
         signalsGateMet(
           _mix(
-            ratedBaselineWeeks: kTrainingLoadMinRatedWeeks,
+            ratedWeeks: kTrainingLoadMinRatedWeeks,
             measure: MixMeasure.time,
           ),
         ),

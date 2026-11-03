@@ -1,6 +1,9 @@
 /// The Fuel section's figures, as `StatsProgressService.computeFuelSummary()`
 /// produces them.
 ///
+/// The window is the `StatsProgressService.kFuelWindowDays` finished days
+/// ending yesterday; today is in neither the window nor the previous range.
+///
 /// Every average is a mean over **logged days only** — a day with at least one
 /// `ConsumedFood` row — so a week with three logged days divides by three, not
 /// by the length of the window. An average whose day-set is empty is `null`
@@ -9,6 +12,9 @@
 ///
 /// Plain Dart: this is a value type, not a persisted record.
 library;
+
+/// Logged days the Fuel row needs before it shows averages.
+const int kFuelMinLoggedDays = 3;
 
 class FuelSummary {
   /// Days in the window with at least one `ConsumedFood` row.
@@ -106,4 +112,9 @@ class FuelSummary {
 
   /// Whether fat carries a target to compare against.
   bool get hasFatTarget => targetFat > 0;
+
+  /// Whether the window holds enough logged days for its averages to be shown.
+  /// Below [kFuelMinLoggedDays] the row says so in words instead (D-17204); the
+  /// figures are still carried so the model stays complete.
+  bool get showsAverages => loggedDays >= kFuelMinLoggedDays;
 }

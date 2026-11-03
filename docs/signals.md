@@ -41,17 +41,21 @@ by `test/signals_framework_test.dart` (`D-1001 / D-1002 the kind vocabulary`).
 ## The gate
 
 Signals are evaluated only when `signalsGateMet(mix)` is true, which reads the
-load's rated-baseline weeks and `kTrainingLoadMinRatedWeeks` only — it does not
+load's rated weeks — how many of the last 12 seven-day weeks, current ones
+included, hold at least one completed session with a rating — and
+`kTrainingLoadMinRatedWeeks` only — it does not
 additionally require a load measure. When the gate is unmet the service
-evaluates no signal at all and returns no candidates, so a user without a rated
-baseline pays nothing for the framework; the Stats screen shows the locked
+evaluates no signal at all and returns no candidates, so a user without enough
+rated weeks pays nothing for the framework; the Stats screen shows the locked
 Signals line in the layer's slot instead, reading
 `Unlocks after 4 weeks of rating your workouts — N of 4 so far.` from the
 payload's rated weeks alone. Verified by
 `test/signals_framework_test.dart` (`D-1006 the quiet-line gate`),
 `test/signals_service_test.dart` (`S-1702 an unmet gate returns nothing and
-evaluates nothing`) and `test/signals_layer_screen_test.dart` (`S-4001`,
-`S-4002`, `S-4013`).
+evaluates nothing`), `test/signals_layer_screen_test.dart` (`S-4001`,
+`S-4002`, `S-4013`) and, for the count's rule,
+`test/stats_rated_weeks_service_test.dart` (`S-17106 ratedWeekBlockStarts
+tiles the 12 weeks at local midnight`).
 
 ## Selection and the card cap
 
@@ -324,11 +328,15 @@ has fallen to less than half its usual share.
   overlap. The signal defines no second baseline. Verified by
   `test/modality_mix_period_service_test.dart` (`S-1913`).
 - **The measure gate.** The signal shows only when the period's own payload
-  measures load: `ratedBaselineWeeks >= kTrainingLoadMinRatedWeeks` and the
-  unrated time share at or below `kTrainingLoadMaxUnratedShare`, read exactly as
+  measures load: `ratedWeeks >= kTrainingLoadMinRatedWeeks` — the last 12
+  seven-day weeks up to the period's end day, current one included, that hold
+  a rated session — and the unrated time share at or below
+  `kTrainingLoadMaxUnratedShare`, read exactly as
   the Mix layer reads them. Otherwise it abstains. Verified by
   `test/modality_mix_period_service_test.dart` (`S-1904a`) and
-  `test/modality_mix_shift_signal_screen_test.dart` (`S-1904b`).
+  `test/modality_mix_shift_signal_screen_test.dart` (`S-1904b`), the count
+  itself by `test/stats_rated_weeks_service_test.dart` (`S-17105 the period
+  counts weeks anchored at its own end day`).
 - **Regularly trained.** A modality is regularly trained when its baseline share
   is at least `kModalityMixShiftMinBaselineShare`, inclusive; a modality absent
   from the baseline bar is not. Verified by `test/modality_mix_shift_test.dart`

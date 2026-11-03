@@ -6,13 +6,14 @@
 // supplies: the layer renders and computes nothing, so a fixture only has to
 // give the service sessions, ratings and a window.
 //
-// The window is the fixture's hidden variable. `resolveWindow` prefers a
-// training period covering today that holds at least one session, and falls
-// back to the 14 most recent distinct training days. A fixture that needs
-// rated baseline sessions *outside* the window therefore scopes the window
-// with a period: with only a handful of distinct training days the recency
-// fallback would swallow those sessions, and the weeks they rate would land
-// inside the window instead of in the baseline.
+// The window is the fixture's hidden variable. The screen always describes
+// the 28 calendar days ending today (`StatsProgressService.statsWindow`): a
+// period no longer scopes it and no recency fallback names it. A fixture that
+// needs rated sessions *outside* the window therefore puts them 29 or more
+// days back. The rated weeks are the 12 seven-day blocks ending at the
+// window's end day — today — so sessions up to 83 days back rate the count,
+// current weeks included (D-17104); the usual bar's baseline is still the 12
+// seven-day blocks before the window's first day.
 //
 // The harness is opened and seeded in `setUp` and never inside a `testWidgets`
 // body: a widget test body runs under `FakeAsync`, where Hive's real file I/O
@@ -434,8 +435,9 @@ Future<void> _seedSportsEffort(
 
 /// A training period from [daysAgo] to the end of today, named [name].
 ///
-/// `resolveWindow` prefers it over the recency fallback, which is how every
-/// baseline fixture keeps its rated sessions outside the window.
+/// The screen's window no longer reads periods (`statsWindow`), so a period
+/// here is inert for the layer and the list; the fixtures keep one so the
+/// chip assertions prove the window is not named after it.
 Future<void> _seedPeriod(
   WorkoutRepository repo, {
   required String name,
@@ -465,9 +467,10 @@ Future<void> _seedPeriod(
   );
 }
 
-/// Rated baseline sessions [daysAgo] days back from the window's start day,
-/// each [minutes] long and rated [rating] — the weeks the load measure needs
-/// before it is shown (D-908, D-934).
+/// Rated sessions [daysAgo] + [offset] days back, each [minutes] long and
+/// rated [rating] — behind the window, so they fill the usual bar's baseline
+/// blocks, and within 83 days of today they also count as rated weeks
+/// (D-908, D-934, D-17104).
 Future<void> _seedRatedBaseline(
   WorkoutRepository repo, {
   required int fromDay,
@@ -538,8 +541,7 @@ Future<void> _seedFood(
 /// unrated 75-minute session on day 3 — a lifting set effort and a 15-minute
 /// timed warm-up, so the window reads 80% resistance, 20% cardio by time.
 ///
-/// No baseline session at all: the recency window is the single day, and
-/// nothing can rate a baseline week.
+/// No baseline session at all, and nothing rates any week.
 Future<void> _seedTimeWindow(WorkoutRepository repo) async {
   final start = _at(3, 9);
   await _seedSession(
@@ -552,12 +554,17 @@ Future<void> _seedTimeWindow(WorkoutRepository repo) async {
   await _seedCardioEffort(repo, sessionId: 's-time', seconds: 900);
 }
 
-/// FX-BASELINE3 (S-1605, S-1607-A's twin): a period-scoped window holding
-/// FX-TIME's unrated session, with 3 rated weeks of baseline behind it — time
-/// measure, the note, no usual bar.
+/// FX-BASELINE3 (S-1605, S-1607-A's twin): the 28-day window holding
+/// FX-TIME's unrated session, with 3 rated weeks behind it — time measure, the
+/// note, no usual bar.
+///
+/// The offsets put the rated sessions 80, 60 and 40 days back: rated blocks
+/// `11 − ⌊d / 7⌋` = 0, 3 and 6 — three distinct blocks of the 12 ending today,
+/// so the note reads 3 of 4 (D-17104). The old offsets put them 90, 70 and 50
+/// days back, and 90 is outside the 12 blocks, which left only 2 weeks.
 Future<void> _seedThreeRatedWeeks(WorkoutRepository repo) async {
   await _seedPeriod(repo, name: 'Test Block', daysAgo: 10);
-  await _seedRatedBaseline(repo, fromDay: 10, offsets: const [80, 60, 40]);
+  await _seedRatedBaseline(repo, fromDay: 10, offsets: const [70, 50, 30]);
   final start = _at(3, 9);
   await _seedSession(
     repo,
@@ -569,7 +576,7 @@ Future<void> _seedThreeRatedWeeks(WorkoutRepository repo) async {
   await _seedCardioEffort(repo, sessionId: 's-time', seconds: 900);
 }
 
-/// FX-LOAD (S-1601, S-1603, S-1606, S-1607-C, S-1612, S-1616): a period-scoped
+/// FX-LOAD (S-1601, S-1603, S-1606, S-1607-C, S-1612, S-1616): the 28-day
 /// window holding one rated 60-minute lifting session, 4 rated weeks of
 /// baseline, and two logged food days so the Fuel row is below the layer.
 Future<void> _seedLoadReady(WorkoutRepository repo) async {
@@ -641,8 +648,8 @@ Future<void> _seedRatedStrip(WorkoutRepository repo) async {
 }
 
 /// S-1613's fixture: a period holding three sessions — two lifting, one cardio
-/// — and an isometric session before the period that the recency fallback would
-/// have picked up.
+/// — and an isometric session 30 days back, outside the 28-day window the
+/// screen always reads.
 Future<void> _seedPeriodWindow(WorkoutRepository repo) async {
   await _seedPeriod(repo, name: 'Test Block', daysAgo: 10);
   await _seedLifting(repo, sessionId: 's-p1', daysAgo: 2);
@@ -657,7 +664,7 @@ Future<void> _seedPeriodWindow(WorkoutRepository repo) async {
   );
   await _seedCardioEffort(repo, sessionId: 's-p3', seconds: 3600);
 
-  final outsideStart = _at(12, 9);
+  final outsideStart = _at(30, 9);
   await _seedSession(
     repo,
     sessionId: 's-outside',
@@ -697,7 +704,7 @@ Future<void> _seedRollingSets(WorkoutRepository repo) async {
   await _seedSetEffort(repo, sessionId: 's-rolling');
 }
 
-/// S-1615's fixture: the densest layer the screen can draw — a period-scoped
+/// S-1615's fixture: the densest layer the screen can draw — the 28-day
 /// window holding a rated session with all four modalities, a rated baseline
 /// behind it (so the measure is load and the usual bar renders), and an
 /// unrated session in the window (so the unrated line renders too).
@@ -722,16 +729,13 @@ Future<void> _seedDensest(WorkoutRepository repo) async {
 }
 
 /// S-4006's fixture: the screenshot's shape — two completed sessions two months
-/// back and nothing inside the strip's eight weeks, so every column is empty
-/// while the window (the recency fallback over those two days) still holds
-/// time and the bar renders.
+/// back and nothing inside the window's 28 days, so the window is empty and
+/// the card is the one-line empty-window card.
 ///
 /// The offsets are constants, not `now`-derived: the strip's oldest week
 /// starts between 49 and 55 days back (49 + up to 6 days into the week, either
 /// start-of-week convention), so anything 57 or more days back is outside the
-/// strip on every run day. A smaller "55 days back" is not: on a Sunday it
-/// lands exactly on the oldest week's first day, and the empty strip's guard
-/// refuses a line that names a session inside the span.
+/// strip on every run day — and outside the 28-day window on every run day.
 Future<void> _seedStriplessHistory(WorkoutRepository repo) async {
   await _seedLifting(repo, sessionId: 's-old-a', daysAgo: 60);
   await _seedLifting(repo, sessionId: 's-old-b', daysAgo: 57);
@@ -739,7 +743,7 @@ Future<void> _seedStriplessHistory(WorkoutRepository repo) async {
 
 /// S-4015's fixture: `_seedStriplessHistory` plus an unfinished session today.
 ///
-/// The period cannot qualify the window — it holds no completed session — and
+/// Nothing qualifies the window — the period no longer plays any part — and
 /// the unfinished one is excluded from every payload (D-911), so it must name
 /// neither the empty line nor `lastSessionDay`.
 Future<void> _seedStriplessHistoryWithUnfinished(
@@ -932,7 +936,7 @@ void main() {
           expect(titleTop, lessThan(stripTop));
           expect(titleTop, greaterThan(barTop));
 
-          expect(_chipTexts(), ['· Test Block', '· Test Block']);
+          expect(_chipTexts(), ['· Last 4 weeks', '· Last 4 weeks']);
           expect(tester.takeException(), isNull);
         });
       });
@@ -1438,12 +1442,19 @@ void main() {
       group('S-4006 eight empty weeks render one line, not a strip', () {
         setUp(() => _seedStriplessHistory(repo));
 
-        testWidgets('no columns, no title, no caption, and the line names the '
-            'last session', (tester) async {
+        testWidgets('no bar, no legend, no strip — the card is the '
+            'empty-window line naming the last session', (tester) async {
           await pumpStats(tester);
 
-          // The explainer above the bar is the layer's one measure sentence.
-          expect(find.byKey(const Key('mix_explainer')), findsOneWidget);
+          // The window holds no session, so the card is the one-line
+          // empty-window card: header and chip, then the line — no explainer,
+          // no bar, no legend, no strip.
+          expect(find.byKey(const Key('mix_window_empty')), findsOneWidget);
+          expect(find.text('TRAINING MIX'), findsOneWidget);
+          expect(_chipTexts(), ['· Last 4 weeks']);
+          expect(find.byKey(const Key('mix_explainer')), findsNothing);
+          expect(find.byKey(const Key('mix_bar')), findsNothing);
+          expect(find.byKey(const Key('mix_legend')), findsNothing);
           expect(find.byKey(const Key('mix_strip_title')), findsNothing);
           expect(_stripKeys(), isEmpty);
           expect(find.byKey(const Key('mix_strip_start_label')), findsNothing);
@@ -1451,21 +1462,113 @@ void main() {
 
           final lastSessionDay = _day(57);
           expect(
-            _textOf(tester, const Key('mix_strip_empty')),
-            'No training in the last $kMixStripWeeks weeks. '
+            _textOf(tester, const Key('mix_window_empty')),
+            'No training in the last 4 weeks. '
             'Last session: ${OmniDateUtils.formatShort(lastSessionDay)}.',
           );
           expect(
-            _textColorOf(tester, const Key('mix_strip_empty')),
+            _textColorOf(tester, const Key('mix_window_empty')),
             OmniTheme.colorsForTheme(settingsState.appTheme).textMuted,
           );
-
-          // The window holds the two months-old sessions, so everything above
-          // the strip renders as it does for any other window.
-          expect(find.byKey(const Key('mix_bar_segment_0')), findsOneWidget);
-          expect(_legendSections(), ['Resistance']);
           expect(tester.takeException(), isNull);
         });
+
+      // The empty-strip line itself (`mix_strip_empty`, D-4004) is no longer
+      // reachable from the screen — the fixed 28-day window puts every window
+      // session inside the strip's span — but the widget is generic over its
+      // payload, so these pump `MixLayerSection` directly with hand-built
+      // all-empty weeks (the S-4021 pump pattern).
+      Future<void> pumpEmptyStrip(
+        WidgetTester tester, {
+        required DateTime? lastSessionDay,
+      }) async {
+        await tester.binding.setSurfaceSize(_kTallViewport);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final currentWeekStart = DateTime(2026, 4, 20);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MixLayerSection(
+                layer: MixLayerData(
+                  measure: MixMeasure.time,
+                  segments: const [],
+                  baselineSegments: const [],
+                  unratedSessionCount: 0,
+                  ratedWeeks: 0,
+                  weeks: [
+                    for (var i = 0; i < kMixStripWeeks; i++)
+                      MixWeek(
+                        weekStart: DateTime(
+                          currentWeekStart.year,
+                          currentWeekStart.month,
+                          currentWeekStart.day -
+                              (kMixStripWeeks - 1 - i) * 7,
+                        ),
+                        segments: const [],
+                        measure: 0,
+                        inProgress: i == kMixStripWeeks - 1,
+                      ),
+                  ],
+                  lastSessionDay: lastSessionDay,
+                  windowIsEmpty: false,
+                ),
+                window: StatsWindow(
+                  fromMs: DateTime(2026, 4, 1),
+                  toMs: DateTime(2026, 4, 30),
+                  label: 'Test window',
+                  isPeriodScoped: false,
+                ),
+                themeColors: OmniTheme.colorsForTheme(
+                  settingsState.appTheme,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('an all-empty strip whose last session predates the span '
+          'renders the empty-strip line', (tester) async {
+        // The oldest week starts 49 days before the current week, so this day
+        // is before the span: the line may name it.
+        await pumpEmptyStrip(tester, lastSessionDay: DateTime(2026, 3, 1));
+
+        expect(find.byKey(const Key('mix_strip_empty')), findsOneWidget);
+        expect(
+          _textOf(tester, const Key('mix_strip_empty')),
+          'No training in the last $kMixStripWeeks weeks. '
+          'Last session: ${OmniDateUtils.formatShort(DateTime(2026, 3, 1))}.',
+        );
+        expect(find.byKey(const Key('mix_strip_title')), findsNothing);
+        expect(find.byKey(const Key('mix_bar_segment_0')), findsNothing);
+        expect(find.byKey(const Key('mix_strip_start_label')), findsNothing);
+        expect(find.byKey(const Key('mix_strip_current_label')), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('an all-empty strip with no session at all renders the '
+          'line without a last-session date', (tester) async {
+        await pumpEmptyStrip(tester, lastSessionDay: null);
+
+        expect(find.byKey(const Key('mix_strip_empty')), findsOneWidget);
+        expect(
+          _textOf(tester, const Key('mix_strip_empty')),
+          'No training in the last $kMixStripWeeks weeks.',
+        );
+        expect(find.byKey(const Key('mix_strip_title')), findsNothing);
+        expect(find.byKey(const Key('mix_bar_segment_0')), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('the twin: a last session inside the span keeps the strip '
+          'and the empty-strip line stays out', (tester) async {
+        await pumpEmptyStrip(tester, lastSessionDay: DateTime(2026, 4, 20));
+
+        expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
+        expect(find.byKey(const Key('mix_strip_title')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
       });
 
       group('S-4007 only the current week has training', () {
@@ -1491,13 +1594,17 @@ void main() {
         });
       });
 
-      group('S-4008 only the oldest of the eight weeks has training', () {
-        setUp(
-          () => _seedLifting(repo, sessionId: 's-oldest', daysAgo: 49, hour: 0),
-        );
+      group('S-4008 the oldest of the eight weeks has training', () {
+        setUp(() async {
+          await _seedLifting(repo, sessionId: 's-oldest', daysAgo: 49, hour: 0);
+          // The strip renders only when the window itself holds a session, so
+          // the fixture adds one in the current week; the oldest column stays
+          // the 49-days-back one.
+          await _seedLifting(repo, sessionId: 's-window', daysAgo: 0, hour: 0);
+        });
 
-        testWidgets('the strip renders with that one column and no line',
-            (tester) async {
+        testWidgets('the strip renders, the oldest column holds its work, and '
+            'no line renders', (tester) async {
           await pumpStats(tester);
 
           expect(
@@ -1507,12 +1614,15 @@ void main() {
           );
           expect(find.byKey(const Key('mix_strip_title')), findsOneWidget);
           expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
+          expect(find.byKey(const Key('mix_window_empty')), findsNothing);
           expect(_stackIndices(0), [0]);
           expect(
             _textOf(tester, const Key('mix_strip_start_label')),
             '${kMixStripWeeks - 1} weeks ago',
           );
+          final currentWeek = _weekIndexOf(_day(0), settingsState.startOfWeek);
           for (var i = 1; i < kMixStripWeeks; i++) {
+            if (i == currentWeek) continue;
             expect(_stackIndices(i), isEmpty, reason: 'column $i');
           }
           expect(tester.takeException(), isNull);
@@ -1529,33 +1639,27 @@ void main() {
 
           final lastSessionDay = _day(57);
           final oldestDay = _day(60);
-          final line = _textOf(tester, const Key('mix_strip_empty'));
+          final line = _textOf(tester, const Key('mix_window_empty'));
           expect(
             line,
-            'No training in the last $kMixStripWeeks weeks. '
+            'No training in the last 4 weeks. '
             'Last session: ${OmniDateUtils.formatShort(lastSessionDay)}.',
           );
           expect(line, isNot(contains(OmniDateUtils.formatShort(oldestDay))));
           expect(line, isNot(contains(OmniDateUtils.formatShort(_day(0)))));
 
-          // Everything D-4004 leaves alone still renders.
-          expect(find.byKey(const Key('mix_bar_segment_0')), findsOneWidget);
-          expect(_legendSections(), ['Resistance']);
-          expect(find.byKey(const Key('mix_explainer')), findsOneWidget);
-          expect(find.byKey(const Key('mix_strip_title')), findsNothing);
+          // Everything the empty-window card leaves alone still renders: the
+          // header and its chip, and nothing of the bar or the strip.
+          expect(find.text('TRAINING MIX'), findsOneWidget);
+          expect(_chipTexts(), ['· Last 4 weeks']);
+          expect(find.byKey(const Key('mix_bar')), findsNothing);
+          expect(_stripKeys(), isEmpty);
           expect(tester.takeException(), isNull);
         });
 
         test('the service’s own payload carries that day and not today',
             () async {
-          final sessions = await repo.getAllSessions();
-          final window = StatsProgressService.resolveWindow(
-            periods: await repo.getPeriods(),
-            completedSessions: [
-              for (final session in sessions)
-                if (session.endedAtMs != null) session,
-            ],
-          );
+          final window = StatsProgressService.statsWindow(now: DateTime.now());
           expect(window.isPeriodScoped, isFalse);
 
           final layer = await StatsProgressService(repo).computeMixLayer(
@@ -1564,13 +1668,9 @@ void main() {
             startOfWeek: settingsState.startOfWeek,
           );
           expect(layer, isNotNull);
-          expect(layer!.lastSessionDay, localMidnightDay(_day(57)));
-          expect(layer.weeks, hasLength(kMixStripWeeks));
-          expect(
-            layer.weeks.every((week) => week.measure <= 0),
-            isTrue,
-            reason: 'the fixture must leave all eight weeks empty',
-          );
+          expect(layer!.windowIsEmpty, isTrue);
+          expect(layer.lastSessionDay, localMidnightDay(_day(57)));
+          expect(layer.weeks, isEmpty);
         });
       });
 
@@ -1592,7 +1692,7 @@ void main() {
                     segments: [],
                     baselineSegments: [],
                     unratedSessionCount: 0,
-                    ratedBaselineWeeks: 0,
+                    ratedWeeks: 0,
                     weeks: [],
                   ),
                   window: StatsWindow(
@@ -1657,7 +1757,7 @@ void main() {
                     segments: const [],
                     baselineSegments: const [],
                     unratedSessionCount: 0,
-                    ratedBaselineWeeks: 0,
+                    ratedWeeks: 0,
                     weeks: weeks,
                     lastSessionDay: currentWeekStart,
                   ),
@@ -1774,7 +1874,7 @@ void main() {
             find.byKey(const Key('stats_window_chip')),
             findsNWidgets(2),
           );
-          expect(_chipTexts(), ['· Test Block', '· Test Block']);
+          expect(_chipTexts(), ['· Last 4 weeks', '· Last 4 weeks']);
           expect(
             find.descendant(
               of: find.byKey(const Key('mix_layer')),
@@ -1798,12 +1898,11 @@ void main() {
       group('S-1613 the layer reads the same window as the list', () {
         setUp(() => _seedPeriodWindow(repo));
 
-        testWidgets('the bar describes the period, and the chip names it', (
-          tester,
-        ) async {
+        testWidgets('the bar describes the 28 days, and the chip reads Last '
+            '4 weeks — the period names nothing', (tester) async {
           await pumpStats(tester);
 
-          expect(_chipTexts(), ['· Test Block', '· Test Block']);
+          expect(_chipTexts(), ['· Last 4 weeks', '· Last 4 weeks']);
           expect(_textsUnder(find.byKey(const Key('mix_legend'))), [
             'Resistance 67%',
             'Cardio 33%',
@@ -1970,7 +2069,7 @@ void main() {
           expect(_textsUnder(find.byKey(const Key('mix_legend'))), [
             'Resistance 100%',
           ]);
-          expect(_chipTexts(), ['· Test Block', '· Test Block']);
+          expect(_chipTexts(), ['· Last 4 weeks', '· Last 4 weeks']);
           expect(tester.takeException(), isNull);
         });
       });
@@ -2311,7 +2410,7 @@ void main() {
               ],
               baselineSegments: [],
               unratedSessionCount: 0,
-              ratedBaselineWeeks: kTrainingLoadMinRatedWeeks,
+              ratedWeeks: kTrainingLoadMinRatedWeeks,
               weeks: [],
             ),
           );
@@ -2474,7 +2573,7 @@ void main() {
                 ],
                 baselineSegments: const [],
                 unratedSessionCount: entry.key,
-                ratedBaselineWeeks: kTrainingLoadMinRatedWeeks,
+                ratedWeeks: kTrainingLoadMinRatedWeeks,
                 weeks: const [],
               ),
             );
@@ -2570,10 +2669,15 @@ void main() {
       group('S-3206 the twin: an all-empty strip keeps its one line', () {
         setUp(() => _seedStriplessHistory(repo));
 
-        testWidgets('no title, caption or stub anywhere', (tester) async {
+        testWidgets('the one line is the empty-window card, and no strip '
+            'renders', (tester) async {
           await pumpStats(tester);
 
-          expect(find.byKey(const Key('mix_strip_empty')), findsOneWidget);
+          // The strip's eight weeks are all empty and the window holds no
+          // session, so the card's one line is the empty-window line — the
+          // strip's own empty line never renders.
+          expect(find.byKey(const Key('mix_window_empty')), findsOneWidget);
+          expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
           expect(find.byKey(const Key('mix_strip_title')), findsNothing);
           expect(find.byKey(const Key('mix_strip_start_label')), findsNothing);
           expect(find.byKey(const Key('mix_strip_current_label')), findsNothing);
@@ -2626,7 +2730,7 @@ void main() {
               ),
             ],
             unratedSessionCount: 3,
-            ratedBaselineWeeks: kTrainingLoadMinRatedWeeks - 1,
+            ratedWeeks: kTrainingLoadMinRatedWeeks - 1,
             weeks: [
               for (var i = 0; i < kMixStripWeeks; i++)
                 MixWeek(

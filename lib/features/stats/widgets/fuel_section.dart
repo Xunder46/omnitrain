@@ -19,19 +19,19 @@ const String kFuelRestLabel = 'Rest';
 /// reads this rather than `'0 kcal'` / `'0 g'`.
 const String kFuelAbsent = '—';
 
-/// The Fuel row: intake averaged over logged days, split by training and rest
-/// days, against the day's target — and the entry point to the full-history
-/// nutrition trend.
+/// The Fuel row: intake averaged over the 7 finished days ending yesterday,
+/// split by training and rest days, against the day's target — and the entry
+/// point to the full-history nutrition trend.
 ///
 /// The averages are means over **logged** days only, so a week with three
 /// logged days is a three-day mean; the row states how many days it averaged
-/// so that figure is never read as a whole week. Every average is compared
-/// with the day's target where one is set, and with the previous window
-/// otherwise; a field with neither reads [kFuelAbsent].
+/// so that figure is never read as a whole week. Below [kFuelMinLoggedDays]
+/// logged days the row says so in words instead of drawing averages. Every
+/// average is compared with the day's target where one is set, and with the
+/// previous window otherwise; a field with neither reads [kFuelAbsent].
 ///
-/// It carries no window chip: the Fuel window is its own fixed window, not the
-/// screen's selected training period, so the screen's window control never
-/// changes what this row shows.
+/// It carries no window chip: the Fuel window is its own fixed window, so the
+/// screen's window control never changes what this row shows.
 class FuelSection extends StatelessWidget {
   final FuelSummary summary;
   final OmniThemeColors themeColors;
@@ -72,6 +72,16 @@ class FuelSection extends StatelessWidget {
   static double? _reference(bool hasTarget, double target, double? previous) =>
       hasTarget ? target : previous;
 
+  /// Protein averaging below a target that is set: the one comparison the app
+  /// knows is the wrong way round. Rounded the way [_change] rounds, so a gap
+  /// that reads as no change is never red (D-17206).
+  bool get _proteinBelowTarget {
+    final average = summary.proteinAverage;
+    return summary.hasProteinTarget &&
+        average != null &&
+        average.round() < summary.targetProtein.round();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -94,113 +104,126 @@ class FuelSection extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _metric(
-                            theme,
-                            labelKey: const Key('fuel_calories_label'),
-                            label: 'Calories',
-                            valueKey: const Key('fuel_calories'),
-                            changeKey: const Key('fuel_calories_change'),
-                            targetKey: const Key('fuel_calories_target'),
-                            value: _figure(summary.caloriesAverage, 'kcal'),
-                            change: _change(
-                              summary.caloriesAverage,
-                              _reference(
-                                summary.hasCalorieTarget,
-                                summary.targetCalories,
-                                summary.previousCaloriesAverage,
+                    if (summary.showsAverages) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _metric(
+                              theme,
+                              labelKey: const Key('fuel_calories_label'),
+                              label: 'Calories',
+                              valueKey: const Key('fuel_calories'),
+                              changeKey: const Key('fuel_calories_change'),
+                              targetKey: const Key('fuel_calories_target'),
+                              value: _figure(summary.caloriesAverage, 'kcal'),
+                              change: _change(
+                                summary.caloriesAverage,
+                                _reference(
+                                  summary.hasCalorieTarget,
+                                  summary.targetCalories,
+                                  summary.previousCaloriesAverage,
+                                ),
+                                'kcal',
                               ),
-                              'kcal',
+                              target: summary.hasCalorieTarget
+                                  ? 'of ${_whole(summary.targetCalories)} kcal '
+                                        'target'
+                                  : null,
                             ),
-                            target: summary.hasCalorieTarget
-                                ? 'of ${_whole(summary.targetCalories)} kcal '
-                                      'target'
-                                : null,
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _metric(
-                            theme,
-                            labelKey: const Key('fuel_protein_label'),
-                            label: 'Protein',
-                            valueKey: const Key('fuel_protein'),
-                            changeKey: const Key('fuel_protein_change'),
-                            targetKey: const Key('fuel_protein_target'),
-                            value: _figure(summary.proteinAverage, 'g'),
-                            change: _change(
-                              summary.proteinAverage,
-                              _reference(
-                                summary.hasProteinTarget,
-                                summary.targetProtein,
-                                summary.previousProteinAverage,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _metric(
+                              theme,
+                              labelKey: const Key('fuel_protein_label'),
+                              label: 'Protein',
+                              valueKey: const Key('fuel_protein'),
+                              changeKey: const Key('fuel_protein_change'),
+                              targetKey: const Key('fuel_protein_target'),
+                              value: _figure(summary.proteinAverage, 'g'),
+                              change: _change(
+                                summary.proteinAverage,
+                                _reference(
+                                  summary.hasProteinTarget,
+                                  summary.targetProtein,
+                                  summary.previousProteinAverage,
+                                ),
+                                'g',
                               ),
-                              'g',
+                              target: summary.hasProteinTarget
+                                  ? 'of ${_whole(summary.targetProtein)} g target'
+                                  : null,
+                              bad: _proteinBelowTarget,
                             ),
-                            target: summary.hasProteinTarget
-                                ? 'of ${_whole(summary.targetProtein)} g target'
-                                : null,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _metric(
-                            theme,
-                            labelKey: const Key('fuel_carbs_label'),
-                            label: 'Carbs',
-                            valueKey: const Key('fuel_carbs'),
-                            changeKey: const Key('fuel_carbs_change'),
-                            targetKey: const Key('fuel_carbs_target'),
-                            value: _figure(summary.carbsAverage, 'g'),
-                            change: _change(
-                              summary.carbsAverage,
-                              _reference(
-                                summary.hasCarbsTarget,
-                                summary.targetCarbs,
-                                summary.previousCarbsAverage,
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _metric(
+                              theme,
+                              labelKey: const Key('fuel_carbs_label'),
+                              label: 'Carbs',
+                              valueKey: const Key('fuel_carbs'),
+                              changeKey: const Key('fuel_carbs_change'),
+                              targetKey: const Key('fuel_carbs_target'),
+                              value: _figure(summary.carbsAverage, 'g'),
+                              change: _change(
+                                summary.carbsAverage,
+                                _reference(
+                                  summary.hasCarbsTarget,
+                                  summary.targetCarbs,
+                                  summary.previousCarbsAverage,
+                                ),
+                                'g',
                               ),
-                              'g',
+                              target: summary.hasCarbsTarget
+                                  ? 'of ${_whole(summary.targetCarbs)} g target'
+                                  : null,
                             ),
-                            target: summary.hasCarbsTarget
-                                ? 'of ${_whole(summary.targetCarbs)} g target'
-                                : null,
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _metric(
-                            theme,
-                            labelKey: const Key('fuel_fat_label'),
-                            label: 'Fat',
-                            valueKey: const Key('fuel_fat'),
-                            changeKey: const Key('fuel_fat_change'),
-                            targetKey: const Key('fuel_fat_target'),
-                            value: _figure(summary.fatAverage, 'g'),
-                            change: _change(
-                              summary.fatAverage,
-                              _reference(
-                                summary.hasFatTarget,
-                                summary.targetFat,
-                                summary.previousFatAverage,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _metric(
+                              theme,
+                              labelKey: const Key('fuel_fat_label'),
+                              label: 'Fat',
+                              valueKey: const Key('fuel_fat'),
+                              changeKey: const Key('fuel_fat_change'),
+                              targetKey: const Key('fuel_fat_target'),
+                              value: _figure(summary.fatAverage, 'g'),
+                              change: _change(
+                                summary.fatAverage,
+                                _reference(
+                                  summary.hasFatTarget,
+                                  summary.targetFat,
+                                  summary.previousFatAverage,
+                                ),
+                                'g',
                               ),
-                              'g',
+                              target: summary.hasFatTarget
+                                  ? 'of ${_whole(summary.targetFat)} g target'
+                                  : null,
                             ),
-                            target: summary.hasFatTarget
-                                ? 'of ${_whole(summary.targetFat)} g target'
-                                : null,
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (!summary.showsAverages) ...[
+                      Text(
+                        'Log food on $kFuelMinLoggedDays days to see a weekly average',
+                        key: const Key('fuel_not_enough_days'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: themeColors.textSecondary,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     _caption(
                       theme,
                       key: const Key('fuel_logged_days'),
@@ -208,24 +231,26 @@ class FuelSection extends StatelessWidget {
                           '${summary.loggedDays}/'
                           '${StatsProgressService.kFuelWindowDays} days logged',
                     ),
-                    _caption(
-                      theme,
-                      key: const Key('fuel_split_training'),
-                      text: _split(
-                        kFuelTrainingLabel,
-                        summary.trainingCaloriesAverage,
-                        summary.trainingProteinAverage,
+                    if (summary.showsAverages) ...[
+                      _caption(
+                        theme,
+                        key: const Key('fuel_split_training'),
+                        text: _split(
+                          kFuelTrainingLabel,
+                          summary.trainingCaloriesAverage,
+                          summary.trainingProteinAverage,
+                        ),
                       ),
-                    ),
-                    _caption(
-                      theme,
-                      key: const Key('fuel_split_rest'),
-                      text: _split(
-                        kFuelRestLabel,
-                        summary.restCaloriesAverage,
-                        summary.restProteinAverage,
+                      _caption(
+                        theme,
+                        key: const Key('fuel_split_rest'),
+                        text: _split(
+                          kFuelRestLabel,
+                          summary.restCaloriesAverage,
+                          summary.restProteinAverage,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -248,6 +273,7 @@ class FuelSection extends StatelessWidget {
     required String value,
     required String change,
     required String? target,
+    bool bad = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,7 +300,7 @@ class FuelSection extends StatelessWidget {
           change,
           key: changeKey,
           style: theme.textTheme.labelSmall?.copyWith(
-            color: _changeColor(theme, change),
+            color: _changeColor(theme, change, bad: bad),
             fontWeight: FontWeight.w600,
           ),
           maxLines: 1,
@@ -294,13 +320,14 @@ class FuelSection extends StatelessWidget {
     );
   }
 
-  /// The comparison's colour by direction, or muted when there is nothing to
-  /// compare — the same reading as an instrument row's change chip.
-  Color _changeColor(ThemeData theme, String change) {
+  /// The comparison's colour: muted when there is nothing to compare, the error
+  /// colour only for a figure the app knows is going the wrong way ([bad]), and
+  /// neutral for every other comparison — under a calorie target is often the
+  /// goal, so a direction alone says nothing (D-17206).
+  Color _changeColor(ThemeData theme, String change, {bool bad = false}) {
     if (change == kFuelAbsent) return themeColors.textMuted;
-    return change.startsWith('↑')
-        ? theme.colorScheme.primary
-        : theme.colorScheme.error.withValues(alpha: 0.8);
+    if (bad) return theme.colorScheme.error.withValues(alpha: 0.8);
+    return themeColors.textSecondary;
   }
 
   Widget _caption(ThemeData theme, {required Key key, required String text}) {

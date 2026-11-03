@@ -489,10 +489,18 @@ The summary carries the window's logged-day count; the window's calories,
 protein, carbs and fat averages and the preceding range's; the training and
 rest split of each; and the day's calorie, protein, carbs and fat targets, with
 `hasCalorieTarget` / `hasProteinTarget` / `hasCarbsTarget` / `hasFatTarget`
-reporting which are set. The row compares
+reporting which are set. It also carries `showsAverages`, the gate over
+`kFuelMinLoggedDays` (declared beside the class) that tells the row whether the
+window holds enough logged days to show averages at all; below the floor the
+model still carries every average, and the row decides what to draw. The row
+compares
 an average against the target where one is set and against the previous range
-otherwise. The window it averages over is the service's own (`kFuelWindowDays`),
-not the Stats screen's selected training period. Verified by
+otherwise. The window it averages over is the service's own — the
+`kFuelWindowDays` finished days ending yesterday, today in neither the window
+nor the previous range — not the Stats screen's selected training period.
+Verified by `test/fuel_summary_window_test.dart` (`S-17201 window is the 7
+finished days ending yesterday`, `S-17202 three logged days show averages, two
+do not`) and by
 `test/fuel_row_screen_test.dart` (group `Fuel row — carbs and fat (plan 80)`:
 `S-14040 the averages are means of TOTAL carbs and fat over the logged days,
 against the saved targets`).

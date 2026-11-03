@@ -176,12 +176,14 @@ class StatsProgressService {
   static const int kNutritionTrendDays = 10;
 
   /// Window length, in calendar days, over which the Fuel row averages
-  /// intake and counts logged days. Seven days matches the weekly
-  /// cadence a user reasons about their eating in.
+  /// intake and counts logged days: the [kFuelWindowDays] **finished** days
+  /// ending yesterday — today is in neither the window nor the previous
+  /// range. Seven days matches the weekly cadence a user reasons about
+  /// their eating in.
   static const int kFuelWindowDays = 7;
 
   /// How far back the Fuel row looks for any logged food before it hides
-  /// itself entirely.
+  /// itself entirely: the last [kFuelVisibilityDays] days, today included.
   ///
   /// Deliberately longer than [kFuelWindowDays]: the row compares the
   /// current window against the previous one, so a user who has logged
@@ -478,7 +480,10 @@ class StatsProgressService {
   /// is rated enough; otherwise it is time (D-908). The baseline is the 12
   /// calendar blocks before the window's start day and never uses
   /// [startOfWeek]; that setting moves the strip's weeks and nothing else
-  /// (D-934, D-935).
+  /// (D-934, D-935). The rated weeks are the last 12 weeks ending at the
+  /// window's end day, current ones included (D-17104). An empty window with
+  /// completed history elsewhere returns an empty-window payload instead of
+  /// null (D-17005).
   Future<MixLayerData?> computeMixLayer({
     required StatsWindow window,
     required DateTime now,
@@ -511,6 +516,7 @@ class StatsProgressService {
       baselineEndMs: baselineEndMs,
       weekStarts: weekStarts,
       startOfWeek: startOfWeek,
+      keepEmptyWindow: true,
     );
   }
 
@@ -706,7 +712,9 @@ class StatsProgressService {
   ///
   /// [weekStarts] is the strip's own week starts, oldest first; an empty list
   /// means no strip at all. Null when the window holds no time at all: there is
-  /// nothing to split, and a bar of nothing is not a bar (D-914).
+  /// nothing to split, and a bar of nothing is not a bar (D-914). The one
+  /// exception is [keepEmptyWindow]: a window with no session at all, over a
+  /// history that has some, returns the empty-window payload (D-17006).
   MixLayerData? _mixPayload({
     required _HistoryIndex history,
     required DateTime fromMs,
@@ -715,15 +723,25 @@ class StatsProgressService {
     required int baselineEndMs,
     required List<DateTime> weekStarts,
     required String startOfWeek,
+    bool keepEmptyWindow = false,
   }) {
     final windowTime = <ExerciseSection, double>{};
     final windowLoad = <ExerciseSection, double>{};
     var windowTimeSeconds = 0.0;
     var unratedTimeSeconds = 0.0;
     var unratedSessionCount = 0;
+    var windowSessionCount = 0;
 
     final baselineLoad = <ExerciseSection, double>{};
-    final ratedBaselineBlocks = <int>{};
+    final ratedStarts = ratedWeekBlockStarts(localMidnightDay(toMs));
+    final ratedFirstMs = ratedStarts.first.millisecondsSinceEpoch;
+    final endDay = localMidnightDay(toMs);
+    final ratedEndMs = DateTime(
+      endDay.year,
+      endDay.month,
+      endDay.day + 1,
+    ).millisecondsSinceEpoch;
+    final ratedWeekBlocks = <int>{};
 
     final weekTime = <int, Map<ExerciseSection, double>>{};
     final weekLoad = <int, Map<ExerciseSection, double>>{};
@@ -742,6 +760,7 @@ class StatsProgressService {
       final split = _sessionSplit(history, session);
 
       if (_sessionInWindow(session, fromMs, toMs)) {
+        windowSessionCount++;
         _addAll(windowTime, split.timeBySection);
         _addAll(windowLoad, split.loadBySection);
         windowTimeSeconds += split.timeSeconds;
@@ -755,8 +774,14 @@ class StatsProgressService {
         final block = _baselineBlockFor(baselineStarts, startMs);
         if (block != null) {
           _addAll(baselineLoad, split.loadBySection);
-          if (session.sessionFeeling != null) ratedBaselineBlocks.add(block);
         }
+      }
+
+      if (session.sessionFeeling != null &&
+          startMs >= ratedFirstMs &&
+          startMs < ratedEndMs) {
+        final week = _baselineBlockFor(ratedStarts, startMs);
+        if (week != null) ratedWeekBlocks.add(week);
       }
 
       final weekIndex = _weekIndexFor(weekStarts, startMs, startOfWeek);
@@ -772,11 +797,27 @@ class StatsProgressService {
       }
     }
 
-    if (windowTimeSeconds <= 0) return null;
+    if (windowTimeSeconds <= 0) {
+      if (!keepEmptyWindow || windowSessionCount > 0 || latestStartMs == null) {
+        return null;
+      }
+      return MixLayerData(
+        measure: MixMeasure.time,
+        segments: const [],
+        baselineSegments: const [],
+        unratedSessionCount: 0,
+        ratedWeeks: ratedWeekBlocks.length,
+        weeks: const [],
+        lastSessionDay: localMidnightDay(
+          DateTime.fromMillisecondsSinceEpoch(latestStartMs),
+        ),
+        windowIsEmpty: true,
+      );
+    }
 
-    final ratedBaselineWeeks = ratedBaselineBlocks.length;
+    final ratedWeeks = ratedWeekBlocks.length;
     final measure =
-        ratedBaselineWeeks >= kTrainingLoadMinRatedWeeks &&
+        ratedWeeks >= kTrainingLoadMinRatedWeeks &&
             unratedTimeSeconds / windowTimeSeconds <=
                 kTrainingLoadMaxUnratedShare
         ? MixMeasure.load
@@ -794,7 +835,7 @@ class StatsProgressService {
           ? mixSegments(baselineLoad)
           : const [],
       unratedSessionCount: unratedSessionCount,
-      ratedBaselineWeeks: ratedBaselineWeeks,
+      ratedWeeks: ratedWeeks,
       lastSessionDay: latestStartMs == null
           ? null
           : localMidnightDay(
@@ -1995,9 +2036,13 @@ class StatsProgressService {
   /// The Fuel row's figures: intake averaged over logged days, split by
   /// whether the day carried a completed session, against the day's target.
   ///
+  /// The window is the [kFuelWindowDays] finished days ending **yesterday**;
+  /// today is in neither the window nor the previous range (D-17201).
+  ///
   /// Returns `null` when nothing has been logged within
-  /// [kFuelVisibilityDays] — the row is hidden rather than shown empty,
-  /// matching the NUTRITION card's behaviour.
+  /// [kFuelVisibilityDays] — the last 14 days, today included — so the row
+  /// is hidden rather than shown empty, matching the NUTRITION card's
+  /// behaviour (D-17202).
   ///
   /// Averages divide by the number of **logged** days in the group, never
   /// by the window length: a week with three logged days is a three-day
@@ -2010,27 +2055,39 @@ class StatsProgressService {
   /// An in-progress session does not move today's food into the training
   /// bucket.
   Future<FuelSummary?> computeFuelSummary() async {
-    final points = await computeNutritionTrend(days: kFuelVisibilityDays);
-    if (points.isEmpty) return null;
+    final points = await computeNutritionTrend(days: 2 * kFuelWindowDays + 1);
 
     final todayMs = OmniDateUtils.todayMidnightMs();
     final today = DateTime.fromMillisecondsSinceEpoch(todayMs);
-    // Calendar arithmetic rather than `subtract(Duration(days: n))` for the
-    // DST reason documented on `computeNutritionTrend`.
+    // The row appears only when the last [kFuelVisibilityDays] days, today
+    // included, hold logged food (D-17202).
+    final visibleFrom = DateTime(
+      today.year,
+      today.month,
+      today.day - (kFuelVisibilityDays - 1),
+    );
+    if (!points.any((p) => !p.date.isBefore(visibleFrom))) return null;
+
+    // The window is the [kFuelWindowDays] finished days ending yesterday and
+    // the previous range the same number before it; today is in neither
+    // (D-17201). Calendar arithmetic for the DST reason documented on
+    // `computeNutritionTrend`.
     final windowStart = DateTime(
       today.year,
       today.month,
-      today.day - (kFuelWindowDays - 1),
+      today.day - kFuelWindowDays,
     );
+    final yesterday = DateTime(today.year, today.month, today.day - 1);
     final previousStart = DateTime(
       today.year,
       today.month,
-      today.day - (2 * kFuelWindowDays - 1),
+      today.day - 2 * kFuelWindowDays,
     );
 
     final window = <NutritionTrendPoint>[];
     final previous = <NutritionTrendPoint>[];
     for (final p in points) {
+      if (!p.date.isBefore(today)) continue;
       if (!p.date.isBefore(windowStart)) {
         window.add(p);
       } else if (!p.date.isBefore(previousStart)) {
@@ -2038,7 +2095,7 @@ class StatsProgressService {
       }
     }
 
-    final trainingDays = await _trainingDayKeys(windowStart, today);
+    final trainingDays = await _trainingDayKeys(windowStart, yesterday);
     final training = <NutritionTrendPoint>[];
     final rest = <NutritionTrendPoint>[];
     for (final p in window) {
@@ -2306,6 +2363,26 @@ class StatsProgressService {
       }
     }
     return bests;
+  }
+
+  /// Calendar days the Stats screen describes: the four weeks ending today.
+  static const int kStatsWindowDays = 28;
+
+  /// The window every part of the Stats screen reads (D-17003): the
+  /// [kStatsWindowDays] calendar days ending with the end of today. Periods
+  /// play no part; they keep their meaning on the calendar and period screens.
+  static StatsWindow statsWindow({DateTime? now}) {
+    final today = now ?? DateTime.now();
+    return StatsWindow(
+      fromMs: DateTime(
+        today.year,
+        today.month,
+        today.day - (kStatsWindowDays - 1),
+      ),
+      toMs: DateTime(today.year, today.month, today.day, 23, 59, 59, 999),
+      label: 'Last 4 weeks',
+      isPeriodScoped: false,
+    );
   }
 
   // ── Window resolution (current-state window for exercise selection) ───────

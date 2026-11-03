@@ -29,6 +29,7 @@ import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/features/stats/exercise_progress_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
+import 'package:omnitrain/features/stats/widgets/instrument_list.dart';
 import 'package:omnitrain/features/stats/widgets/native_value_format.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
@@ -200,9 +201,9 @@ Future<void> _seedEstimatedRun(WorkoutRepository repo) async {
 /// The flagship population: four kinds of work inside the window, a duplicate
 /// exercise name, and history outside it.
 ///
-/// Days 1–14 are the window (14 distinct training days, days 5–14 are empty
-/// filler sessions). `ex-squat` also has history 20 and 40 days back, so it has
-/// a comparable previous range and a history older than the window.
+/// The window is the 28 calendar days ending today: the day-20 squat session
+/// is inside it, the day-40 session is in the previous range the change
+/// compares against, and `ex-old`'s day-35 session is outside the window.
 Future<void> _seedFlagship(WorkoutRepository repo) async {
   await seedExercise(
     repo,
@@ -292,8 +293,9 @@ Future<void> _seedFlagship(WorkoutRepository repo) async {
     ],
   );
 
-  // History outside the window: 20 days back (also the previous range, so the
-  // change chip has something to compare against) and 40 days back.
+  // History: a second squat session 20 days back, inside the window, and a
+  // day-40 session in the previous range, so the change chip has something to
+  // compare against.
   await _seedSetSession(
     repo,
     sessionId: 's-squat-20',
@@ -313,64 +315,16 @@ Future<void> _seedFlagship(WorkoutRepository repo) async {
   await _seedSetSession(
     repo,
     sessionId: 's-old',
-    daysAgo: 20,
+    // 35 days back: outside the window, so `ex-old` gets no row.
+    daysAgo: 35,
     exerciseId: 'ex-old',
     weightKg: 140,
-    reps: 5,
-  );
-
-  // Days 5–14: empty completed sessions, so the window's 14 most recent
-  // training days stop at day 14 and days 20 and 40 fall outside it.
-  for (var daysAgo = 5; daysAgo <= 14; daysAgo++) {
-    await seedSession(repo, sessionId: 's-f$daysAgo', daysAgo: daysAgo);
-  }
-}
-
-/// A training period covering today and [calendarDays] - 1 days before it, so
-/// the resolved window's own span is exactly [calendarDays] local days (S-4010).
-///
-/// The period is the only way to pin the window's length: the recent-days
-/// fallback always ends at the end of today, so its span is one day longer than
-/// the number of training days it holds.
-Future<void> _seedPeriodWindow(
-  WorkoutRepository repo, {
-  required int calendarDays,
-}) async {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  await repo.createPeriod(
-    TrainingPeriod(
-      id: 'p-span-$calendarDays',
-      name: 'Span Block',
-      startDateMs: DateTime(
-        today.year,
-        today.month,
-        today.day - (calendarDays - 1),
-      ).millisecondsSinceEpoch,
-      endDateMs: today.add(const Duration(days: 1)).millisecondsSinceEpoch - 1,
-      focusModalities: const [],
-      createdAtMs: 1000,
-      updatedAtMs: 1000,
-    ),
-  );
-  await seedExercise(
-    repo,
-    id: 'ex-span',
-    name: 'Back Squat',
-    capabilities: const ['load', 'reps'],
-  );
-  await _seedSetSession(
-    repo,
-    sessionId: 's-span',
-    daysAgo: 0,
-    exerciseId: 'ex-span',
-    weightKg: 100,
     reps: 5,
   );
 }
 
 /// One row for each primary metric D-4008 labels, plus the two it leaves alone
-/// (S-4012), all inside a 14-day window.
+/// (S-4012), all inside the 28-day window.
 Future<void> _seedLabelShapes(WorkoutRepository repo) async {
   await seedExercise(
     repo,
@@ -506,12 +460,11 @@ void main() {
         await harness.close();
       });
 
-      /// The window and the sections the screen is about to compute, read from
-      /// the same service with the same arguments.
+      /// The window the screen describes and the sections it computes, read
+      /// from the same service with the same arguments.
       Future<void> readModel() async {
         final service = StatsProgressService(repo);
-        final data = await service.computeProgressData();
-        window = data.window;
+        window = StatsProgressService.statsWindow();
         sections = await service.computeInstrumentSections(window: window);
       }
 
@@ -556,13 +509,15 @@ void main() {
           expect(find.text('Sports'), findsOneWidget);
         });
 
-        testWidgets('one row per exercise, in section order, id ascending '
-            'inside a section', (tester) async {
+        testWidgets('one row per exercise, in section order, sorted by '
+            'training days then name then id', (tester) async {
           await pumpStats(tester);
 
           expect(_instrumentRowKeys(), [
-            'instrument_row_ex-row',
+            // Resistance: `ex-squat` has two training days in the window (days
+            // 1 and 20), `ex-row` one; the names tie, so the day count leads.
             'instrument_row_ex-squat',
+            'instrument_row_ex-row',
             'instrument_row_ex-run',
             'instrument_row_ex-plank',
             'instrument_row_ex-bjj',
@@ -692,10 +647,11 @@ void main() {
         });
       });
 
-      // ─── S-1011: the window is the existing window ────────────────────────
+      // ─── S-1011: the window is the four weeks ending today ────────────────
 
       group('S-1011', () {
         setUp(() async {
+          // A training period exists, but it no longer scopes the window.
           final now = DateTime.now();
           final today = DateTime(now.year, now.month, now.day);
           await repo.createPeriod(
@@ -735,7 +691,8 @@ void main() {
           await _seedSetSession(
             repo,
             sessionId: 's-out',
-            daysAgo: 20,
+            // 35 days back: outside the window, so `ex-out` gets no row.
+            daysAgo: 35,
             exerciseId: 'ex-out',
             weightKg: 140,
             reps: 5,
@@ -743,12 +700,12 @@ void main() {
           await readModel();
         });
 
-        testWidgets('the Instruments list is the period window and the chip '
-            'says so', (tester) async {
+        testWidgets('the Instruments list is the four-week window and the '
+            'chip says so, whatever periods exist', (tester) async {
           await pumpStats(tester);
 
-          expect(window.isPeriodScoped, isTrue);
-          expect(window.label, 'Block A');
+          expect(window.isPeriodScoped, isFalse);
+          expect(window.label, 'Last 4 weeks');
 
           // The Instruments rows are the exercises the window yields.
           expect(
@@ -840,9 +797,9 @@ void main() {
                 .exerciseId,
             'ex-squat',
           );
-          // The pushed screen covers history older than the window: the
-          // day-40 and day-20 sessions are there, on the chart's axis and as
-          // history rows.
+          // The pushed screen covers the exercise's history beyond the
+          // window's rows: the day-40 and day-20 sessions are there, on the
+          // chart's axis and as history rows.
           expect(find.text(_dayLabel(40)), findsWidgets);
           expect(find.text(_dayLabel(20)), findsWidgets);
           expect(find.text(_dayLabel(1)), findsWidgets);
@@ -1094,45 +1051,100 @@ void main() {
       // header; D-4008 names each row's own figure. No value moves.
 
       group('S-4010 the caption states the window\'s real span', () {
-        for (final span in const [14, 20, 1]) {
-          group('a $span-day window', () {
-            setUp(() async {
-              await _seedPeriodWindow(repo, calendarDays: span);
-              await readModel();
-            });
+        setUp(() async {
+          await _seedFlagship(repo);
+          await readModel();
+        });
 
-            testWidgets(
-              span == 1
-                  ? 'the caption names the day before it'
-                  : 'the change compares against $span days',
-              (tester) async {
-              await pumpStats(tester);
+        testWidgets('the caption names the 28 days the window holds', (
+          tester,
+        ) async {
+          await pumpStats(tester);
 
-              // The period window is the fixture's own span, not the recency
-              // fallback's.
-              expect(window.isPeriodScoped, isTrue);
-              expect(window.dayCount, span);
-              expect(
-                window.dayCount,
-                _rangeDayCount(StatsProgressService.previousRangeFor(window)),
-              );
+          // The window is the 28 calendar days ending today; periods and
+          // training-day counts no longer name it.
+          expect(window.isPeriodScoped, isFalse);
+          expect(window.dayCount, 28);
+          expect(
+            window.dayCount,
+            _rangeDayCount(StatsProgressService.previousRangeFor(window)),
+          );
 
-              expect(
-                _caption(tester),
-                span == 1
-                    ? 'Line: each training day in the window · '
-                          'Change: vs the day before it'
-                    : 'Line: each training day in the window · '
-                          'Change: vs the $span days before it',
-              );
-              expect(
-                find.byKey(const Key('instrument_caption')),
-                findsOneWidget,
-              );
-              expect(tester.takeException(), isNull);
-            });
-          });
-        }
+          expect(
+            _caption(tester),
+            'Line: each training day in the window · '
+            'Change: vs the 28 days before it',
+          );
+          expect(
+            find.byKey(const Key('instrument_caption')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('a one-day window reads the day before it', (tester) async {
+          // The screen can no longer pass a one-day window (the Stats screen
+          // always describes the 28 days), but `InstrumentList` is generic
+          // over its window, so this pumps it directly with the smallest
+          // hand-built section.
+          await tester.binding.setSurfaceSize(_kTallViewport);
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          final day = DateTime(2026, 4, 20);
+          final oneDayWindow = StatsWindow(
+            fromMs: day,
+            toMs: day,
+            label: 'Test window',
+            isPeriodScoped: false,
+          );
+          expect(oneDayWindow.dayCount, 1);
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: InstrumentList(
+                    sections: [
+                      InstrumentSectionData(
+                        section: ExerciseSection.resistance,
+                        trainingDayCount: 1,
+                        rows: [
+                          InstrumentRow(
+                            summary: ExerciseMetricSummary(
+                              exerciseId: 'ex-one',
+                              name: 'Back Squat',
+                              section: ExerciseSection.resistance,
+                              best: const NativeValue(
+                                metric: NativeMetric.estimatedOneRepMax,
+                                value: 140,
+                              ),
+                              points: const [],
+                              lastTrainedMs: day.millisecondsSinceEpoch,
+                              sessionCount: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    window: oneDayWindow,
+                    themeColors: OmniTheme.colorsForTheme(
+                      settingsState.appTheme,
+                    ),
+                    workoutState: workoutState,
+                    settingsState: settingsState,
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(
+            _caption(tester),
+            'Line: each training day in the window · '
+            'Change: vs the day before it',
+          );
+          expect(tester.takeException(), isNull);
+        });
       });
 
       group('S-4012 every row says what its number is', () {
@@ -1199,32 +1211,31 @@ void main() {
         });
       });
 
-      group('S-4017 the caption counts the comparison, not the chip\'s days', () {
+      group('S-4017 the caption counts the comparison', () {
         setUp(() async {
           await _seedFlagship(repo);
           await readModel();
         });
 
-        testWidgets('the number is the window\'s span, one longer than the 14 '
-            'training days the chip names', (tester) async {
+        testWidgets('the number is the previous range\'s span, and the chip '
+            'names the four weeks', (tester) async {
           await pumpStats(tester);
 
-          expect(window.recentDays, 14);
-          expect(window.label, 'Last 14 training days');
+          expect(window.recentDays, isNull);
+          expect(window.label, 'Last 4 weeks');
           expect(
             window.dayCount,
             _rangeDayCount(StatsProgressService.previousRangeFor(window)),
           );
-          expect(window.dayCount, 15);
-          expect(window.dayCount, isNot(window.recentDays));
+          expect(window.dayCount, 28);
 
           expect(
             _caption(tester),
             'Line: each training day in the window · '
-            'Change: vs the 15 days before it',
+            'Change: vs the 28 days before it',
           );
-          // The chip is unmoved: it still names the 14 training days.
-          expect(window.label, 'Last 14 training days');
+          // The chip names the same window the caption's number comes from.
+          expect(window.label, 'Last 4 weeks');
           expect(
             _textsUnder(find.byKey(const Key('stats_window_chip'))),
             everyElement('· ${window.label}'),

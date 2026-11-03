@@ -67,10 +67,10 @@ class SignalsData {
 
 /// Whether signals render at all (D-1006).
 ///
-/// The gate reads `ratedBaselineWeeks` only — it does not additionally require
+/// The gate reads `ratedWeeks` only — it does not additionally require
 /// a load measure.
 bool signalsGateMet(MixLayerData? mix) =>
-    mix != null && mix.ratedBaselineWeeks >= kTrainingLoadMinRatedWeeks;
+    mix != null && mix.ratedWeeks >= kTrainingLoadMinRatedWeeks;
 
 /// The line the locked Signals section shows while the gate is unmet (D-4001,
 /// D-4002).

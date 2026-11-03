@@ -12,8 +12,9 @@
 // F-MIX is the plan's mixed history. It has to satisfy three things at once:
 // the Mix layer's rated-baseline gate for the Stats window (>= 4 rated weeks),
 // the signal's own 28-day period measure rule (load, not time), and a
-// regularly trained modality whose recent share fell below half. The window is
-// period-scoped so the rated baseline sessions stay outside it.
+// regularly trained modality whose recent share fell below half. The rated
+// baseline sessions sit 29 or more days back, outside the Stats window's 28
+// days.
 //
 // Every assertion here names the Mix Shift card by its key rather than counting
 // cards.
@@ -259,9 +260,8 @@ Future<void> _seedFood(
 ///
 /// The period holds resistance and isometric work; the baseline holds all four
 /// modalities, with isometric well above the regularly-trained floor. The
-/// window is period-scoped over the last 3 days — narrower than the signal's
-/// own 28-day period — so the baseline sessions stay outside it and a period
-/// that followed the chip would lose the isometric work entirely.
+/// baseline sessions sit 80 or more days back, outside the Stats window's 28
+/// days.
 Future<void> _seedFMix(WorkoutRepository repo) async {
   // The period `[day(27), now]`: resistance and isometric.
   await _seedRatedSession(
@@ -287,7 +287,7 @@ Future<void> _seedFMix(WorkoutRepository repo) async {
   await _seedIsometricEffort(repo, sessionId: 'fmix-p3', seconds: 300);
 
   // The baseline blocks before `day(27)`: one rated session in each of the
-  // first five blocks, so `ratedBaselineWeeks` clears the gate. Isometric work
+  // first five blocks, so `ratedWeeks` clears the gate. Isometric work
   // is spread across them, so its baseline share is well above the floor.
   await _seedRatedSession(
     repo,
@@ -331,24 +331,24 @@ Future<void> _seedFMix(WorkoutRepository repo) async {
   await _seedFood(repo, id: 'food-2', daysAgo: 2);
 }
 
-/// F-TIME: five rated sessions, each one timed effort, a week apart, so the
-/// signal's own period `[day(27), now]` has only two rated baseline blocks and
-/// its measure is time (S-1904b).
-///
-/// The window is period-scoped over the last 14 days, which holds the `day(10)`
-/// session and four rated baseline blocks — so the framework's gate is met and
-/// the layer renders, while the signal abstains.
+/// F-TIME: five sessions, each one timed effort. The `day(10)` session is
+/// UNRATED (rating null); the other four are rated. Since 99b the signal's
+/// period `[day(27), now]` counts rated weeks ending today, so with the
+/// day(10) session rated the period would measure load. Unrated, the period
+/// holds only an unrated session (unrated share 100%) and its measure is
+/// time (S-1904b), so the card abstains for that reason — no modality fell
+/// below half its usual share. The Stats window's Mix layer sees four rated
+/// weeks (days 31, 38, 45, 52 back) and renders.
 Future<void> _seedFTime(WorkoutRepository repo) async {
-  for (final days in [10, 17, 24, 31, 38]) {
+  for (final days in [10, 31, 38, 45, 52]) {
     await _seedRatedSession(
       repo,
       sessionId: 'ftime-$days',
       daysAgo: days,
-      rating: 4,
+      rating: days == 10 ? null : 4,
     );
     await _seedCardioEffort(repo, sessionId: 'ftime-$days', seconds: 600);
   }
-  await _seedPeriod(repo, name: 'Test Block', daysAgo: 14);
   await _clearConsumedFoods(repo);
   await _seedFood(repo, id: 'food-1', daysAgo: 1);
   await _seedFood(repo, id: 'food-2', daysAgo: 2);
@@ -479,15 +479,12 @@ void main() {
         });
       });
 
-      // ─── S-1909, the period does not follow the window chip ────────────────
+      // ─── S-1909, the card renders ──────────────────────────────────────────
 
-      // The mutation guard for D-1201: the signal's period is the 28 local
-      // calendar days ending today, never the Stats window. F-MIX's window is
-      // period-scoped to the last 3 days, so a period that followed the chip
-      // would see only the `day(2)` session and too few rated baseline blocks
-      // for the load measure — and the card would disappear. The card's
-      // presence is the assertion.
-      group('S-1909 the period does not follow the window chip', () {
+      // The D-1201 guard — the signal computes its own `[day(27), now]` period
+      // rather than reading the Stats window — lost its separating power in
+      // 99a, because the Stats window and that period are now the same span.
+      group('S-1909 the card renders for the mixed history', () {
         setUp(() => _seedFMix(repo));
 
         testWidgets('a window narrower than the period still shows the card',
@@ -500,6 +497,11 @@ void main() {
       });
 
       // ─── S-1904(b) ─────────────────────────────────────────────────────────
+      //
+      // The day(10) session is unrated, so the signal's period `[day(27), now]`
+      // holds only an unrated session (unrated share 100%) and its measure is
+      // time; the card abstains for that reason, while the Mix layer sees four
+      // rated weeks (days 31, 38, 45, 52 back) and renders.
 
       group('S-1904b time mode suppresses the card', () {
         setUp(() => _seedFTime(repo));

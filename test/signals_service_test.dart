@@ -63,20 +63,20 @@ final StatsWindow _window = StatsWindow(
   recentDays: 30,
 );
 
-MixLayerData _mix({required int ratedBaselineWeeks}) => MixLayerData(
+MixLayerData _mix({required int ratedWeeks}) => MixLayerData(
   measure: MixMeasure.time,
   segments: const [],
   baselineSegments: const [],
   unratedSessionCount: 0,
-  ratedBaselineWeeks: ratedBaselineWeeks,
+  ratedWeeks: ratedWeeks,
   weeks: const [],
 );
 
 MixLayerData get _mixReady =>
-    _mix(ratedBaselineWeeks: kTrainingLoadMinRatedWeeks);
+    _mix(ratedWeeks: kTrainingLoadMinRatedWeeks);
 
 MixLayerData get _mixUnmet =>
-    _mix(ratedBaselineWeeks: kTrainingLoadMinRatedWeeks - 1);
+    _mix(ratedWeeks: kTrainingLoadMinRatedWeeks - 1);
 
 SignalsService _service(WorkoutRepository repo, List<Signal> signals) =>
     SignalsService(

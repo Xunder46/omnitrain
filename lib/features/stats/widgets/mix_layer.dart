@@ -10,7 +10,8 @@
 //
 // The usual bar and the baseline note are mutually exclusive by construction:
 // the usual bar needs a load baseline, and the note exists only to explain why
-// the load measure is unavailable (D-934).
+// the load measure is unavailable (D-934). An empty window (a break from
+// training) draws one line under the header and nothing else (D-17008).
 
 import 'package:flutter/material.dart';
 
@@ -81,7 +82,7 @@ class MixLayerSection extends StatelessWidget {
   /// The rated weeks behind the window, held to the threshold the baseline note
   /// names (D-3204).
   int get _ratedWeeks =>
-      layer.ratedBaselineWeeks.clamp(0, kTrainingLoadMinRatedWeeks);
+      layer.ratedWeeks.clamp(0, kTrainingLoadMinRatedWeeks);
 
   /// How much of the window carried no effort rating (D-3204). Under the load
   /// measure the sessions are missing from the figures above; under the time
@@ -154,6 +155,24 @@ class MixLayerSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (layer.windowIsEmpty) {
+      return OmniSurface(
+        key: const Key('mix_layer'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            OmniCardHeader(
+              title: 'TRAINING MIX',
+              actions: [
+                StatsWindowChip(window: window, themeColors: themeColors),
+              ],
+            ),
+            const SizedBox(height: _blockGap),
+            _buildEmptyWindow(theme),
+          ],
+        ),
+      );
+    }
     final usualSegments = _usualSegments;
     final maxWeekMeasure = _maxWeekMeasure;
 
@@ -190,7 +209,7 @@ class MixLayerSection extends StatelessWidget {
           ],
           const SizedBox(height: _blockGap),
           _buildLegend(theme),
-          if (!_isLoad && layer.ratedBaselineWeeks < kTrainingLoadMinRatedWeeks) ...[
+          if (!_isLoad && layer.ratedWeeks < kTrainingLoadMinRatedWeeks) ...[
             const SizedBox(height: _tightGap),
             Text(
               'Showing time for now. Effort appears once '
@@ -292,6 +311,21 @@ class MixLayerSection extends StatelessWidget {
       ),
     ],
   );
+
+  /// The empty window's one line (D-17008): a break from training is not a
+  /// card of nothing. The weeks are the window's own length, never a literal.
+  Widget _buildEmptyWindow(ThemeData theme) {
+    final weeks = window.dayCount ~/ 7;
+    final lastSessionDay = layer.lastSessionDay;
+    return Text(
+      lastSessionDay == null
+          ? 'No training in the last $weeks weeks.'
+          : 'No training in the last $weeks weeks. '
+                'Last session: ${OmniDateUtils.formatShort(lastSessionDay)}.',
+      key: const Key('mix_window_empty'),
+      style: theme.textTheme.bodySmall?.copyWith(color: themeColors.textMuted),
+    );
+  }
 
   /// The empty strip's one line: eight weeks with no work at all are not a
   /// strip, and the line says so in words (D-4004).

@@ -114,30 +114,28 @@ class _StatsScreenState extends State<StatsScreen> {
       // the service, so the screen and Records & Trends agree on the figures.
       final totals = await service.computeTotals();
 
-      // Compute progress data in one call so we don't double-walk the
-      // repository: this screen reads the window (shared with the Instruments
-      // list below).
-      final progressData = await service.computeProgressData();
-
       // The Fuel row's own window, resolved in the same load as everything
       // else so the row never computes during a build.
       final fuelSummary = await service.computeFuelSummary();
-
-      // The Instruments list is the same window's work, so it resolves the
-      // window from the data we already have rather than resolving it again.
-      final instrumentSections = await service.computeInstrumentSections(
-        window: progressData.window,
-      );
 
       // One load reads one "now": the Mix layer and the signals are evaluated
       // against the same instant, so a card can never disagree with the layer
       // it sits under.
       final now = DateTime.now();
 
+      // The window the whole screen describes: the four weeks ending today,
+      // not a period-resolved one.
+      final window = StatsProgressService.statsWindow(now: now);
+
+      // The Instruments list reads the same four-week window.
+      final instrumentSections = await service.computeInstrumentSections(
+        window: window,
+      );
+
       // The Mix layer reads the same window as the Instruments list, so it
       // resolves nothing of its own.
       final mixLayer = await service.computeMixLayer(
-        window: progressData.window,
+        window: window,
         now: now,
         startOfWeek: widget.settingsState.startOfWeek,
       );
@@ -157,7 +155,7 @@ class _StatsScreenState extends State<StatsScreen> {
       final signalsCandidates = gateMet
           ? await signalsService.evaluateCandidates(
               now: now,
-              window: progressData.window,
+              window: window,
               mix: mixLayer,
               dismissedAtMs: signalsDismissedAtMs,
             )
@@ -177,7 +175,7 @@ class _StatsScreenState extends State<StatsScreen> {
         _totalSessions = totals.completedSessions;
         _totalDurationMs = totals.durationMs;
         _streakDays = streak;
-        _window = progressData.window;
+        _window = window;
         _instrumentSections = instrumentSections;
         _fuelSummary = fuelSummary;
         _mixLayer = mixLayer;
@@ -317,7 +315,7 @@ class _StatsScreenState extends State<StatsScreen> {
                             ] else if (_mixLayer != null &&
                                 !signalsGateMet(_mixLayer)) ...[
                               SignalsLockedSection(
-                                ratedWeeks: _mixLayer!.ratedBaselineWeeks,
+                                ratedWeeks: _mixLayer!.ratedWeeks,
                                 themeColors: themeColors,
                               ),
                               const SizedBox(height: 24),

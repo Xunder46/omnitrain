@@ -18,8 +18,9 @@
 // sessions, the shortfall test). The arithmetic is in the plan's evidence file;
 // the fixture comments below carry the figures each block contributes.
 //
-// The window is period-scoped over `day(20)`…today so the Mix layer renders
-// above the Signals layer, exactly as F-FUEL does in
+// The Stats window is the 28 calendar days ending today (99a) and no longer
+// reads a training period; the seeded period is inert for the screen. The Mix
+// layer renders above the Signals layer exactly as F-FUEL does in
 // `test/fuel_vs_load_signal_screen_test.dart`, whose helper pattern this file
 // copies. Every assertion names the Protein Consistency card by its key rather
 // than counting cards.
@@ -179,8 +180,9 @@ Future<void> _seedSetEffort(
 
 /// A training period from [daysAgo] to the end of today, named [name].
 ///
-/// `resolveWindow` prefers it over the recency fallback, which is what keeps
-/// the window's start at `day(20)` and so lets the Mix layer render.
+/// Inert for the Stats screen since 99a: the window is the 28 calendar days
+/// ending today and no longer resolves a period. The fixtures keep seeding one
+/// so the screen runs with a period on file.
 Future<void> _seedPeriod(
   WorkoutRepository repo, {
   required String name,
@@ -214,10 +216,11 @@ Future<void> _seedPeriod(
 /// period, five in the recent one, and four rated sessions in the older blocks
 /// the window's own baseline reads.
 ///
-/// A window's baseline is the twelve 7-day blocks before its start day, so the
-/// window (starting `day(20)`) reads days 21…104. The five prior-period sessions
-/// rate three of those blocks and the four older sessions rate one each, so the
-/// window clears the Mix layer's four-rated-week gate (D-1502).
+/// The Stats window's first day is `day(27)`, so its baseline is the twelve
+/// 7-day blocks covering days 28…111. The prior-period sessions on `day(31)`,
+/// `day(36)` and `day(41)` rate two of those blocks and the four older sessions
+/// rate one each — six rated blocks, clearing the Mix layer's four-rated-week
+/// gate (D-1502).
 ///
 /// The recent period's sessions sit on `day(20)`, `day(16)`, `day(12)`,
 /// `day(8)` and `day(4)`: exactly three of them — `day(12)`, `day(8)` and
@@ -384,10 +387,18 @@ Future<void> _seedBaselineFood(
 Future<void> _seedWindowTarget(
   WorkoutRepository repo, {
   required double protein,
-}) => repo.saveNutritionTargetForDate(
-  _day(13).millisecondsSinceEpoch,
-  NutritionTarget(calories: 2000, protein: protein, carbs: 250, fat: 70),
-);
+}) async {
+  final target = NutritionTarget(
+    calories: 2000,
+    protein: protein,
+    carbs: 250,
+    fat: 70,
+  );
+  await repo.saveNutritionTargetForDate(
+    _day(13).millisecondsSinceEpoch,
+    target,
+  );
+}
 
 /// The latest bodyweight on file, in the canonical kilogram unit (D-1511).
 Future<void> _seedBodyWeightKg(WorkoutRepository repo, double kg) =>
@@ -461,7 +472,7 @@ Future<void> _seedFMerged(WorkoutRepository repo) async {
   await _seedWindowTarget(repo, protein: 150);
 }
 
-/// F-NOFOOD: the load, the period-scoped window and an empty food log. The
+/// F-NOFOOD: the load, the 28-day Stats window and an empty food log. The
 /// layer renders; the rule's logged-days gate finds nothing.
 Future<void> _seedFNoFood(WorkoutRepository repo) async {
   await _seedLoad(repo);

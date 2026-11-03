@@ -19,7 +19,7 @@ const int kMixStripWeeks = 8;
 /// The number of 7-calendar-day blocks the load baseline spans (D-934).
 const int kTrainingLoadBaselineWeeks = 12;
 
-/// The rated baseline weeks the load measure needs before it is shown (D-908).
+/// The rated weeks the load measure needs before it is shown (D-908).
 const int kTrainingLoadMinRatedWeeks = 4;
 
 /// The largest share of a window's time that may be unrated for the load
@@ -90,30 +90,35 @@ class WeeklyLoad {
 /// [measure] names the measure the bar and the strip both use; the surface
 /// derives its own label from it, so the two can never disagree. [segments] is
 /// the window's bar, [baselineSegments] the user's usual split, and [weeks] the
-/// strip. [unratedSessionCount] and [ratedBaselineWeeks] are the two counts the
+/// strip. [unratedSessionCount] and [ratedWeeks] are the two counts the
 /// surface reports.
 ///
 /// [lastSessionDay] is the local-midnight day of the latest completed session
 /// in **all** history — not only the window and not only the strip — so the
 /// empty strip's line can name the last time the user trained (D-4005). Null
 /// when no completed session exists.
+///
+/// [windowIsEmpty] is true when the window holds no completed session: the
+/// card then shows one line instead of a bar (D-17005).
 class MixLayerData {
   final MixMeasure measure;
   final List<MixSegment> segments;
   final List<MixSegment> baselineSegments;
   final int unratedSessionCount;
-  final int ratedBaselineWeeks;
+  final int ratedWeeks;
   final List<MixWeek> weeks;
   final DateTime? lastSessionDay;
+  final bool windowIsEmpty;
 
   const MixLayerData({
     required this.measure,
     required this.segments,
     required this.baselineSegments,
     required this.unratedSessionCount,
-    required this.ratedBaselineWeeks,
+    required this.ratedWeeks,
     required this.weeks,
     this.lastSessionDay,
+    this.windowIsEmpty = false,
   });
 }
 
@@ -152,6 +157,25 @@ List<DateTime> baselineBlockStarts(DateTime fromDay) {
         day.year,
         day.month,
         day.day - (kTrainingLoadBaselineWeeks - i) * 7,
+      ),
+  ];
+}
+
+/// The 12 local-midnight starts of the consecutive 7-calendar-day blocks that
+/// tile `[endDay − 83 days, endDay + 1 day)`, oldest first (D-17102).
+///
+/// The last block is `[endDay − 6, endDay]`, so the blocks count the weeks up to
+/// and including [endDay] itself. Built with `DateTime(y, m, d − n)`, never a
+/// [Duration], so a DST transition cannot shift a boundary; anchored at
+/// [endDay], not at the saved start-of-week setting (D-17101).
+List<DateTime> ratedWeekBlockStarts(DateTime endDay) {
+  final day = localMidnightDay(endDay);
+  return [
+    for (var i = 0; i < kTrainingLoadBaselineWeeks; i++)
+      DateTime(
+        day.year,
+        day.month,
+        day.day - (kTrainingLoadBaselineWeeks * 7 - 1) + i * 7,
       ),
   ];
 }

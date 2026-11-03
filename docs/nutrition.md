@@ -385,7 +385,7 @@ The full-history trend, reached from the Stats screen's Fuel row and from the Nu
 `StatsProgressService` per load over the workout repository and computes both the
 trend over the repository's whole food history and the adherence target line in
 that same load. It is *not* scoped to the Fuel row's window or to the Stats
-screen's selected training period.
+screen's four-week window.
 
 The body is two cards stacked under their own headers — CALORIES, then MACROS —
 each a `NutritionTrendCard` over the same loaded trend, so both charts are visible
@@ -574,11 +574,17 @@ Verified by `test/stats_progress_test.dart`, `test/nutrition_trend_screen_test.d
 
 The only nutrition figure on the Stats screen. Its value type and its logged-days
 averaging rule are documented in [Data Models](data_models.md#fuelsummary); its
-row is documented in [Stats Screen](stats_screen.md). It averages over the
-service's own window, never the Stats screen's selected training period.
+row is documented in [Stats Screen](stats_screen.md). Its window is the
+service's own — the `kFuelWindowDays` finished days ending **yesterday**, the
+previous range the same length immediately before, today in neither — never the
+Stats screen's four-week window, and the summary is `null` unless some logged
+day falls in the last `kFuelVisibilityDays` days, today included.
 
-Verified by `test/fuel_row_screen_test.dart` (S-1101–S-1108, the entry-point half
-of S-1109, S-1111, S-1112, and S-1259–S-1261).
+Verified by `test/fuel_summary_window_test.dart` (`S-17201 window is the 7
+finished days ending yesterday`, `S-17203 a session started today does not make
+a training day`, `S-17204 visibility: today alone shows, d14 hides, d13 is
+previous`) and `test/fuel_row_screen_test.dart` (S-1101–S-1108, the entry-point
+half of S-1109, S-1111, S-1112, and S-1259–S-1261).
 
 ### Logged-day consistency
 
@@ -679,3 +685,4 @@ contract, not a live persistence path.
 | Trend days are summed and rounded once per day, gaps skipped | `test/stats_progress_test.dart` |
 | The target line steps at each saved target change | `test/stats_progress_test.dart`, `test/nutrition_trend_screen_test.dart` |
 | The Fuel summary averages over logged days only | `test/fuel_row_screen_test.dart` |
+| The Fuel window is the `kFuelWindowDays` finished days ending yesterday, today in neither the window nor the previous range | `test/fuel_summary_window_test.dart` |

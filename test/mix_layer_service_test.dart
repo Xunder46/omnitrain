@@ -57,8 +57,15 @@ Future<void> _seedSession(
   );
 }
 
-/// The plan's "rated-ready" baseline: one 60-minute session rated 4 in each of
-/// four distinct 7-calendar-day blocks before [fromDay].
+/// Rated baseline work: one 60-minute session rated 4 at the fixed offsets
+/// [80, 60, 40, 20] days before [fromDay].
+///
+/// Under the rated-weeks rule (D-17103) a session counts when it falls in one
+/// of the 12 seven-day blocks ending at the payload's end day; with an end day
+/// at or within a few days after [fromDay] all four sessions land inside that
+/// range, in distinct blocks, and inside the usual baseline before [fromDay].
+/// Tests whose gate threshold needs a specific rated-week count pass
+/// `sessions:` and say so at the call site.
 Future<void> _seedRatedBaseline(
   WorkoutRepository repo,
   DateTime fromDay, {
@@ -162,7 +169,7 @@ List<String> _layerShape(MixLayerData data) => [
   'segments=${_barShape(data.segments)}',
   'baseline=${_barShape(data.baselineSegments)}',
   'unrated=${data.unratedSessionCount}',
-  'ratedBaselineWeeks=${data.ratedBaselineWeeks}',
+  'ratedWeeks=${data.ratedWeeks}',
   'lastSessionDay=${data.lastSessionDay?.toIso8601String()}',
   for (final week in data.weeks)
     'week=${week.weekStart.toIso8601String()}|${week.measure}'
@@ -248,7 +255,10 @@ void main() {
         expect(_segment(data, ExerciseSection.resistance).measure, 240.0);
         expect(_percentsOf(data.segments), [100]);
         expect(data.unratedSessionCount, 0);
-        expect(data.ratedBaselineWeeks, 4);
+        // Rated weeks (D-17103): the end day is 05-14, so the blocks tile
+        // [02-20, 05-15). The baseline sessions (02-21, 03-13, 04-02, 04-22)
+        // and the window's own session (05-13) land in five distinct blocks.
+        expect(data.ratedWeeks, 5);
         expect(data.baselineSegments, isNotEmpty);
       });
 
@@ -272,7 +282,7 @@ void main() {
         expect(_segment(data, ExerciseSection.resistance).measure, 60.0);
         expect(_percentsOf(data.segments), [100]);
         expect(data.unratedSessionCount, 1);
-        expect(data.ratedBaselineWeeks, 0);
+        expect(data.ratedWeeks, 0);
         expect(data.baselineSegments, isEmpty);
       });
 
@@ -373,7 +383,7 @@ void main() {
         expect(_percentsOf(data.segments), [100]);
       });
 
-      test('S-1510 A exactly 4 rated baseline weeks shows load', () async {
+      test('S-1510 A exactly 4 rated weeks shows load', () async {
         for (final day in [10, 11, 12, 13]) {
           await _seedHourSession(
             repo,
@@ -387,7 +397,10 @@ void main() {
             exerciseId: 'ex-dl-$day',
           );
         }
-        await _seedRatedBaseline(repo, DateTime(2026, 5, 10));
+        // The four in-window rated days all land in the last rated block
+        // ([05-07, 05-13]), so three baseline sessions (02-19, 03-11, 03-31)
+        // plus that block make exactly the boundary of 4 rated weeks.
+        await _seedRatedBaseline(repo, DateTime(2026, 5, 10), sessions: 3);
 
         final data = (await _mix(
           repo,
@@ -396,12 +409,12 @@ void main() {
         ))!;
 
         expect(data.measure, MixMeasure.load);
-        expect(data.ratedBaselineWeeks, 4);
+        expect(data.ratedWeeks, 4);
         expect(_segment(data, ExerciseSection.resistance).measure, 960.0);
         expect(data.baselineSegments, isNotEmpty);
       });
 
-      test('S-1510 B three rated baseline weeks shows time', () async {
+      test('S-1510 B three rated weeks shows time', () async {
         for (final day in [10, 11, 12, 13]) {
           await _seedHourSession(
             repo,
@@ -415,7 +428,10 @@ void main() {
             exerciseId: 'ex-dl-$day',
           );
         }
-        await _seedRatedBaseline(repo, DateTime(2026, 5, 10), sessions: 3);
+        // The four in-window rated days share the last rated block
+        // ([05-07, 05-13]), so two baseline sessions (02-19, 03-11) plus that
+        // block make exactly 3 rated weeks — one below the load boundary.
+        await _seedRatedBaseline(repo, DateTime(2026, 5, 10), sessions: 2);
 
         final data = (await _mix(
           repo,
@@ -424,7 +440,7 @@ void main() {
         ))!;
 
         expect(data.measure, MixMeasure.time);
-        expect(data.ratedBaselineWeeks, 3);
+        expect(data.ratedWeeks, 3);
         expect(data.baselineSegments, isEmpty);
       });
 
@@ -481,7 +497,11 @@ void main() {
 
         expect(data.measure, MixMeasure.time);
         expect(data.unratedSessionCount, 1);
-        expect(data.ratedBaselineWeeks, 4);
+        // Rated weeks (D-17103): the end day is 05-13, so the blocks tile
+        // [02-19, 05-14). The four baseline sessions (02-19, 03-11, 03-31,
+        // 04-20) and the rated in-window days (05-11, 05-12, both in
+        // [05-07, 05-13]) land in five distinct blocks.
+        expect(data.ratedWeeks, 5);
         expect(_segment(data, ExerciseSection.resistance).measure, 180.0);
       });
 
@@ -508,7 +528,7 @@ void main() {
 
         expect(data.measure, MixMeasure.time);
         expect(data.unratedSessionCount, 2);
-        expect(data.ratedBaselineWeeks, 4);
+        expect(data.ratedWeeks, 4);
         expect(data.baselineSegments, isEmpty);
       });
 
@@ -545,9 +565,11 @@ void main() {
         final window = _window(w, DateTime(2026, 5, 17, 23, 59));
         final data = (await _mix(repo, window: window, now: now))!;
 
-        // The block holding W−84d counts, the one before it does not, and the
-        // window's own session is never in its own baseline.
-        expect(data.ratedBaselineWeeks, 2);
+        // The rated count is the blocks ending at the payload's end day
+        // (05-17) that hold a rated session: 05-10 falls in [05-04, 05-11) and
+        // 05-12 in [05-11, 05-18) — two blocks. The February sessions are more
+        // than 83 days before the end day, so neither counts.
+        expect(data.ratedWeeks, 2);
         expect(data.unratedSessionCount, 0);
         expect(_segment(data, ExerciseSection.resistance).measure, 60.0);
         // The plan's S-1511 sentence about a baseline segment conflicts with
@@ -620,17 +642,14 @@ void main() {
         expect(_sectionsOf(data.segments), [ExerciseSection.resistance]);
         expect(_segment(data, ExerciseSection.resistance).measure, 240.0);
         expect(data.unratedSessionCount, 0);
-        // The baseline still ends at the local-midnight day of the window's
-        // own start, so the same two blocks as fixture A count.
-        expect(data.ratedBaselineWeeks, 2);
+        // The rated count follows the payload's end day (05-24), not the
+        // window's start: 05-10 falls in [05-04, 05-11), 05-12/13/15 in
+        // [05-11, 05-18) and 05-20 in [05-18, 05-25) — three blocks. The
+        // February sessions are more than 83 days before the end day.
+        expect(data.ratedWeeks, 3);
         expect(data.measure, MixMeasure.time);
         expect(data.baselineSegments, isEmpty);
 
-        // ... and that end is the window's own start day, not its end: the
-        // same period pulled back one day to W−1d drops the W−1d block, which
-        // leaves the W−84d block as the only rated one. A baseline that ran to
-        // the window's end instead would pull the four in-period sessions in
-        // and report two.
         final earlierPeriod = TrainingPeriod(
           id: 'period-0',
           name: 'Spring block, pulled back a day',
@@ -650,7 +669,13 @@ void main() {
           window: earlierWindow,
           now: now,
         ))!;
-        expect(earlierData.ratedBaselineWeeks, 1);
+        // The rated count is anchored at the payload's end day, so pulling
+        // the period's start back a day to W−1d does not move it: the same
+        // three blocks count and both windows report 3. (The baseline itself
+        // still ends at the window's own start day — unchanged by 99b — but a
+        // time measure draws no baseline segments, so the count is the only
+        // number here.)
+        expect(earlierData.ratedWeeks, 3);
 
         // The flag is never read: an equivalent hand-built non-period window
         // produces the identical payload.
@@ -696,7 +721,7 @@ void main() {
           startOfWeek: 'sunday',
         ))!;
 
-        expect(sunday.ratedBaselineWeeks, monday.ratedBaselineWeeks);
+        expect(sunday.ratedWeeks, monday.ratedWeeks);
         expect(_barShape(sunday.baselineSegments), _barShape(monday.baselineSegments));
         expect(_barShape(sunday.segments), _barShape(monday.segments));
         // The setting moves the strip, and only the strip (D-935).
@@ -1052,7 +1077,10 @@ void main() {
       expect(_layerShape(hiveData), _layerShape(mockData));
       expect(mockData.measure, MixMeasure.load);
       expect(_barShape(mockData.segments), ['resistance:120.0:67', 'isometric:60.0:33']);
-      expect(mockData.ratedBaselineWeeks, 4);
+      // Rated weeks (D-17103): the end day is 05-14, so the blocks tile
+      // [02-20, 05-15). The four baseline sessions (02-21, 03-13, 04-02,
+      // 04-22) and s1503 itself (05-13) land in five distinct blocks.
+      expect(mockData.ratedWeeks, 5);
       expect(mockData.baselineSegments, isNotEmpty);
     });
 

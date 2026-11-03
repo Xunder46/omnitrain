@@ -284,7 +284,7 @@ owner; the file itself states each rule.
 |----------|-----------------|
 | `kMixStripWeeks` | How many weeks a weekly strip holds |
 | `kTrainingLoadBaselineWeeks` | How many 7-calendar-day blocks the baseline spans |
-| `kTrainingLoadMinRatedWeeks` | How many rated baseline weeks the load measure needs before it is shown |
+| `kTrainingLoadMinRatedWeeks` | How many of the last 12 seven-day weeks, current ones included, must hold a rated session for the load measure to be shown |
 | `kTrainingLoadMaxUnratedShare` | The largest share of a window's time that may be unrated for the load measure to be shown; the boundary is inclusive |
 
 Verified by `test/training_load_test.dart` (the constants group).
