@@ -707,7 +707,7 @@ class _MonthlyStatsStrip extends StatelessWidget {
                 Expanded(
                   child: _CompactStat(
                     label: isActiveStreak ? 'STREAK' : 'BEST RUN',
-                    value: completedSessions == 0
+                    value: completedSessions == 0 && !isActiveStreak
                         ? '—'
                         : (streakDays >= 3
                               ? '🔥 ${streakDays}d'

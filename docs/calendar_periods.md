@@ -29,11 +29,15 @@ overflow count, so a heavy day never overruns its cell.
 A strip below the grid reports four figures for the **displayed month**: completed session count,
 total training time, the streak slot, and a per-modality breakdown. The streak slot's label comes
 from `CalendarState.isActiveStreak` (`lib/state/calendar/calendar_state.dart`): it reads STREAK
-when the displayed month is the current month with a live streak, otherwise BEST RUN (the longest
+in the current month when the streak is live (a session today or yesterday), otherwise BEST RUN (the longest
 consecutive-day run within the displayed month's data). A multi-day streak renders with a flame
 prefix. Values render as an em dash rather than a zero
 when the month has no data, and the strip stays blank while the month is loading rather than
-flashing placeholder values.
+flashing placeholder values. A live streak shows even before the month's first session. Verified
+by `test/calendar_streak_state_test.dart` (groups `S-17403 to S-17405 a live streak, a lapsed
+one, none`, `S-17406 a live streak before the first session of the month`, `S-17401 two sessions
+on one day count as one day`, `S-17402 the streak across a clock change`) and
+`test/calendar_streak_screen_test.dart` (group `S-17406 and S-17407 the Calendar strip`).
 
 ### Day Routing
 
@@ -226,17 +230,17 @@ Responsibilities:
 | `completedSessionCount` | `int` | Count of entries where `isCompleted == true` |
 | `totalTrainingMs` | `int` | Sum of `endedAtMs − startedAtMs` for completed entries with a real session |
 | `modalityBreakdown` | `Map<String?, int>` | Completed session count grouped by modality key (null = Free Training) |
-| `streakDays` | `int` | Current consecutive-day streak (see below) |
+| `streakDays` | `int` | The live streak, else the displayed month's longest run (see below) |
 
 #### Streak Calculation (`_computeStreak`)
 
 Called concurrently with `_loadPeriods()` at the end of each `_loadMonth()`:
 
 1. Fetches sessions for the last 90 days via `repository.getSessionsByDateRange`.
-2. Builds a `Set<int>` of UTC-midnight timestamps for days that have a completed session.
+2. Builds a `Set<int>` of local start-of-day timestamps, so two sessions on one day count once.
 3. Anchors on **today** if today has a session, else on **yesterday** if yesterday has one.
-4. Walks backwards day-by-day counting consecutive days present in the set.
-5. Stores the result in `_streakDays` (defaults to 0 on error or no anchor day).
+4. Walks backwards one calendar day at a time, never 24 h, so a clock change cannot hide a day.
+5. Stores the result in `_streakDays` (0 on error; with no anchor day, the displayed month's longest run).
 
 > The 90-day window caps the displayed streak at 90. Increase the window if longer streaks are needed.
 

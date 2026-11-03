@@ -31,10 +31,15 @@ class RecordsAndTrendsScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final SettingsState settingsState;
 
+  /// The clock the streak is read against; null reads the device clock. A test
+  /// passes a fixed one.
+  final DateTime Function()? clock;
+
   const RecordsAndTrendsScreen({
     super.key,
     required this.workoutState,
     required this.settingsState,
+    this.clock,
   });
 
   @override
@@ -74,10 +79,14 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
     });
     try {
       // Reuse CalendarState streak logic — the calendar keeps owning that
-      // rule; this screen only displays it.
-      final calendarState = CalendarState(widget.workoutState.repository);
+      // rule; this screen only displays it. Only a live streak counts: with
+      // none, CalendarState holds the month's best run, which is not a streak.
+      final calendarState = CalendarState(
+        widget.workoutState.repository,
+        now: widget.clock,
+      );
       await calendarState.init();
-      final streak = calendarState.streakDays;
+      final streak = calendarState.liveStreakDays;
 
       // One service instance for the whole load. The service caches its
       // history snapshot per instance, so every `compute*` call below shares a

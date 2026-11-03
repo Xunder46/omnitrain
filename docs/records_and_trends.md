@@ -25,6 +25,11 @@ Verified by `test/records_and_trends_screen_test.dart` (`S-913` for the totals a
 the PR list, `S-914` for the shared best) and
 `test/exercise_metric_service_test.dart`.
 
+The Streak figure is the live streak and reads 0 d once it has lapsed. Verified
+by `test/calendar_streak_screen_test.dart` (group `S-17408 the Records and
+Trends Streak figure`: `S-17408 a live streak reads 2 d`, `S-17408 a lapsed
+streak reads 0 d, not the month best run`).
+
 A load that throws is not an empty state: each screen shows its failure line
 (`Could not load your records.` on the index, `Could not load this exercise.`
 on the detail page) with a full-width `Try again` button that re-runs the
