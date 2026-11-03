@@ -34,6 +34,9 @@ class ProteinConsistencySignal implements Signal {
   int get priority => kProteinConsistencyPriority;
 
   @override
+  bool get needsRatedWeeks => false;
+
+  @override
   Future<SignalCard?> evaluate(SignalContext context) async {
     // D-1502: the 14 local calendar days ending with today, and the eight
     // 7-day blocks immediately before them. Calendar arithmetic, so a DST

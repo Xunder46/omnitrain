@@ -40,20 +40,27 @@ by `test/signals_framework_test.dart` (`D-1001 / D-1002 the kind vocabulary`).
 
 ## The gate
 
-Signals are evaluated only when `signalsGateMet(mix)` is true, which reads the
-load's rated weeks — how many of the last 12 seven-day weeks, current ones
-included, hold at least one completed session with a rating — and
-`kTrainingLoadMinRatedWeeks` only — it does not
+A signal declares whether it needs rated weeks: true when it reads the load
+measure or the effort ratings, false when it reads neither and may speak from
+the first session. Verified by `test/signals_service_test.dart` (group
+`S-17503 which registered signals need rated weeks` › `only Progression Rate,
+Protein Consistency and Cardio Efficiency Drift speak before the gate`).
+`signalsGateMet(mix)` reads the load's rated weeks — how many of the last 12
+seven-day weeks, current ones included, hold at least one completed session
+with a rating — and `kTrainingLoadMinRatedWeeks` only — it does not
 additionally require a load measure. When the gate is unmet the service
-evaluates no signal at all and returns no candidates, so a user without enough
-rated weeks pays nothing for the framework; the Stats screen shows the locked
-Signals line in the layer's slot instead, reading
-`Unlocks after 4 weeks of rating your workouts — N of 4 so far.` from the
-payload's rated weeks alone. Verified by
-`test/signals_framework_test.dart` (`D-1006 the quiet-line gate`),
-`test/signals_service_test.dart` (`S-1702 an unmet gate returns nothing and
-evaluates nothing`), `test/signals_layer_screen_test.dart` (`S-4001`,
-`S-4002`, `S-4013`) and, for the count's rule,
+evaluates only the signals that need no rated weeks, so a user without enough
+rated weeks pays nothing for the load-reading signals; when no card speaks and
+the Mix layer exists the
+Stats screen shows the locked Signals line in the layer's slot instead,
+reading `Unlocks after 4 weeks of rating your workouts — N of 4 so far.` from
+the payload's rated weeks alone. Verified by
+`test/signals_service_test.dart` (`S-17501 an unmet gate evaluates only the
+signals that need no rated weeks`),
+`test/signals_layer_screen_test.dart` (`S-4002 the locked line counts rated
+weeks`, `S-4013 the locked section takes the layer slot`, group `S-17507
+dismissing the only card at an unmet gate` › `S-17507 returns the block to
+the locked line`) and, for the count's rule,
 `test/stats_rated_weeks_service_test.dart` (`S-17106 ratedWeekBlockStarts
 tiles the 12 weeks at local midnight`).
 
@@ -111,12 +118,14 @@ adds nothing and suppresses nothing`).
 
 When the gate is met and no card qualifies, the framework reports the quiet-line
 state instead of cards: `kSignalQuietLine` is the sentence and the caller draws
-it without a card. A gate-unmet load reports neither cards nor the quiet line —
-the Stats screen shows the locked line instead — so a caller can tell "nothing
-to say" from "not yet speaking". Verified by `test/signals_framework_test.dart`
-(`S-1703 gate met, nothing qualifies`) and
-`test/signals_layer_screen_test.dart` (`S-4002 the locked line counts rated
-weeks`).
+it without a card.
+A gate-unmet load reports the cards of the unlocked signals but never the quiet line,
+so a caller can tell "nothing to say" from "not yet speaking". Verified by
+`test/signals_framework_test.dart` (`S-1703 gate met, nothing qualifies` ›
+`S-17504 an unmet gate keeps the cards it is given and shows no quiet line`,
+`S-17504 an unmet gate with nothing to show yields no cards and no quiet
+line`, group `Structural guard — the quiet line needs the gate` › `an unmet
+gate with no candidates is never the quiet line`).
 
 ## The dismissal store
 

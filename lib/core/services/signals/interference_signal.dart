@@ -30,6 +30,9 @@ class InterferenceSignal implements Signal {
   int get priority => kCrossModalityInterferencePriority;
 
   @override
+  bool get needsRatedWeeks => true;
+
+  @override
   Future<SignalCard?> evaluate(SignalContext context) async {
     final sessions = await context.progressService.interferenceSessions();
     final result = crossModalityInterference(

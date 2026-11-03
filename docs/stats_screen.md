@@ -107,14 +107,17 @@ alone — no Mix layer, no Signals layer, no Instruments list and no Fuel row,
 whatever the food log holds. Otherwise it is four blocks in a fixed order: the
 [Mix layer](#mix-layer) when the window holds measurable time, or its
 empty-window card when the window holds no session but history does, the
-[Signals layer](#signals-layer) when its gate is met — or, when the gate is
-unmet but the Mix layer exists, the locked Signals line in its slot —
+[Signals layer](#signals-layer) whenever a signal speaks or its gate is met —
+otherwise, when the gate is unmet but the Mix layer exists, the locked
+Signals line in its slot —
 the [Instruments list](#instruments-list) when the window holds work, and the
 [Fuel row](#fuel-row) when recent food exists. Verified by
 `test/stats_legacy_removal_test.dart` (`S-1208`),
 `test/fuel_row_screen_test.dart` (`S-1112`),
 `test/mix_layer_screen_test.dart` (`S-1601`, `S-1610`),
-`test/signals_layer_screen_test.dart` (`S-1701`, `S-1702`, `S-4002`),
+`test/signals_layer_screen_test.dart` (`S-1701`, `S-1702`, `S-4002`,
+group `S-17505 a signal that needs no ratings speaks while the gate is
+unmet`),
 `test/stats_four_week_window_screen_test.dart` (group `S-17007 after a break
 the card is one line` › `the empty window draws one line and no bar, strip or
 list`) and `test/stats_instruments_horizon_screen_test.dart` (group `S-17307
@@ -252,17 +255,25 @@ never stale relative to the other blocks. Verified by the same file (`S-1616`).
 ### Signals layer
 
 The Signals layer is the second block in the body, directly under the Mix layer
-and above the Instruments list, and there is exactly one of it. It renders only
-when its gate is met — `signalsGateMet(mix)`, the Mix layer's `ratedWeeks` —
+and above the Instruments list, and there is exactly one of it.
+The signals that need no ratings render from the first session; the signals
+that read the load measure or the ratings wait for the gate —
+`signalsGateMet(mix)`, the Mix layer's `ratedWeeks` —
 how many of the last 12 seven-day weeks, today's included, hold a rated
 session — against `kTrainingLoadMinRatedWeeks`. When the gate is
-unmet but the Mix layer exists, the screen shows the locked Signals section in
-the layer's slot instead: the `SIGNALS` header and one line,
+unmet but a card speaks, the layer shows the hint line
+`More signals unlock after 4 weeks of rating your workouts — N of 4 so far.`
+under the cards, N being the payload's rated weeks. When the gate is unmet and
+no card speaks, the screen shows the locked Signals section in the layer's
+slot instead: the `SIGNALS` header and one line,
 `Unlocks after 4 weeks of rating your workouts — N of 4 so far.`, where N is
-that count and no signal is evaluated at all. Verified by
-`test/signals_layer_screen_test.dart` (`S-1701`, `S-1702`, `S-4001`, `S-4002`,
-`S-4013`, `S-4003`, `S-4004`), `test/signals_framework_test.dart`
-(`D-1006 the quiet-line gate`) and `test/stats_rated_weeks_screen_test.dart`
+that count and no load-reading signal is evaluated. Verified by
+`test/signals_layer_screen_test.dart` (group `S-17505 a signal that needs no
+ratings speaks while the gate is unmet` › `S-17505 its card shows with the
+hint under it and the load-reading signal is not evaluated`, `S-1702`,
+`S-4002`, `S-4013`), `test/signals_service_test.dart` (`S-17501 an unmet gate
+evaluates only the signals that need no rated weeks`) and
+`test/stats_rated_weeks_screen_test.dart`
 (group `S-17107 current weeks count` › `two rated weeks drive the locked line
 and the Mix note`).
 
@@ -675,12 +686,13 @@ caption names the window length, not the period`).
 The [Signals layer](#signals-layer) is evaluated in the same pass, against the
 same window and the same `now` and over the same `StatsProgressService`
 instance, so opening Stats adds no second walk of history; a gate-unmet screen
-evaluates nothing and shows the locked line instead. The screen holds the
+evaluates only the signals that need no ratings and shows the locked line when
+none of them speaks. The screen holds the
 load's candidates and its dismissal store, so a dismissal re-resolves the held
 candidates in memory instead of reloading — verified by
 `test/signals_layer_screen_test.dart` (`S-1702`, `S-4002`, `S-1709`) and
-`test/signals_service_test.dart` (`S-1702 an unmet gate returns nothing and
-evaluates nothing`).
+`test/signals_service_test.dart` (`S-17501 an unmet gate evaluates only the
+signals that need no rated weeks`).
 
 `StatsProgressService` is a pure-Dart service — it depends on the
 `WorkoutRepository` interface only, not on any concrete implementation.
@@ -722,7 +734,7 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `lib/state/stats/stats_primer_state.dart` | `StatsPrimerState` — the `primer_seen_stats` seen flag over the repository preference API, hydrated before `runApp` |
 | `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, used by Records & Trends and Exercise Progress, not by this screen |
 | `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the explainer sentence, the modality bar and its legend, the usual bar and its two labels, the note, the week strip, the strip's title and caption, the empty-strip line and the empty-window card's one line |
-| `lib/features/stats/widgets/signals_layer.dart` | `SignalsLayerSection` — the Signals layer: the header, the signal cards and the quiet line; `SignalsLockedSection` — the locked line a gate-unmet screen shows in the layer's slot |
+| `lib/features/stats/widgets/signals_layer.dart` | `SignalsLayerSection` — the Signals layer: the header, the signal cards and the quiet line; `SignalsLockedSection` — the locked line a gate-unmet screen with no unlocked card shows in the layer's slot |
 | `lib/core/models/signals.dart` | The Signals value types (`SignalKind`, `SignalCard`, `SignalsData`), the selection, the gate and the dismissal maths; declares `kSignalMaxCards` and `kSignalDismissalDays` |
 | `lib/core/services/signals_service.dart` | `SignalsService` — loads the dismissal store, evaluates the registered signals for one load and writes a dismissal back |
 | `lib/features/stats/widgets/instrument_list.dart` | The Instruments list: one section per kind of work, capped rows, the expand control; declares `kInstrumentRowCap` |

@@ -130,18 +130,19 @@ class _StatsScreenState extends State<StatsScreen> {
       );
 
       // The signals share this load: the same service instance, so no second
-      // walk of history, and the same `now` (D-1014). When the gate is unmet
-      // nothing is evaluated and the layer is absent (D-1006).
+      // walk of history, and the same `now` (D-1014). While the gate is unmet
+      // only the signals that need no ratings are evaluated (D-17502).
       final signalsService = SignalsService(
         repository: widget.workoutState.repository,
         progressService: service,
         signals: widget.signals,
       );
+      final evaluateSignals = totals.completedSessions > 0;
       final gateMet = signalsGateMet(mixLayer);
-      final signalsDismissedAtMs = gateMet
+      final signalsDismissedAtMs = evaluateSignals
           ? await signalsService.loadDismissals()
           : const <String, int>{};
-      final signalsCandidates = gateMet
+      final signalsCandidates = evaluateSignals
           ? await signalsService.evaluateCandidates(
               now: now,
               window: window,
@@ -149,12 +150,12 @@ class _StatsScreenState extends State<StatsScreen> {
               dismissedAtMs: signalsDismissedAtMs,
             )
           : const <SignalCard>[];
-      final signalsData = gateMet
+      final signalsData = evaluateSignals
           ? resolveSignals(
               candidates: signalsCandidates,
               dismissedAtMs: signalsDismissedAtMs,
               now: now,
-              gateMet: true,
+              gateMet: gateMet,
             )
           : null;
 
@@ -292,11 +293,16 @@ class _StatsScreenState extends State<StatsScreen> {
                               ),
                               const SizedBox(height: 24),
                             ],
-                            if (_signalsData != null) ...[
+                            if (_signalsData != null &&
+                                (_signalsData!.cards.isNotEmpty ||
+                                    signalsGateMet(_mixLayer))) ...[
                               SignalsLayerSection(
                                 data: _signalsData!,
                                 themeColors: themeColors,
                                 onDismiss: _dismissSignal,
+                                lockedRatedWeeks: signalsGateMet(_mixLayer)
+                                    ? null
+                                    : (_mixLayer?.ratedWeeks ?? 0),
                               ),
                               const SizedBox(height: 24),
                             ] else if (_mixLayer != null &&

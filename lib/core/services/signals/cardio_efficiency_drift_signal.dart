@@ -34,6 +34,9 @@ class CardioEfficiencyDriftSignal implements Signal {
   int get priority => kCardioEfficiencyDriftPriority;
 
   @override
+  bool get needsRatedWeeks => false;
+
+  @override
   Future<SignalCard?> evaluate(SignalContext context) async {
     // D-1816: the whole span the comparison needs — the reference window's far
     // edge through `now`. The rule applies its own window boundaries, so the

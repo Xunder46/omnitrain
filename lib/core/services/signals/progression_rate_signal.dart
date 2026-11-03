@@ -29,6 +29,9 @@ class ProgressionRateSignal implements Signal {
   int get priority => kProgressionRatePriority;
 
   @override
+  bool get needsRatedWeeks => false;
+
+  @override
   Future<SignalCard?> evaluate(SignalContext context) async {
     final samples = await context.progressService.progressionSamples();
     final rate = progressionRate(samples: samples, now: context.now);

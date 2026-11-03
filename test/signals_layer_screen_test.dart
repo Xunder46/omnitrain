@@ -151,6 +151,9 @@ class _StubSignal implements Signal {
   @override
   int priority;
 
+  @override
+  final bool needsRatedWeeks;
+
   final bool abstains;
   bool flag = true;
 
@@ -163,6 +166,7 @@ class _StubSignal implements Signal {
     required this.id,
     required this.kind,
     this.priority = 10,
+    this.needsRatedWeeks = true,
     this.abstains = false,
     String? observation,
     this.suggestion,
@@ -630,6 +634,84 @@ void main() {
           expect(positive.evaluations, 0);
         });
       });
+
+      // ─── S-17505, S-17507 ──────────────────────────────────────────────────
+
+      group('S-17505 a signal that needs no ratings speaks while the gate is '
+          'unmet', () {
+        setUp(() => _seedGateUnmet(repo));
+
+        testWidgets('S-17505 its card shows with the hint under it and the '
+            'load-reading signal is not evaluated', (tester) async {
+          final open = _StubSignal(
+            id: 'p-open',
+            kind: SignalKind.positive,
+            priority: 10,
+            needsRatedWeeks: false,
+          );
+          final locked = _StubSignal(
+            id: 'c-locked',
+            kind: SignalKind.caution,
+            priority: 10,
+          );
+          await pumpStats(tester, signals: [open, locked]);
+
+          expect(find.byKey(const Key('signals_layer')), findsOneWidget);
+          expect(_cardKeys(), ['signal_card_p-open']);
+          expect(find.byKey(const Key('signals_locked')), findsNothing);
+          expect(find.byKey(const Key('signals_locked_line')), findsNothing);
+          expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
+
+          final hint = tester.widget<Text>(
+            find.byKey(const Key('signals_locked_hint')),
+          );
+          expect(hint.data, signalsMoreLine(0));
+          expect(
+            hint.data,
+            'More signals unlock after 4 weeks of rating your workouts — '
+            '0 of 4 so far.',
+          );
+          expect(open.evaluations, 1);
+          expect(locked.evaluations, 0);
+        });
+      });
+
+      // Mock-only, for the reason S-1709 gives below: a Hive write started by a
+      // tap inside a widget test's fake-async zone cannot drain, so the Hive
+      // variant never completes at teardown. The assertions are store-independent.
+      if (harness.name == 'Mock') {
+        group('S-17507 dismissing the only card at an unmet gate', () {
+          setUp(() => _seedGateUnmet(repo));
+
+          testWidgets('S-17507 returns the block to the locked line', (
+            tester,
+          ) async {
+            final open = _StubSignal(
+              id: 'p-open',
+              kind: SignalKind.positive,
+              priority: 10,
+              needsRatedWeeks: false,
+            );
+            await pumpStats(tester, signals: [open]);
+            expect(_cardKeys(), ['signal_card_p-open']);
+
+            await tester.tap(find.byKey(const Key('signal_dismiss_p-open')));
+            await tester.pump();
+
+            expect(_cardKeys(), isEmpty);
+            expect(find.byKey(const Key('signals_locked')), findsOneWidget);
+            expect(
+              find.byKey(const Key('signals_locked_line')),
+              findsOneWidget,
+            );
+            expect(find.byKey(const Key('signals_locked_hint')), findsNothing);
+            expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
+            expect(find.byKey(const Key('signals_layer')), findsNothing);
+
+            await settleStore(tester);
+          });
+        });
+      }
 
       // ─── S-4013 (carries S-4001's numbers) ─────────────────────────────────
 
@@ -1382,10 +1464,13 @@ void main() {
       group('the empty-state branch', () {
         testWidgets('a profile with no sessions shows the empty state and no '
             'layer, even with stubs registered', (tester) async {
+          // A signal that needs no ratings: the unmet gate would not skip it,
+          // so a zero count proves the empty profile is never evaluated.
           final positive = _StubSignal(
             id: 'p-1',
             kind: SignalKind.positive,
             priority: 10,
+            needsRatedWeeks: false,
           );
           await pumpStats(tester, signals: [positive]);
 

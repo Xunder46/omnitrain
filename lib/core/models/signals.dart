@@ -56,8 +56,8 @@ class SignalCard {
 /// What the layer renders for one load (D-1003, D-1007).
 ///
 /// An empty [cards] with [showQuietLine] true is the "nothing to say" state;
-/// an empty [cards] with [showQuietLine] false means the gate is unmet and the
-/// layer renders nothing at all.
+/// an empty [cards] with [showQuietLine] false means the gate is unmet and
+/// nothing speaks: the layer renders the locked line.
 class SignalsData {
   final List<SignalCard> cards;
   final bool showQuietLine;
@@ -65,7 +65,8 @@ class SignalsData {
   const SignalsData({required this.cards, required this.showQuietLine});
 }
 
-/// Whether signals render at all (D-1006).
+/// Whether the signals that read the load measure or the ratings may speak
+/// (D-1006, D-17501).
 ///
 /// The gate reads `ratedWeeks` only — it does not additionally require
 /// a load measure.
@@ -82,6 +83,16 @@ bool signalsGateMet(MixLayerData? mix) =>
 String signalsLockedLine(int ratedWeeks) =>
     'Unlocks after $kTrainingLoadMinRatedWeeks weeks of rating your workouts — '
     '${ratedWeeks.clamp(0, kTrainingLoadMinRatedWeeks)} of '
+    '$kTrainingLoadMinRatedWeeks so far.';
+
+/// The line under the cards while the gate is unmet but a signal that needs no
+/// ratings is speaking (D-17504, D-17508).
+///
+/// The count is clamped like [signalsLockedLine], and the number in the copy is
+/// always [kTrainingLoadMinRatedWeeks].
+String signalsMoreLine(int ratedWeeks) =>
+    'More signals unlock after $kTrainingLoadMinRatedWeeks weeks of rating '
+    'your workouts — ${ratedWeeks.clamp(0, kTrainingLoadMinRatedWeeks)} of '
     '$kTrainingLoadMinRatedWeeks so far.';
 
 /// Whether the signal dismissed at [dismissedAtMs] is still hidden at [now]
@@ -161,15 +172,16 @@ String encodeSignalDismissals(Map<String, int> dismissals) =>
 /// only one kind survives, it is the top [kSignalMaxCards] of that kind.
 /// Within a kind, higher priority wins and an exact tie is broken by id
 /// ascending, so selection is deterministic.
+///
+/// [gateMet] decides only whether the quiet line may show; the candidates are
+/// already filtered by the service, so an unmet gate still ranks the cards of
+/// the signals that need no ratings (D-17503).
 SignalsData resolveSignals({
   required List<SignalCard> candidates,
   required Map<String, int> dismissedAtMs,
   required DateTime now,
   required bool gateMet,
 }) {
-  if (!gateMet) {
-    return const SignalsData(cards: [], showQuietLine: false);
-  }
   final live = candidates.where((card) {
     final dismissedAt = dismissedAtMs[card.id];
     return dismissedAt == null ||
@@ -192,5 +204,5 @@ SignalsData resolveSignals({
     final surviving = cautions.isNotEmpty ? cautions : positives;
     cards = surviving.take(kSignalMaxCards).toList(growable: false);
   }
-  return SignalsData(cards: cards, showQuietLine: cards.isEmpty);
+  return SignalsData(cards: cards, showQuietLine: cards.isEmpty && gateMet);
 }

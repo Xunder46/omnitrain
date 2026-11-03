@@ -71,11 +71,17 @@ class SignalsLayerSection extends StatelessWidget {
   final OmniThemeColors themeColors;
   final void Function(String id) onDismiss;
 
+  /// When non-null the gate is unmet and a card that needs no ratings is
+  /// showing: the line under the cards says how far the other signals are
+  /// (D-17504). Null once the gate is met.
+  final int? lockedRatedWeeks;
+
   const SignalsLayerSection({
     super.key,
     required this.data,
     required this.themeColors,
     required this.onDismiss,
+    this.lockedRatedWeeks,
   });
 
   /// The kind's icon. Kind is carried by the label and the icon, never by a
@@ -101,6 +107,16 @@ class SignalsLayerSection extends StatelessWidget {
           for (var i = 0; i < cards.length; i++) ...[
             if (i > 0) const SizedBox(height: _kCardGap),
             _card(context, cards[i]),
+          ],
+          if (lockedRatedWeeks != null) ...[
+            const SizedBox(height: _kCardGap),
+            Text(
+              signalsMoreLine(lockedRatedWeeks!),
+              key: const Key('signals_locked_hint'),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: themeColors.textSecondary,
+              ),
+            ),
           ],
         ],
       ],

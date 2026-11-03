@@ -31,6 +31,9 @@ class SustainedHighLoadSignal implements Signal {
   int get priority => kSustainedHighLoadPriority;
 
   @override
+  bool get needsRatedWeeks => true;
+
+  @override
   Future<SignalCard?> evaluate(SignalContext context) async {
     // D-1703: the completed weeks the service returns, oldest first, with the
     // week containing `now` already excluded.

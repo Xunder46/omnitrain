@@ -26,9 +26,9 @@ class SignalsService {
 
   /// The candidates of one load, in registry order (D-1014).
   ///
-  /// When the gate is unmet no signal is touched and the result is empty
-  /// (D-1006); otherwise every registered signal is evaluated once and the
-  /// cards of currently dismissed signals are dropped (D-1011).
+  /// While the gate is unmet only the signals that need no rated weeks are
+  /// evaluated (D-17502); once it is met every registered signal is evaluated
+  /// once. The cards of currently dismissed signals are dropped (D-1011).
   ///
   /// [dismissedAtMs] lets a caller that already read the store pass that map
   /// in, so one load reads the store once; when it is omitted the store is
@@ -39,7 +39,7 @@ class SignalsService {
     required MixLayerData? mix,
     Map<String, int>? dismissedAtMs,
   }) async {
-    if (!signalsGateMet(mix)) return const [];
+    final gateMet = signalsGateMet(mix);
     final dismissed = dismissedAtMs ?? await loadDismissals();
     final context = SignalContext(
       now: now,
@@ -50,6 +50,7 @@ class SignalsService {
     );
     final cards = <SignalCard>[];
     for (final signal in _signals) {
+      if (signal.needsRatedWeeks && !gateMet) continue;
       final card = await signal.evaluate(context);
       if (card == null) continue;
       final dismissedAt = dismissed[card.id];

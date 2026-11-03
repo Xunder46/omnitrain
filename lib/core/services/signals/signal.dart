@@ -20,6 +20,11 @@ abstract class Signal {
   /// Rank within [kind] only; higher wins (D-1005).
   int get priority;
 
+  /// True when this signal reads the load measure or the effort ratings, so it
+  /// stays silent until `signalsGateMet` is true; false when it reads neither
+  /// and may speak from the first session (D-17501).
+  bool get needsRatedWeeks;
+
   /// Proposes this signal's card, or null to abstain (D-1008).
   Future<SignalCard?> evaluate(SignalContext context);
 }
