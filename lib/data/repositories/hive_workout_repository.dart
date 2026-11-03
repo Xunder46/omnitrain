@@ -1127,11 +1127,14 @@ class HiveWorkoutRepository implements WorkoutRepository {
       return NutritionTarget.fromMap(_asStringMap(raw));
     }
 
-    // Walk backward to find the most recent ancestor target
-    int searchDateMs = dateMs - (24 * 60 * 60 * 1000); // Start 1 day before
-    while (searchDateMs > 0) {
+    // Walk backward to find the most recent ancestor target. Keys are local
+    // midnights, so step by calendar day: a fixed 24 h step misses every key
+    // after a DST change (it lands at 01:00 or 23:00 local).
+    final from = DateTime.fromMillisecondsSinceEpoch(dateMs);
+    var day = DateTime(from.year, from.month, from.day - 1);
+    while (day.millisecondsSinceEpoch > 0) {
       final ancestorRaw = _nutritionTargetsByDateBox.get(
-        searchDateMs.toString(),
+        day.millisecondsSinceEpoch.toString(),
       );
       if (ancestorRaw != null) {
         // Found an ancestor; return a copy (rolls over to the requested date)
@@ -1140,7 +1143,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
         );
         return ancestorTarget.copyWith(dateMs: dateMs);
       }
-      searchDateMs -= (24 * 60 * 60 * 1000); // Go back another day
+      day = DateTime(day.year, day.month, day.day - 1);
     }
 
     // No ancestor found

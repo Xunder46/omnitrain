@@ -1938,15 +1938,19 @@ class MockWorkoutRepository implements WorkoutRepository {
       return _nutritionTargetsByDate[dateMs];
     }
 
-    // Walk backward to find the most recent ancestor target
-    int searchDateMs = dateMs - (24 * 60 * 60 * 1000); // Start 1 day before
-    while (searchDateMs > 0) {
-      if (_nutritionTargetsByDate.containsKey(searchDateMs)) {
-        final ancestorTarget = _nutritionTargetsByDate[searchDateMs]!;
+    // Walk backward to find the most recent ancestor target. Keys are local
+    // midnights, so step by calendar day: a fixed 24 h step misses every key
+    // after a DST change (it lands at 01:00 or 23:00 local).
+    final from = DateTime.fromMillisecondsSinceEpoch(dateMs);
+    var day = DateTime(from.year, from.month, from.day - 1);
+    while (day.millisecondsSinceEpoch > 0) {
+      final ancestorTarget =
+          _nutritionTargetsByDate[day.millisecondsSinceEpoch];
+      if (ancestorTarget != null) {
         // Return a copy (rolls over to the requested date)
         return ancestorTarget.copyWith(dateMs: dateMs);
       }
-      searchDateMs -= (24 * 60 * 60 * 1000); // Go back another day
+      day = DateTime(day.year, day.month, day.day - 1);
     }
 
     // No ancestor found

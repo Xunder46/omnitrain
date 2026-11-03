@@ -359,7 +359,8 @@ class CalendarState extends ChangeNotifier {
         }
 
         final today = DateTime(now.year, now.month, now.day);
-        final yesterday = today.subtract(const Duration(days: 1));
+        // Calendar arithmetic: a 24 h step misses midnight after a DST change.
+        final yesterday = DateTime(today.year, today.month, today.day - 1);
         final todayMs = today.millisecondsSinceEpoch;
         final yesterdayMs = yesterday.millisecondsSinceEpoch;
 
@@ -382,7 +383,7 @@ class CalendarState extends ChangeNotifier {
           final ms = day.millisecondsSinceEpoch;
           if (!completedDays.contains(ms)) break;
           streak++;
-          day = day.subtract(const Duration(days: 1));
+          day = DateTime(day.year, day.month, day.day - 1);
         }
         _streakDays = streak;
       } else {
