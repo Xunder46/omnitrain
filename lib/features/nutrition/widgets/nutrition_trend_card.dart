@@ -10,20 +10,15 @@ import '../../../widgets/chart/scrollable_trend_chart.dart';
 import '../../../widgets/common/omni_empty_state.dart';
 import '../../../widgets/layout/omni_surface.dart';
 
-/// Segmented toggle state for the NUTRITION card. Local widget
-/// state only — not persisted across sessions. The two views
-/// share the same plotted-day set; switching just swaps the
-/// chart area, never re-queries the repository.
-enum _NutritionView { calories, macros }
+/// Which of the two nutrition trends a [NutritionTrendCard] plots.
+enum NutritionTrendView { calories, macros }
 
-/// The NUTRITION trend card: a Calories / Macros toggle over a
-/// scrollable trend chart, plus the legend row. With no logged day the chart
-/// area is the shared `OmniEmptyState` instead of a flat line at zero (S-2803).
-///
-/// Rendered by two hosts — the Stats screen's NUTRITION section and
-/// `NutritionTrendScreen` — so both show the same card over the same
-/// repository data.
-class NutritionTrendCard extends StatefulWidget {
+/// One nutrition trend card: a scrollable trend chart for the given [view]
+/// plus its legend row. The full-history nutrition screen stacks one card per
+/// view — Calories above Macros — so both trends are visible at once, with no
+/// toggle. With no logged day the card is the shared `OmniEmptyState` instead
+/// of a flat line at zero (S-2803), whichever view it was asked for.
+class NutritionTrendCard extends StatelessWidget {
   /// The plotted days, oldest first.
   final List<NutritionTrendPoint> trend;
 
@@ -33,65 +28,48 @@ class NutritionTrendCard extends StatefulWidget {
 
   final OmniThemeColors themeColors;
 
+  /// Which trend this card plots.
+  final NutritionTrendView view;
+
   const NutritionTrendCard({
     super.key,
     required this.trend,
     required this.adherence,
     required this.themeColors,
+    required this.view,
   });
 
-  @override
-  State<NutritionTrendCard> createState() => _NutritionTrendCardState();
-}
-
-class _NutritionTrendCardState extends State<NutritionTrendCard> {
-  /// Reserved height for the legend row that lives below the
-  /// macros chart. The calories view reserves the same height
-  /// with an empty `SizedBox` so toggling between the two views
-  /// does not change the card's total height.
+  /// Height of the legend row below the chart.
   static const double _kNutritionLegendRowHeight = 24;
   static const double _kNutritionLegendGap = 8;
-
-  _NutritionView _nutritionView = _NutritionView.calories;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final themeColors = widget.themeColors;
-    final trend = widget.trend;
     return OmniSurface(
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildNutritionToggle(theme, themeColors),
-          const SizedBox(height: 12),
-          if (trend.isEmpty) ...[
+          if (trend.isEmpty)
             const OmniEmptyState(
               compact: true,
               title: 'No data yet',
               hint: 'Log food to see your trend.',
-            ),
-            const SizedBox(height: _kNutritionLegendGap),
-            SizedBox(
-              height: _kNutritionLegendRowHeight,
-              child: _buildNutritionLegend(theme, themeColors),
-            ),
-          ] else if (trend.length >= 2) ...[
-            if (_nutritionView == _NutritionView.calories)
+            )
+          else if (trend.length >= 2) ...[
+            if (view == NutritionTrendView.calories)
               _buildCaloriesChart(themeColors, trend)
             else
               _buildMacrosChart(theme, themeColors, trend),
             const SizedBox(height: _kNutritionLegendGap),
-            // Always reserve the legend row's height so toggling
-            // Calories ↔ Macros does not change the card's height.
             SizedBox(
               height: _kNutritionLegendRowHeight,
               child: _buildNutritionLegend(theme, themeColors),
             ),
           ] else
           // S-004: exactly 1 logged day → inline single-point card.
-          if (_nutritionView == _NutritionView.calories)
+          if (view == NutritionTrendView.calories)
             _buildSingleNutritionCaloriesPoint(
               theme: theme,
               themeColors: themeColors,
@@ -108,44 +86,7 @@ class _NutritionTrendCardState extends State<NutritionTrendCard> {
     );
   }
 
-  /// Segmented toggle. Uses Material 3 SegmentedButton for a
-  /// unified toggle control look. Selection is local widget state —
-  /// the underlying trend data is unchanged across toggles (S-003).
-  Widget _buildNutritionToggle(ThemeData theme, OmniThemeColors themeColors) {
-    return SegmentedButton<_NutritionView>(
-      segments: const [
-        ButtonSegment(value: _NutritionView.calories, label: Text('Calories')),
-        ButtonSegment(value: _NutritionView.macros, label: Text('Macros')),
-      ],
-      selected: {_nutritionView},
-      onSelectionChanged: (selection) {
-        if (selection.isNotEmpty && selection.first != _nutritionView) {
-          setState(() => _nutritionView = selection.first);
-        }
-      },
-      style: ButtonStyle(
-        backgroundColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return themeColors.primary;
-          }
-          return themeColors.surface;
-        }),
-        foregroundColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return themeColors.surface;
-          }
-          return themeColors.textSecondary;
-        }),
-        shape: WidgetStateProperty.all(
-          RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Nutrition: calories chart (default view) ─────────────────────────────
+  // ── Nutrition: calories chart ─────────────────────────────
 
   Widget _buildCaloriesChart(
     OmniThemeColors themeColors,
@@ -268,7 +209,7 @@ class _NutritionTrendCardState extends State<NutritionTrendCard> {
     OmniThemeColors themeColors,
     List<NutritionTrendPoint> trend,
   ) {
-    final targetLine = widget.adherence?.targetLine ?? const [];
+    final targetLine = adherence?.targetLine ?? const [];
     if (targetLine.isEmpty) return null;
     final spots = <FlSpot>[];
     var currentTarget = targetLine.first;
@@ -303,7 +244,7 @@ class _NutritionTrendCardState extends State<NutritionTrendCard> {
     OmniThemeColors themeColors,
     List<NutritionTrendPoint> trend,
   ) {
-    final targetLine = widget.adherence?.targetLine ?? const [];
+    final targetLine = adherence?.targetLine ?? const [];
     if (targetLine.isEmpty) return const [];
     final macroColors = themeColors.macroChart;
     final series = <_MacroTargetSeries>[];
@@ -517,17 +458,17 @@ class _NutritionTrendCardState extends State<NutritionTrendCard> {
     );
   }
 
-  /// Build the NUTRITION card's legend row. Carries the
-  /// active view's macro / calorie markers plus a "Target"
+  /// Build the card's legend row. Carries the card's view's
+  /// macro / calorie markers plus a "Target"
   /// marker whenever the adherence series has a target
   /// line. The dashed line is rendered with a 2-pixel solid
   /// swatch followed by a 2-pixel gap so the legend swatch
   /// matches the on-chart dash pattern.
   Widget _buildNutritionLegend(ThemeData theme, OmniThemeColors themeColors) {
     final macroColors = themeColors.macroChart;
-    final hasTarget = (widget.adherence?.targetLine.isNotEmpty ?? false);
+    final hasTarget = (adherence?.targetLine.isNotEmpty ?? false);
     final List<Widget> items;
-    if (_nutritionView == _NutritionView.calories) {
+    if (view == NutritionTrendView.calories) {
       items = [
         buildLegendItem(
           theme,
@@ -541,7 +482,7 @@ class _NutritionTrendCardState extends State<NutritionTrendCard> {
             themeColors.primary.withAlpha(120),
             // The target in effect on the latest day, as the Nutrition screen
             // shows it — the dashes alone never said what the line meant.
-            'Target ${widget.adherence!.targetLine.last.calories.round()} '
+            'Target ${adherence!.targetLine.last.calories.round()} '
             'kcal',
             themeColors,
           ),

@@ -387,10 +387,16 @@ trend over the repository's whole food history and the adherence target line in
 that same load. It is *not* scoped to the Fuel row's window or to the Stats
 screen's selected training period.
 
+The body is two cards stacked under their own headers — CALORIES, then MACROS —
+each a `NutritionTrendCard` over the same loaded trend, so both charts are visible
+at once with no toggle between them. With no logged day the screen shows a single
+NUTRITION card holding the shared empty state instead of two empty cards.
+
 The screen is theme-reactive through the settings state rather than through an
 ambient theme lookup.
 
-Verified by `test/nutrition_trend_screen_test.dart`.
+Verified by `test/nutrition_trend_screen_test.dart` (`S-1109`: both cards on
+screen, Calories first, no segmented control; `no food logged`: one empty card).
 
 ---
 
@@ -405,9 +411,10 @@ owned by this document.
 Two widgets are platform-shaped rather than feature-shaped and are worth naming
 Two widgets are platform-shaped rather than feature-shaped and are worth naming
 here: `FoodThumbnail` has a conditional implementation behind a stub/IO split, so
-the same call site works on web and native, and `NutritionTrendCard` is the trend
-screen's entire body (its toggle, both charts, the shared empty state that
-replaces the charts when no day is logged, and its legend).
+the same call site works on web and native, and `NutritionTrendCard` is one of
+the trend screen's two stacked cards (a `view` picks the calories or the macros
+chart and its legend; the shared empty state replaces the chart when no day is
+logged).
 
 ---
 

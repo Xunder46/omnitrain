@@ -3,8 +3,8 @@
 // entry point into the full-history nutrition trend.
 //
 // Scenarios S-1101…S-1108, S-1111, S-1112, the entry-point half of S-1109
-// (the toggle half lives in `nutrition_trend_screen_test.dart`, which pumps the
-// screen directly), and S-1259/S-1260/S-1261 (narrow width, large text, the
+// (the stacked-charts half lives in `nutrition_trend_screen_test.dart`, which
+// pumps the screen directly), and S-1259/S-1260/S-1261 (narrow width, large text, the
 // accessibility label).
 //
 // Every scenario runs on both repositories: the Mock harness opens with
@@ -657,11 +657,9 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(find.byType(NutritionTrendScreen), findsOneWidget);
-          // The toggle is live on the screen the row opened.
-          expect(find.text('Macros'), findsOneWidget);
-          await tester.tap(find.text('Macros'));
-          await tester.pumpAndSettle();
-          expect(find.byType(NutritionTrendScreen), findsOneWidget);
+          // Both stacked cards are on the screen the row opened.
+          expect(find.text('CALORIES'), findsOneWidget);
+          expect(find.text('MACROS'), findsOneWidget);
         });
       });
 

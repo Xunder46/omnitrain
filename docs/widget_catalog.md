@@ -35,7 +35,7 @@ Note on the Stats screen's Signals layer:
 - It is feature-scoped rather than `lib/widgets/` material, but it is presentation-only and theme-reactive in the same sense as the catalogued widgets. Its only host is the Stats screen (`lib/features/stats/stats_screen.dart`), where it is the second block in the body, directly under the Mix layer. Its behaviour is owned by [Stats Screen](stats_screen.md) and verified by `test/signals_layer_screen_test.dart`.
 
 Note on the nutrition trend card:
-- `NutritionTrendCard` in `lib/features/nutrition/widgets/nutrition_trend_card.dart` is the nutrition trend's body — the Calories / Macros toggle, both charts, the shared empty state that replaces the charts when no day is logged, the single-point fallbacks and the legend.
+- `NutritionTrendCard` in `lib/features/nutrition/widgets/nutrition_trend_card.dart` is one nutrition trend card — a `view` of either calories or macros picks its chart, its single-point fallback and its legend; the shared empty state replaces the chart when no day is logged. The trend screen stacks one card per view, Calories above Macros, so there is no toggle.
 - It is feature-scoped rather than `lib/widgets/` material, but it is presentation-only and theme-reactive in the same sense as the catalogued widgets. Its only host is the full-history nutrition trend screen (`lib/features/nutrition/nutrition_trend_screen.dart`), reached from the Stats screen's Fuel row. Its behaviour is owned by [Nutrition](nutrition.md) and verified by `test/nutrition_trend_screen_test.dart`.
 
 Note on the Stats screen's Fuel row:
