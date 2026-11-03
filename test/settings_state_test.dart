@@ -270,6 +270,32 @@ void main() {
     },
   );
 
+  test('S-17704 SettingsState defaults the weight line to on', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+
+    final settingsState = SettingsState(repository, fakePreferencesService());
+    await settingsState.initialize();
+
+    expect(settingsState.showWeightTrend, isTrue);
+  });
+
+  test('S-17704 SettingsState persists and reloads the weight line switch', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+
+    final settingsState = SettingsState(repository, fakePreferencesService());
+    await settingsState.initialize();
+    await settingsState.setShowWeightTrend(false);
+
+    expect(await repository.getPreferenceString('show_weight_trend'), 'false');
+
+    final reloaded = SettingsState(repository, fakePreferencesService());
+    await reloaded.initialize();
+
+    expect(reloaded.showWeightTrend, isFalse);
+  });
+
   test('SettingsState normalizes invalid saved distance unit to km', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();

@@ -103,15 +103,16 @@ Stats screen holds no StatsPrimerState`).
 ## What the Screen Displays
 
 With no completed session in the repository the body is the shared empty state
-alone — no Mix layer, no Signals layer, no Instruments list and no Fuel row,
-whatever the food log holds. Otherwise it is four blocks in a fixed order: the
+alone — no Mix layer, no Signals layer, no Instruments list, no Fuel row and no Weight block,
+whatever the food log holds. Otherwise it is five blocks in a fixed order: the
 [Mix layer](#mix-layer) when the window holds measurable time, or its
 empty-window card when the window holds no session but history does, the
 [Signals layer](#signals-layer) whenever a signal speaks or its gate is met —
 otherwise, when the gate is unmet but the Mix layer exists, the locked
 Signals line in its slot —
-the [Instruments list](#instruments-list) when the window holds work, and the
-[Fuel row](#fuel-row) when recent food exists. Verified by
+the [Instruments list](#instruments-list) when the window holds work, the
+[Fuel row](#fuel-row) when recent food exists, and the
+[Weight block](#weight-block). Verified by
 `test/stats_legacy_removal_test.dart` (`S-1208`),
 `test/fuel_row_screen_test.dart` (`S-1112`),
 `test/mix_layer_screen_test.dart` (`S-1601`, `S-1610`),
@@ -125,7 +126,7 @@ ALL TIME is on Records & Trends only` › `Stats shows no all-time block, and
 its blocks keep their order`).
 
 Nothing else is rendered. The screen holds no chart section, no segmented
-control and no block beyond those four: `test/stats_legacy_removal_test.dart`
+control and no block beyond those five: `test/stats_legacy_removal_test.dart`
 fails if a removed section's identifier returns to the file (`S-1209`) or if a
 chart widget does (`S-1210`), and `test/screen_widget_test.dart` fails if the
 Calories / Macros toggle returns. Recent PRs are not among them either: they live
@@ -592,15 +593,21 @@ log holds. Verified by `test/fuel_row_screen_test.dart` (`S-1107`),
 d14 hides, d13 is previous`) and `test/nutrition_trend_screen_test.dart`
 (`S-1110(b)`).
 
-**Placement.** The row renders last, below the Instruments list, so the
-readout with its own window sits at the bottom of the screen. Verified by the
-same file (`S-1112`).
+**Placement.** The row renders below the Instruments list; the Weight block
+sits below it when it shows (`S-17705`). Verified by the same file
+(`S-1112`).
 
 **Formatting.** A kcal or gram figure has no `NativeMetric`, so the row formats
 its own strings rather than borrowing `formatNativeChange`'s metric path; it
 follows the conventions that formatter sets — whole units, the dash a zero
 change reads, and an arrow carrying the raw sign of the change. Verified by the same
 file (`S-1101`, `S-1103`).
+
+### Weight block
+
+The body weight and its four-week change, only with a completed session and
+the `Weight on Stats` switch on. Verified by
+`test/weight_trend_screen_test.dart` (`S-17705`).
 
 ---
 

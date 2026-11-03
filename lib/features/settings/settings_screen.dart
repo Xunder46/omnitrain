@@ -147,6 +147,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const OmniCardHeader(title: 'WORKOUT'),
                   _WorkoutSection(settingsState: widget.settingsState),
                   const SizedBox(height: 24),
+                  const OmniCardHeader(title: 'STATS'),
+                  _StatsSection(settingsState: widget.settingsState),
+                  const SizedBox(height: 24),
                   if (widget.watchLinkState != null) ...[
                     const OmniCardHeader(title: 'APPLE WATCH'),
                     _WatchSection(state: widget.watchLinkState!),
@@ -856,6 +859,32 @@ class _WorkoutSection extends StatelessWidget {
             trailing: Switch(
               value: settingsState.showFeelingSurvey,
               onChanged: settingsState.setShowFeelingSurvey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatsSection extends StatelessWidget {
+  final SettingsState settingsState;
+
+  const _StatsSection({required this.settingsState});
+
+  @override
+  Widget build(BuildContext context) {
+    return OmniSurface(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SettingsRow(
+            label: 'Weight on Stats',
+            subtitle: 'Show your weight change over the last 4 weeks',
+            trailing: Switch(
+              value: settingsState.showWeightTrend,
+              onChanged: settingsState.setShowWeightTrend,
             ),
           ),
         ],

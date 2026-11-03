@@ -9,6 +9,7 @@ OmniTrain's Settings screen is fully implemented. It owns persisted preferences 
 - timer alert behavior (`Effort Timer Sound`, `Rest Ping`, `Rest Ping Sound`): the rest ping is a count-up nudge about the open rest, never a rest timer and never an end-of-rest alarm, and the one Rest Ping setting drives it on the phone and a haptic tap on the watch with no sound there, while Rest Ping Sound stays phone-only — round and hold timer alerts are unchanged ([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up"; `WatchLoggingTimersTests.testS164ARestIsNeverOwedAnAlert`, `WatchRestPingTests.testS241AnIntervalTapsAtItsMultiplesAndNowhereElse`)
 - notification permission copy that covers both rest reminders and effort-expiry alerts
 - workout follow-up (`Effort Rating`, the automatic post-workout effort-rating prompt; copy verified by `test/screen_widget_test.dart`, `settings screen keeps the streamlined section layout`)
+- the weight line on Stats (`Weight on Stats`)
 - appearance (`AppTheme` selection)
 
 All settings apply immediately. There is no save button and no staged draft state.
@@ -108,6 +109,13 @@ rules matter beyond the row list:
   fires), because the ping is a nudge, not an alarm. The effort-timer alert and the sound preview
   still play with the switch on, since the user asked to hear them (`TimerAlertAudio.nudge` /
   `.alarm` in `TimerAlertService`). Not yet confirmed on a device.
+
+The STATS section follows WORKOUT and holds the `Weight on Stats` switch —
+`Show your weight change over the last 4 weeks` — which shows and hides the
+Weight block on Stats without touching any other setting. Verified by
+`test/weight_trend_screen_test.dart`, group `S-17706 the Weight on Stats
+switch — Mock` › `the row sits after Effort Rating and flips only its own
+setting`.
 
 The APPLE WATCH section is the one read-only status readout, built only when the platform's
 transport can report a link: one `Apple Watch` row, not tappable, with the link phase on the

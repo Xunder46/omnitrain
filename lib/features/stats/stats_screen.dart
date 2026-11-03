@@ -6,9 +6,11 @@ import '../../core/models/instrument_list.dart';
 import '../../core/models/signals.dart';
 import '../../core/models/stats_progress.dart';
 import '../../core/models/training_load.dart';
+import '../../core/models/weight_trend.dart';
 import '../../core/services/signals/signal.dart';
 import '../../core/services/signals_service.dart';
 import '../../core/services/stats_progress_service.dart';
+import '../../core/services/weight_trend_service.dart';
 import '../../core/navigation/omni_navigator.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -23,6 +25,7 @@ import 'widgets/load_failure_view.dart';
 import 'widgets/mix_layer.dart';
 import 'widgets/signals_layer.dart';
 import 'widgets/stats_primer_sheet.dart';
+import 'widgets/weight_trend_row.dart';
 
 class StatsScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -65,6 +68,8 @@ class _StatsScreenState extends State<StatsScreen> {
   List<InstrumentSectionData> _instrumentSections = const [];
 
   FuelSummary? _fuelSummary;
+
+  WeightTrend? _weightTrend;
 
   MixLayerData? _mixLayer;
 
@@ -167,6 +172,12 @@ class _StatsScreenState extends State<StatsScreen> {
             )
           : const <String>[];
 
+      final weightTrend = totals.completedSessions > 0
+          ? await WeightTrendService(
+              widget.workoutState.repository,
+            ).compute(now: now)
+          : null;
+
       if (!mounted) return;
 
       setState(() {
@@ -174,6 +185,7 @@ class _StatsScreenState extends State<StatsScreen> {
         _window = window;
         _instrumentSections = instrumentSections;
         _fuelSummary = fuelSummary;
+        _weightTrend = weightTrend;
         _mixLayer = mixLayer;
         _signalsService = signalsService;
         _signalsCandidates = signalsCandidates;
@@ -346,6 +358,16 @@ class _StatsScreenState extends State<StatsScreen> {
                                     settingsState: widget.settingsState,
                                   ),
                                 ),
+                              ),
+                            ],
+                            if (_weightTrend != null &&
+                                widget.settingsState.showWeightTrend) ...[
+                              if (_fuelSummary != null)
+                                const SizedBox(height: 24),
+                              WeightTrendRow(
+                                trend: _weightTrend!,
+                                settingsState: widget.settingsState,
+                                themeColors: themeColors,
                               ),
                             ],
                           ],

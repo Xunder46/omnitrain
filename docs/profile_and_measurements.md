@@ -18,7 +18,7 @@ Primary capabilities:
 
 - `HomeScreen` maintenance sheet:
   - Profile tile pushes `ProfileScreen`
-  - Stats tile pushes `StatsScreen` (all-time aggregates, the Instruments list, the Fuel row — see [Stats Screen](stats_screen.md))
+  - Stats tile pushes `StatsScreen` (the Mix, Signals, Instruments, Fuel and Weight blocks — see [Stats Screen](stats_screen.md))
   - Settings tile pushes `SettingsScreen` (preferences, sounds & alerts, Effort Rating toggle, theme grid, version footer — see [Theme & Settings](theme_and_settings.md))
 - `ProfileScreen` depends on `ProfileState` via constructor injection
 
@@ -75,6 +75,39 @@ Convenience getters (all are pure derivations of `_latestMeasurements` — no ex
 - `latestBodyWeightKg` → `double?` (canonical kg)
 - `latestBodyFatPct` → `double?`
 - `computedLeanMassKg` → `double?` derived as `latestBodyWeightKg × (1 - latestBodyFatPct / 100)`; `null` when either input is missing. Lean mass is no longer a stored value.
+
+---
+
+## The weight line on Stats
+
+The Stats screen's Weight block is fed by the body-weight history this feature
+owns. The rule (`weightTrend` in `lib/core/models/weight_trend.dart`) keeps
+the `bodyweight` entries in canonical kilograms (`unit-kg`) recorded in the 28
+local days ending today, takes the earliest and the latest of them by time,
+and returns a trend only when at least two usable weigh-ins are at least 7
+whole calendar days apart — the days are counted on the dates re-read as UTC,
+so a clock change inside the window cannot shorten a week. Fewer than two
+usable weigh-ins, or a closer pair, is no trend. Verified by
+`test/weight_trend_test.dart`, group `S-17701 weightTrend`.
+
+The line (`weightTrendLine`) reads `80.2 kg, −0.6 kg over 4 weeks` — a true
+minus sign, `+0.4 kg` for a rise, `no change` when the change rounds to 0.0.
+Verified by the same file, group `S-17702 weightTrendLine`; that the unit is
+the user's weight setting is verified by `test/weight_trend_screen_test.dart`,
+group `S-17705 the Weight block — Mock` › group `the unit is pounds` ›
+`the same two figures read in pounds`.
+
+`WeightTrendService.compute` (`lib/core/services/weight_trend_service.dart`)
+reads `getMeasurementHistory('bodyweight')` and applies the rule. Verified by
+the same file, groups `S-17703 WeightTrendService — Mock` and
+`S-17703 WeightTrendService — Hive`.
+
+On the screen the block is drawn by `StatsScreen` directly after the Fuel row
+(keys `weight_trend`, `weight_trend_line`), only with a completed session in
+the history and when the `Weight on Stats` setting is on; with no completed
+session the empty state is alone. Verified by
+`test/weight_trend_screen_test.dart`, groups `S-17705 the Weight block — Mock`
+and `S-17705 the Weight block — Hive`.
 
 ---
 

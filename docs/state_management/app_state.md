@@ -139,6 +139,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `_preferredDistanceUnit` | `String` | `'km'` |
 | `_startOfWeek` | `String` | `'monday'` |
 | `_showFeelingSurvey` | `bool` | `true` |
+| `_showWeightTrend` | `bool` | `true` |
 | `_effortTimerSound` | `String` | `'boxing_bell'` |
 | `_restPingInterval` | `int` | `0` |
 | `_restPingSound` | `String` | `'soft_chime'` |
@@ -152,6 +153,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `preferredDistanceUnit` | Getter — current displayed distance unit (`km` or `miles`) |
 | `startOfWeek` | Getter — current calendar week start (`monday` or `sunday`) |
 | `showFeelingSurvey` | Getter — whether to show the automatic post-workout effort rating prompt ("Effort Rating" toggle) |
+| `showWeightTrend` | Getter — whether the Weight block shows on Stats |
 | `effortTimerSound` | Getter — selected alert sound for timer completion |
 | `restPingInterval` | Getter — periodic rest reminder interval in seconds |
 | `restPingSound` | Getter — selected rest-ping sound |
@@ -163,6 +165,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `setPreferredDistanceUnit(String)` | Normalizes/persists the display distance unit and notifies listeners |
 | `setStartOfWeek(String)` | Normalizes/persists the calendar week start and notifies listeners |
 | `setShowFeelingSurvey(bool)` | Persists the "Effort Rating" toggle (key `show_feeling_survey`) |
+| `setShowWeightTrend(bool)` | Persists the "Weight on Stats" toggle (key `show_weight_trend`) |
 | `setEffortTimerSound(String)` | Persists the selected effort-timer alert sound |
 | `setRestPingInterval(int)` | Persists the periodic rest reminder interval |
 | `setRestPingSound(String)` | Persists the selected rest-ping sound |
@@ -172,6 +175,11 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `isTapHintLearned(TapHintControl)` | Whether the logger control kind's `tap to type` hint has been learned (dismissed) |
 | `markTapHintLearned(TapHintControl)` | Marks the control kind learned, notifies once and persists `true` under the control's `hint_seen_tap_to_type_*` key |
 | `_loadFromPrefs()` | Private — restores theme and unit preferences from repository-backed preference keys on init |
+
+The weight-line switch defaults to on and persists under `show_weight_trend`;
+verified by `test/settings_state_test.dart` (`S-17704 SettingsState defaults
+the weight line to on`, `S-17704 SettingsState persists and reloads the weight
+line switch`).
 
 ---
 
