@@ -150,11 +150,6 @@ List<String> _semanticsLabels() {
   return labels;
 }
 
-/// The two window chips' texts, in document order.
-List<String> _chipTexts() => _textsUnder(
-  find.byKey(const Key('stats_window_chip')),
-);
-
 /// The colour of the segment keyed [key].
 Color? _segmentColor(WidgetTester tester, Key key) =>
     tester.widget<Container>(find.byKey(key)).color;
@@ -437,7 +432,7 @@ Future<void> _seedSportsEffort(
 ///
 /// The screen's window no longer reads periods (`statsWindow`), so a period
 /// here is inert for the layer and the list; the fixtures keep one so the
-/// chip assertions prove the window is not named after it.
+/// window assertions prove the window is not named after it.
 Future<void> _seedPeriod(
   WorkoutRepository repo, {
   required String name,
@@ -831,23 +826,23 @@ void main() {
 
       // ─── S-1601 ──────────────────────────────────────────────────────────
 
-      group('S-1601 the layer is the first block, above ALL TIME', () {
+      group('S-1601 the layer is the first block', () {
         setUp(() => _seedLoadReady(repo));
 
-        testWidgets('the Mix block sits above ALL TIME, the list and the Fuel '
-            'row, and there is exactly one of it', (tester) async {
+        testWidgets('the Mix block sits above the list and the Fuel row, and '
+            'there is exactly one of it', (tester) async {
           await pumpStats(tester, size: _kFirstBlockViewport);
 
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           expect(find.text('TRAINING MIX'), findsOneWidget);
 
           final mixTop = tester.getTopLeft(find.byKey(const Key('mix_layer'))).dy;
-          final allTimeTop = tester.getTopLeft(find.text('ALL TIME')).dy;
-          final listTop = tester.getTopLeft(find.text('Resistance')).dy;
+          final listTop = tester
+              .getTopLeft(find.byKey(const Key('instrument_caption')))
+              .dy;
           final fuelTop = tester.getTopLeft(find.byKey(const Key('fuel_row'))).dy;
 
-          expect(mixTop, lessThan(allTimeTop));
-          expect(allTimeTop, lessThan(listTop));
+          expect(mixTop, lessThan(listTop));
           expect(listTop, lessThan(fuelTop));
 
           // The first card header in the body is the layer's.
@@ -901,7 +896,7 @@ void main() {
 
       // ─── S-1603 ──────────────────────────────────────────────────────────
 
-      group('S-1603 the measure is stated once per block, and the chip', () {
+      group('S-1603 the measure is stated once per block, and no chip', () {
         setUp(() => _seedLoadReady(repo));
 
         testWidgets('the explainer states the load measure above the bar and '
@@ -911,11 +906,11 @@ void main() {
 
           expect(
             _textOf(tester, const Key('mix_explainer')),
-            'Your training split by how hard each session felt.',
+            'Last 4 weeks. Your training split by how hard each session felt.',
           );
           expect(
             _textOf(tester, const Key('mix_strip_title')),
-            'Week by week · last $kMixStripWeeks weeks',
+            'Last $kMixStripWeeks weeks, week by week',
           );
           final layerTexts = _textsUnder(find.byKey(const Key('mix_layer')));
           for (final gone in const ['by load', 'by time', 'usual']) {
@@ -936,7 +931,7 @@ void main() {
           expect(titleTop, lessThan(stripTop));
           expect(titleTop, greaterThan(barTop));
 
-          expect(_chipTexts(), ['· Last 4 weeks', '· Last 4 weeks']);
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
           expect(tester.takeException(), isNull);
         });
       });
@@ -950,7 +945,7 @@ void main() {
 
           expect(
             _textOf(tester, const Key('mix_explainer')),
-            'Your training split by time spent.',
+            'Last 4 weeks. Your training split by time spent.',
           );
           expect(find.text('by load'), findsNothing);
           expect(find.text('by time'), findsNothing);
@@ -998,29 +993,21 @@ void main() {
             ),
             isEmpty,
           );
-          expect(
-            _textOf(tester, const Key('mix_unrated_note')),
-            '1 session has no effort rating yet',
-          );
           expect(tester.takeException(), isNull);
         });
 
-        testWidgets('the baseline note and the unrated line each cap to two '
-            'lines and ellipsize', (tester) async {
+        testWidgets('the baseline note caps to two lines and ellipsizes',
+            (tester) async {
           await pumpStats(tester);
 
-          for (final key in const [
-            Key('mix_baseline_note'),
-            Key('mix_unrated_note'),
-          ]) {
-            final text = tester.widget<Text>(find.byKey(key));
-            expect(text.maxLines, 2, reason: 'D-3204: $key caps to two lines');
-            expect(
-              text.overflow,
-              TextOverflow.ellipsis,
-              reason: 'D-3204: $key ellipsizes',
-            );
-          }
+          final text =
+              tester.widget<Text>(find.byKey(const Key('mix_baseline_note')));
+          expect(text.maxLines, 2, reason: 'D-3204: the note caps to two lines');
+          expect(
+            text.overflow,
+            TextOverflow.ellipsis,
+            reason: 'D-3204: the note ellipsizes',
+          );
           expect(tester.takeException(), isNull);
         });
       });
@@ -1036,7 +1023,7 @@ void main() {
 
           expect(
             _textOf(tester, const Key('mix_explainer')),
-            'Your training split by how hard each session felt.',
+            'Last 4 weeks. Your training split by how hard each session felt.',
           );
           expect(find.byKey(const Key('mix_usual_bar')), findsOneWidget);
           expect(_textOf(tester, const Key('mix_usual_label')), 'Your usual');
@@ -1074,43 +1061,12 @@ void main() {
       });
 
       // ─── S-1607 ──────────────────────────────────────────────────────────
+      //
+      // The unrated line is gone (D-17305); S-17309 in
+      // test/stats_mix_horizon_screen_test.dart covers its removal. The
+      // remaining test keeps the absence claim.
 
       group('S-1607 the unrated count in words, or absent', () {
-        setUp(() => _seedTimeWindow(repo));
-
-        testWidgets('one unrated session reads in the singular', (tester) async {
-          await pumpStats(tester);
-
-          expect(
-            _textOf(tester, const Key('mix_unrated_note')),
-            '1 session has no effort rating yet',
-          );
-          expect(find.textContaining('unrated'), findsNothing);
-        });
-      });
-
-      group('S-1607 three unrated sessions', () {
-        setUp(() async {
-          await _seedLifting(repo, sessionId: 's-u2', daysAgo: 2);
-          await _seedLifting(repo, sessionId: 's-u3', daysAgo: 3);
-          await _seedLifting(repo, sessionId: 's-u4', daysAgo: 4);
-        });
-
-        testWidgets('read in the plural', (tester) async {
-          await pumpStats(tester);
-
-          expect(
-            _textOf(tester, const Key('mix_unrated_note')),
-            '3 sessions have no effort rating yet',
-          );
-          expect(
-            _allTexts().where((text) => text.contains('1 session')),
-            isEmpty,
-          );
-        });
-      });
-
-      group('S-1607 no unrated session', () {
         setUp(() => _seedLoadReady(repo));
 
         testWidgets('reads nowhere', (tester) async {
@@ -1246,7 +1202,7 @@ void main() {
 
           expect(
             _textOf(tester, const Key('mix_explainer')),
-            'Your training split by time spent.',
+            'Last 4 weeks. Your training split by time spent.',
           );
           for (var i = 0; i < kMixStripWeeks - 1; i++) {
             final label = _labelOf(tester, Key('mix_week_${i}_semantics'));
@@ -1269,7 +1225,7 @@ void main() {
 
           expect(
             _textOf(tester, const Key('mix_explainer')),
-            'Your training split by how hard each session felt.',
+            'Last 4 weeks. Your training split by how hard each session felt.',
           );
           for (var i = 0; i < kMixStripWeeks - 1; i++) {
             final label = _labelOf(tester, Key('mix_week_${i}_semantics'));
@@ -1447,11 +1403,11 @@ void main() {
           await pumpStats(tester);
 
           // The window holds no session, so the card is the one-line
-          // empty-window card: header and chip, then the line — no explainer,
+          // empty-window card: header, then the line — no chip, no explainer,
           // no bar, no legend, no strip.
           expect(find.byKey(const Key('mix_window_empty')), findsOneWidget);
           expect(find.text('TRAINING MIX'), findsOneWidget);
-          expect(_chipTexts(), ['· Last 4 weeks']);
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
           expect(find.byKey(const Key('mix_explainer')), findsNothing);
           expect(find.byKey(const Key('mix_bar')), findsNothing);
           expect(find.byKey(const Key('mix_legend')), findsNothing);
@@ -1649,9 +1605,9 @@ void main() {
           expect(line, isNot(contains(OmniDateUtils.formatShort(_day(0)))));
 
           // Everything the empty-window card leaves alone still renders: the
-          // header and its chip, and nothing of the bar or the strip.
+          // header, and nothing of the bar or the strip.
           expect(find.text('TRAINING MIX'), findsOneWidget);
-          expect(_chipTexts(), ['· Last 4 weeks']);
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
           expect(find.byKey(const Key('mix_bar')), findsNothing);
           expect(_stripKeys(), isEmpty);
           expect(tester.takeException(), isNull);
@@ -1807,8 +1763,7 @@ void main() {
             'without the layer', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('ALL TIME'), findsOneWidget);
-          expect(find.byKey(const Key('all_time_card')), findsOneWidget);
+          expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
           expect(find.text('TRAINING MIX'), findsNothing);
           expect(find.byKey(const Key('mix_layer')), findsNothing);
           expect(tester.takeException(), isNull);
@@ -1863,32 +1818,25 @@ void main() {
 
       // ─── S-1612 ──────────────────────────────────────────────────────────
 
-      group('S-1612 exactly two window chips, and the Fuel row has none', () {
+      group('S-1612 the window is named in words, not by a chip', () {
         setUp(() => _seedLoadReady(repo));
 
-        testWidgets('the layer and the Instruments list each carry one, both '
-            'naming the same window', (tester) async {
+        testWidgets('the explainer and the Instruments caption each start '
+            'with the window, and no chip renders anywhere', (tester) async {
           await pumpStats(tester);
 
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
           expect(
-            find.byKey(const Key('stats_window_chip')),
-            findsNWidgets(2),
-          );
-          expect(_chipTexts(), ['· Last 4 weeks', '· Last 4 weeks']);
-          expect(
-            find.descendant(
-              of: find.byKey(const Key('mix_layer')),
-              matching: find.byKey(const Key('stats_window_chip')),
-            ),
-            findsOneWidget,
+            _textOf(tester, const Key('mix_explainer')),
+            startsWith('Last 4 weeks. '),
           );
           expect(
-            find.descendant(
-              of: find.byKey(const Key('fuel_section')),
-              matching: find.byKey(const Key('stats_window_chip')),
-            ),
-            findsNothing,
+            _textOf(tester, const Key('instrument_caption')),
+            startsWith('Last 4 weeks. '),
           );
+          // The Fuel card's own horizon line is the only other place the
+          // window's length is named.
+          expect(find.byKey(const Key('fuel_horizon')), findsOneWidget);
           expect(tester.takeException(), isNull);
         });
       });
@@ -1898,11 +1846,15 @@ void main() {
       group('S-1613 the layer reads the same window as the list', () {
         setUp(() => _seedPeriodWindow(repo));
 
-        testWidgets('the bar describes the 28 days, and the chip reads Last '
-            '4 weeks — the period names nothing', (tester) async {
+        testWidgets('the bar describes the 28 days, and the explainer names '
+            'the window — the period names nothing', (tester) async {
           await pumpStats(tester);
 
-          expect(_chipTexts(), ['· Last 4 weeks', '· Last 4 weeks']);
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
+          expect(
+            _textOf(tester, const Key('mix_explainer')),
+            startsWith('Last 4 weeks. '),
+          );
           expect(_textsUnder(find.byKey(const Key('mix_legend'))), [
             'Resistance 67%',
             'Cardio 33%',
@@ -1991,7 +1943,7 @@ void main() {
             expect(tester.takeException(), isNull);
 
             // The densest layer really is on screen: the bar, the usual bar,
-            // the note, the unrated line and the strip all rendered.
+            // the note and the strip all rendered.
             expect(find.byKey(const Key('mix_layer')), findsOneWidget);
             expect(find.byKey(const Key('mix_bar_segment_0')), findsOneWidget);
             expect(find.byKey(const Key('mix_usual_bar')), findsOneWidget);
@@ -2069,7 +2021,7 @@ void main() {
           expect(_textsUnder(find.byKey(const Key('mix_legend'))), [
             'Resistance 100%',
           ]);
-          expect(_chipTexts(), ['· Last 4 weeks', '· Last 4 weeks']);
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
           expect(tester.takeException(), isNull);
         });
       });
@@ -2300,7 +2252,7 @@ void main() {
           expect(find.byKey(const Key('mix_explainer')), findsOneWidget);
           expect(
             _textOf(tester, const Key('mix_explainer')),
-            'Your training split by how hard each session felt.',
+            'Last 4 weeks. Your training split by how hard each session felt.',
           );
           expect(
             styleOf(tester, const Key('mix_explainer'))?.color,
@@ -2324,7 +2276,7 @@ void main() {
           expect(find.byKey(const Key('mix_explainer')), findsOneWidget);
           expect(
             _textOf(tester, const Key('mix_explainer')),
-            'Your training split by time spent.',
+            'Last 4 weeks. Your training split by time spent.',
           );
           expect(tester.takeException(), isNull);
         });
@@ -2515,78 +2467,10 @@ void main() {
       });
 
       // ─── S-3205 ──────────────────────────────────────────────────────────
-
-      group('S-3205 the unrated line says which measure leaves sessions out',
-          () {
-        setUp(() => _seedTimeWindow(repo));
-
-        testWidgets('the time measure leaves one session unrated', (
-          tester,
-        ) async {
-          await pumpStats(tester);
-
-          expect(
-            _textOf(tester, const Key('mix_unrated_note')),
-            '1 session has no effort rating yet',
-          );
-          expect(tester.takeException(), isNull);
-        });
-      });
-
-      group('S-3205 the twin: three unrated sessions under the time measure',
-          () {
-        setUp(() async {
-          await _seedLifting(repo, sessionId: 's-u2', daysAgo: 2);
-          await _seedLifting(repo, sessionId: 's-u3', daysAgo: 3);
-          await _seedLifting(repo, sessionId: 's-u4', daysAgo: 4);
-        });
-
-        testWidgets('the line is plural', (tester) async {
-          await pumpStats(tester);
-
-          expect(
-            _textOf(tester, const Key('mix_unrated_note')),
-            '3 sessions have no effort rating yet',
-          );
-          expect(tester.takeException(), isNull);
-        });
-      });
-
-      group('S-3205 the load measure says the session is not counted', () {
-        testWidgets('one session, and then three', (tester) async {
-          const ratingless = <int, String>{
-            1: '1 session isn\'t counted – no effort rating yet',
-            3: '3 sessions aren\'t counted – no effort rating yet',
-          };
-
-          for (final entry in ratingless.entries) {
-            await pumpLayer(
-              tester,
-              MixLayerData(
-                measure: MixMeasure.load,
-                segments: const [
-                  MixSegment(
-                    section: ExerciseSection.resistance,
-                    measure: 100,
-                    percent: 100,
-                  ),
-                ],
-                baselineSegments: const [],
-                unratedSessionCount: entry.key,
-                ratedWeeks: kTrainingLoadMinRatedWeeks,
-                weeks: const [],
-              ),
-            );
-
-            expect(
-              _textOf(tester, const Key('mix_unrated_note')),
-              entry.value,
-              reason: '${entry.key} unrated sessions',
-            );
-          }
-          expect(tester.takeException(), isNull);
-        });
-      });
+      //
+      // The unrated line is gone (D-17305); S-17309 in
+      // test/stats_mix_horizon_screen_test.dart covers its removal. The
+      // remaining test keeps the absence claim.
 
       group('S-3205 the twin: every session rated', () {
         setUp(() => _seedLoadReady(repo));
@@ -2611,7 +2495,7 @@ void main() {
 
           expect(
             _textOf(tester, const Key('mix_strip_title')),
-            'Week by week · last $kMixStripWeeks weeks',
+            'Last $kMixStripWeeks weeks, week by week',
           );
           expect(
             _textOf(tester, const Key('mix_strip_start_label')),
@@ -2801,7 +2685,6 @@ void main() {
               Key('mix_window_bar_label'),
               Key('mix_usual_label'),
               Key('mix_baseline_note'),
-              Key('mix_unrated_note'),
               Key('mix_strip_title'),
               Key('mix_strip_start_label'),
               Key('mix_strip_current_label'),

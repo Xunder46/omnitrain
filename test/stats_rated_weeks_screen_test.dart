@@ -252,7 +252,7 @@ void main() {
           expect(find.byKey(const Key('mix_baseline_note')), findsNothing);
           expect(find.byKey(const Key('mix_usual_bar')), findsNothing);
           expect(_textsUnder(find.byKey(const Key('mix_explainer'))), [
-            'Your training split by how hard each session felt.',
+            'Last 4 weeks. Your training split by how hard each session felt.',
           ]);
           expect(find.byKey(const Key('signals_layer')), findsOneWidget);
           expect(tester.takeException(), isNull);

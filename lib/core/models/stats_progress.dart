@@ -175,7 +175,7 @@ class StatsWindow {
   /// default; the period's end-day when period-scoped).
   final DateTime toMs;
 
-  /// Human-readable label for the on-screen window chip.
+  /// Human-readable label that names the window in words on screen.
   /// e.g. `"Off-Season Strength Block"` or `"Last 14 training days"`.
   final String label;
 

@@ -342,8 +342,8 @@ void main() {
           expect(find.text(_kFprObservation), findsOneWidget);
           expect(find.text(_kFprSuggestion), findsOneWidget);
 
-          // The layer sits in its slot, under the Mix layer and above ALL
-          // TIME, and the card is the layer's top card.
+          // The layer sits in its slot, under the Mix layer and above the
+          // Instruments caption, and the card is the layer's top card.
           final signalsTop = tester
               .getTopLeft(find.byKey(const Key('signals_layer')))
               .dy;
@@ -355,7 +355,11 @@ void main() {
           );
           expect(
             signalsTop,
-            lessThan(tester.getTopLeft(find.text('ALL TIME')).dy),
+            lessThan(
+              tester
+                  .getTopLeft(find.byKey(const Key('instrument_caption')))
+                  .dy,
+            ),
           );
           expect(
             tester
@@ -366,7 +370,7 @@ void main() {
 
           // The blocks below are undisturbed.
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
-          expect(find.byKey(const Key('all_time_card')), findsOneWidget);
+          expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
           expect(find.text('Resistance'), findsOneWidget);
           expect(find.byKey(const Key('fuel_section')), findsOneWidget);
           expect(tester.takeException(), isNull);

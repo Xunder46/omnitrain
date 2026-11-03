@@ -23,7 +23,6 @@ import '../../../core/models/training_load.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../widgets/layout/omni_card_header.dart';
 import '../../../widgets/layout/omni_surface.dart';
-import 'window_chip.dart';
 
 /// The window's training mix: a modality bar, the usual split behind it, and
 /// the last [kMixStripWeeks] weeks as a stacked strip.
@@ -76,28 +75,13 @@ class MixLayerSection extends StatelessWidget {
   /// What the card is splitting, in words (D-3201). The measure itself is the
   /// model's (D-920, D-921); this only says it out loud, once.
   String get _explainer => _isLoad
-      ? 'Your training split by how hard each session felt.'
-      : 'Your training split by time spent.';
+      ? '${window.label}. Your training split by how hard each session felt.'
+      : '${window.label}. Your training split by time spent.';
 
   /// The rated weeks behind the window, held to the threshold the baseline note
   /// names (D-3204).
   int get _ratedWeeks =>
       layer.ratedWeeks.clamp(0, kTrainingLoadMinRatedWeeks);
-
-  /// How much of the window carried no effort rating (D-3204). Under the load
-  /// measure the sessions are missing from the figures above; under the time
-  /// measure they are counted, they simply carry no rating.
-  String get _unratedNote {
-    final count = layer.unratedSessionCount;
-    if (_isLoad) {
-      return count == 1
-          ? "1 session isn't counted – no effort rating yet"
-          : "$count sessions aren't counted – no effort rating yet";
-    }
-    return count == 1
-        ? '1 session has no effort rating yet'
-        : '$count sessions have no effort rating yet';
-  }
 
   /// The baseline's segments in display order: the bar's modalities first, in
   /// the bar's order, then any modality the baseline has and the window does
@@ -161,12 +145,7 @@ class MixLayerSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            OmniCardHeader(
-              title: 'TRAINING MIX',
-              actions: [
-                StatsWindowChip(window: window, themeColors: themeColors),
-              ],
-            ),
+            const OmniCardHeader(title: 'TRAINING MIX'),
             const SizedBox(height: _blockGap),
             _buildEmptyWindow(theme),
           ],
@@ -181,12 +160,7 @@ class MixLayerSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OmniCardHeader(
-            title: 'TRAINING MIX',
-            actions: [
-              StatsWindowChip(window: window, themeColors: themeColors),
-            ],
-          ),
+          const OmniCardHeader(title: 'TRAINING MIX'),
           const SizedBox(height: _blockGap),
           _buildExplainer(theme),
           const SizedBox(height: _tightGap),
@@ -223,24 +197,12 @@ class MixLayerSection extends StatelessWidget {
               ),
             ),
           ],
-          if (layer.unratedSessionCount > 0) ...[
-            const SizedBox(height: _tightGap),
-            Text(
-              _unratedNote,
-              key: const Key('mix_unrated_note'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: themeColors.textMuted,
-              ),
-            ),
-          ],
           const SizedBox(height: _blockGap),
           if (_stripIsEmpty)
             _buildEmptyStrip(theme)
           else if (layer.weeks.isNotEmpty) ...[
             Text(
-              'Week by week · last $kMixStripWeeks weeks',
+              'Last $kMixStripWeeks weeks, week by week',
               key: const Key('mix_strip_title'),
               style: theme.textTheme.labelSmall?.copyWith(
                 color: themeColors.textMuted,

@@ -33,6 +33,7 @@ import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/features/splash/omni_splash_screen.dart';
+import 'package:omnitrain/features/stats/records_and_trends_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -65,6 +66,7 @@ import 'package:omnitrain/widgets/session/value_stepper_row.dart';
 import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/test_nutrition_primer_state.dart';
 import 'helpers/fake_preferences_service.dart';
+import 'helpers/repository_harness.dart';
 import 'helpers/test_content_column.dart';
 import 'helpers/fake_asset_bundle.dart';
 import 'helpers/test_image_helper.dart';
@@ -3109,55 +3111,80 @@ void main() {
   // StatsScreen
   // ══════════════════════════════════════════════════════════════════════════
 
+  // Shared by the StatsScreen and Records & Trends groups below.
+  Future<void> seedCompletedSession(
+    MockWorkoutRepository repo, {
+    required String id,
+    required DateTime start,
+    required Duration duration,
+    bool isRolling = false,
+    String? modality,
+  }) async {
+    final startMs = start.millisecondsSinceEpoch;
+    final endMs = start.add(duration).millisecondsSinceEpoch;
+
+    await repo.createSession(
+      TrainingSession(
+        id: id,
+        ownerUserId: 'user-1',
+        modality: modality,
+        startedAtMs: startMs,
+        endedAtMs: endMs,
+        isRolling: isRolling,
+        createdAtMs: startMs,
+        updatedAtMs: endMs,
+      ),
+    );
+  }
+
+  Future<void> pumpStatsScreen(
+    WidgetTester tester,
+    MockWorkoutRepository repo, {
+    Future<void> Function(SettingsState settingsState)? configureSettings,
+  }) async {
+    final workoutState = WorkoutState(repo);
+    final settingsState = SettingsState(repo, fakePreferencesService());
+    await settingsState.initialize();
+    if (configureSettings != null) {
+      await configureSettings(settingsState);
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatsScreen(
+          workoutState: workoutState,
+          settingsState: settingsState,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> seedFeelingSession(
+    MockWorkoutRepository repo, {
+    required String id,
+    required DateTime start,
+    required Duration duration,
+    int? feeling,
+    String? modality,
+  }) async {
+    final startMs = start.millisecondsSinceEpoch;
+    final endMs = start.add(duration).millisecondsSinceEpoch;
+    await repo.createSession(
+      TrainingSession(
+        id: id,
+        ownerUserId: 'user-1',
+        modality: modality,
+        startedAtMs: startMs,
+        endedAtMs: endMs,
+        sessionFeeling: feeling,
+        createdAtMs: startMs,
+        updatedAtMs: endMs,
+      ),
+    );
+  }
+
   group('StatsScreen', () {
-    Future<void> seedCompletedSession(
-      MockWorkoutRepository repo, {
-      required String id,
-      required DateTime start,
-      required Duration duration,
-      bool isRolling = false,
-      String? modality,
-    }) async {
-      final startMs = start.millisecondsSinceEpoch;
-      final endMs = start.add(duration).millisecondsSinceEpoch;
-
-      await repo.createSession(
-        TrainingSession(
-          id: id,
-          ownerUserId: 'user-1',
-          modality: modality,
-          startedAtMs: startMs,
-          endedAtMs: endMs,
-          isRolling: isRolling,
-          createdAtMs: startMs,
-          updatedAtMs: endMs,
-        ),
-      );
-    }
-
-    Future<void> pumpStatsScreen(
-      WidgetTester tester,
-      MockWorkoutRepository repo, {
-      Future<void> Function(SettingsState settingsState)? configureSettings,
-    }) async {
-      final workoutState = WorkoutState(repo);
-      final settingsState = SettingsState(repo, fakePreferencesService());
-      await settingsState.initialize();
-      if (configureSettings != null) {
-        await configureSettings(settingsState);
-      }
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: StatsScreen(
-            workoutState: workoutState,
-            settingsState: settingsState,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-    }
-
     testWidgets('shows Stats AppBar title', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(400, 900));
       final repo = await _freshRepo();
@@ -3186,171 +3213,11 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('aggregate totals reflect seeded completed sessions', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1600));
-      final repo = await _freshRepo();
-      final now = DateTime.now();
-
-      await seedCompletedSession(
-        repo,
-        id: 'sess-1',
-        start: now.subtract(const Duration(days: 1, minutes: 30)),
-        duration: const Duration(minutes: 30),
-        modality: 'resistance_lifting',
-      );
-      await seedCompletedSession(
-        repo,
-        id: 'sess-2',
-        start: now.subtract(const Duration(days: 3, minutes: 45)),
-        duration: const Duration(minutes: 45),
-        modality: 'sports',
-      );
-      await seedCompletedSession(
-        repo,
-        id: 'sess-3',
-        start: now.subtract(const Duration(days: 8, hours: 1)),
-        duration: const Duration(hours: 1),
-        modality: 'cardio_endurance',
-      );
-
-      await pumpStatsScreen(tester, repo);
-
-      final aggregateCard = find.byKey(const Key('all_time_card'));
-      expect(
-        find.descendant(of: aggregateCard, matching: find.text('SESSIONS')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: aggregateCard, matching: find.text('3')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: aggregateCard, matching: find.text('2h 15m')),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('rolling sessions are excluded from duration aggregates', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1600));
-      final repo = await _freshRepo();
-      final now = DateTime.now();
-
-      await seedCompletedSession(
-        repo,
-        id: 'rolling-session',
-        start: now.subtract(const Duration(days: 2, hours: 2)),
-        duration: const Duration(hours: 2),
-        isRolling: true,
-      );
-      await seedCompletedSession(
-        repo,
-        id: 'standard-session',
-        start: now.subtract(const Duration(days: 1, minutes: 45)),
-        duration: const Duration(minutes: 45),
-        isRolling: false,
-      );
-
-      await pumpStatsScreen(tester, repo);
-
-      final aggregateCard = find.byKey(const Key('all_time_card'));
-      expect(
-        find.descendant(of: aggregateCard, matching: find.text('2')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: aggregateCard, matching: find.text('45m')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: aggregateCard, matching: find.text('2h 45m')),
-        findsNothing,
-      );
-    });
-
     // ── Effort rating on Stats (HOW DID IT FEEL removed) ──────────────────────────
     // The HOW DID IT FEEL trend card was removed when the post-session
     // survey was redefined as the session effort rating (Stats redesign
     // PR 1). The tests below guard that no effort/feeling scalar, pill or
     // section appears on the Stats screen.
-
-    Future<void> seedFeelingSession(
-      MockWorkoutRepository repo, {
-      required String id,
-      required DateTime start,
-      required Duration duration,
-      int? feeling,
-      String? modality,
-    }) async {
-      final startMs = start.millisecondsSinceEpoch;
-      final endMs = start.add(duration).millisecondsSinceEpoch;
-      await repo.createSession(
-        TrainingSession(
-          id: id,
-          ownerUserId: 'user-1',
-          modality: modality,
-          startedAtMs: startMs,
-          endedAtMs: endMs,
-          sessionFeeling: feeling,
-          createdAtMs: startMs,
-          updatedAtMs: endMs,
-        ),
-      );
-    }
-
-    testWidgets('S-005 guard: no feeling scalar / pill / tile appears in the '
-        'ALL TIME summary stat row', (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1600));
-      final repo = await _freshRepo();
-      final now = DateTime.now();
-      await seedFeelingSession(
-        repo,
-        id: 'f-1',
-        start: now.subtract(const Duration(days: 1)),
-        duration: const Duration(minutes: 30),
-        feeling: 4,
-      );
-
-      await pumpStatsScreen(tester, repo);
-
-      // The ALL TIME row renders inside the all_time_card surface.
-      // It must NOT contain any "Feeling"
-      // label, no "average feeling" scalar, no pill of any kind
-      // referencing feeling.
-      final aggregateCard = find.byKey(const Key('all_time_card'));
-      expect(
-        find.descendant(
-          of: aggregateCard,
-          matching: find.text('HOW DID IT FEEL'),
-        ),
-        findsNothing,
-        reason: 'HOW DID IT FEEL label must not appear in the ALL TIME row',
-      );
-      expect(
-        find.descendant(
-          of: aggregateCard,
-          matching: find.textContaining('feeling', findRichText: true),
-        ),
-        findsNothing,
-        reason: 'no "feeling" word anywhere in the ALL TIME row',
-      );
-      // The three canonical pills are still present and unchanged.
-      expect(
-        find.descendant(of: aggregateCard, matching: find.text('SESSIONS')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: aggregateCard, matching: find.text('TIME')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: aggregateCard, matching: find.text('STREAK')),
-        findsOneWidget,
-      );
-    });
 
     testWidgets('HOW DID IT FEEL section is removed (Phase 4)', (
       WidgetTester tester,
@@ -3480,6 +3347,212 @@ void main() {
         findsNothing,
       );
       expect(find.byType(SegmentedButton<dynamic>), findsNothing);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Records & Trends — the ALL TIME figures moved here when the Stats screen
+  // dropped its aggregate card (100 P3d).
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('Records & Trends', () {
+    // The aggregate card only renders once the screen has an exercise
+    // summary, so each fixture hangs one set effort off one session; the
+    // totals themselves count completed sessions whatever they contain.
+    Future<void> seedOneSetEffort(
+      MockWorkoutRepository repo, {
+      required String sessionId,
+      required DateTime start,
+    }) async {
+      await seedExercise(
+        repo,
+        id: 'ex-$sessionId',
+        name: 'Back Squat',
+        capabilities: const ['load', 'reps'],
+      );
+      await repo.createSegment(
+        SessionSegment(
+          id: 'seg-$sessionId',
+          sessionId: sessionId,
+          orderIndex: 0,
+          segmentType: 'workout',
+          name: 'Main Workout',
+          createdAtMs: start.millisecondsSinceEpoch,
+          updatedAtMs: start.millisecondsSinceEpoch,
+        ),
+      );
+      await seedSetEffort(
+        repo,
+        segmentId: 'seg-$sessionId',
+        effortId: 'eff-$sessionId',
+        exerciseId: 'ex-$sessionId',
+        entryCount: 1,
+        hasExtraWeight: false,
+        weightFactor: 100,
+        repsBase: 5,
+      );
+    }
+
+    Future<void> pumpRecordsScreen(
+      WidgetTester tester,
+      MockWorkoutRepository repo,
+    ) async {
+      final workoutState = WorkoutState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RecordsAndTrendsScreen(
+            workoutState: workoutState,
+            settingsState: settingsState,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('aggregate totals reflect seeded completed sessions', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      await seedCompletedSession(
+        repo,
+        id: 'sess-1',
+        start: now.subtract(const Duration(days: 1, minutes: 30)),
+        duration: const Duration(minutes: 30),
+        modality: 'resistance_lifting',
+      );
+      await seedCompletedSession(
+        repo,
+        id: 'sess-2',
+        start: now.subtract(const Duration(days: 3, minutes: 45)),
+        duration: const Duration(minutes: 45),
+        modality: 'sports',
+      );
+      await seedCompletedSession(
+        repo,
+        id: 'sess-3',
+        start: now.subtract(const Duration(days: 8, hours: 1)),
+        duration: const Duration(hours: 1),
+        modality: 'cardio_endurance',
+      );
+      await seedOneSetEffort(repo, sessionId: 'sess-1', start: now);
+
+      await pumpRecordsScreen(tester, repo);
+
+      final aggregateCard = find.byType(OmniSurface).first;
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('SESSIONS')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('3')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('2h 15m')),
+        findsOneWidget,
+      );
+
+      // The Stats screen no longer carries the card these figures moved off.
+      await pumpStatsScreen(tester, repo);
+      expect(find.text('ALL TIME'), findsNothing);
+    });
+
+    testWidgets('rolling sessions are excluded from duration aggregates', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      await seedCompletedSession(
+        repo,
+        id: 'rolling-session',
+        start: now.subtract(const Duration(days: 2, hours: 2)),
+        duration: const Duration(hours: 2),
+        isRolling: true,
+      );
+      await seedCompletedSession(
+        repo,
+        id: 'standard-session',
+        start: now.subtract(const Duration(days: 1, minutes: 45)),
+        duration: const Duration(minutes: 45),
+        isRolling: false,
+      );
+      await seedOneSetEffort(repo, sessionId: 'standard-session', start: now);
+
+      await pumpRecordsScreen(tester, repo);
+
+      final aggregateCard = find.byType(OmniSurface).first;
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('2')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('45m')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('2h 45m')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('S-005 guard: no feeling scalar / pill / tile appears in the '
+        'ALL TIME summary stat row', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+      await seedFeelingSession(
+        repo,
+        id: 'f-1',
+        start: now.subtract(const Duration(days: 1)),
+        duration: const Duration(minutes: 30),
+        feeling: 4,
+      );
+      await seedOneSetEffort(repo, sessionId: 'f-1', start: now);
+
+      await pumpRecordsScreen(tester, repo);
+
+      // The ALL TIME row renders inside the aggregate card surface.
+      // It must NOT contain any "Feeling"
+      // label, no "average feeling" scalar, no pill of any kind
+      // referencing feeling.
+      final aggregateCard = find.byType(OmniSurface).first;
+      expect(
+        find.descendant(
+          of: aggregateCard,
+          matching: find.text('HOW DID IT FEEL'),
+        ),
+        findsNothing,
+        reason: 'HOW DID IT FEEL label must not appear in the ALL TIME row',
+      );
+      expect(
+        find.descendant(
+          of: aggregateCard,
+          matching: find.textContaining('feeling', findRichText: true),
+        ),
+        findsNothing,
+        reason: 'no "feeling" word anywhere in the ALL TIME row',
+      );
+      // The three canonical pills are still present and unchanged.
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('SESSIONS')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('TIME')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('STREAK')),
+        findsOneWidget,
+      );
     });
   });
 

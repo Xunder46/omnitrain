@@ -318,10 +318,11 @@ has fallen to less than half its usual share.
 - **The period.** The recent period is the `kModalityMixShiftPeriodDays` local
   calendar days ending with today, built from calendar components rather than a
   `Duration` so a daylight-saving transition cannot shift a boundary. The period
-  never follows the Stats window chip. Verified by
+  never follows the Stats window. Verified by
   `test/modality_mix_period_service_test.dart` (`S-1913`) and
-  `test/modality_mix_shift_signal_screen_test.dart` (`S-1909 the period does not
-  follow the window chip`).
+  `test/modality_mix_shift_signal_screen_test.dart` (group `S-1909 the card
+  renders for the mixed history` · `a window narrower than the period still
+  shows the card`).
 - **The baseline.** The baseline is `baselineBlockStarts(localMidnightDay(fromMs))`
   — the `kTrainingLoadBaselineWeeks` consecutive 7-calendar-day blocks
   immediately before the period's start day, abutting it with no gap and no

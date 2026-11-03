@@ -402,9 +402,11 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      /// No legacy title, no legacy key, and the pump threw nothing.
+      /// No legacy title, no legacy key, no ALL TIME card, and the pump threw
+      /// nothing.
       void expectNoLegacySurface(WidgetTester tester) {
         expect(find.byKey(const Key('stats_legacy_sections')), findsNothing);
+        expect(find.text('ALL TIME'), findsNothing);
         for (final title in _kLegacyTitles) {
           expect(
             find.text(title),
@@ -431,9 +433,9 @@ void main() {
         ) async {
           await pumpStats(tester);
 
-          // Not empty: the all-time eyebrow, one row per logged kind and the
-          // Fuel row are all there.
-          expect(find.text('ALL TIME'), findsOneWidget);
+          // Not empty: the Mix card, one row per logged kind and the Fuel
+          // row are all there.
+          expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           expect(_instrumentRowKeys().toSet(), {
             'instrument_row_ex-a',
             'instrument_row_ex-b',
@@ -464,7 +466,7 @@ void main() {
         ) async {
           await pumpStats(tester);
 
-          expect(find.text('ALL TIME'), findsOneWidget);
+          expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           expect(_instrumentRowKeys(), hasLength(2));
           expect(find.text('Resistance'), findsOneWidget);
           expect(find.byKey(const Key('fuel_section')), findsNothing);

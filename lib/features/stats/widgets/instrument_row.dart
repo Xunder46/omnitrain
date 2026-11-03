@@ -120,8 +120,9 @@ class InstrumentRowTile extends StatelessWidget {
   }
 }
 
-/// The row's change readout. Reads `'—'` when there is no comparable previous
-/// value, and otherwise carries the direction of the raw numeric change, so a
+/// The row's change readout. Reads `new` when there is no comparable previous
+/// value; a change of exactly zero is formatted by `formatNativeChange` as the
+/// dash. Otherwise it carries the direction of the raw numeric change, so a
 /// slower pace reads `↑` like any other increase.
 class InstrumentChangeChip extends StatelessWidget {
   /// The formatted change, or null when there is nothing comparable.
@@ -138,7 +139,7 @@ class InstrumentChangeChip extends StatelessWidget {
     required this.theme,
   });
 
-  static const String _noChange = '—';
+  static const String _newLabel = 'new';
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +156,7 @@ class InstrumentChangeChip extends StatelessWidget {
     return SizedBox(
       width: 92,
       child: Text(
-        label ?? _noChange,
+        label ?? _newLabel,
         textAlign: TextAlign.right,
         style: theme.textTheme.labelSmall?.copyWith(
           color: color,

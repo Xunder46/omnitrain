@@ -29,7 +29,6 @@ import 'package:omnitrain/features/nutrition/nutrition_trend_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
-import 'package:omnitrain/widgets/layout/omni_card_header.dart';
 
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/repository_harness.dart';
@@ -40,6 +39,47 @@ const Size _kTallViewport = Size(400, 2400);
 
 /// What a figure reads when there is nothing to show.
 const String _kAbsent = '—';
+
+/// A completed session seeded at local noon of the day [daysAgo] back.
+///
+/// The shared `seedSession` subtracts whole 24-hour blocks from a fixture
+/// start, so across a DST transition a session can land on the neighbouring
+/// local day. The food fixtures use calendar-midnight arithmetic; the
+/// scenarios that align sessions with logged days must use the same calendar
+/// arithmetic.
+Future<void> _seedSessionOnDay(
+  WorkoutRepository repo, {
+  required String sessionId,
+  required int daysAgo,
+  bool isRolling = false,
+}) async {
+  final now = DateTime.now();
+  final start = DateTime(now.year, now.month, now.day - daysAgo, 12)
+      .millisecondsSinceEpoch;
+  await repo.createSession(
+    TrainingSession(
+      id: sessionId,
+      ownerUserId: 'user-1',
+      startedAtMs: start,
+      endedAtMs: isRolling ? null : start + 3600000,
+      modality: null,
+      isRolling: isRolling,
+      createdAtMs: start,
+      updatedAtMs: start,
+    ),
+  );
+  await repo.createSegment(
+    SessionSegment(
+      id: 'seg-$sessionId',
+      sessionId: sessionId,
+      orderIndex: 0,
+      segmentType: 'workout',
+      name: 'Main Workout',
+      createdAtMs: start,
+      updatedAtMs: start,
+    ),
+  );
+}
 
 // ─── finders and readers ────────────────────────────────────────────────────
 
@@ -417,10 +457,10 @@ void main() {
       group('S-1105', () {
         setUp(() async {
           await _seedEveryDayLogged(repo);
-          await seedSession(repo, sessionId: 's-1', daysAgo: 1);
-          await seedSession(repo, sessionId: 's-3', daysAgo: 3);
+          await _seedSessionOnDay(repo, sessionId: 's-1', daysAgo: 1);
+          await _seedSessionOnDay(repo, sessionId: 's-3', daysAgo: 3);
           // Still running: not a training day (D-522).
-          await seedSession(
+          await _seedSessionOnDay(
             repo,
             sessionId: 's-5',
             daysAgo: 5,
@@ -457,9 +497,9 @@ void main() {
             // Three logged days, all of them training days, so the split
             // draws (D-17204): a window with fewer than three logged days
             // draws no figures and no split.
-            await seedSession(repo, sessionId: 's-1', daysAgo: 1);
-            await seedSession(repo, sessionId: 's-3', daysAgo: 3);
-            await seedSession(repo, sessionId: 's-5', daysAgo: 5);
+            await _seedSessionOnDay(repo, sessionId: 's-1', daysAgo: 1);
+            await _seedSessionOnDay(repo, sessionId: 's-3', daysAgo: 3);
+            await _seedSessionOnDay(repo, sessionId: 's-5', daysAgo: 5);
             await _seedDay(
               repo,
               id: 'food-1',
@@ -611,7 +651,7 @@ void main() {
               find.byKey(const Key('stats_legacy_sections')),
               findsNothing,
             );
-            expect(find.text('ALL TIME'), findsOneWidget);
+            expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           });
         });
 
@@ -631,7 +671,7 @@ void main() {
               find.byKey(const Key('stats_legacy_sections')),
               findsNothing,
             );
-            expect(find.text('ALL TIME'), findsOneWidget);
+            expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           });
         });
       });
@@ -763,10 +803,10 @@ void main() {
         });
       });
 
-      // ─── S-1112: the Fuel header carries no window chip ───────────────────
+      // ─── S-1112: the Fuel card carries no window chip ─────────────────────
 
-      /// A resistance exercise with a logged set, so the Instruments list has a
-      /// section — and therefore a window chip — of its own.
+      /// A resistance exercise with a logged set, so the Instruments list has
+      /// a section — and therefore a caption — of its own.
       Future<void> seedInstrumentSection() async {
         await seedExercise(
           repo,
@@ -818,38 +858,18 @@ void main() {
             await seedPeriod();
           });
 
-          testWidgets('the Fuel header carries no chip and the chip-carrying '
-              'headers read · Last 4 weeks even with a period in force', (
-            tester,
-          ) async {
+          testWidgets('the Fuel card has no window chip and its first line '
+              'reads Last 7 days, with the window named in words', (tester) async {
             await pumpStats(tester);
 
-            // The period no longer names the Stats window (99a): both chips
-            // read the four-week label with Block A in force.
-            final chips = find.byKey(const Key('stats_window_chip'));
-            expect(chips, findsNWidgets(2));
+            // No chip renders anywhere: the window is named in words (the Mix
+            // explainer and the Instruments caption), and the Fuel card's own
+            // first line is the seven-day horizon.
+            expect(find.byKey(const Key('stats_window_chip')), findsNothing);
+            expect(_fuelText('fuel_horizon'), 'Last 7 days');
             expect(
-              _textsUnder(chips),
-              everyElement('· Last 4 weeks'),
-            );
-            expect(
-              tester
-                  .widgetList<OmniCardHeader>(
-                    find.ancestor(
-                      of: chips,
-                      matching: find.byType(OmniCardHeader),
-                    ),
-                  )
-                  .map((header) => header.title)
-                  .toSet(),
-              {'TRAINING MIX', 'Resistance'},
-            );
-            expect(
-              find.descendant(
-                of: _fuelSection,
-                matching: find.byKey(const Key('stats_window_chip')),
-              ),
-              findsNothing,
+              _textsUnder(find.byKey(const Key('instrument_caption'))).single,
+              startsWith('Last 4 weeks. '),
             );
           });
 

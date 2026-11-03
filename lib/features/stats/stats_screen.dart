@@ -9,15 +9,12 @@ import '../../core/models/training_load.dart';
 import '../../core/services/signals/signal.dart';
 import '../../core/services/signals_service.dart';
 import '../../core/services/stats_progress_service.dart';
-import '../../core/utils/date_utils.dart';
 import '../../core/navigation/omni_navigator.dart';
-import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
-import '../../widgets/layout/omni_card_header.dart';
 import '../nutrition/nutrition_trend_screen.dart';
 import 'records_and_trends_screen.dart';
 import 'widgets/fuel_section.dart';
@@ -25,7 +22,6 @@ import 'widgets/instrument_list.dart';
 import 'widgets/load_failure_view.dart';
 import 'widgets/mix_layer.dart';
 import 'widgets/signals_layer.dart';
-import 'widgets/stats_pill.dart';
 import 'widgets/stats_primer_sheet.dart';
 
 class StatsScreen extends StatefulWidget {
@@ -64,8 +60,6 @@ class _StatsScreenState extends State<StatsScreen> {
   bool _isLoading = true;
   bool _loadFailed = false;
   int _totalSessions = 0;
-  int _totalDurationMs = 0;
-  int _streakDays = 0;
 
   StatsWindow? _window;
   List<InstrumentSectionData> _instrumentSections = const [];
@@ -99,19 +93,14 @@ class _StatsScreenState extends State<StatsScreen> {
       _isLoading = true;
     });
     try {
-      // Reuse CalendarState streak logic — do not re-implement the calculation.
-      final calendarState = CalendarState(widget.workoutState.repository);
-      await calendarState.init();
-      final streak = calendarState.streakDays;
-
       // One service instance for the whole load. The service caches its
       // history snapshot per instance, so every `compute*` call below
       // shares a single read of the repository — constructing a second
       // instance here would silently double that cost.
       final service = StatsProgressService(widget.workoutState.repository);
 
-      // All-time aggregates (completed sessions and their duration) come from
-      // the service, so the screen and Records & Trends agree on the figures.
+      // Whether any completed session exists decides the empty state; the
+      // service is the same source Records & Trends reads.
       final totals = await service.computeTotals();
 
       // The Fuel row's own window, resolved in the same load as everything
@@ -173,8 +162,6 @@ class _StatsScreenState extends State<StatsScreen> {
 
       setState(() {
         _totalSessions = totals.completedSessions;
-        _totalDurationMs = totals.durationMs;
-        _streakDays = streak;
         _window = window;
         _instrumentSections = instrumentSections;
         _fuelSummary = fuelSummary;
@@ -320,9 +307,6 @@ class _StatsScreenState extends State<StatsScreen> {
                               ),
                               const SizedBox(height: 24),
                             ],
-                            const OmniCardHeader(title: 'ALL TIME'),
-                            _buildAggregateCard(context, themeColors),
-                            const SizedBox(height: 24),
                             if (window != null &&
                                 _instrumentSections.isNotEmpty) ...[
                               InstrumentList(
@@ -372,57 +356,6 @@ class _StatsScreenState extends State<StatsScreen> {
           child: const StatsPrimerSheet(),
         );
       },
-    );
-  }
-
-  // ── All-time aggregate ────────────────────────────────────────────────────
-
-  Widget _buildAggregateCard(
-    BuildContext context,
-    OmniThemeColors themeColors,
-  ) {
-    final theme = Theme.of(context);
-
-    return OmniSurface(
-      key: const Key('all_time_card'),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: StatsPill(
-              label: 'Sessions',
-              value: _totalSessions.toString(),
-              themeColors: themeColors,
-              theme: theme,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: StatsPill(
-              label: 'Time',
-              value: _formatDuration(_totalDurationMs),
-              themeColors: themeColors,
-              theme: theme,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: StatsPill(
-              label: 'Streak',
-              value: '$_streakDays d',
-              themeColors: themeColors,
-              theme: theme,
-              trailingIcon: _streakDays >= 3
-                  ? Icon(
-                      Icons.local_fire_department,
-                      size: 18,
-                      color: themeColors.primary,
-                    )
-                  : null,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -491,7 +424,4 @@ class _StatsScreenState extends State<StatsScreen> {
       ],
     );
   }
-
-  /// Formats a duration in milliseconds as "Xh Ym" for all-time totals.
-  String _formatDuration(int ms) => OmniDateUtils.formatDurationHoursMins(ms);
 }

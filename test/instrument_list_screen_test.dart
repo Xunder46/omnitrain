@@ -47,8 +47,9 @@ const Size _kTallViewport = Size(400, 2400);
 /// The sparkline's drawn size when a row has a series to draw.
 const Size _kSparklineSize = Size(56, 24);
 
-/// What the change chip reads when there is nothing comparable to show.
-const String _kNoChange = '—';
+/// What the change chip reads when there is nothing comparable to show
+/// (D-17304). A change of exactly zero still reads the dash.
+const String _kNewLabel = 'new';
 
 // ─── finders and readers ────────────────────────────────────────────────────
 
@@ -153,6 +154,58 @@ Future<void> _seedSetSession(
   required int reps,
 }) async {
   await seedSession(repo, sessionId: sessionId, daysAgo: daysAgo);
+  await seedSetEffort(
+    repo,
+    segmentId: 'seg-$sessionId',
+    effortId: 'eff-$sessionId',
+    exerciseId: exerciseId,
+    entryCount: 1,
+    hasExtraWeight: false,
+    weightFactor: weightKg,
+    repsBase: reps,
+  );
+}
+
+/// The same fixture, seeded at local noon of the day [daysAgo] back.
+///
+/// The shared `seedSession` subtracts whole 24-hour blocks from a fixture
+/// start, so across a DST transition a session can land on the neighbouring
+/// local day. Scenarios that count distinct training days need the calendar
+/// day, not the elapsed time.
+Future<void> _seedSetSessionOnDay(
+  WorkoutRepository repo, {
+  required String sessionId,
+  required int daysAgo,
+  required String exerciseId,
+  required double weightKg,
+  required int reps,
+}) async {
+  final now = DateTime.now();
+  final start = DateTime(now.year, now.month, now.day - daysAgo, 12)
+      .millisecondsSinceEpoch;
+  await repo.createSession(
+    TrainingSession(
+      id: sessionId,
+      ownerUserId: 'user-1',
+      startedAtMs: start,
+      endedAtMs: start + 3600000,
+      modality: null,
+      isRolling: false,
+      createdAtMs: start,
+      updatedAtMs: start,
+    ),
+  );
+  await repo.createSegment(
+    SessionSegment(
+      id: 'seg-$sessionId',
+      sessionId: sessionId,
+      orderIndex: 0,
+      segmentType: 'workout',
+      name: 'Main Workout',
+      createdAtMs: start,
+      updatedAtMs: start,
+    ),
+  );
   await seedSetEffort(
     repo,
     segmentId: 'seg-$sessionId',
@@ -626,7 +679,7 @@ void main() {
         });
 
         testWidgets('the change chip compares against the previous range, and '
-            'reads a dash when there is nothing to compare', (tester) async {
+            'reads new when there is nothing to compare', (tester) async {
           await pumpStats(tester);
 
           final squat = _rowOf(sections, 'ex-squat');
@@ -642,8 +695,8 @@ void main() {
 
           // No history in the preceding range → nothing to compare against.
           expect(_rowOf(sections, 'ex-row').previousValue, isNull);
-          expect(_changeLabel('ex-row'), _kNoChange);
-          expect(_changeLabel('ex-run'), _kNoChange);
+          expect(_changeLabel('ex-row'), _kNewLabel);
+          expect(_changeLabel('ex-run'), _kNewLabel);
         });
       });
 
@@ -700,8 +753,8 @@ void main() {
           await readModel();
         });
 
-        testWidgets('the Instruments list is the four-week window and the '
-            'chip says so, whatever periods exist', (tester) async {
+        testWidgets('the Instruments list is the four-week window, named in '
+            'words, whatever periods exist', (tester) async {
           await pumpStats(tester);
 
           expect(window.isPeriodScoped, isFalse);
@@ -715,23 +768,10 @@ void main() {
           expect(_instrumentRowKeys(), ['instrument_row_ex-in']);
           expect(find.text('Deadlift'), findsNothing);
 
-          // Two chips: the Mix header's and the Instruments list's first
-          // header — both naming the same window.
-          final chips = find.byKey(const Key('stats_window_chip'));
-          expect(chips, findsNWidgets(2));
-          expect(_textsUnder(chips), everyElement('· ${window.label}'));
-          expect(
-            tester
-                .widgetList<OmniCardHeader>(
-                  find.ancestor(
-                    of: chips,
-                    matching: find.byType(OmniCardHeader),
-                  ),
-                )
-                .map((header) => header.title)
-                .toSet(),
-            {'TRAINING MIX', 'Resistance'},
-          );
+          // The window is named in words, not by a chip: the caption opens
+          // with the window's label, and no chip renders anywhere.
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
+          expect(_caption(tester), startsWith('${window.label}. '));
         });
       });
 
@@ -763,7 +803,7 @@ void main() {
 
           // The legacy layout is gone; the screen keeps only its live chrome.
           expect(find.byKey(const Key('stats_legacy_sections')), findsNothing);
-          expect(find.text('ALL TIME'), findsOneWidget);
+          expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           expect(find.text('STRENGTH'), findsNothing);
           expect(find.text('CARDIO'), findsNothing);
           expect(find.text('ISOMETRIC'), findsNothing);
@@ -838,15 +878,15 @@ void main() {
           await readModel();
         });
 
-        testWidgets('the Instruments list follows ALL TIME and no legacy '
+        testWidgets('the Instruments list follows the Mix layer and no legacy '
             'section is present', (tester) async {
           await pumpStats(tester);
 
           expect(find.text('Resistance'), findsOneWidget);
           expect(find.byKey(const Key('stats_legacy_sections')), findsNothing);
-          // The live order: the `ALL TIME` eyebrow, then the list.
+          // The live order: the Mix layer, then the list.
           expect(
-            tester.getTopLeft(find.text('ALL TIME')).dy,
+            tester.getTopLeft(find.byKey(const Key('mix_layer'))).dy,
             lessThan(tester.getTopLeft(find.text('Resistance')).dy),
           );
           // No legacy header survives anywhere on the screen.
@@ -969,7 +1009,7 @@ void main() {
           await seedExercise(repo, id: 'ex-zero', name: 'No Reading');
 
           for (var daysAgo = 1; daysAgo <= 3; daysAgo++) {
-            await _seedSetSession(
+            await _seedSetSessionOnDay(
               repo,
               sessionId: 's-spark3-$daysAgo',
               daysAgo: daysAgo,
@@ -1056,9 +1096,8 @@ void main() {
           await readModel();
         });
 
-        testWidgets('the caption names the 28 days the window holds', (
-          tester,
-        ) async {
+        testWidgets('the caption names the 4 weeks the window holds and the '
+            '4 weeks before it', (tester) async {
           await pumpStats(tester);
 
           // The window is the 28 calendar days ending today; periods and
@@ -1072,8 +1111,7 @@ void main() {
 
           expect(
             _caption(tester),
-            'Line: each training day in the window · '
-            'Change: vs the 28 days before it',
+            'Last 4 weeks. Change is against the 4 weeks before.',
           );
           expect(
             find.byKey(const Key('instrument_caption')),
@@ -1140,8 +1178,7 @@ void main() {
 
           expect(
             _caption(tester),
-            'Line: each training day in the window · '
-            'Change: vs the day before it',
+            'Test window. Change is against the 1 day before.',
           );
           expect(tester.takeException(), isNull);
         });
@@ -1217,8 +1254,8 @@ void main() {
           await readModel();
         });
 
-        testWidgets('the number is the previous range\'s span, and the chip '
-            'names the four weeks', (tester) async {
+        testWidgets('the number is the previous range\'s span, and the '
+            'caption names the four weeks', (tester) async {
           await pumpStats(tester);
 
           expect(window.recentDays, isNull);
@@ -1231,15 +1268,10 @@ void main() {
 
           expect(
             _caption(tester),
-            'Line: each training day in the window · '
-            'Change: vs the 28 days before it',
+            'Last 4 weeks. Change is against the 4 weeks before.',
           );
-          // The chip names the same window the caption's number comes from.
-          expect(window.label, 'Last 4 weeks');
-          expect(
-            _textsUnder(find.byKey(const Key('stats_window_chip'))),
-            everyElement('· ${window.label}'),
-          );
+          // The window is named in words, not by a chip.
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
         });
       });
 
@@ -1255,7 +1287,7 @@ void main() {
 
           final caption = find.byKey(const Key('instrument_caption'));
           expect(caption, findsOneWidget);
-          expect(find.textContaining('Line: each training day'), findsOneWidget);
+          expect(find.textContaining('Change is against the'), findsOneWidget);
 
           final captionTop = tester.getTopLeft(caption).dy;
           expect(
@@ -1284,7 +1316,7 @@ void main() {
           expect(
             _textsUnder(
               find.byType(OmniCardHeader),
-            ).where((text) => text.startsWith('Line:')),
+            ).where((text) => text.contains('Change is against')),
             isEmpty,
           );
         });
@@ -1320,7 +1352,7 @@ void main() {
             'Plank',
             'Total hold ${formatNativeSecondary(plank.summary.best, settingsState)}',
             formatNativeValue(plank.summary.best, settingsState),
-            _kNoChange,
+            _kNewLabel,
           ]);
 
           final bjj = _rowOf(sections, 'ex-bjj');
@@ -1328,7 +1360,7 @@ void main() {
             'BJJ',
             'Total time ${formatNativeSecondary(bjj.summary.best, settingsState)}',
             formatNativeValue(bjj.summary.best, settingsState),
-            _kNoChange,
+            _kNewLabel,
           ]);
         });
       });

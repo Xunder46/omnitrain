@@ -5,8 +5,8 @@
 //
 // The window is no longer a period: `StatsScreen` always asks the service for
 // the 28 days ending today, so a period covering today neither scopes the Mix
-// layer nor names the chip, and a window with no session in it draws one line
-// instead of a card.
+// layer nor names the window, and a window with no session in it draws one
+// line instead of a card.
 //
 // The harness is opened and seeded in `setUp` and never inside a `testWidgets`
 // body: a widget test body runs under `FakeAsync`, where Hive's real file I/O
@@ -52,11 +52,6 @@ List<String> _allTexts() {
   }
   return texts;
 }
-
-/// The two window chips' texts, in document order.
-List<String> _chipTexts() => _textsUnder(
-  find.byKey(const Key('stats_window_chip')),
-);
 
 // ─── fixtures ───────────────────────────────────────────────────────────────
 
@@ -187,7 +182,7 @@ Future<void> _seedPeriod(
 /// S-17004's and S-17005's fixture: a period named "Holds" covering today, a
 /// 20-minute cardio session inside it, and three 60-minute lifting sessions
 /// before the period starts — all four inside the 28-day window, so the bar
-/// reads 90% resistance, 10% cardio by time and the chip never names the
+/// reads 90% resistance, 10% cardio by time and the explainer never names the
 /// period.
 Future<void> _seedPeriodAndMixedWindow(WorkoutRepository repo) async {
   await _seedPeriod(repo, name: 'Holds', daysAgo: 3);
@@ -266,7 +261,7 @@ void main() {
       group('S-17004 a period no longer scopes Stats', () {
         setUp(() => _seedPeriodAndMixedWindow(repo));
 
-        testWidgets('the bar reads the 28-day window and the chip never '
+        testWidgets('the bar reads the 28-day window and the explainer never '
             'names the period', (tester) async {
           await pumpStats(tester);
 
@@ -281,7 +276,11 @@ void main() {
           );
           expect(legend, ['Resistance 90%', 'Cardio 10%']);
 
-          expect(_chipTexts(), ['· Last 4 weeks', '· Last 4 weeks']);
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
+          expect(
+            _textsUnder(find.byKey(const Key('mix_explainer'))).single,
+            startsWith('Last 4 weeks. '),
+          );
 
           expect(
             _allTexts().where((text) => text.contains('Holds')),
@@ -302,7 +301,7 @@ void main() {
 
           expect(
             _textsUnder(find.byKey(const Key('instrument_caption'))),
-            ['Line: each training day in the window · Change: vs the 28 days before it'],
+            ['Last 4 weeks. Change is against the 4 weeks before.'],
           );
           expect(tester.takeException(), isNull);
         });
@@ -332,8 +331,8 @@ void main() {
           expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
           expect(find.byKey(const Key('instrument_caption')), findsNothing);
 
-          expect(find.text('ALL TIME'), findsOneWidget);
-          expect(find.byKey(const Key('stats_window_chip')), findsOneWidget);
+          expect(find.byKey(const Key('signals_locked')), findsOneWidget);
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
           expect(tester.takeException(), isNull);
         });
       });

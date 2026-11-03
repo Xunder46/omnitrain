@@ -93,7 +93,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Could not load your stats.'), findsNothing);
-      expect(find.text('ALL TIME'), findsOneWidget);
+      expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
       expect(find.text('No sessions yet'), findsNothing);
     });
 

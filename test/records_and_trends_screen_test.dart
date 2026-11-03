@@ -406,8 +406,7 @@ void main() {
           );
         });
 
-        testWidgets('the header icon opens Records & Trends with the same '
-            'figures', (tester) async {
+        testWidgets('the header icon opens Records & Trends', (tester) async {
           await pump(
             tester,
             StatsScreen(
@@ -425,23 +424,19 @@ void main() {
             findsWidgets,
           );
 
-          // The all-time figures the Stats screen already shows.
-          final statsPills = _textsUnder(
-            find.byKey(const Key('all_time_card')),
-          );
-          expect(statsPills, contains('SESSIONS'));
-          expect(statsPills, contains('TIME'));
-          expect(statsPills, contains('STREAK'));
-
           // The PR list is not on this screen: it lives in Records & Trends.
           expect(find.byType(RecentPRList), findsNothing);
 
-          // Tapping through lands on Records & Trends with the same figures.
+          // Tapping through lands on Records & Trends, which now carries the
+          // all-time figures the Stats screen no longer shows.
           await tester.tap(find.byTooltip('Records & Trends'));
           await tester.pumpAndSettle();
 
           expect(find.text('Records & Trends'), findsOneWidget);
-          expect(_textsUnder(find.byType(OmniSurface).first), statsPills);
+          final pills = _textsUnder(find.byType(OmniSurface).first);
+          expect(pills, contains('SESSIONS'));
+          expect(pills, contains('TIME'));
+          expect(pills, contains('STREAK'));
 
           // The PR list Records & Trends renders, in the same order.
           final trendPrs = _textsUnder(find.byType(RecentPRList));

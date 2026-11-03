@@ -2,8 +2,8 @@
 
 ## Overview
 
-`StatsScreen` is a read-only analytics screen: the all-time totals, the work the
-last four weeks contain, and how eating is going. It is reached from the
+`StatsScreen` is a read-only analytics screen: the work the last four weeks
+contain, and how eating is going. It is reached from the
 maintenance sheet on the home screen and carries no filters; its controls are
 the header icon that opens [Records & Trends](records_and_trends.md) and the
 Instruments rows, each an entry point to Exercise Progress.
@@ -103,24 +103,26 @@ Stats screen holds no StatsPrimerState`).
 ## What the Screen Displays
 
 With no completed session in the repository the body is the shared empty state
-alone — no Mix layer, no Signals layer, no ALL TIME card, no Instruments list
-and no Fuel row, whatever the food log holds. Otherwise it is five blocks in a fixed order: the
+alone — no Mix layer, no Signals layer, no Instruments list and no Fuel row,
+whatever the food log holds. Otherwise it is four blocks in a fixed order: the
 [Mix layer](#mix-layer) when the window holds measurable time, or its
 empty-window card when the window holds no session but history does, the
 [Signals layer](#signals-layer) when its gate is met — or, when the gate is
-unmet but the Mix layer exists, the locked Signals line in its slot — the
-[ALL TIME card](#all-time-card), the [Instruments list](#instruments-list)
-when the window holds work, and the [Fuel row](#fuel-row) when recent food
-exists. Verified by `test/stats_legacy_removal_test.dart` (`S-1208`),
+unmet but the Mix layer exists, the locked Signals line in its slot —
+the [Instruments list](#instruments-list) when the window holds work, and the
+[Fuel row](#fuel-row) when recent food exists. Verified by
+`test/stats_legacy_removal_test.dart` (`S-1208`),
 `test/fuel_row_screen_test.dart` (`S-1112`),
 `test/mix_layer_screen_test.dart` (`S-1601`, `S-1610`),
-`test/signals_layer_screen_test.dart` (`S-1701`, `S-1702`, `S-4002`) and
+`test/signals_layer_screen_test.dart` (`S-1701`, `S-1702`, `S-4002`),
 `test/stats_four_week_window_screen_test.dart` (group `S-17007 after a break
 the card is one line` › `the empty window draws one line and no bar, strip or
-list`).
+list`) and `test/stats_instruments_horizon_screen_test.dart` (group `S-17307
+ALL TIME is on Records & Trends only` › `Stats shows no all-time block, and
+its blocks keep their order`).
 
 Nothing else is rendered. The screen holds no chart section, no segmented
-control and no block beyond those five: `test/stats_legacy_removal_test.dart`
+control and no block beyond those four: `test/stats_legacy_removal_test.dart`
 fails if a removed section's identifier returns to the file (`S-1209`) or if a
 chart widget does (`S-1210`), and `test/screen_widget_test.dart` fails if the
 Calories / Macros toggle returns. Recent PRs are not among them either: they live
@@ -129,19 +131,24 @@ in [Records & Trends](records_and_trends.md), verified by
 
 ### Mix layer
 
-The Mix layer is the first block in the body, above the ALL TIME card, and there
-is exactly one of it. Every figure it draws is one `MixLayerData` supplies; the
+The Mix layer is the first block in the body, and there is exactly one of it. Every figure it draws is one `MixLayerData` supplies; the
 arithmetic the layer does itself is presentation only — the flex that turns a
 measure into a share of the bar, and the tallest week that sets one scale for
 all eight strip columns. Verified by `test/mix_layer_screen_test.dart`
 (`S-1601`, `S-1602`, `S-1609`).
 
-**The explainer.** One sentence under the card's title says what the bars are:
-`Your training split by how hard each session felt.` under the load measure,
-`Your training split by time spent.` under the time measure — the only place
-the measure is named in words, and the old `by load` / `by time` labels are
-gone. Verified by the same file (`S-3201 one sentence says what the split is`,
-`S-3201 the twin: the time measure reads in its own words`).
+**The explainer.**
+One sentence under the card's title names the window, then says what the bars are:
+under the load measure it reads
+`Last 4 weeks. Your training split by how hard each session felt.`, and under
+the time measure it reads `Last 4 weeks. Your training split by time spent.` —
+the only place the measure is named in words, and the old `by load` / `by time`
+labels are gone. Verified by the same file (`S-3201 one sentence says what the
+split is`, `S-3201 the twin: the time measure reads in its own words`) and by
+`test/stats_mix_horizon_screen_test.dart` (groups `S-17301 the time-measure
+explainer opens with the window` › `the explainer names the window and the
+chip is gone` and `S-17302 the load-measure explainer opens with the window`
+› `the explainer names the window and the measure`).
 
 **The bar.** One horizontal bar split by modality, largest share first. The
 shares are the window's own measure by modality — its measured time in the time
@@ -177,19 +184,15 @@ bar labels`, `S-1606`, `S-1611`) and by
 `test/stats_rated_weeks_screen_test.dart` (group `S-17108 four current weeks
 unlock Signals` › `the load measure shows and the Signals layer renders`).
 
-**The note and the unrated line.** Under the time measure, while fewer than
+**The note.** Under the time measure, while fewer than
 `kTrainingLoadMinRatedWeeks` of the last 12 seven-day weeks — today's
 included — are rated, a note reads `Showing time for now. Effort appears once
-4 weeks are rated (N of 4 so far).`; under the load measure no note renders. An unrated line says what the missing ratings do to the figures: under
-the load measure the unrated sessions are not counted, under the time measure
-they are counted but carry no rating yet. Both lines are absent when they have
-nothing to report. Verified by the same file (`S-3204 the baseline note says
-what happens and when`, `S-3204 the twin: no rated week at all`, `S-3204 the
-load measure explains nothing`, `S-3205 the unrated line says which measure
-leaves sessions out`, `S-3205 the load measure says the session is not
-counted`, `S-3205 the twin: every session rated`).
+4 weeks are rated (N of 4 so far).`; under the load measure no note renders.
+Verified by the same file (`S-3204 the baseline note says what happens and
+when`, `S-3204 the twin: no rated week at all`, `S-3204 the load measure
+explains nothing`).
 
-**The strip.** Titled `Week by week · last 8 weeks`: eight weeks of
+**The strip.** Titled `Last 8 weeks, week by week`: eight weeks of
 modality-stacked columns, oldest first, with the current week marked. A week
 with no work draws a 2 dp stub at the bottom of its column instead of a stack
 segment, so all eight columns stay visible. A caption under the columns reads
@@ -201,20 +204,21 @@ payload knows the last completed session's day. Verified by the same file
 (`S-3206 the strip is titled, captioned and shows eight columns`, `S-3206 the
 twin: an all-empty strip keeps its one line`, `S-1608`, `S-4005`, `S-4006`,
 `S-4015`, `S-4014`, and `Guard — the caption fits 390x844 dp and 2.0 text
-scale`).
+scale`) and by `test/stats_mix_horizon_screen_test.dart` (group `S-17303 the
+strip is titled by its horizon` › `the strip title leads with the horizon`).
 
 **The window.** The layer reads the screen's one window — the four weeks
 ending today (`StatsProgressService.statsWindow`) — the same window the
-Instruments list reads, and carries its own `StatsWindowChip` naming it
-`· Last 4 weeks`, the second of the screen's two chips. Verified by the same
-file (`S-1612`, `S-1613`) and by
+Instruments list reads, and names it in the first words of its explainer.
+Verified by the same file (groups `S-1612 the window is named in words, not by
+a chip` and `S-1613 the layer reads the same window as the list`) and by
 `test/stats_four_week_window_screen_test.dart` (group `S-17004 a period no
-longer scopes Stats` › `the bar reads the 28-day window and the chip never
-names the period`).
+longer scopes Stats` › `the bar reads the 28-day window and the explainer
+never names the period`).
 
 **The empty window.** When the window holds no completed session but a
 completed session exists anywhere in history, the layer is not a card of
-nothing: it draws the header, the chip and one line (key `mix_window_empty`) —
+nothing: it draws the header and one line (key `mix_window_empty`) —
 `No training in the last 4 weeks. Last session: <date>.` — and no bar, no
 legend and no strip. The Instruments list is absent with it, because the
 window holds no work. A window that holds a session with zero time is still a
@@ -224,7 +228,9 @@ session shows the screen's first-use empty state instead. The period signals'
 is the window's alone. Verified by
 `test/stats_four_week_window_screen_test.dart` (group `S-17007 after a break
 the card is one line` › `the empty window draws one line and no bar, strip or
-list`) and `test/stats_four_week_window_service_test.dart` (groups `Mock —
+list`), `test/stats_mix_horizon_screen_test.dart` (group `S-17312 the
+empty-window card has no chip` › `the empty line stands alone under the
+header`) and `test/stats_four_week_window_service_test.dart` (groups `Mock —
 four-week window` and `Hive — four-week window`: `S-17006 an empty window with
 history returns the empty payload`, `S-17008 no completed session at all
 returns null`, `S-17009 a zero-duration session inside the window returns
@@ -246,7 +252,7 @@ never stale relative to the other blocks. Verified by the same file (`S-1616`).
 ### Signals layer
 
 The Signals layer is the second block in the body, directly under the Mix layer
-and above the ALL TIME card, and there is exactly one of it. It renders only
+and above the Instruments list, and there is exactly one of it. It renders only
 when its gate is met — `signalsGateMet(mix)`, the Mix layer's `ratedWeeks` —
 how many of the last 12 seven-day weeks, today's included, hold a rated
 session — against `kTrainingLoadMinRatedWeeks`. When the gate is
@@ -393,20 +399,6 @@ the card in the tap frame, the store holds the id, and the next open is still
 quiet`) and, for the definition itself,
 `test/cardio_efficiency_drift_test.dart`.
 
-### ALL TIME card
-
-One surface holding three pills:
-
-| Pill | Source |
-|------|--------|
-| **Sessions** | Count of completed sessions across all time |
-| **Time** | Total training time, formatted by `OmniDateUtils.formatDurationHoursMins` |
-| **Streak** | Current consecutive-day streak via `CalendarState.streakDays` |
-
-The pills and their figures are verified by `test/screen_widget_test.dart`, which
-asserts the `STREAK` pill inside the `ALL TIME` card; the `ALL TIME` header is
-verified by `test/stats_legacy_removal_test.dart` (`S-1208`).
-
 ### Instruments list
 
 The counterpart to the [Selection Window](#selection-window-current-state-window).
@@ -417,9 +409,10 @@ the window logged of that kind, with `ExerciseSection`'s declared order as the
 tiebreak; the rule lives in `computeInstrumentSections`, verified by
 `test/instrument_list_service_test.dart` (`S-1006`).
 
-The section headers are `Resistance`, `Cardio`, `Isometric` and `Sports` — the
-first of them carries the window chip, so the scope of the readout is never
-ambiguous. Verified by `test/instrument_list_screen_test.dart` (`S-1011`).
+The section headers are `Resistance`, `Cardio`, `Isometric` and `Sports`, and
+the caption under the first one names the window. Verified by
+`test/instrument_list_screen_test.dart` (group `S-1011` › `the Instruments
+list is the four-week window, named in words, whatever periods exist`).
 
 The list is data-driven rather than fixed. A kind of work with nothing in the
 window is absent instead of empty, and the whole list is absent when the window
@@ -435,12 +428,18 @@ what it carries — belongs to the widget catalog
 (`S-1001`).
 
 One muted caption sits under the first section header and nowhere else, and
-says what the numbers mean: the line is each training day in the window, and
-the change is against the 28 days before it — the window's own calendar span.
+says what the numbers mean: `Last 4 weeks. Change is against the 4 weeks before.` — the window in words, then the window's own calendar span the change is measured against. The span is named in whole weeks when the window is a multiple of seven days (`1 week`, `4 weeks`) and in days otherwise (`1 day`, `10 days`).
 Verified by `test/instrument_list_screen_test.dart` (group `S-4010 the caption
-states the window's real span`, group `S-4017 the caption counts the
-comparison`, group `S-4018 one caption, under the first header`) and
-`test/stats_window_day_count_test.dart` (group `S-4011
+states the window's real span` › `the caption names the 4 weeks the window
+holds and the 4 weeks before it`, group `S-4017 the caption counts the
+comparison` › `the number is the previous range's span, and the caption names
+the four weeks`, group `S-4018 one caption, under the first header`),
+`test/stats_instruments_horizon_screen_test.dart` (group `S-17304 the caption
+is one plain line` › `the caption names the window and its previous span, and
+no chip names it`, and group `S-17306 the caption counts the window's own
+span` › `a ten-day window reads the ten days before it`, `a seven-day window
+reads the one week before it`, `a one-day window reads the one day before it`)
+and `test/stats_window_day_count_test.dart` (group `S-4011
 StatsWindow.dayCount is the previous range's own length`).
 
 Each row's secondary line names what its figure is: `Est. 1RM` for the
@@ -451,11 +450,16 @@ keep their own wording. Verified by `test/instrument_list_screen_test.dart`
 (`nativePrimaryLabel`).
 
 The change readout compares the window's value with the previous window of the
-same length. With nothing comparable it reads the no-change dash rather than a
-number, and its arrow follows the direction of the raw numeric change — so a
+same length. With nothing comparable it reads `new` rather than a number, and
+a change of exactly zero reads the dash. Its arrow follows the direction of the
+raw numeric change — so a
 *slower* pace reads as an increase, because pace is stored as time per distance.
 A value the service derived from an estimated distance carries the `est.` mark.
-Verified by the same file (`S-1001`).
+Verified by `test/stats_instruments_horizon_screen_test.dart` (group `S-17305
+a row with nothing to compare against reads new` › `the three rows read new,
+the dash, and an arrow figure`) and `test/instrument_list_screen_test.dart`
+(group `S-1001` › `the change chip compares against the previous range, and
+reads new when there is nothing to compare`).
 
 A section past the row cap offers to show the rest; the cap is per section, so a
 busy kind of work never hides a quiet one. Verified by the same file (`S-1016`).
@@ -475,8 +479,13 @@ it opens the full-history nutrition trend screen (see
 [Navigation & Screens](navigation_and_screens.md)); verified by
 `test/fuel_row_screen_test.dart` (`S-1109`). It is the one block on this screen with a window of its own — the
 `kFuelWindowDays` finished days ending yesterday, not the screen's four-week
-window — so it carries no `StatsWindowChip`. Verified by the same file
-(`S-1112`).
+window — and its first line reads `Last 7 days`. Verified by
+`test/fuel_row_screen_test.dart` (group `S-1112` › `the Fuel card has no
+window chip and its first line reads Last 7 days, with the window named in
+words`) and `test/stats_fuel_horizon_screen_test.dart` (groups `S-17310
+averages shown` › `S-17310 the Fuel card opens with its horizon` and `S-17310
+too few logged days` › `S-17310 the Fuel card opens with its horizon`, and
+group `S-17311` › `S-17311 the horizon is built from the window constant`).
 
 **Window.** `StatsProgressService.kFuelWindowDays` calendar days ending
 **yesterday**, by calendar arithmetic rather than elapsed hours; today is in
@@ -533,7 +542,7 @@ file (`S-1105`, `S-1106`) and by `test/fuel_summary_window_test.dart`
 (`S-17203 a session started today does not make a training day`).
 
 **Absent values.** A figure with nothing to report — no logged day, no previous
-range, no target — reads the same no-change dash the Instruments rows use, never
+range, no target — reads a dash; the Instruments rows read new instead, never
 a zero and never a division by zero. The test reads each figure from the value
 type and from the rendered row, so the two cannot disagree. Verified by the same
 file (`S-1106`, `S-1108`, `S-1111`).
@@ -553,8 +562,8 @@ same file (`S-1112`).
 
 **Formatting.** A kcal or gram figure has no `NativeMetric`, so the row formats
 its own strings rather than borrowing `formatNativeChange`'s metric path; it
-follows the conventions that formatter sets — whole units, the no-change dash,
-and an arrow carrying the raw sign of the change. Verified by the same
+follows the conventions that formatter sets — whole units, the dash a zero
+change reads, and an arrow carrying the raw sign of the change. Verified by the same
 file (`S-1101`, `S-1103`).
 
 ---
@@ -588,8 +597,8 @@ the rows read).
 The Instruments list **selects** from a fixed recent window rather than from
 all time, so a lift trained heavily long ago cannot occupy a row while the
 user's current focus never appears. The window is the same for every windowed
-block on the screen; the ALL TIME card and the [Fuel row](#fuel-row) sit
-outside it and read their own figures.
+block on the screen; the [Fuel row](#fuel-row) sits
+outside it and reads its own figures.
 
 ### Resolution Rule
 
@@ -609,8 +618,9 @@ window, and every windowed part of the screen shares it.
    screen; periods keep their meaning on the calendar and period screens.
    Verified by `test/stats_four_week_window_screen_test.dart` (group
    `S-17004 a period no longer scopes Stats` › `the bar reads the 28-day
-   window and the chip never names the period`) and
-   `test/instrument_list_screen_test.dart` (`S-1011`).
+   window and the explainer never names the period`) and
+   `test/instrument_list_screen_test.dart` (group `S-1011` › `the Instruments
+   list is the four-week window, named in words, whatever periods exist`).
 3. **No history at all.** The window is the same 28 days whether or not
    history exists; with no completed session the filter cleanly yields zero
    sessions and the screen renders its first-use empty state (the service
@@ -623,38 +633,36 @@ window, and every windowed part of the screen shares it.
 
 | Surface | Windowed? | Notes |
 |---------|-----------|-------|
-| Mix layer | **Yes** | The bar, the measure, the usual bar, the note, the unrated line, the strip and the empty-window card all describe the window — see [Mix layer](#mix-layer) |
+| Mix layer | **Yes** | The bar, the measure, the usual bar, the note, the strip and the empty-window card all describe the window — see [Mix layer](#mix-layer) |
 | Signals layer | **Yes** | The registered signals are evaluated against the same four-week window and the same load as the Mix layer — see [Signals layer](#signals-layer) |
 | Instruments sections and their rows | **Yes** | One row per exercise the window holds work for |
-| Each row's figure and change readout | **Yes** | The figure is the window's; the change compares it with the 28 days before it |
+| Each row's figure and change readout | **Yes** | The figure is the window's; the change compares it with the previous window of the same length |
 | Each row's trend line | **Yes** | Built from the window's own points |
-| ALL TIME card (Sessions / Time / Streak) | No | All-time |
 | Fuel row | No | Anchored on the `kFuelWindowDays` finished days ending yesterday, its own window rather than the screen's four-week one — see [Fuel row](#fuel-row) |
 | Exercise Progress (what a row opens) | No | Reads the exercise's full history — see [Records & Trends](records_and_trends.md) |
 
-### On-screen Window Label
+### Naming the Window
 
-The [Mix layer](#mix-layer) and the first Instruments header each carry an
-inline chip reading `· Last 4 weeks` — the screen's one fixed window, so the
-scope of the readout is never ambiguous. Those two are the chip's only hosts
-on this screen: it is one widget, `StatsWindowChip` in
-`lib/features/stats/widgets/window_chip.dart`. Verified by
-`test/instrument_list_screen_test.dart` (`S-1011`),
-`test/mix_layer_screen_test.dart` (group `S-1612 exactly two window chips, and
-the Fuel row has none` › `the layer and the Instruments list each carry one,
-both naming the same window`) and
-`test/stats_four_week_window_screen_test.dart` (group `S-17004 a period no
-longer scopes Stats` › `the bar reads the 28-day window and the chip never
-names the period`).
+Each block names its own window in words, once, at the top of the card: the
+[Mix layer](#mix-layer) opens its explainer with the window's label, the
+Instruments list says it in the caption under the first header, and the Fuel
+row's first line reads `Last 7 days`. Verified by
+`test/mix_layer_screen_test.dart` (group `S-1612 the window is named in words,
+not by a chip` › `the explainer and the Instruments caption each start with
+the window, and no chip renders anywhere`),
+`test/stats_instruments_horizon_screen_test.dart` (group `S-17304 the caption
+is one plain line` › `the caption names the window and its previous span, and
+no chip names it`) and `test/stats_fuel_horizon_screen_test.dart` (group
+`S-17310 averages shown` › `S-17310 the Fuel card opens with its horizon`).
 
 ---
 
 ## Data Loading
 
 All data is loaded in `_loadData()`, called once on first frame via
-`addPostFrameCallback`. The screen builds one `CalendarState` and one
-`StatsProgressService` over `widget.workoutState.repository`, takes one
-`now`, and asks the service for the all-time totals (`computeTotals()`), the
+`addPostFrameCallback`. The screen builds one `StatsProgressService` over
+`widget.workoutState.repository`, takes one
+`now`, and asks the service whether any session exists (`computeTotals()`), the
 Fuel summary (`computeFuelSummary()`), the Mix layer (`computeMixLayer()`) and
 the Instruments list, which it builds from the one window `statsWindow(now:)`
 returns (`computeInstrumentSections(window: ...)`). The list is therefore
@@ -712,8 +720,8 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `lib/features/stats/stats_screen.dart` | Full screen implementation |
 | `lib/features/stats/widgets/stats_primer_sheet.dart` | `StatsPrimerSheet` — the one-shot explanation sheet: three labelled blocks and a `Got it` CTA; presentation only, the host owns the seen flag |
 | `lib/state/stats/stats_primer_state.dart` | `StatsPrimerState` — the `primer_seen_stats` seen flag over the repository preference API, hydrated before `runApp` |
-| `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, shared with Records & Trends |
-| `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the explainer sentence, the modality bar and its legend, the usual bar and its two labels, the note, the unrated line, the week strip, the strip's title and caption, the empty-strip line and the empty-window card's one line |
+| `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, used by Records & Trends and Exercise Progress, not by this screen |
+| `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the explainer sentence, the modality bar and its legend, the usual bar and its two labels, the note, the week strip, the strip's title and caption, the empty-strip line and the empty-window card's one line |
 | `lib/features/stats/widgets/signals_layer.dart` | `SignalsLayerSection` — the Signals layer: the header, the signal cards and the quiet line; `SignalsLockedSection` — the locked line a gate-unmet screen shows in the layer's slot |
 | `lib/core/models/signals.dart` | The Signals value types (`SignalKind`, `SignalCard`, `SignalsData`), the selection, the gate and the dismissal maths; declares `kSignalMaxCards` and `kSignalDismissalDays` |
 | `lib/core/services/signals_service.dart` | `SignalsService` — loads the dismissal store, evaluates the registered signals for one load and writes a dismissal back |
@@ -722,24 +730,22 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `lib/features/stats/widgets/instrument_sparkline.dart` | The row's trend line, drawn only when the window holds at least two points |
 | `lib/features/stats/widgets/native_value_format.dart` | `formatNativeValue`, `formatNativeChange`, `nativeSecondaryLabel` and `nativePrimaryLabel` — the strings a row reads |
 | `lib/features/stats/widgets/fuel_section.dart` | `FuelSection` — the Fuel row: the logged-days indicator, the calories, protein, carbs and fat figures (each labelled, with its comparison readout, in two rows), the training / rest split, and the not-enough-logged-days sentence that replaces the figures and the split below `kFuelMinLoggedDays` logged days |
-| `lib/features/stats/widgets/window_chip.dart` | `StatsWindowChip` — the header chip naming the screen's window (`· Last 4 weeks`) |
 | `lib/features/nutrition/nutrition_trend_screen.dart` | The full-history nutrition trend screen, which the Fuel row opens |
 | `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `StatsWindow` (with `dayCount`, the window's calendar span), the per-section progress types (`LiftProgress`, `StatsPR`, `TrendPoint`) and the nutrition trend / adherence types (`NutritionTrendPoint`, `NutritionAdherenceTargetPoint`, `NutritionAdherence`) |
 | `lib/core/models/exercise_metric.dart` | `ExerciseSection` and the native-value types a row's figure is built from: `NativeMetric`, `NativeValue`, `ExerciseMetricPoint`, `ExerciseMetricSummary`, `StatsTotals` |
 | `lib/core/models/instrument_list.dart` | Value types behind the Instruments list: `InstrumentRow`, `InstrumentSectionData` |
 | `lib/core/models/fuel_summary.dart` | `FuelSummary` — the Fuel row's value type: the window's logged-day averages (calories, protein, carbs, fat), the previous range's, the training / rest split, the targets, and `showsAverages`, the `kFuelMinLoggedDays` gate the row draws from |
-| `lib/core/models/training_load.dart` | `MixLayerData` — the Mix layer's value type: the modality shares, the measure, the usual mix, the baseline note, the unrated line, the strip's weeks, the last completed session's day (`lastSessionDay`) and the empty-window flag (`windowIsEmpty`); declares `kMixStripWeeks`, `kTrainingLoadMinRatedWeeks` and `kTrainingLoadMaxUnratedShare` |
+| `lib/core/models/training_load.dart` | `MixLayerData` — the Mix layer's value type: the modality shares, the measure, the usual mix, the baseline note, the unrated session count (`unratedSessionCount`, which no widget reads), the strip's weeks, the last completed session's day (`lastSessionDay`) and the empty-window flag (`windowIsEmpty`); declares `kMixStripWeeks`, `kTrainingLoadMinRatedWeeks` and `kTrainingLoadMaxUnratedShare` |
 | `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service: `statsWindow()` (the Stats screen's four-week window), `computeTotals()`, `computeFuelSummary()`, `computeMixLayer()` and `computeInstrumentSections({required StatsWindow window})`; `computeProgressData()` and the `resolveWindow()` it calls now serve Records & Trends' lift selection only |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |
-| `lib/state/calendar/calendar_state.dart` | `streakDays` (created internally by `StatsScreen`) |
 | `lib/state/settings/settings_state.dart` | Theme colors, weight/distance unit preferences |
-| `lib/core/utils/date_utils.dart` | `formatDurationHoursMins()` — formats the ALL TIME Time pill |
+| `lib/core/utils/date_utils.dart` | `OmniDateUtils.formatShort()` — the dates the Mix layer's empty lines and strip caption read |
 
 ---
 
 ## Related Documentation
 
-- [Calendar & Periods](calendar_periods.md) — streak calculation details
+- [Calendar & Periods](calendar_periods.md) — the calendar-day arithmetic the window and the Fuel row use
 - [Records & Trends](records_and_trends.md) — the per-exercise screens the header icon opens
 - [Widget Catalog](widget_catalog.md) — the note on the Stats screen's primer sheet
 - [State Management & Services](state_management.md)
@@ -747,7 +753,7 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 
 ---
 
-**Document Version**: 3.2
+**Document Version**: 3.3
 **Last Updated**: November 2, 2026
 
 ---

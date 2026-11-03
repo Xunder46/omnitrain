@@ -30,8 +30,8 @@ const String kFuelAbsent = '—';
 /// average is compared with the day's target where one is set, and with the
 /// previous window otherwise; a field with neither reads [kFuelAbsent].
 ///
-/// It carries no window chip: the Fuel window is its own fixed window, so the
-/// screen's window control never changes what this row shows.
+/// Its first line names its own fixed window in words (`Last 7 days`), so the
+/// screen's four-week window never changes what this row shows.
 class FuelSection extends StatelessWidget {
   final FuelSummary summary;
   final OmniThemeColors themeColors;
@@ -104,6 +104,12 @@ class FuelSection extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _caption(
+                      theme,
+                      key: const Key('fuel_horizon'),
+                      text: 'Last ${StatsProgressService.kFuelWindowDays} days',
+                    ),
+                    const SizedBox(height: 8),
                     if (summary.showsAverages) ...[
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,

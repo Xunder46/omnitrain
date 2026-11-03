@@ -10,7 +10,6 @@ import '../../../state/workout/workout_state.dart';
 import '../../../widgets/layout/omni_card_header.dart';
 import '../exercise_progress_screen.dart';
 import 'instrument_row.dart';
-import 'window_chip.dart';
 
 /// How many rows a section shows before it offers to show the rest. The cap is
 /// per section, so a busy kind of work never hides a quiet one.
@@ -60,18 +59,21 @@ class _InstrumentListState extends State<InstrumentList> {
     );
   }
 
-  /// What the line and the change mean, spelled out once under the first
-  /// section (D-4006) rather than left to be inferred from an unlabelled chart
-  /// and an unlabelled chip. The number is the window's own length in calendar
-  /// days, so a period window and a recency window read the same way; a
-  /// one-day window reads "the day before it".
+  /// Whole weeks when the window is a multiple of seven days, otherwise days.
+  static String _span(int days) {
+    if (days % 7 == 0) {
+      final weeks = days ~/ 7;
+      return weeks == 1 ? '1 week' : '$weeks weeks';
+    }
+    return days == 1 ? '1 day' : '$days days';
+  }
+
+  /// The one line under the first header: the window in words, then what the
+  /// change is measured against (D-17303).
   Text _caption(BuildContext context) {
-    final days = widget.window.dayCount;
-    final previous = days == 1
-        ? 'the day before it'
-        : 'the $days days before it';
+    final window = widget.window;
     return Text(
-      'Line: each training day in the window · Change: vs $previous',
+      '${window.label}. Change is against the ${_span(window.dayCount)} before.',
       key: const Key('instrument_caption'),
       style: Theme.of(
         context,
@@ -90,18 +92,7 @@ class _InstrumentListState extends State<InstrumentList> {
           ? section.rows
           : section.rows.take(kInstrumentRowCap).toList();
 
-      children.add(
-        OmniCardHeader(
-          title: section.section.label,
-          actions: [
-            if (i == 0)
-              StatsWindowChip(
-                window: widget.window,
-                themeColors: widget.themeColors,
-              ),
-          ],
-        ),
-      );
+      children.add(OmniCardHeader(title: section.section.label));
       children.add(const SizedBox(height: 8));
 
       if (i == 0) children.add(_caption(context));

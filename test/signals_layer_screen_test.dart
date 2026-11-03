@@ -553,8 +553,8 @@ void main() {
       group('S-1701 the layer is the second block', () {
         setUp(() => _seedGateMet(repo));
 
-        testWidgets('the layer sits below the Mix layer and above ALL TIME, '
-            'with no quiet line', (tester) async {
+        testWidgets('the layer sits below the Mix layer and above the '
+            'Instruments caption, with no quiet line', (tester) async {
           final positive = _StubSignal(
             id: 'p-1',
             kind: SignalKind.positive,
@@ -572,10 +572,12 @@ void main() {
           final mixTop = tester
               .getTopLeft(find.byKey(const Key('mix_layer')))
               .dy;
-          final allTimeTop = tester.getTopLeft(find.text('ALL TIME')).dy;
+          final instrumentsTop = tester
+              .getTopLeft(find.byKey(const Key('instrument_caption')))
+              .dy;
 
           expect(signalsTop, greaterThan(mixTop));
-          expect(signalsTop, lessThan(allTimeTop));
+          expect(signalsTop, lessThan(instrumentsTop));
           expect(find.byKey(const Key('signals_layer')), findsOneWidget);
           expect(tester.takeException(), isNull);
         });
@@ -612,13 +614,16 @@ void main() {
 
           // The rest of the screen is unchanged and unmoved.
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
-          expect(find.text('ALL TIME'), findsOneWidget);
-          expect(find.byKey(const Key('all_time_card')), findsOneWidget);
+          expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
           expect(find.text('Resistance'), findsOneWidget);
           expect(find.byKey(const Key('fuel_section')), findsOneWidget);
           expect(
             tester.getTopLeft(find.byKey(const Key('mix_layer'))).dy,
-            lessThan(tester.getTopLeft(find.text('ALL TIME')).dy),
+            lessThan(
+              tester
+                  .getTopLeft(find.byKey(const Key('instrument_caption')))
+                  .dy,
+            ),
           );
 
           expect(caution.evaluations, 0);
@@ -632,7 +637,8 @@ void main() {
         setUp(() => _seedGateUnmetThreeRatedWeeks(repo));
 
         testWidgets('three rated weeks read 3 of 4, between the Mix layer and '
-            'ALL TIME, and no signal is evaluated', (tester) async {
+            'the Instruments caption, and no signal is evaluated',
+            (tester) async {
           final positive = _StubSignal(
             id: 'p-1',
             kind: SignalKind.positive,
@@ -660,7 +666,14 @@ void main() {
             tester.getTopLeft(find.byKey(const Key('mix_layer'))).dy,
             lessThan(lockedTop),
           );
-          expect(lockedTop, lessThan(tester.getTopLeft(find.text('ALL TIME')).dy));
+          expect(
+            lockedTop,
+            lessThan(
+              tester
+                  .getTopLeft(find.byKey(const Key('instrument_caption')))
+                  .dy,
+            ),
+          );
           expect(tester.takeException(), isNull);
         });
       });
@@ -723,7 +736,10 @@ void main() {
           expect(find.byKey(const Key('mix_layer')), findsNothing);
           expect(find.byKey(const Key('signals_locked')), findsNothing);
           expect(find.text('SIGNALS'), findsNothing);
-          expect(find.text('ALL TIME'), findsOneWidget);
+          // The screen itself still loaded into its normal branch: neither
+          // the empty state nor the failure view took the body over.
+          expect(find.text('No sessions yet'), findsNothing);
+          expect(find.text('Could not load your stats.'), findsNothing);
           expect(positive.evaluations, 0);
         });
       });
@@ -759,7 +775,7 @@ void main() {
             ),
             findsNothing,
           );
-          expect(find.byKey(const Key('all_time_card')), findsOneWidget);
+          expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
           expect(abstain.evaluations, 1);
         });
 
@@ -776,7 +792,7 @@ void main() {
             kSignalQuietLine,
           );
           expect(_cardKeys(), isEmpty);
-          expect(find.byKey(const Key('all_time_card')), findsOneWidget);
+          expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
         });
       });
 

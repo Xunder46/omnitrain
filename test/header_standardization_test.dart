@@ -2861,7 +2861,7 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Stats headers + window chip (Phase 5 of unified-card-and-header-plan)
+  // Stats section headers (Phase 5 of unified-card-and-header-plan)
   // ═══════════════════════════════════════════════════════════════════════
 
   // Shared helper: pump StatsScreen with a fresh MockWorkoutRepository.
@@ -2908,9 +2908,9 @@ void main() {
     );
   }
 
-  group('Stats – section headers + window chip (Phase 5)', () {
+  group('Stats – section headers (Phase 5)', () {
     testWidgets(
-      'S-004: zero sessions renders the empty state; ALL TIME header has D-1 typography',
+      'S-004: zero sessions renders the empty state; no section eyebrow renders',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(400, 900));
         await pumpStatsScreen(tester);
@@ -2938,10 +2938,11 @@ void main() {
         );
 
         // The fixture logs no effort, so the Instruments list has no section
-        // to draw and the screen's only eyebrow is `ALL TIME`. Every section
-        // the list does render is an `OmniCardHeader(title: section.label)`
-        // (S-1208 covers the list's own state).
-        for (final label in const ['ALL TIME']) {
+        // to draw. The Mock harness seeds sample food, so the Fuel card
+        // renders too. Every section the list does render is an
+        // `OmniCardHeader(title: section.label)` (S-1208 covers the list's
+        // own state).
+        for (final label in const ['TRAINING MIX', 'SIGNALS', 'Fuel']) {
           final titleFinder = find.descendant(
             of: find.byType(OmniCardHeader),
             matching: find.text(label),
@@ -2969,6 +2970,17 @@ void main() {
             reason: '$label must use OmniTheme.colors.textMuted',
           );
         }
+
+        // No other eyebrow renders with this fixture.
+        expect(
+          tester
+              .widgetList<Text>(
+                find.byKey(const Key('omniCardHeader_title')),
+              )
+              .map((text) => text.data)
+              .toSet(),
+          {'TRAINING MIX', 'SIGNALS', 'Fuel'},
+        );
       },
     );
   });
