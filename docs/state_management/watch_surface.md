@@ -256,14 +256,35 @@ the auto push flushes the timer push too, under the same reset gate (54 D-1,
 `lib/state/watch/watch_sync_wiring.dart`), so a wrist out of reach is served at
 the next frame the wrist sends, not only at the next phone state change. That
 flush is clears only (`WatchTimerPush.flushClears()`): it re-offers the
-`{kind: null}` frames the wrist is owed and withholds a start, so a timer the
-wrist has already ended is not restarted, while an ordinary `flush()` that
-joins or follows a clears-only drain still gets its full pass. Verified by
+`{kind: null}` frames the wrist is owed, and it also sends the starts the
+radio refused — the push remembers each start it offered that the radio did
+not carry (`_owed`, per wire kind) and a clears-only pass sends those owed
+starts, while every other start stays withheld so a timer the wrist has
+already ended is not restarted (54 D-1a: a wrist-ended timer was delivered or
+adopted, never owed; a timer the mirror holds as stopped is never marked
+owed, even if its full pass was refused). An owed start is dropped when its frame is delivered,
+when the phone no longer wants that kind, and with the ledger on a session
+change; an ordinary `flush()` that joins or follows a clears-only drain still
+gets its full pass. The transport's link-change stream runs one
+`flushClears()` when the watch reports itself reachable
+(`WatchLinkSource.linkChanges`, `info.reachable == true`, wired in
+`createWatchSync`; a failure goes to `onFailure`), so a start the wrist missed
+while out of reach travels when it comes back into reach or right after its
+next Sync request, instead of waiting for the next phone state change
+(plan 98 D-2, D-3). Verified by
 `test/watch_timer_push_test.dart` (the `S-6211` to `S-6217` groups; the rest,
 `S-7301` to `S-7310`; the inbound-frame re-offer, groups `S-8406 the end of the
 effort reaches the wrist at the next conversation`, `S-8407 a reset-answered
 frame flushes no timers` and `S-8408 an ordinary flush is not starved by a
-clears-only drain`).
+clears-only drain`; plan 98, groups `S-9924 a rest open on one exercise is
+cleared when a timer starts on another`, `S-9925 the owed start follows the
+snapshot answer`, `S-9926 the phone corrects the wrist's later clock`,
+`S-9927 a start that is not owed stays withheld` (`S-9927a`, `S-9927b`),
+`S-9928 a start the phone no longer wants is not owed`, `S-9929 the watch
+coming back into reach fetches what it missed`, `S-9930 a refused clear and a
+refused start travel in order`, `S-9931 a start carried after a refusal is no
+longer owed`, `S-9932 a start the phone dropped is not owed to its successor`
+and `S-9933 the watch going out of reach runs no pass`).
 
 `WatchTimerAdoption` (`lib/state/watch/watch_timer_adoption.dart`) is the
 receiving sibling: built in `createWatchSync` as `WatchSyncGraph.timerAdoption`,
@@ -286,94 +307,11 @@ exchange that `PROTOCOL.md`'s "Idempotency and reconciliation" section
 specifies. Verified by `test/live_mirroring_test.dart` (`S-009`) and by watchOS
 `WatchLiveMirroringTests.testJoiningAsksForASnapshotRatherThanOfferingOne`.
 
-### `WatchNutritionState`
+### `WatchNutritionState`, the wrist's food list and `WatchWaterState`
 
-**Files**: `lib/watch/nutrition/watch_nutrition_state.dart`,
-`watch/watchos/Sources/WatchSessionEngine/WatchNutritionState.swift`
-
-The wrist's quick-log: the food list the phone sent down, the food and portion
-the user has picked, and the observation confirming them produces. It owns no
-storage of its own — the synced list is a `WatchFoodCatalogRecord`, the
-wrist's own usage is derived from `WatchSessionEngine.nutritionLog`, and the
-log itself goes through `WatchSessionEngine.logNutrition`, so a quick-log is an
-observation rather than a parallel pipeline.
-
-A quick-log is the one log on the wrist that needs no session: eating is not a
-training event, and `observations_up` requires a `sessionId`, so a log taken
-with no workout running carries the day's nutrition-log id
-(`WatchNutritionSession`) while one taken mid-session rides that session. It is
-not acknowledged by a snapshot: the phone's mirror does not hold a nutrition
-session, so the entry never comes back that way, and confirmation comes from
-the `receipt` message the phone sends instead. The portion control's detents
-and bounds are not the wrist's to choose:
-`watch/contract/watch_nutrition_contract.json` carries them and both clients'
-suites assert against it.
-
-`select` starts a food at its own starting amount: the `defaultServings` of the
-wrist's newest `engine.nutritionLog` observation for that food when the log's
-`loggedAt` is later than the held catalog's `generatedAt`, and the catalog's
-value otherwise — compared on every read rather than stored beside the list, so
-a relaunch keeps it and a list the phone generated after the log wins
-(`WatchNutritionFreshnessTests.testS8302ALogBecomesTheFoodsStartingAmount`,
-`…testS8303ANewerListWinsAndAnOlderOneDoesNotRevertALog`,
-`…testS8304ARelaunchKeepsTheDerivedStartingAmount`,
-`…testS8306ALogOlderThanTheCatalogKeepsTheCatalogsAmount`,
-`…testS8315ASelectionClampsTheListedAmount`). `deselect()` clears the selection,
-puts the portion back to `minServings` and drops the confirmation, so the next
-food opens at its own amount
-(`…testS8301LeavingAFoodClearsItAndTheNextOneOpensAtItsOwnAmount`,
-`…testS8313DeselectingNothingChangesNothing`); a list that no longer carries the
-selected food clears it the same way
-(`…testS8314ANewerListThatDropsTheSelectedFoodClearsTheSelection`).
-`onFoodsChanged` is called at the end of `restore()`, on a `foods_down` that was
-applied and on no other — a dropped, refused or unreadable one stays quiet —
-and after a log that becomes a new starting amount
-(`…testS8305FoodChangesAreAnnouncedOnlyWhenTheListChanges`); the model holding
-it is the host's one, so the observer survives a body pass
-(`WatchNutritionWiringSourceTests.testS8311TheHostOwnsTheOneNutritionModel`,
-`…testS8318TheMenuPushesTheHostsNutritionModel`).
-
-Verified by `test/watch_nutrition_quick_log_test.dart` (S-001 to S-006) and by
-watchOS `WatchNutritionQuickLogTests` and `WatchNutritionFreshnessTests`.
-
-### The wrist's food list, and why its order is the phone's rule
-
-The watch shows the phone's Foods I Eat list in the phone's order — categories
-alphabetically, foods the phone files under nothing last, foods alphabetically
-inside each — because the phone owns the catalog and the cut of it the user
-eats. That rule lives once, in `lib/core/utils/foods_i_eat_order.dart`, as the
-`foodsIEatSections` function the phone's `NutritionScreen` renders; the wrist's
-`deriveWatchFoodList` applies the same rule to the synced rows and then lifts
-what the wrist itself logged most recently to the front, the same shape
-`deriveFallbackExercises` uses for the offline exercise list.
-
-Two implementations rather than one because the inputs differ: the phone has
-`Food` and `FoodGroup` rows, the wrist has the protocol's row maps. The values
-they must agree on are pinned by `watch/contract/watch_nutrition_contract.json`
-— phone order, wrist order after a known log history, and the portion bounds —
-which `test/watch_nutrition_quick_log_test.dart` (S-003) and watchOS
-`WatchNutritionQuickLogTests.testTheWristDerivesTheContractsOrder` both read.
-A change to the ordering on either platform therefore fails the other's suite.
-
-### `WatchWaterState`
-
-**File**: `watch/watchos/Sources/WatchSessionEngine/WatchWater.swift` (wrist
-only; the Dart twin emits no taps)
-
-The day's glasses on the wrist. It stores no count: `glasses` is computed on
-every read — the newest `water_down` frame's count when its `day` is the wrist's
-local today, else 0, plus the wrist's own taps of that day the frame's
-`appliedTapIds` does not list, never below 0
-(`WatchWaterStateTests.testS94b7ThePhonesCountPlusTheWristsUncountedTaps`). A
-receipt does not take a tap out; the frame's list does
-(`…testS94b12TheReceiptArrivesTheFrameIsLost`). `press(_:)` stores one
-`water_glass` tap under the day's nutrition id, never a workout's
-(`WatchWaterStoreTests.testS94b2APressWhileASessionIsHeldNeverJoinsIt`), and
-none once the day's taps reach `WatchWaterLimits.tapsPerDay`
-(`…testS94b15TapsPastTheCap`). The host owns one state and one
-`WatchWaterModel` (`WatchWaterBarSourceTests.testS94b23TheHostOwnsOneWaterStateAndOneModel`);
-the watch's Nutrition screen carries the water count
-(`…testS94b22TheBarIsOnTheListOnlyEmptyListIncluded`).
+Moved to [The Watch Surface — Nutrition and Water](watch_surface_nutrition.md)
+(split out on 2026-11-02 to keep this page under the size band; nothing was
+dropped, the three sections moved verbatim).
 
 ### `WatchReferenceSync`
 
@@ -743,33 +681,7 @@ timer stops`, `S-5009 the same for a round effort`).
 
 ### `WatchNutritionLogBridge`
 
-**File**: `lib/state/watch/watch_nutrition_log_bridge.dart`
-
-The phone's half of a quick-log: it turns the wrist's `nutrition_quick_log`
-events into the phone's own day log through `NutritionState.logConsumedFoodAt`.
-A quick-log is filed by the phone's rule, not the bridge's — one row per food
-per day means a redelivered message updates the row it made the first time, so
-"exactly once" needs no ledger of its own. A food the library no longer holds is
-reported rather than guessed at: with no food there are no macros to freeze onto
-a row.
-
-It is also the sender of the `receipt` that acknowledges those observations —
-including the ones it could not place, since what a receipt asserts is that the
-phone holds the observation, not that the day log changed. It answers a message
-it refused to read with nothing at all. What the wrist does with the receipt is
-`WatchSessionEngine.confirmObservations` — an append of its own, so a relaunch
-can still tell what it may drop. The Swift wrist does not prune after a
-receipt: `pruneConfirmed` has no production caller there
-(`WatchWaterBarSourceTests.testS94b25aPruneConfirmedHasNoCallerAndOnlyLaunchPrunesTaps`). The receipt, and that a
-confirmed row is then droppable, are exercised by
-`test/watch_nutrition_quick_log_test.dart` ("the phone’s receipt is what lets the
-watch drop the row", "a food the phone cannot place is not owed forever") and by
-`WatchNutritionQuickLogTests.testThePhonesReceiptIsWhatLetsTheWatchDropTheRow`.
-
-The other half of the same problem is on the mirror: `LiveSessionMirrorState`
-ignores any message it consumes whose `sessionId` is not the session it holds
-(`session_snapshot` excepted), because a quick-log taken with no workout running
-names the day, and filing a meal under a workout is worse than dropping it.
+Moved to [The Watch Surface — Nutrition and Water](watch_surface_nutrition.md#watchnutritionlogbridge).
 
 ### Invariants
 

@@ -173,8 +173,8 @@ Next set _logSet() called
   → recordRestStart(effortId, nextEntryIndex)   // opens new rest
 
 Effort timer started (timed / drill / round)
-  → closeAllOpenRestsInMemory(effortId)        // closes every open rest IN-MEMORY immediately
-  → closeAllOpenRests(effortId) async          // persists the close to repository asynchronously
+  → closeAllOpenRestsInSessionInMemory()       // closes every open rest of the SESSION in-memory immediately
+  → persist each closed rest                    // unawaited, one write per rest (inline loop in the start paths, `_persistClosedRests` in the adopt paths)
 
 Session ends via endSession()
   → persistOpenRests(endedAtMs)                 // closes any still-open rest at session end
@@ -184,13 +184,15 @@ For the **first set** of an exercise (`entryIndex == 0`), no rest record is crea
 
 ### Rest Record Lifecycle — Synchronous Close on Effort Start
 
-When a timed, round, or drill effort timer starts, `closeAllOpenRests(effortId)` is called to close all open rest records for that effort. This prevents a rest window opened for a previously-skipped entry from continuing to tick in the background.
+When a timed, round, or drill effort timer starts (`startTimedEntry`, `startRound`) or a wrist timer is adopted into the session (`adoptRemoteTimer`), `closeAllOpenRestsInSessionInMemory()` closes every open rest record of EVERY effort of the session — not only the timer's own effort (plan 98 D-1) — and `_persistClosedRests` persists each rest it closed. A rest left open on another exercise therefore no longer exists after a timer start. The per-effort helpers `closeAllOpenRestsInMemory(effortId)` and `closeAllOpenRests(effortId)` remain on `TimerManager` and the `WorkoutState` facade for closing one effort's rests.
+
+Verified by `test/timer_start_closes_session_rests_test.dart` (groups `Mock` and `Hive`; `S-9921 startTimedEntry on B closes the open rest on A`, `S-9921b an already-closed rest on A is left untouched`, `S-9921c the rest on B itself still closes`, `S-9922 startRound on B closes the open rest on A`, `S-9923 a wrist timer adopted into B closes the open rest on A`, `S-9923b a wrist timer adopted into a round B closes the open rest on A`), and on the wire by `test/watch_timer_push_test.dart` (group `S-9924 a rest open on one exercise is cleared when a timer starts on another`).
 
 **Critical invariant**: The rest close happens in **two phases**:
 
-1. **Synchronous in-memory close** (`_closeAllOpenRestsInMemory`): All open `EntryRest` records for the effort have their `restEndMs` set to the current wall-clock instant. The in-memory cache in `TimerManager._entryRests` is updated immediately. This happens **before the timer UI starts rendering**.
+1. **Synchronous in-memory close** (`closeAllOpenRestsInSessionInMemory()`): All open `EntryRest` records of the session have their `restEndMs` set to the current wall-clock instant. The in-memory cache in `TimerManager._entryRests` is updated immediately. This happens **before the timer UI starts rendering**.
 
-2. **Asynchronous repository persist** (`closeAllOpenRests`): After the in-memory close, the updated rest records are persisted to the repository asynchronously. This may lag behind UI rendering on high-latency devices, but queries to `hasRestRecord()` and `getRestElapsedSeconds()` see the closed state immediately from the in-memory cache.
+2. **Asynchronous repository persist** (an inline per-rest loop in `startTimedEntry`/`startRound`, `_persistClosedRests` in the two adopt paths): After the in-memory close, each rest the close actually closed is persisted to the repository with an unawaited write. This may lag behind UI rendering on high-latency devices, but queries to `hasRestRecord()` and `getRestElapsedSeconds()` see the closed state immediately from the in-memory cache.
 
 **Why two phases?** On real devices with network/IO latency, the repository persist can lag by hundreds of milliseconds. Without the in-memory close, the rest overlay would display stale elapsed time (rest time + new timer time) in that window, creating a confusing visual flicker. The two-phase approach ensures the UI is always consistent with in-memory state, even when the repository is still catching up.
 
@@ -210,10 +212,10 @@ The old `Stopwatch`-based rest state has been removed from the session screen en
 |-------|--------|
 | Set logged (`_logSet`) | `unawaited(workoutState.recordRestStart(effortId, nextEntryIndex))` |
 | Next set begins (`_logSet`) | `unawaited(workoutState.recordRestEnd(effortId, currentEntryIndex))` |
-| Timed/drill timer started | `unawaited(workoutState.closeAllOpenRests(effortId))` |
-| Round started (notStarted → active) | `unawaited(workoutState.closeAllOpenRests(effortId))` |
+| Timed/drill timer started | `workoutState.startTimedEntry(effortId, entryIndex)` — the start itself closes the session's open rests (plan 98 D-1) |
+| Round started (notStarted → active) | `workoutState.startRound(effortId, entryIndex)` — the start itself closes the session's open rests (plan 98 D-1) |
 
-All calls use the existing `unawaited()` fire-and-forget pattern used throughout the screen.
+The `recordRestStart`/`recordRestEnd` calls use the existing `unawaited()` fire-and-forget pattern used throughout the screen; the timer starts chain `.whenComplete(...)` to release their pending-transition guard.
 
 ### Overlay Display
 
@@ -236,12 +238,18 @@ can never disagree about whether a rest timer is counting,
 because none of them owns the decision. A cross-effort rest
 (open for exercise A while a timer runs on exercise B) is hidden
 everywhere while that timer is active, and edit mode hides the
-chip outright.
+chip outright. Since plan 98 D-1 a timer start closes every open
+rest of the session, so a cross-effort rest no longer survives a
+timer start; the hiding rule covers a rest opened while a timer
+is already running.
 
 Verified by:
 
 - `test/unified_rest_overlay_test.dart` (`Unified rest overlay rule`)
-  — visibility contract is unchanged.
+  — visibility contract is unchanged; `S-002b: cross-effort — list
+  view hides the chip for A's open rest while B's timer is running`
+  now also asserts that starting B's timer ended A's rest (plan 98
+  D-1), so the chip does not come back when B's timer ends.
 - `test/rest_timer_docked_strip_test.dart` (`Docked strip — no
   overlap with interactive controls`, `… height collapse + scroll
   stability`, `… cross-surface parity`, `… viewport overflow

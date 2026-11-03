@@ -63,6 +63,21 @@
 //   S-8407 a reset-answered inbound frame flushes no timers → `S-8407 ...`
 //   S-8408 an ordinary flush joining a clears-only drain still sends the
 //          phone's start                                 → `S-8408 ...`
+// Plan 98 D-2/D-3 (a start the radio refused is owed; the wrist's ask or the
+// watch coming back into reach fetches it):
+//   S-9924 a rest open on one exercise is cleared, as its own frame, before
+//          the timer that starts on another; the wrist ends its rest
+//                                                          → `S-9924 ...`
+//   S-9925 the owed start follows the snapshot answer and the wrist runs it
+//                                                          → `S-9925 ...`
+//   S-9926 the phone corrects the wrist's later clock to its earlier start
+//                                                          → `S-9926 ...`
+//   S-9927a a timer the wrist already ended stays withheld  → `S-9927a ...`
+//   S-9927b a start that was never attempted is not sent    → `S-9927b ...`
+//   S-9928 a start the phone no longer wants is not owed    → `S-9928 ...`
+//   S-9929 a reachable link change sends the owed start     → `S-9929 ...`
+//   S-9930 a refused clear and a refused start travel in order
+//                                                          → `S-9930 ...`
 //
 // The phone side is the graph `createWatchSync` builds — the shipping wiring,
 // including the timer push it returns — over a fake radio; the wrist side is
@@ -79,6 +94,8 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/platform/watch_delivery.dart';
+import 'package:omnitrain/core/platform/watch_link_info.dart';
+import 'package:omnitrain/core/platform/watch_link_source.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -247,6 +264,44 @@ class _PhoneRadio implements WatchTransport {
     for (final envelope in sent)
       if (envelope['type'] == type) envelope,
   ];
+}
+
+/// The phone's radio that also reports the link, the way a platform transport
+/// does (plan 98 D-3): the wiring listens for the watch coming back into
+/// reach.
+class _LinkedPhoneRadio extends _PhoneRadio implements WatchLinkSource {
+  _LinkedPhoneRadio(super.onFailure);
+
+  final StreamController<WatchLinkInfo> _linkChanges =
+      StreamController<WatchLinkInfo>.broadcast();
+
+  WatchLinkInfo _info = const WatchLinkInfo(
+    paired: true,
+    appInstalled: true,
+    reachable: false,
+  );
+
+  /// One link change, the way the platform reports the watch coming into or
+  /// going out of reach.
+  void emitLink({required bool reachable}) {
+    _info = WatchLinkInfo(
+      paired: true,
+      appInstalled: true,
+      reachable: reachable,
+    );
+    _linkChanges.add(_info);
+  }
+
+  Future<void> closeLink() => _linkChanges.close();
+
+  @override
+  Future<WatchLinkInfo> linkInfo() async => _info;
+
+  @override
+  Stream<WatchLinkInfo> get linkChanges => _linkChanges.stream;
+
+  @override
+  Stream<DateTime> get heard => const Stream.empty();
 }
 
 void main() {
@@ -2613,5 +2668,682 @@ void main() {
         expect(failures, isEmpty);
       },
     );
+  });
+
+  group('S-9924 a rest open on one exercise is cleared when a timer starts '
+      'on another', () {
+    test('S-9924 the clear is its own frame before the new timer, every frame '
+        'validates, and the wrist ends its rest', () async {
+      await seedExercise(
+        repository,
+        id: 'ex-bike',
+        name: 'Bike',
+        capabilities: ['time', 'distance'],
+      );
+      await engine.createSession(modality: null, exercises: [
+        _slot(),
+        {
+          'sessionExerciseId': 'sx-bike',
+          'exerciseId': 'ex-bike',
+          'name': 'Bike',
+          'effortKind': 'timed',
+          'capabilities': ['time', 'distance'],
+        },
+      ]);
+      await radio.fromWrist(engine.sessionSnapshot()!);
+      await _settle();
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      await openPhoneRest(); // the rest is open on sx-run
+      await graph.timerPush.flush();
+      expect(
+        [for (final frame in timerFrames()) timersOf(frame).keys.toList()],
+        [['rest']],
+        reason: 'the fixture: the rest reached the wrist',
+      );
+      await applyPhoneTimers();
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.running,
+        reason: 'the fixture: the wrist runs the phone rest',
+      );
+
+      await phoneState.startTimedEntry('sx-bike', 0);
+      await graph.timerPush.flush();
+
+      final frames = timerFrames();
+      expect(
+        frames,
+        hasLength(3),
+        reason: 'S-9924 the rest frame, the clear and the new timer',
+      );
+      final clear = timersOf(frames[1]);
+      expect(
+        clear.keys,
+        ['rest'],
+        reason: 'S-9924 the clear is its own frame',
+      );
+      expect(clear['rest'], isNull, reason: 'S-9924 the rest is cleared');
+      final start = timersOf(frames[2]);
+      expect(start.keys, ['elapsed']);
+      expect(
+        _asObject(start['elapsed'])['sessionExerciseId'],
+        'sx-bike',
+        reason: 'S-9924 the elapsed frame names the new exercise',
+      );
+      for (final frame in frames) {
+        expect(
+          loadProtocolValidator().validateEnvelope(frame),
+          isEmpty,
+          reason: 'S-9924 every frame passes the validator',
+        );
+      }
+
+      await applyPhoneTimers();
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.stopped,
+        reason: 'S-9924 the wrist ends its rest',
+      );
+      final wristTimer = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(wristTimer.state, WatchTimerState.running);
+      expect(wristTimer.sessionExerciseId, 'sx-bike');
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9925 the owed start follows the snapshot answer', () {
+    test('S-9925 the wrist asks, the answer comes first, and the wrist runs '
+        'the phone timer', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      radio.unreachable = true;
+      final instance = await startInterval();
+      await graph.timerPush.flush();
+      expect(timerFrames(), isEmpty, reason: 'the fixture: nothing carried');
+
+      // The wrist comes back in range and asks, as a raised wrist does.
+      radio.unreachable = false;
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+
+      final types = [for (final envelope in radio.sent) envelope['type']!];
+      final timerIndex = types.indexOf('timer_state');
+      expect(
+        timerIndex,
+        isNonNegative,
+        reason: 'S-9925 the owed start is sent',
+      );
+      expect(
+        timerIndex,
+        greaterThan(types.lastIndexOf('session_snapshot')),
+        reason: 'S-9925 the start follows the snapshot answer',
+      );
+      final timer = _asObject(timersOf(timerFrames().single)['elapsed']);
+      expect(
+        parseUtcIso(timer['startedAt']),
+        DateTime.fromMillisecondsSinceEpoch(instance.startedAtMs, isUtc: true),
+        reason: "S-9925 the start is the phone interval's",
+      );
+      expect(timer['sessionExerciseId'], _slotId);
+
+      for (final envelope in radio.sent) {
+        await engine.applyMessage(envelope);
+      }
+      final wristTimer = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(
+        wristTimer.state,
+        WatchTimerState.running,
+        reason: 'S-9925 the wrist runs the phone timer',
+      );
+      expect(wristTimer.sessionExerciseId, _slotId);
+      expect(failures, isEmpty);
+    });
+  });
+
+  group("S-9926 the phone corrects the wrist's later clock", () {
+    test('S-9926 the wrist starts its own later elapsed, and the phone sends '
+        'its earlier start', () async {
+      await wristStartsTimedSession();
+      graph.timerAdoption.bindWorkoutState(phoneState);
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      radio.unreachable = true;
+      final phoneTimer = await startInterval();
+      await graph.timerPush.flush();
+      expect(timerFrames(), isEmpty, reason: 'the fixture: wrist never told');
+
+      radio.unreachable = false;
+      final wristStart = DateTime.fromMillisecondsSinceEpoch(
+        phoneTimer.startedAtMs + 20000,
+        isUtc: true,
+      );
+      await radio.fromWrist(
+        _wristTimerFrame({
+          'elapsed': {
+            'kind': 'elapsed',
+            'state': 'running',
+            'startedAt': utcIso(wristStart),
+            'accumulatedPauseMs': 0,
+            'sessionExerciseId': _slotId,
+          },
+        }),
+      );
+      await _settle();
+
+      final frames = timerFrames();
+      expect(
+        frames,
+        hasLength(1),
+        reason: 'S-9926 the phone corrects the wrist',
+      );
+      final timer = _asObject(timersOf(frames.single)['elapsed']);
+      expect(
+        parseUtcIso(timer['startedAt']),
+        DateTime.fromMillisecondsSinceEpoch(
+          phoneTimer.startedAtMs,
+          isUtc: true,
+        ),
+        reason: "S-9926 the frame carries the phone's earlier start",
+      );
+      expect(timer['sessionExerciseId'], _slotId);
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9927 a start that is not owed stays withheld', () {
+    test('S-9927a a timer the wrist already ended is never restarted',
+        () async {
+      final started = await adoptedInterval();
+
+      // The wrist stops the timer it started, the way a tap on Finish does.
+      await radio.fromWrist(
+        _wristTimerFrame({
+          'elapsed': {
+            'kind': 'elapsed',
+            'state': 'stopped',
+            'startedAt': utcIso(started.startedAt),
+            'accumulatedPauseMs': 0,
+            'stoppedAt': utcIso(_now.add(const Duration(seconds: 45))),
+            'sessionExerciseId': _slotId,
+          },
+        }),
+      );
+      await _settle();
+
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason: 'S-9927a a timer the wrist ended is not restarted (54 D-1a)',
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-9927b a start that was never attempted is not sent by a wrist '
+        'frame', () async {
+      await wristStartsTimedSession();
+      // The push is deliberately not bound: no pass ever offered the start.
+      await startInterval();
+
+      await radio.fromWrist(
+        _wristTimerFrame({
+          'elapsed': {
+            'kind': 'elapsed',
+            'state': 'running',
+            'startedAt': utcIso(_now.add(const Duration(seconds: 90))),
+            'accumulatedPauseMs': 0,
+            'sessionExerciseId': _slotId,
+          },
+        }),
+      );
+      await _settle();
+
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason: 'S-9927b a start the radio never refused is not owed',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9928 a start the phone no longer wants is not owed', () {
+    test('S-9928 the interval finished while the start was still owed, and '
+        'the wrist frame sends nothing', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      radio.unreachable = true;
+      await startInterval();
+      await graph.timerPush.flush();
+      expect(
+        [
+          for (final envelope in radio.attempted)
+            if (envelope['type'] == 'timer_state') envelope,
+        ],
+        hasLength(1),
+        reason: 'the fixture: the start was offered and refused',
+      );
+      expect(timerFrames(), isEmpty, reason: 'the fixture: nothing carried');
+
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+      radio.unreachable = false;
+      await radio.fromWrist(
+        _wristTimerFrame({
+          'rest': {
+            'kind': 'rest',
+            'state': 'running',
+            'startedAt': utcIso(_restStart.add(const Duration(seconds: 30))),
+            'accumulatedPauseMs': 0,
+          },
+        }),
+      );
+      await _settle();
+
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason: 'S-9928 nothing is owed and nothing is cleared',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9929 the watch coming back into reach fetches what it missed', () {
+    test('S-9929 a reachable link change sends the start the radio refused',
+        () async {
+      await wristStartsTimedSession();
+      final linked = _LinkedPhoneRadio(failures.add);
+      radio = linked;
+      graph = await startGraph();
+      addTearDown(linked.closeLink);
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      radio.unreachable = true;
+      final instance = await startInterval();
+      await graph.timerPush.flush();
+      expect(timerFrames(), isEmpty, reason: 'the fixture: nothing carried');
+
+      radio.unreachable = false;
+      linked.emitLink(reachable: true);
+      await _settle();
+
+      final frames = timerFrames();
+      expect(
+        frames,
+        hasLength(1),
+        reason: 'S-9929 the owed start travels when the wrist is reachable',
+      );
+      final timer = _asObject(timersOf(frames.single)['elapsed']);
+      expect(
+        parseUtcIso(timer['startedAt']),
+        DateTime.fromMillisecondsSinceEpoch(instance.startedAtMs, isUtc: true),
+      );
+      expect(timer['sessionExerciseId'], _slotId);
+      expect(failures, isEmpty);
+    });
+
+    test('S-9929 an unreachable link change sends nothing', () async {
+      await wristStartsTimedSession();
+      final linked = _LinkedPhoneRadio(failures.add);
+      radio = linked;
+      graph = await startGraph();
+      addTearDown(linked.closeLink);
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      radio.unreachable = true;
+      await startInterval();
+      await graph.timerPush.flush();
+      expect(timerFrames(), isEmpty, reason: 'the fixture: nothing carried');
+
+      linked.emitLink(reachable: false);
+      await _settle();
+
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason: 'S-9929 going out of reach sends nothing',
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-9929 a reachable link change with nothing owed sends nothing',
+        () async {
+      await wristStartsTimedSession();
+      final linked = _LinkedPhoneRadio(failures.add);
+      radio = linked;
+      graph = await startGraph();
+      addTearDown(linked.closeLink);
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      await startInterval();
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'the fixture: the start is carried',
+      );
+
+      linked.emitLink(reachable: true);
+      await _settle();
+
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'S-9929 nothing is owed, so the reachability sends nothing',
+      );
+      expect(
+        [
+          for (final envelope in radio.attempted)
+            if (envelope['type'] == 'timer_state') envelope,
+        ],
+        hasLength(1),
+        reason: 'S-9929 the pass did not even attempt a send',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9930 a refused clear and a refused start travel in order', () {
+    test('S-9930 the wrist frame sends the clear first, then the new start',
+        () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+      final first = await startInterval();
+      await graph.timerPush.flush();
+      expect(timerFrames(), hasLength(1), reason: 'the fixture: T1 is carried');
+      await applyPhoneTimers();
+
+      radio.unreachable = true;
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await phoneState.addEntry(_slotId);
+      // The second start must land on a later millisecond than the first, or
+      // the two instants tie and no clear is owed (S-6217's reason).
+      while (DateTime.now().millisecondsSinceEpoch <= first.startedAtMs) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      await phoneState.startTimedEntry(_slotId, 1);
+      final second = phoneState.inProgressWorkTimers().single;
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'the fixture: nothing carried',
+      );
+      expect(
+        [
+          for (final envelope in radio.attempted)
+            if (envelope['type'] == 'timer_state') envelope,
+        ],
+        hasLength(2),
+        reason: 'the fixture: the clear was offered and refused',
+      );
+
+      radio.unreachable = false;
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+
+      final frames = timerFrames();
+      expect(frames, hasLength(3), reason: 'S-9930 T1, the clear, then T2');
+      expect(
+        timersOf(frames[1])['elapsed'],
+        isNull,
+        reason: 'S-9930 the clear goes out first, as its own frame',
+      );
+      final restarted = _asObject(timersOf(frames[2])['elapsed']);
+      expect(
+        parseUtcIso(restarted['startedAt']),
+        DateTime.fromMillisecondsSinceEpoch(second.startedAtMs, isUtc: true),
+        reason: 'S-9930 the T2 start follows the clear',
+      );
+      expect(restarted['sessionExerciseId'], _slotId);
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9931 a start carried after a refusal is no longer owed', () {
+    test('S-9931 the phone pauses the carried timer and a wrist frame right '
+        "after sends nothing: the pause is the phone's own pass to send",
+        () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      radio.unreachable = true;
+      await startInterval();
+      await graph.timerPush.flush();
+      radio.unreachable = false;
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'the fixture: the owed start was carried',
+      );
+
+      await phoneState.pauseTimedEntry(_slotId, 0);
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason:
+            'S-9931 a pause no pass has offered is not an owed start, so the '
+            "wrist's frame does not send it",
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9932 a start the phone dropped is not owed to its successor', () {
+    test('S-9932 the next interval, never offered, is not sent by a wrist '
+        'frame', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      radio.unreachable = true;
+      await startInterval();
+      await graph.timerPush.flush();
+      await phoneState.finishTimedEntry(_slotId, 0);
+      // The pass that prunes: the phone no longer wants the kind.
+      await graph.timerPush.flush();
+
+      radio.unreachable = false;
+      await phoneState.addEntry(_slotId);
+      await phoneState.startTimedEntry(_slotId, 1);
+      // No pass has offered the second interval: the wrist frame comes first.
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason:
+            'S-9932 only a start the radio refused is owed; the new interval '
+            'was never offered',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9933 the watch going out of reach runs no pass', () {
+    test('S-9933 an unreachable link change attempts no timer frame', () async {
+      await wristStartsTimedSession();
+      final linked = _LinkedPhoneRadio(failures.add);
+      radio = linked;
+      graph = await startGraph();
+      addTearDown(linked.closeLink);
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      radio.unreachable = true;
+      await startInterval();
+      await graph.timerPush.flush();
+      int attempts() => [
+        for (final envelope in radio.attempted)
+          if (envelope['type'] == 'timer_state') envelope,
+      ].length;
+      final before = attempts();
+      expect(before, 1, reason: 'the fixture: the start was offered once');
+
+      linked.emitLink(reachable: false);
+      await _settle();
+
+      expect(
+        attempts(),
+        before,
+        reason: 'S-9933 going out of reach sends nothing, not even a refused try',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9934 a clears-only pass leaves the pending phone news alone', () {
+    test('S-9934 the watch comes into reach inside the debounce window of a '
+        "timer start: the start still goes out with the window's own pass",
+        () async {
+      await wristStartsTimedSession();
+      final linked = _LinkedPhoneRadio(failures.add);
+      radio = linked;
+      graph = await startGraph();
+      addTearDown(linked.closeLink);
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      // The start arms the push's debounce window; the reachability event
+      // arrives before the window closes, with nothing owed yet.
+      await startInterval();
+      linked.emitLink(reachable: true);
+      await _settle();
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason: 'the fixture: the clears-only pass sent no start (none owed)',
+      );
+
+      await _waitFor(
+        () => timerFrames().isNotEmpty,
+        "the start the debounce window's pass sends",
+      );
+      expect(timerFrames(), hasLength(1));
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9927c a timer the wrist ended is not owed after a refused pass', () {
+    test('S-9927c the phone still runs it, a full pass is refused, and the next '
+        'wrist frame does not restart the wrist clock', () async {
+      final started = await adoptedInterval();
+
+      // The wrist ends its own timer; the phone does not apply a stop (43b2 A-2),
+      // so the interval is still running on the phone.
+      await radio.fromWrist(
+        _wristTimerFrame({
+          'elapsed': {
+            'kind': 'elapsed',
+            'state': 'stopped',
+            'startedAt': utcIso(started.startedAt),
+            'accumulatedPauseMs': 0,
+            'stoppedAt': utcIso(_now.add(const Duration(seconds: 45))),
+            'sessionExerciseId': _slotId,
+          },
+        }),
+      );
+      await _settle();
+      expect(timerFrames(), isEmpty, reason: 'the fixture: nothing restarted');
+
+      // A full pass offers the phone's running interval and the radio refuses.
+      radio.unreachable = true;
+      await graph.timerPush.flush();
+      radio.unreachable = false;
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason: 'S-9927c a start for a timer the wrist ended is never owed',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9930b an owed round start is sent again with its length', () {
+    test('S-9930b a refused round start follows the wrist\'s next frame and '
+        'keeps its 75 s plan', () async {
+      await seedExercise(
+        repository,
+        id: 'ex-bag',
+        name: 'Punch bag',
+        capabilities: ['time', 'rounds'],
+      );
+      await phoneState.createNewSession(modality: 'sports');
+      final roundSlot = await phoneState.addExerciseToSession(
+        (await repository.getExerciseById('ex-bag'))!,
+      );
+      await phoneState.updateRoundPlannedDuration(roundSlot, 0, 75);
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      radio.unreachable = true;
+      await phoneState.startRound(roundSlot, 0);
+      await graph.timerPush.flush();
+      expect(timerFrames(), isEmpty, reason: 'the fixture: nothing carried');
+
+      radio.unreachable = false;
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+
+      final round = _asObject(timersOf(timerFrames().single)['round']);
+      expect(round['kind'], 'round');
+      expect(round['sessionExerciseId'], roundSlot);
+      expect(
+        round['plannedDurationMs'],
+        75000,
+        reason: 'S-9930b the owed round keeps the length it was started with',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-9927d a new interval after a wrist-ended one is still owed', () {
+    test('S-9927d the wrist ended interval 1; the refused start of interval 2 '
+        "is sent by the wrist's next frame", () async {
+      final started = await adoptedInterval();
+      await radio.fromWrist(
+        _wristTimerFrame({
+          'elapsed': {
+            'kind': 'elapsed',
+            'state': 'stopped',
+            'startedAt': utcIso(started.startedAt),
+            'accumulatedPauseMs': 0,
+            'stoppedAt': utcIso(_now.add(const Duration(seconds: 45))),
+            'sessionExerciseId': _slotId,
+          },
+        }),
+      );
+      await _settle();
+
+      radio.unreachable = true;
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await phoneState.addEntry(_slotId);
+      await phoneState.startTimedEntry(_slotId, 1);
+      final second = phoneState.inProgressWorkTimers().single;
+      await graph.timerPush.flush();
+      expect(timerFrames(), isEmpty, reason: 'the fixture: nothing carried');
+
+      radio.unreachable = false;
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+
+      final timer = _asObject(timersOf(timerFrames().single)['elapsed']);
+      expect(
+        parseUtcIso(timer['startedAt']),
+        DateTime.fromMillisecondsSinceEpoch(second.startedAtMs, isUtc: true),
+        reason:
+            'S-9927d the stopped copy is interval 1; interval 2 is a different '
+            'start, so it is owed',
+      );
+      expect(failures, isEmpty);
+    });
   });
 }

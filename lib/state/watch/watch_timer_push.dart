@@ -106,6 +106,15 @@ class WatchTimerPush {
   /// timer of its kind.
   final Map<String, _MirrorTimer> _stale = {};
 
+  /// The starts this push offered and the radio did not carry (plan 98 D-2), per
+  /// wire kind. The wrist never held them, so a clears-only pass — the trigger
+  /// where the wrist talks to the phone, or comes back into reach — may send
+  /// them; every other start stays withheld (54 D-1a), because a timer the wrist
+  /// already ended was delivered or adopted, never owed. Cleared per kind when
+  /// the frame is delivered or the phone no longer wants that kind, and with the
+  /// ledger on a session change.
+  final Map<String, Map<String, Object?>> _owed = {};
+
   /// The drain a running [flush] is, and whether another pass was asked for
   /// while it ran. Two flushes that overlap are one drain.
   Future<void>? _draining;
@@ -138,9 +147,11 @@ class WatchTimerPush {
     state.addListener(_onChanged);
   }
 
-  /// Pushes only the clears this push owes (54 D-1), for the trigger where the
-  /// wrist talks to the phone: a clear it never received is re-offered, while a
-  /// start is withheld so a timer the wrist already ended is not restarted.
+  /// Pushes the clears this push owes and the starts the radio refused (plan
+  /// 98 D-2), for the trigger where the wrist talks to the phone or comes back
+  /// into reach: a clear it never received is re-offered, and a start the wrist
+  /// never held is sent now, while every other start is withheld so a timer the
+  /// wrist already ended is not restarted (54 D-1).
   Future<void> flushClears() => _flush(clearsOnly: true);
 
   /// Closes the pending window and pushes the newest timers at once.
@@ -154,13 +165,19 @@ class WatchTimerPush {
   /// happened to be running.
   ///
   /// The converse window is accepted: a clears-only flush that joins a running
-  /// full drain makes the follow-up pass clears-only, so if that full pass's
-  /// send failed, the start it owed waits for the next phone-state trigger —
-  /// exactly as any send the radio did not carry does (D-202). A full
-  /// follow-up on a wrist-frame trigger is the behaviour 54 D-1a rules out.
+  /// full drain makes the follow-up pass clears-only. The start that full pass
+  /// could not send is owed (plan 98 D-2), so the follow-up pass sends it; a
+  /// start that was not offered yet waits for the next phone-state trigger.
+  /// A full follow-up on a wrist-frame trigger is the behaviour 54 D-1a rules
+  /// out.
   Future<void> _flush({required bool clearsOnly}) async {
-    _window?.cancel();
-    _window = null;
+    // Only a full pass takes over the pending window. A clears-only pass sends
+    // no start, so cancelling the window would lose the phone news it was armed
+    // for (plan 98: a reachability event inside the window of a timer start).
+    if (!clearsOnly) {
+      _window?.cancel();
+      _window = null;
+    }
 
     final running = _draining;
     if (running != null) {
@@ -223,6 +240,7 @@ class WatchTimerPush {
         _delivered.clear();
         _adopted.clear();
         _stale.clear();
+        _owed.clear();
         _sessionId = null;
         return;
       }
@@ -230,6 +248,7 @@ class WatchTimerPush {
         _delivered.clear();
         _adopted.clear();
         _stale.clear();
+        _owed.clear();
         _sessionId = session.id;
       }
 
@@ -276,6 +295,9 @@ class WatchTimerPush {
             ),
         };
       }
+
+      // Plan 98 D-2: a start the phone no longer wants is not owed any more.
+      _owed.removeWhere((kind, _) => !wanted.containsKey(kind));
 
       // Plan 43c D-3: a timer the wrist started and the phone ran is over when
       // the phone no longer wants that slot and start. If the mirror still
@@ -335,12 +357,17 @@ class WatchTimerPush {
         clears[kind] = null;
       }
       // 54 D-1: the wrist's own frame triggers the debt, not the phone's news.
-      if (clearsOnly) next.clear();
+      // The debt includes a start the radio refused (plan 98 D-2): the wrist
+      // never held it, so sending it cannot restart a timer the wrist ended.
+      if (clearsOnly) next.removeWhere((kind, _) => !_owed.containsKey(kind));
 
       if (clears.isEmpty && next.isEmpty) return;
 
       if (clears.isNotEmpty) {
-        if (!await _send(session.id, clears)) return;
+        if (!await _send(session.id, clears)) {
+          _owe(session.id, next);
+          return;
+        }
         for (final kind in clears.keys) {
           _delivered.remove(kind);
           final cleared = _adopted.remove(kind);
@@ -348,13 +375,46 @@ class WatchTimerPush {
         }
       }
       if (next.isEmpty) return;
-      if (!await _send(session.id, next)) return;
+      if (!await _send(session.id, next)) {
+        _owe(session.id, next);
+        return;
+      }
       _delivered.addAll(next);
+      _owed.removeWhere((kind, _) => next.containsKey(kind));
     } on Exception catch (e, s) {
       // A push that cannot be made must not disturb the phone — but it is
       // reported rather than swallowed.
       _report(e, s);
     }
+  }
+
+  /// Records [next] as the starts the radio refused (plan 98 D-2) — except a
+  /// timer the wrist itself ended: the mirror holds that very timer as
+  /// stopped, so sending it again would restart a clock the wrist finished
+  /// (54 D-1a). The review of plan 98 found this path.
+  void _owe(String sessionId, Map<String, Map<String, Object?>> next) {
+    for (final entry in next.entries) {
+      if (!_wristEnded(sessionId, entry.key, entry.value)) {
+        _owed[entry.key] = entry.value;
+      }
+    }
+  }
+
+  /// True when the mirror holds [timer] of [kind] as stopped: the same slot and
+  /// the same start (a rest within the tolerance of 50a D-3).
+  bool _wristEnded(String sessionId, String kind, Map<String, Object?> timer) {
+    if (_mirror.sessionId != sessionId) return false;
+    final timers = _mirror.state['timers'];
+    if (timers is! Map) return false;
+    final held = timers[kind];
+    if (held is! Map || held['state'] != 'stopped') return false;
+    if (kind != 'rest' &&
+        held['sessionExerciseId'] != timer['sessionExerciseId']) {
+      return false;
+    }
+    return kind == 'rest'
+        ? _restStartWithinTolerance(held['startedAt'], timer['startedAt'])
+        : _sameInstant(held['startedAt'], timer['startedAt']);
   }
 
   /// How the wrist's timer of [kind], as the mirror holds it, relates to

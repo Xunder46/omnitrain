@@ -336,10 +336,9 @@ void main() {
               'running (session-wide rule)',
         );
 
-        // Navigate back to the LIST view. A's rest is still open in the
-        // data layer (closeAllOpenRests only closes B's). Under the unified
-        // session-wide rule the chip must also be hidden here. Under the
-        // old per-entry list-view rule the chip would still be visible.
+        // Navigate back to the LIST view. Starting B's timer ended A's rest too
+        // (plan 98 D-1: a timer start ends every open rest of the session), so
+        // the chip is hidden here because there is no rest left to show.
         await _returnToListView(tester);
         expect(
           find.byKey(const Key('rest-overlay-chip')),
@@ -349,23 +348,28 @@ void main() {
               'timer is running (unified session-wide rule)',
         );
 
-        // Sanity: A's rest is still in the data layer — confirms that the
-        // chip is hidden by the UI rule, not because the data was cleared.
+        // A's rest was ended by B's timer start (plan 98 D-1) — in the data
+        // layer, not only hidden by the UI — so it cannot reappear when B ends.
         final openA = deps.workoutState
             .getEntryRests(effortA)
             .where((r) => r.restEndMs == null);
         expect(
           openA,
-          isNotEmpty,
+          isEmpty,
           reason:
-              'A\'s open rest must remain in the data so the chip can '
-              'reappear when B\'s timer ends — only the UI hide changes',
+              'starting B\'s timer ends A\'s open rest: the watch is told the '
+              'rest is over, so the phone must not keep it open',
         );
 
-        // End B's round directly via the state so the test environment is
-        // tidy (not required for the assertions above, which are now
-        // satisfied).
+        // End B's round directly via the state: the chip stays hidden, there
+        // is no rest of A's left to bring back.
         await deps.workoutState.endRoundEarly(effortB, 0);
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('rest-overlay-chip')),
+          findsNothing,
+          reason: 'A\'s rest is over, so ending B\'s timer shows no chip',
+        );
       },
     );
 

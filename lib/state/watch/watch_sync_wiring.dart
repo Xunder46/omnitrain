@@ -21,6 +21,8 @@
 /// the phone had not run when it last stopped.
 library;
 
+import 'dart:async';
+
 import '../../core/platform/no_watch_transport.dart';
 import '../../core/platform/watch_delivery.dart';
 import '../../core/platform/watch_link_source.dart';
@@ -379,6 +381,16 @@ Future<WatchSyncGraph?> createWatchSync({
       onFailure?.call(error, stack);
       link = null;
     }
+    // Plan 98 D-3: the wrist coming back into reach is when the starts and
+    // clears it missed can travel; a failure is reported, never thrown.
+    source.linkChanges.listen((info) {
+      if (!info.reachable) return;
+      unawaited(
+        timerPush.flushClears().catchError((Object error, StackTrace stack) {
+          onFailure?.call(error, stack);
+        }),
+      );
+    });
   }
 
   return WatchSyncGraph(

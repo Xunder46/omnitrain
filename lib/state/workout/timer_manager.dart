@@ -373,7 +373,7 @@ class TimerManager {
       return false;
     }
 
-    final closedRests = closeAllOpenRestsInMemory(effortId);
+    final closedRests = closeAllOpenRestsInSessionInMemory();
     final updated = old.copyWith(
       state: remote.pausedAtMs != null ? TimedState.paused : TimedState.active,
       startedAtMs: remote.startedAtMs,
@@ -410,7 +410,7 @@ class TimerManager {
     }
 
     final plannedMs = remote.plannedDurationMs;
-    final closedRests = closeAllOpenRestsInMemory(effortId);
+    final closedRests = closeAllOpenRestsInSessionInMemory();
     final updated = old.copyWith(
       state: remote.pausedAtMs != null ? RoundState.paused : RoundState.active,
       startedAtMs: remote.startedAtMs,
@@ -534,10 +534,11 @@ class TimerManager {
   Future<void> startRound(String effortId, int roundIndex) async {
     _clearError();
     try {
-      // Close all open rests for this effort in-memory BEFORE starting the round.
-      // This ensures hasRestRecord() and getRestElapsedSeconds() return the closed
-      // state immediately, even if the async repository persist is still in-flight.
-      final closedRests = closeAllOpenRestsInMemory(effortId);
+      // Close all open rests for the whole session in-memory BEFORE starting
+      // the round. This ensures hasRestRecord() and getRestElapsedSeconds()
+      // return the closed state immediately, even if the async repository
+      // persist is still in-flight.
+      final closedRests = closeAllOpenRestsInSessionInMemory();
 
       final list = _roundInstances[effortId];
       if (list == null || roundIndex >= list.length) return;
@@ -903,10 +904,11 @@ class TimerManager {
   Future<void> startTimedEntry(String effortId, int entryIndex) async {
     _clearError();
     try {
-      // Close all open rests for this effort in-memory BEFORE starting the timer.
-      // This ensures hasRestRecord() and getRestElapsedSeconds() return the closed
-      // state immediately, even if the async repository persist is still in-flight.
-      final closedRests = closeAllOpenRestsInMemory(effortId);
+      // Close all open rests for the whole session in-memory BEFORE starting
+      // the timer. This ensures hasRestRecord() and getRestElapsedSeconds()
+      // return the closed state immediately, even if the async repository
+      // persist is still in-flight.
+      final closedRests = closeAllOpenRestsInSessionInMemory();
 
       final list = _timedInstances[effortId];
       if (list == null || entryIndex >= list.length) return;
@@ -1428,6 +1430,18 @@ class TimerManager {
       );
       list[i] = closed;
       closedRests.add(closed);
+    }
+    return closedRests;
+  }
+
+  /// Closes every open [EntryRest] of every effort in the in-memory cache and
+  /// returns the rests it closed. Called when a work timer starts or is adopted:
+  /// a rest left open on another exercise would keep running on the watch
+  /// (plan 98 D-1). Same rules as [closeAllOpenRestsInMemory]: no notify, no persist.
+  List<EntryRest> closeAllOpenRestsInSessionInMemory() {
+    final closedRests = <EntryRest>[];
+    for (final effortId in List<String>.of(_entryRests.keys)) {
+      closedRests.addAll(closeAllOpenRestsInMemory(effortId));
     }
     return closedRests;
   }

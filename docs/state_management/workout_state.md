@@ -203,7 +203,7 @@ Handles all round, timed-entry, and rest state machines (Cluster B of the origin
 | Method | Transition | Purpose |
 |--------|-----------|---------|
 | `addRound(effortId, {plannedDurationSecs})` | — | Creates new `RoundInstance` |
-| `startRound(effortId, roundIndex)` | notStarted → active | Starts timer |
+| `startRound(effortId, roundIndex)` | notStarted → active | Starts timer; the start closes every open rest of the session in memory and persists each rest it closed (plan 98 D-1). Verified by `test/timer_start_closes_session_rests_test.dart` (groups `Mock` and `Hive`, `S-9922 startRound on B closes the open rest on A`) |
 | `pauseRound(effortId, roundIndex)` | active → paused | Stamps `pausedAtMs` |
 | `resumeRound(effortId, roundIndex)` | paused → active | Folds pause into `totalPausedDurationMs` |
 | `endRoundEarly(effortId, roundIndex)` | active/paused → finished | Derives elapsed from timestamps |
@@ -217,7 +217,7 @@ Handles all round, timed-entry, and rest state machines (Cluster B of the origin
 | Method | Transition | Purpose |
 |--------|-----------|---------|
 | `addTimedEntry(effortId, {targetDurationSecs})` | — | Creates new `TimedInstance`; `targetDurationSecs` used as elapsed offset on first start. Its id never repeats one an existing instance already holds — an add that lands on the same millisecond as a held id takes the next free one instead (D-338). Verified by `test/distance_source_import_test.dart` (`S-880`) |
-| `startTimedEntry(effortId, entryIndex)` | notStarted → active | Back-dates `startedAtMs` by any pre-set `targetDurationSecs` offset; clears target after first start so entry is open-ended |
+| `startTimedEntry(effortId, entryIndex)` | notStarted → active | Back-dates `startedAtMs` by any pre-set `targetDurationSecs` offset; clears target after first start so entry is open-ended; the start closes every open rest of the session in memory and persists each rest it closed (plan 98 D-1). Verified by `test/timer_start_closes_session_rests_test.dart` (groups `Mock` and `Hive`, `S-9921 startTimedEntry on B closes the open rest on A`) |
 | `pauseTimedEntry(effortId, entryIndex)` | active → paused | Stamps `pausedAtMs` |
 | `resumeTimedEntry(effortId, entryIndex)` | paused → active | Folds pause duration into `totalPausedDurationMs`; clears `pausedAtMs` |
 | `finishTimedEntry(effortId, entryIndex)` | active/paused → finished | Derives `actualDurationSecs` from timestamps; folds final pause if paused |
@@ -242,7 +242,7 @@ The facade write `WorkoutState.adoptRemoteWorkTimer(effortId, remote)`
 
 | Method | Rule |
 |--------|------|
-| `adoptRemoteWorkTimer(effortId, remote)` | The target is the effort's in-progress (active or paused) interval, else its first not-finished interval in stored order (the order plan 43a's fill uses); the wire kind must pair with the effort kind (`elapsed`→`timed`, `hold`→`drill`, `round`→`round`), and an unknown effort id, an effort with no unfinished interval or a wrong pairing writes nothing and returns false. A not-started target becomes active — or paused when the remote carries a pause stamp — with the remote's `startedAtMs`, `pausedAtMs` and `accumulatedPauseMs` (a timed target is open-ended, `targetDurationSecs: 0`, as `startTimedEntry` writes it; a round takes the remote's planned length when the frame carries one and keeps its own otherwise); an in-progress target is replaced only when the remote started strictly earlier — an equal or later start changes nothing. The effort's open rests are closed and persisted as a phone start does; a stopped timer is not applied (the wrist's logged entry fills and finishes the interval, plan 43a). The write bumps `_watchRefreshRevision` once and notifies once. Verified by `test/remote_work_timer_state_test.dart` (groups `Mock` and `Hive`, `S-6101`–`S-6106`) |
+| `adoptRemoteWorkTimer(effortId, remote)` | The target is the effort's in-progress (active or paused) interval, else its first not-finished interval in stored order (the order plan 43a's fill uses); the wire kind must pair with the effort kind (`elapsed`→`timed`, `hold`→`drill`, `round`→`round`), and an unknown effort id, an effort with no unfinished interval or a wrong pairing writes nothing and returns false. A not-started target becomes active — or paused when the remote carries a pause stamp — with the remote's `startedAtMs`, `pausedAtMs` and `accumulatedPauseMs` (a timed target is open-ended, `targetDurationSecs: 0`, as `startTimedEntry` writes it; a round takes the remote's planned length when the frame carries one and keeps its own otherwise); an in-progress target is replaced only when the remote started strictly earlier — an equal or later start changes nothing. The session's open rests are closed in memory and persisted, as a phone start does (plan 98 D-1); a stopped timer is not applied (the wrist's logged entry fills and finishes the interval, plan 43a). The write bumps `_watchRefreshRevision` once and notifies once. Verified by `test/remote_work_timer_state_test.dart` (groups `Mock` and `Hive`, `S-6101`–`S-6106`) and by `test/timer_start_closes_session_rests_test.dart` (groups `Mock` and `Hive`, `S-9923 a wrist timer adopted into B closes the open rest on A`, `S-9923b a wrist timer adopted into a round B closes the open rest on A`) |
 
 #### Rest Tracking Methods
 

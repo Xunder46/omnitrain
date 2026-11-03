@@ -47,7 +47,7 @@ State classes follow strict rules:
 | [Nutrition State](state_management/nutrition_state.md) | `NutritionState`, `FoodLibraryState`, `NutritionPrimerState` |
 | [Routine, Calendar, Home, Profile & Settings State](state_management/app_state.md) | `RoutineState`, `CalendarState`, `HomeState`, `ProfileState`, `SettingsState`, `PeriodState` |
 | [Service & Utility Classes](state_management/services_and_utils.md) | `CrashReportingService`, `RoutineSessionService`, `SessionSummaryService`, `HealthSyncService` (+ `HealthPlatformService` gateway), `ObservationGrouper`, `TimerAlertService`, `RestNotificationService`, `WorkoutSessionTimerMixin`, plus `CatalogSource` / `BundledCatalogSource`, `DemoRoutinesValidator`, `StartupFailureDiagnosticWriter`, `OmniDateUtils`, `FuzzySearch` |
-| [The Watch Surface](state_management/watch_surface.md) · [the wrist's half](state_management/watch_surface_wrist.md) · [the exercise pager](state_management/watch_surface_wrist_pager.md) | The watch↔phone mirror (`LiveSessionMirrorState`, `WatchSyncOrchestrator`, `WatchNutritionState`, `WatchWaterState`, `WatchNutritionLogBridge`, `WatchWaterLogBridge`, `WatchIncomingRouter`, `WatchSyncRequestHandler`, `WatchReferenceSync`, `WatchTransport` and its channel/factory, the two reconcilers) |
+| [The Watch Surface](state_management/watch_surface.md) · [the wrist's half](state_management/watch_surface_wrist.md) · [the exercise pager](state_management/watch_surface_wrist_pager.md) · [nutrition and water](state_management/watch_surface_nutrition.md) | The watch↔phone mirror (`LiveSessionMirrorState`, `WatchSyncOrchestrator`, `WatchNutritionState`, `WatchWaterState`, `WatchNutritionLogBridge`, `WatchWaterLogBridge`, `WatchIncomingRouter`, `WatchSyncRequestHandler`, `WatchReferenceSync`, `WatchTransport` and its channel/factory, the two reconcilers) |
 | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) | The watch's sensor layer and platform workout (`WatchPlatformWorkout`, `WatchSensorRecorder`, `WatchSessionSensors`, `WatchGpsPolicy`, `WatchActivityTypes`, `WatchSensorSummaries`) |
 | [The Watch's Reference Data](state_management/watch_reference_data.md) | What the phone pushes down and what the wrist does with it: `routines_down`, the batched `exercises_down` exercise list and its completeness/activation rule, the list `WatchSessionStartPaths` offers offline, the version echoed back in the sync request, and the batch prune |
 
@@ -85,9 +85,9 @@ State classes follow strict rules:
 | `WatchExerciseBatchRecord` | [The Watch's Reference Data](state_management/watch_reference_data.md) |
 | `WatchGpsPolicy` | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) |
 | `WatchLoggingState` | [The Watch Surface — the Wrist's Half](state_management/watch_surface_wrist.md) |
-| `WatchNutritionState` | [The Watch Surface](state_management/watch_surface.md) |
-| `WatchWaterState` | [The Watch Surface](state_management/watch_surface.md) |
-| `WatchNutritionLogBridge` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchNutritionState` | [The Watch Surface — Nutrition and Water](state_management/watch_surface_nutrition.md) |
+| `WatchWaterState` | [The Watch Surface — Nutrition and Water](state_management/watch_surface_nutrition.md) |
+| `WatchNutritionLogBridge` | [The Watch Surface — Nutrition and Water](state_management/watch_surface_nutrition.md) |
 | `WatchWaterLogBridge` | [The Watch Surface](state_management/watch_surface.md) |
 | `WatchIncomingRouter` | [The Watch Surface](state_management/watch_surface.md) |
 | `WatchMessageChannel` | [The Watch Surface](state_management/watch_surface.md) |

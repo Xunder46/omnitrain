@@ -267,7 +267,14 @@ remains out is listed below.
   The wrist taps at each multiple of the interval the phone sent in
   `preferences_down` (`restPingSeconds`), with no sound — a haptic tap only
   (`WatchRestPingTests.testS241AnIntervalTapsAtItsMultiplesAndNowhereElse`;
-  `test/watch_rest_ping_test.dart`).
+  `test/watch_rest_ping_test.dart`). Two cuts the other way (plan 98): the
+  phone ends a rest it holds open when any work timer starts on the phone or
+  is adopted from the wrist, and tells the wrist with a `{rest: null}` timer
+  frame (`test/watch_timer_push_test.dart`, group `S-9924 a rest open on one
+  exercise is cleared when a timer starts on another`); and a phone timer
+  start the radio refused is sent right after the wrist's next Sync request,
+  or when the watch is reachable again, although the answer itself projects
+  no timers (groups `S-9925` and `S-9929`).
 - **The wrist labels load in kilograms.** The shell hands the surfaces no unit
   preferences, so the rows read kg whatever the phone's saved unit is, while the
   payload is always kilograms on the wire, which keeps the phone's history and
