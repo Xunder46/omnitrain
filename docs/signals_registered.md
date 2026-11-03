@@ -1,6 +1,6 @@
 # Signals — The Registered Signals
 
-**Scope.** The nine registered signals' definitions and adapters, split out of
+**Scope.** The ten registered signals' definitions and adapters, split out of
 [Signals](signals.md) to keep each page under the documentation size ceiling:
 `lib/core/models/progression_rate.dart`,
 `lib/core/models/modality_mix_shift.dart`, `lib/core/models/interference.dart`,
@@ -8,7 +8,8 @@
 `lib/core/models/protein_consistency.dart`,
 `lib/core/models/sustained_high_load.dart`,
 `lib/core/models/cardio_efficiency_drift.dart`,
-`lib/core/models/consistency.dart` and the adapters under
+`lib/core/models/consistency.dart`,
+`lib/core/models/hold_progress.dart` and the adapters under
 `lib/core/services/signals/`. The framework they plug into — the gate, the
 card cap and selection, the quiet line, the waiting lines, the dismissal store
 and the `Signal` contract — is in [Signals](signals.md).
@@ -667,6 +668,62 @@ false) and waits for nothing. Verified by `test/consistency_signal_test.dart`
 (group `S-17809 the signals on real sessions — Mock` › `an open session
 yesterday does not close the gap`, `both signals read no ratings and wait for
 nothing`).
+
+`holdProgress(List<InstrumentSectionData> sections)` in
+`lib/core/models/hold_progress.dart` is the Hold Progress signal's definition,
+and `HoldProgressSignal` in
+`lib/core/services/signals/hold_progress_signal.dart` is its adapter. The
+signal reports that an isometric exercise's longest hold in the Stats window
+beat its longest hold in the window before by enough to mean something, and
+proposes a positive card.
+
+- **The rows it reads.** The rule reads the Instruments rows the Stats screen
+  already shows: only rows of the `isometric` section whose best value and
+  previous value are both on the `hold` metric. A row on another metric, a
+  hold-metric row in another section, and a row with no previous value or a
+  previous value of zero are not candidates. Verified by
+  `test/hold_progress_test.dart` (group `S-17905 only isometric holds count`,
+  group `S-17904 an earlier window is needed`).
+- **The session floor.** The row's window must hold at least
+  `kHoldProgressMinSessions` completed sessions, so a big gain over two
+  sessions says nothing. Verified by `test/hold_progress_test.dart` (group
+  `S-17903 at least three sessions`).
+- **The gain thresholds.** The gain — the row's best hold minus its previous
+  hold, both rounded to whole seconds — must reach `kHoldProgressMinGainSecs`
+  and be at least `kHoldProgressMinGainPercent` of the earlier figure, both
+  boundaries inclusive, and the earlier figure must be above zero. A hold that
+  got shorter is not progress. Verified by `test/hold_progress_test.dart`
+  (group `S-17902 the gain thresholds are inclusive`, group `S-17904 an earlier
+  window is needed`).
+- **One card.** Among the qualifying rows the biggest gain wins; a tie goes to
+  the name ascending, then the exercise id. Verified by
+  `test/hold_progress_test.dart` (group `S-17906 the biggest gain wins`).
+- **Kind and priority.** The kind is positive; the priority is
+  `kHoldProgressPriority`, below Consistency's among the positives. Verified by
+  `test/hold_progress_test.dart` (`the constants the rule is built from are the
+  ones the plan names`) and `test/signals_service_test.dart` (group `S-17503
+  which registered signals need rated weeks`).
+- **Copy.** `holdProgressObservation` builds the observation from the
+  exercise's name, the gain and the window's weeks, and the card carries no
+  suggestion line. Verified by `test/hold_progress_test.dart` (group `S-17907
+  the copy`, group `S-17901 a hold that improved`).
+
+The definition reads no clock, no repository and no service — the Instruments
+sections are the argument. The adapter asks
+`StatsProgressService.computeInstrumentSections` for the signal context's
+window and hands the sections to the rule, so it walks no history of its own.
+The signal reads no ratings (`needsRatedWeeks` is false, so it speaks before
+four rated weeks) and waits for nothing. Verified by
+`test/hold_progress_signal_test.dart` (groups `S-17908 the Hold Progress
+signal on real sessions — Mock` and `S-17908 the Hold Progress signal on real
+sessions — Hive`) and `test/signals_service_test.dart` (group `S-17503 which
+registered signals need rated weeks`).
+
+Cardio is not covered on purpose: a cardio row already shows its own pace or
+duration change in the Instruments list, and a lower pace is the better one —
+the hold-metric and section checks above are what keep those rows out.
+Verified by `test/hold_progress_test.dart` (group `S-17905 only isometric
+holds count`).
 
 ---
 

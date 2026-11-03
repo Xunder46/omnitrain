@@ -1,6 +1,7 @@
 import 'cardio_efficiency_drift_signal.dart';
 import 'consistency_signal.dart';
 import 'fuel_vs_load_signal.dart';
+import 'hold_progress_signal.dart';
 import 'interference_signal.dart';
 import 'modality_mix_shift_signal.dart';
 import 'progression_rate_signal.dart';
@@ -21,6 +22,7 @@ List<Signal> buildSignalRegistry() => const <Signal>[
   FuelVsLoadSignal(),
   ProgressionRateSignal(),
   ConsistencySignal(),
+  HoldProgressSignal(),
   ModalityMixShiftSignal(),
   InterferenceSignal(),
 ];

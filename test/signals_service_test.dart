@@ -374,6 +374,7 @@ void main() {
       expect(byId, {
         'training-gap': false,
         'consistency': false,
+        'hold-progress': false,
         'cardio-efficiency-drift': false,
         'progression-rate': false,
         'protein-consistency': false,

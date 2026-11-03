@@ -623,7 +623,7 @@ void main() {
   // file names a concrete signal. The registry is the only place a signal is
   // registered, so it must list exactly the shipped signals.
   group('the registry', () {
-    test('lists exactly the nine shipped signals, in order', () {
+    test('lists exactly the ten shipped signals, in order', () {
       final registry = buildSignalRegistry();
       expect(registry.map((signal) => signal.id), [
         'training-gap',
@@ -633,6 +633,7 @@ void main() {
         'fuel-vs-load',
         'progression-rate',
         'consistency',
+        'hold-progress',
         'modality-mix-shift',
         'cross-modality-interference',
       ]);

@@ -11,7 +11,8 @@ registered signals' definitions and adapters:
 `lib/core/models/protein_consistency.dart`,
 `lib/core/models/sustained_high_load.dart`,
 `lib/core/models/cardio_efficiency_drift.dart`,
-`lib/core/models/consistency.dart`, and the adapters under
+`lib/core/models/consistency.dart`,
+`lib/core/models/hold_progress.dart`, and the adapters under
 `lib/core/services/signals/`. It does not cover the Stats screen or
 any widget that draws a signal; that surface belongs to
 [Stats Screen](stats_screen.md).
@@ -92,8 +93,8 @@ priority: Training Gap (`kTrainingGapPriority`), Cardio Efficiency Drift
 (`kProteinConsistencyPriority`), Fuel vs Load (`kFuelVsLoadPriority`), Modality
 Mix Shift (`kModalityMixShiftPriority`) and Cross-Modality Interference
 (`kCrossModalityInterferencePriority`). The registered positives are Progression
-Rate, whose priority is `kProgressionRatePriority`, and Consistency, whose
-priority is `kConsistencyPriority`. The list is the priority
+Rate (`kProgressionRatePriority`), Consistency (`kConsistencyPriority`) and
+Hold Progress (`kHoldProgressPriority`). The list is the priority
 order, not the render order: when two cautions qualify together the framework
 draws the higher priority first, so Protein Consistency renders above Sustained
 High Load, and Sustained High Load renders above Cardio Efficiency Drift.
@@ -101,10 +102,14 @@ Verified by `test/interference_test.dart` (`the caution order holds
 and the registry is ordered by it`), which asserts the registry lists the
 cautions in ascending priority with Training Gap first; by
 `test/signals_service_test.dart` (group `S-17503 which registered signals need
-rated weeks`), which pins the nine registered ids; by
+rated weeks`), which pins the ten registered ids; by
 `test/consistency_signal_test.dart` (group `S-17809 the signals on real
 sessions — Mock` › `Consistency proposes its card from fixture A, Monday
 weeks`) for the Consistency entry's kind and priority; by
+`test/hold_progress_test.dart` (`the constants the rule is built from are the
+ones the plan names`) and `test/modality_mix_shift_signal_screen_test.dart`
+(group `the registry` › `lists exactly the ten shipped signals, in order`) for
+the Hold Progress entry's priority and registration; by
 `test/sustained_high_load_test.dart` (`the
 registry lists the cautions in strictly ascending priority`); by
 `test/sustained_high_load_signal_screen_test.dart` (`S-2412 two cautions
@@ -240,9 +245,10 @@ SignalsService.waitingLines`).
 
 ## Registered signals
 
-The nine registered signals — Training Gap, Progression Rate, Consistency,
-Modality Mix Shift, Cross-Modality Interference, Fuel vs Load, Protein
-Consistency, Sustained High Load and Cardio Efficiency Drift — are described in
+The ten registered signals — Training Gap, Progression Rate, Consistency,
+Hold Progress, Modality Mix Shift, Cross-Modality Interference, Fuel vs Load,
+Protein Consistency, Sustained High Load and Cardio Efficiency Drift — are
+described in
 [Registered Signals](signals_registered.md): each one's definition, adapter,
 gate, copy and the tests that pin them. This page keeps the framework.
 
