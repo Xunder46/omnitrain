@@ -530,8 +530,12 @@ Future<void> _expectFreeAdoption(
   for (final slot in slots) {
     expect(
       await _repsRows(repository, slot),
-      isEmpty,
-      reason: 'A5 no planned row is written',
+      // The plank slots are timed: their one seeded entry is an interval, which
+      // writes no reps row.
+      slot.contains('plank') ? isEmpty : ['obs-$slot-0-reps'],
+      reason:
+          'A5 no routine plan is written: a set slot holds only the one '
+          'unlogged set the phone seeds for any slot the wrist adds',
     );
   }
 }
@@ -750,11 +754,12 @@ void _adoptionTests({
       slots: const [_benchSlot, 'sx-ex-extra'],
     );
     expect(
-      await repository.getEffortObservations(_benchSlot),
-      isEmpty,
+      await _repsRows(repository, _benchSlot),
+      ['obs-$_benchSlot-0-reps'],
       reason:
           'I-3 one slot outside the template means no match at all: not even '
-          'the slot the template does hold gets rows',
+          'the slot the template does hold gets the routine\'s planned rows, '
+          'only the one unlogged set every adopted slot starts with',
     );
   });
 

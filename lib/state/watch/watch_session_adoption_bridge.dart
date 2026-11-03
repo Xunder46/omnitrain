@@ -722,12 +722,13 @@ class WatchSessionAdoptionBridge {
       }
       await target.loadHistoricalSession(sessionId);
       if (existing == null) {
-        // A fresh adoption: an interval slot starts with its first interval,
-        // as an exercise the phone adds itself does. A reload of a session the
+        // A fresh adoption: a slot starts with its first entry, as an
+        // exercise the phone adds itself does. A reload of a session the
         // phone already wrote is left as the user last had it.
+        final atMs = _clock().millisecondsSinceEpoch;
         for (final segment in target.segments) {
           for (final effort in target.getEffortsForSegment(segment.id)) {
-            await target.seedFirstInterval(effort.id);
+            await target.seedFirstEntry(effort.id, atMs: atMs);
           }
         }
       }

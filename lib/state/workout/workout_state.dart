@@ -240,9 +240,9 @@ class WorkoutState extends ChangeNotifier {
     List<SegmentEffort> efforts, {
     required String sessionId,
   }) => _sessionCore.appendSessionSlots(efforts, sessionId: sessionId);
-  /// Gives a timed, hold or round effort its first interval when it has none.
-  Future<void> seedFirstInterval(String effortId) =>
-      _sessionCore.seedFirstInterval(effortId);
+  /// Gives an effort its first entry (set or interval) when it has none.
+  Future<void> seedFirstEntry(String effortId, {int? atMs}) =>
+      _sessionCore.seedFirstEntry(effortId, atMs: atMs);
   Future<void> addEntry(
     String effortId, {
     Map<String, dynamic>? previousValues,

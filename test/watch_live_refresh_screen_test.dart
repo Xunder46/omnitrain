@@ -413,6 +413,62 @@ void main() {
     expect(phone.failures, isEmpty);
   });
 
+  test('S-3516 an exercise the wrist added arrives as one unlogged set', () async {
+    final phone = await _phone();
+    await phone.router.receive(_snapshot());
+
+    // The wrist adds a third exercise and has logged nothing against it.
+    await phone.router.receive(
+      _snapshot(
+        messageId: 'msg-snapshot-2',
+        exercises: [
+          _setSlot('sl-1', 'ex-1', 'Barbell Bench Press'),
+          _setSlot('sl-2', 'ex-2', 'Barbell Back Squat'),
+          _setSlot('sl-3', 'ex-3', 'Pull-Up'),
+        ],
+      ),
+    );
+
+    for (final slot in ['sl-1', 'sl-2', 'sl-3']) {
+      expect(
+        _entriesOf(phone, slot),
+        hasLength(1),
+        reason:
+            'S-3516 $slot reads Set 1 of 1 — never Set 1 of 0, which the phone '
+            'cannot remove',
+      );
+    }
+    expect(
+      phone.state.getEntryRests('sl-3'),
+      isEmpty,
+      reason: 'S-3516 the set is a planned row: no rest marks it logged',
+    );
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-3517 the wrist\'s first set fills that row instead of adding a second', () async {
+    final phone = await _phone();
+    await phone.router.receive(_snapshot());
+
+    await phone.router.receive(
+      observationsUp('s-w1', [
+        _set(
+          'sx-1',
+          slot: 'sl-1',
+          exerciseId: 'ex-1',
+          reps: 8,
+          loadKg: 60,
+          loggedAt: _t1,
+        ),
+      ], messageId: 'msg-set-1'),
+    );
+
+    final entries = _entriesOf(phone, 'sl-1');
+    expect(entries, hasLength(1), reason: 'S-3517 one set, not a planned one plus the wrist\'s');
+    expect(entries.single['reps'], 8, reason: 'S-3517 carrying what the wrist logged');
+    expect(phone.failures, isEmpty);
+  });
+
   testWidgets('S-3511 a wrist set appears in the open list without navigation', (
     WidgetTester tester,
   ) async {
@@ -421,9 +477,11 @@ void main() {
     await _mount(tester, _screen(phone));
 
     expect(
-      find.text('0 sets'),
+      find.text('1 set'),
       findsNWidgets(2),
-      reason: 'S-3511 the screen\'s first snapshot: two exercises, no sets',
+      reason:
+          'S-3511 the screen\'s first snapshot: two exercises, each with the one '
+          'unlogged set the phone seeds for a slot the wrist added',
     );
 
     await phone.router.receive(
@@ -436,25 +494,35 @@ void main() {
           loadKg: 40,
           loggedAt: _t1,
         ),
+        _set(
+          'sx-2',
+          slot: 'sl-1',
+          exerciseId: 'ex-1',
+          reps: 8,
+          loadKg: 40,
+          loggedAt: _t2,
+        ),
       ], messageId: 'msg-set-1'),
     );
     await tester.pump();
 
     expect(
       _entriesOf(phone, 'sl-1'),
-      hasLength(1),
-      reason: 'S-3511 the wrist\'s set is one entry of the phone\'s own effort',
+      hasLength(2),
+      reason:
+          'S-3511 the wrist\'s first set filled the seeded row and its second joined it: '
+          'two entries of the phone\'s own effort',
+    );
+    expect(
+      find.text('2 sets'),
+      findsOneWidget,
+      reason:
+          'S-3511 the open list shows the sets the wrist logged — the user never left the screen',
     );
     expect(
       find.text('1 set'),
       findsOneWidget,
-      reason:
-          'S-3511 the open list shows the set the wrist logged — the user never left the screen',
-    );
-    expect(
-      find.text('0 sets'),
-      findsOneWidget,
-      reason: 'S-3511 the other exercise still shows no sets',
+      reason: 'S-3511 the other exercise still shows its one unlogged set',
     );
     expect(tester.takeException(), isNull, reason: 'S-3511 nothing escapes the frame');
     expect(phone.failures, isEmpty);
@@ -470,12 +538,11 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(InlineMetricEditor),
-        matching: find.text('0'),
+        matching: find.text('10'),
       ),
       findsOneWidget,
       reason:
-          'S-3511 the open entry starts with no reps — the effort holds no entries, so the '
-          'detail falls back to a zero entry',
+          'S-3511 the open entry starts on the seeded unlogged set, at the default 10 reps',
     );
     await phone.router.receive(
       observationsUp('s-w1', [
@@ -622,7 +689,7 @@ void main() {
 
     // The user's own three sets on sl-1: row 0 logged (a rest follows it, so
     // the phone reads it as logged), rows 1 and 2 still the plan's values.
-    await phone.state.addEntry('sl-1');
+    // The slot arrives with its first row already (seeded), so two more make three.
     await phone.state.addEntry('sl-1');
     await phone.state.addEntry('sl-1');
     await phone.state.updateEntryValue('sl-1', 0, 'reps', 8);
@@ -758,11 +825,9 @@ void main() {
     final phone = await _phone();
     await phone.router.receive(_snapshot());
 
-    // One planned row of sl-1 the user has never logged: no rest follows it, so
-    // nothing marks it logged and the phone offers its Log Set control. sl-2
-    // carries a planned row of its own — the effort the control below walks to.
-    await phone.state.addEntry('sl-1');
-    await phone.state.addEntry('sl-2');
+    // Each slot arrived with one planned row the user has never logged: no rest
+    // follows it, so nothing marks it logged and the phone offers its Log Set
+    // control. sl-2's row is the effort the control below walks to.
 
     final restNotifications = FakeRestNotificationService();
     await _mount(
@@ -949,7 +1014,8 @@ void main() {
     // Fixture F: three planned rows of sl-1, no rests, so the phone has logged
     // nothing and every row is the plan's.
     for (int i = 0; i < 3; i++) {
-      await phone.state.addEntry('sl-1');
+      // Row 0 is the one the slot arrived with.
+      if (i > 0) await phone.state.addEntry('sl-1');
       await phone.state.updateEntryValue('sl-1', i, 'weight', 40.0);
     }
 

@@ -757,6 +757,9 @@ void _mergeTests({
     // The user deleted the sl-2 exercise from the session on the phone.
     await repository.deleteEffort('sl-2');
     final before = await repository.getAllSessions();
+    final seededRows = [
+      for (final row in await repository.getEffortObservations('sl-1')) row.id,
+    ];
 
     await phone.router.receive(
       observationsUp('s-w1', [
@@ -792,9 +795,14 @@ void _mergeTests({
       reason: 'S-12 the wrist is told to forget both',
     );
     expect(
-      await repository.getEffortObservations('sl-1'),
-      isEmpty,
-      reason: 'S-12 sl-1 is untouched',
+      [
+        for (final row in await repository.getEffortObservations('sl-1'))
+          row.id,
+      ],
+      seededRows,
+      reason:
+          'S-12 sl-1 is untouched: it holds only the unlogged set the phone '
+          'seeded on adoption',
     );
     expect(
       await _effortIds(repository),
@@ -1223,6 +1231,9 @@ void _mergeTests({
     // A rest timer is running on the phone's own effort. It is written through
     // the live state, so it is both in the timer manager and in the repository.
     await phone.state.recordRestStart('sl-1', 0);
+    final squatRowsBefore = [
+      for (final row in phone.state.getObservationsForEffort('sl-2')) row.id,
+    ];
     final restBefore = phone.state.getEntryRests('sl-1');
     expect(restBefore, hasLength(1), reason: 'S-16 the fixture has an open rest');
     expect(
@@ -1276,8 +1287,10 @@ void _mergeTests({
       reason: 'S-16 the load the wrist logged',
     );
     expect(
-      phone.state.getObservationsForEffort('sl-2'),
-      isEmpty,
+      [
+        for (final row in phone.state.getObservationsForEffort('sl-2')) row.id,
+      ],
+      squatRowsBefore,
       reason: 'S-16 an effort the merge did not touch is untouched',
     );
 
@@ -1359,6 +1372,9 @@ void _mergeTests({
     final phone = await _phone(repository);
     await phone.router.receive(_snapshot());
 
+    final rowsBefore = [
+      for (final row in phone.state.getObservationsForEffort('sl-1')) row.id,
+    ];
     var notifications = 0;
     phone.state.addListener(() => notifications += 1);
 
@@ -1372,8 +1388,10 @@ void _mergeTests({
           'merge belongs to another session, or to none',
     );
     expect(
-      phone.state.getObservationsForEffort('sl-1'),
-      isEmpty,
+      [
+        for (final row in phone.state.getObservationsForEffort('sl-1')) row.id,
+      ],
+      rowsBefore,
       reason: 'S-16 nothing was re-read for a session the phone does not hold',
     );
     expect(phone.failures, isEmpty);

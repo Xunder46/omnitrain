@@ -103,7 +103,7 @@ extension SessionCoreEntryMethods on SessionCore {
           );
           if (exercise != null) _exerciseCache[effort.exerciseId!] = exercise;
         }
-        await seedFirstInterval(effort.id);
+        await seedFirstEntry(effort.id, notify: false);
       }
 
       _watchRefreshRevision++;
@@ -113,14 +113,25 @@ extension SessionCoreEntryMethods on SessionCore {
     }
   }
 
-  /// Gives a timed, hold or round effort its first interval when it holds none.
+  /// Gives an effort its first entry when it holds none.
   ///
-  /// A slot adopted off the watch arrives with no intervals, unlike an
-  /// exercise the phone adds itself; without one the session screen reads
-  /// "Interval 1 of 0" and a timer the watch starts has nothing to land on.
-  /// A set effort is left as it is. Safe to call twice: an effort that already
-  /// holds an interval is untouched.
-  Future<void> seedFirstInterval(String effortId) async {
+  /// A slot adopted off the watch arrives with no entries, unlike an exercise
+  /// the phone adds itself; without one the session screen reads "Set 1 of 0"
+  /// (or "Interval 1 of 0"), the exercise cannot be removed, and a timer the
+  /// watch starts has nothing to land on. A set effort gets one unlogged set,
+  /// which the wrist's first logged set fills (D-4) rather than adding a
+  /// second. Safe to call twice: an effort that already holds an entry is
+  /// untouched.
+  ///
+  /// [atMs] stamps the seeded rows; a caller with its own clock passes it so
+  /// the rows it adopts carry one time (the default is the real clock).
+  /// [notify] false leaves the notification to a caller that sends one for the
+  /// whole change.
+  Future<void> seedFirstEntry(
+    String effortId, {
+    int? atMs,
+    bool notify = true,
+  }) async {
     final effort = _findEffort(effortId);
     if (effort == null) return;
 
@@ -128,16 +139,18 @@ extension SessionCoreEntryMethods on SessionCore {
       'round' => _timerManager.getRoundsForEffort(effortId).length,
       'timed' ||
       'drill' => _timerManager.getTimedInstancesForEffort(effortId).length,
-      _ => -1,
+      _ => (_observations[effortId] ?? const <EffortObservation>[]).length,
     };
     if (held != 0) return;
 
-    await addEntry(effortId);
+    await addEntry(effortId, atMs: atMs, notify: notify);
   }
 
   Future<void> addEntry(
     String effortId, {
     Map<String, dynamic>? previousValues,
+    int? atMs,
+    bool notify = true,
   }) async {
     _clearError();
 
@@ -148,7 +161,7 @@ extension SessionCoreEntryMethods on SessionCore {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = atMs ?? DateTime.now().millisecondsSinceEpoch;
       final existingObservations =
           _observations[effortId] ?? <EffortObservation>[];
       // Every kind of new entry is numbered above every number the effort
@@ -215,7 +228,7 @@ extension SessionCoreEntryMethods on SessionCore {
         }
         _observations.putIfAbsent(effortId, () => []).addAll(obsToCreate);
 
-        _notify();
+        if (notify) _notify();
         return;
       }
 
@@ -261,7 +274,7 @@ extension SessionCoreEntryMethods on SessionCore {
 
       _observations.putIfAbsent(effortId, () => []).addAll(observations);
 
-      _notify();
+      if (notify) _notify();
     } catch (e) {
       _setError('Failed to add entry: $e');
     }
