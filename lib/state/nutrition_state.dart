@@ -350,32 +350,14 @@ class NutritionState extends ChangeNotifier {
       }
     }
 
-    final entry = ConsumedFood(
-      id: 'consumed-$now-${now ~/ 1000}',
-      loggedAtMs: now,
+    final entry = _snapshotFor(
+      food,
+      amountConsumed,
       dateMs: todayMs,
-      sourceFoodId: food.id,
-      name: food.name,
-      unitType: food.unitType,
-      referenceAmount: food.referenceAmount,
-      referenceLabel: food.referenceLabel,
-      protein: food.protein,
-      carbs: food.carbs,
-      fiber: food.fiber,
-      fat: food.fat,
-      // D-7: freeze the source food's sodium onto the snapshot at
-      // log time. Editing the food's sodium later does not change
-      // the logged day's sodium total.
-      sodium: food.sodium,
-      amountConsumed: amountConsumed,
-      groupIdSnapshot: food.groupId,
+      loggedAtMs: now,
+      nowMs: now,
+      target: target,
       groupNameSnapshot: groupNameSnapshot,
-      targetCalories: target.calories,
-      targetProtein: target.protein,
-      targetCarbs: target.carbs,
-      targetFat: target.fat,
-      createdAtMs: now,
-      updatedAtMs: now,
     );
 
     try {
@@ -396,6 +378,47 @@ class NutritionState extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Builds the frozen [ConsumedFood] snapshot shared by [logConsumedFood]
+  /// and [logConsumedFoodOnDay]: the source food's name/unit/macros, the
+  /// given day's targets, and the group snapshot the caller looked up.
+  ConsumedFood _snapshotFor(
+    Food food,
+    double amountConsumed, {
+    required int dateMs,
+    required int loggedAtMs,
+    required int nowMs,
+    required NutritionTarget target,
+    required String? groupNameSnapshot,
+  }) {
+    return ConsumedFood(
+      id: 'consumed-$nowMs-${nowMs ~/ 1000}',
+      loggedAtMs: loggedAtMs,
+      dateMs: dateMs,
+      sourceFoodId: food.id,
+      name: food.name,
+      unitType: food.unitType,
+      referenceAmount: food.referenceAmount,
+      referenceLabel: food.referenceLabel,
+      protein: food.protein,
+      carbs: food.carbs,
+      fiber: food.fiber,
+      fat: food.fat,
+      // D-7: freeze the source food's sodium onto the snapshot at
+      // log time. Editing the food's sodium later does not change
+      // the logged day's sodium total.
+      sodium: food.sodium,
+      amountConsumed: amountConsumed,
+      groupIdSnapshot: food.groupId,
+      groupNameSnapshot: groupNameSnapshot,
+      targetCalories: target.calories,
+      targetProtein: target.protein,
+      targetCarbs: target.carbs,
+      targetFat: target.fat,
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    );
   }
 
   /// Remove a consumed-food entry by id and refresh the cache.
@@ -494,6 +517,78 @@ class NutritionState extends ChangeNotifier {
     }
     // Fresh log: delegate to the existing snapshot-builder.
     return logConsumedFood(food, amount);
+  }
+
+  /// Logs [food] on the local day of [loggedAt] when that day is before today
+  /// (plan 112, D-18602): the wrist taps a food, the phone may receive it after
+  /// midnight, and the row belongs to the day the user tapped.
+  ///
+  /// One row per food per day, like [logConsumedFoodAt]: a second call for the
+  /// same food and day updates the row's amount. A new row freezes THAT day's
+  /// saved targets, not today's. Today's cache (`consumedToday`) is never
+  /// touched, because the row is not today's. A [loggedAt] on or after today
+  /// is today's log and goes through [logConsumedFoodAt].
+  Future<String?> logConsumedFoodOnDay(
+    Food food,
+    double amount, {
+    required DateTime loggedAt,
+  }) async {
+    if (!amount.isFinite || amount <= 0) return null;
+    final dayMs = DateTime(
+      loggedAt.year,
+      loggedAt.month,
+      loggedAt.day,
+    ).millisecondsSinceEpoch;
+    if (dayMs >= OmniDateUtils.todayMidnightMs()) {
+      return logConsumedFoodAt(food, amount);
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final sameDay = await _repository.getConsumedFoodsInRange(dayMs, dayMs);
+      ConsumedFood? existing;
+      for (final row in sameDay) {
+        if (row.sourceFoodId == food.id) {
+          existing = row;
+          break;
+        }
+      }
+      if (existing != null) {
+        await _repository.updateConsumedFood(
+          existing.copyWith(amountConsumed: amount, updatedAtMs: now),
+        );
+        await _writeThroughLastAmount(food, amount);
+        notifyListeners();
+        return existing.id;
+      }
+
+      String? groupNameSnapshot;
+      if (food.groupId != null) {
+        try {
+          groupNameSnapshot =
+              (await _repository.getFoodGroupById(food.groupId!))?.name;
+        } catch (_) {
+          groupNameSnapshot = null;
+        }
+      }
+      final target =
+          await _repository.getNutritionTargetForDate(dayMs) ??
+          NutritionTarget();
+      final entry = _snapshotFor(
+        food,
+        amount,
+        dateMs: dayMs,
+        loggedAtMs: loggedAt.millisecondsSinceEpoch,
+        nowMs: now,
+        target: target,
+        groupNameSnapshot: groupNameSnapshot,
+      );
+      final id = await _repository.createConsumedFood(entry);
+      await _writeThroughLastAmount(food, amount);
+      notifyListeners();
+      return id;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Remove the consumed-food row for [foodId] and today.

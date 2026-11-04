@@ -478,6 +478,7 @@ void main() {
       final library = FoodLibraryState(phone.repository);
       await library.loadFoods();
       await phone.nutrition.loadConsumedToday();
+      final at = DateTime(2026, 11, 1, 9);
       final router = WatchIncomingRouter(
         inbox: WatchSessionInbox(
           repository: phone.repository,
@@ -489,10 +490,10 @@ void main() {
           library: library,
           validator: loadProtocolValidator(),
           transport: phone.transport,
+          clock: () => at.toUtc(),
         ),
         water: phone.bridge,
       );
-      final at = DateTime(2026, 11, 1, 9);
 
       final receipt = await router.receive(
         tap(

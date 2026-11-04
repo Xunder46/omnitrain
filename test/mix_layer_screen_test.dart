@@ -601,6 +601,40 @@ Future<void> _seedLiftingOnlyWindow(WorkoutRepository repo) async {
   await _seedLifting(repo, sessionId: 's-c', daysAgo: 6, minutes: 10);
 }
 
+/// FX-UNRATED (S-18601): the rated baseline (4 rated weeks) with a window
+/// holding one rated 30-minute session and one unrated 60-minute one, so the
+/// unrated share is 60/90 = 66%, over the 25% boundary — the measure stays
+/// time while the rated weeks already meet the threshold.
+Future<void> _seedUnratedWindow(WorkoutRepository repo) async {
+  await _seedPeriod(repo, name: 'Test Block', daysAgo: 10);
+  await _seedRatedBaseline(repo, fromDay: 10);
+  await _seedLifting(
+    repo,
+    sessionId: 's-r',
+    daysAgo: 3,
+    minutes: 30,
+    rating: 4,
+  );
+  await _seedLifting(repo, sessionId: 's-u', daysAgo: 5, minutes: 60);
+}
+
+/// FX-EDGE (S-18602): the rated baseline (4 rated weeks) with a window holding
+/// one rated 45-minute session and one unrated 15-minute one, so the unrated
+/// share is 15/60 = exactly 25% — on the inclusive boundary, so the measure is
+/// load and no baseline note renders.
+Future<void> _seedEdgeShareWindow(WorkoutRepository repo) async {
+  await _seedPeriod(repo, name: 'Test Block', daysAgo: 10);
+  await _seedRatedBaseline(repo, fromDay: 10);
+  await _seedLifting(
+    repo,
+    sessionId: 's-r',
+    daysAgo: 3,
+    minutes: 45,
+    rating: 4,
+  );
+  await _seedLifting(repo, sessionId: 's-u', daysAgo: 5, minutes: 15);
+}
+
 /// FX-STRIP (S-1608, S-1609-A): no baseline, so the strip's weeks are the whole
 /// story — a lifting-only session in the current week, a lifting + cardio
 /// session a week back, and a lifting-only session a month back.
@@ -2512,6 +2546,46 @@ void main() {
         setUp(() => _seedLoadReady(repo));
 
         testWidgets('no baseline note renders at all', (tester) async {
+          await pumpStats(tester);
+
+          expect(find.byKey(const Key('mix_baseline_note')), findsNothing);
+          expect(find.textContaining('Showing time for now'), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // S-18603: the fewer-than-4-rated-weeks sentence is already pinned by
+      // the two S-3204 groups above ('three of four' / 'no rated week at
+      // all'); those must stay green.
+
+      // ─── S-18601 / S-18602 ──────────────────────────────────────────────
+      //
+      // The unrated-share rule (D-18601): with the rated weeks at the
+      // threshold, the measure is load only while the window's unrated time
+      // is at most 25% of it.
+
+      group('S-18601 the baseline note when effort is hidden by unrated time',
+          () {
+        setUp(() => _seedUnratedWindow(repo));
+
+        testWidgets('over the share, time keeps the note without "so far"',
+            (tester) async {
+          await pumpStats(tester);
+
+          expect(
+            _textOf(tester, const Key('mix_baseline_note')),
+            'Showing time for now. '
+            'Effort needs most of the last 4 weeks rated.',
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-18602 the unrated share boundary is inclusive', () {
+        setUp(() => _seedEdgeShareWindow(repo));
+
+        testWidgets('exactly 25% unrated keeps load and no note',
+            (tester) async {
           await pumpStats(tester);
 
           expect(find.byKey(const Key('mix_baseline_note')), findsNothing);

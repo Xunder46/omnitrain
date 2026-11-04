@@ -191,10 +191,14 @@ unlock Signals` › `the load measure shows and the Signals layer renders`).
 **The note.** Under the time measure, while fewer than
 `kTrainingLoadMinRatedWeeks` of the last 12 seven-day weeks — today's
 included — are rated, a note reads `Showing time for now. Effort appears once
-4 weeks are rated (N of 4 so far).`; under the load measure no note renders.
-Verified by the same file (`S-3204 the baseline note says what happens and
-when`, `S-3204 the twin: no rated week at all`, `S-3204 the load measure
-explains nothing`).
+4 weeks are rated (N of 4 so far).`. With 4 or more rated weeks the strip can
+still show time, when more than a quarter of the window's time is unrated; the
+note then reads `Showing time for now. Effort needs most of the last 4 weeks rated.`
+Under the load measure no note renders. Verified by
+`test/mix_layer_screen_test.dart` (`S-3204 the baseline note says what happens
+and when`, `S-3204 the twin: no rated week at all`, `S-3204 the load measure
+explains nothing`, and group `S-18601 the baseline note when effort is hidden
+by unrated time`).
 
 **The strip.** Titled `Last 8 weeks, week by week`: eight weeks of
 modality-stacked columns, oldest first, with the current week marked. A week

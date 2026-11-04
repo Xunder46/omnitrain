@@ -183,12 +183,15 @@ class MixLayerSection extends StatelessWidget {
           ],
           const SizedBox(height: _blockGap),
           _buildLegend(theme),
-          if (!_isLoad && layer.ratedWeeks < kTrainingLoadMinRatedWeeks) ...[
+          if (!_isLoad) ...[
             const SizedBox(height: _tightGap),
             Text(
-              'Showing time for now. Effort appears once '
-              '$kTrainingLoadMinRatedWeeks weeks are rated '
-              '($_ratedWeeks of $kTrainingLoadMinRatedWeeks so far).',
+              layer.ratedWeeks < kTrainingLoadMinRatedWeeks
+                  ? 'Showing time for now. Effort appears once '
+                        '$kTrainingLoadMinRatedWeeks weeks are rated '
+                        '($_ratedWeeks of $kTrainingLoadMinRatedWeeks so far).'
+                  : 'Showing time for now. Effort needs most of the last '
+                        '4 weeks rated.',
               key: const Key('mix_baseline_note'),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,

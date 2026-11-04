@@ -280,6 +280,7 @@ Future<WatchSyncGraph?> createWatchSync({
       nutrition: nutritionState,
       library: foodLibraryState,
       transport: resolved,
+      clock: clock,
     ),
     adoption: adoption,
     // A glass of water tapped on the wrist: applied once to the day it was

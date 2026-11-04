@@ -103,7 +103,10 @@ the watch's Nutrition screen carries the water count
 **File**: `lib/state/watch/watch_nutrition_log_bridge.dart`
 
 The phone's half of a quick-log: it turns the wrist's `nutrition_quick_log`
-events into the phone's own day log through `NutritionState.logConsumedFoodAt`.
+events into the phone's own day log through `NutritionState.logConsumedFoodAt`,
+or through `NutritionState.logConsumedFoodOnDay` when the wrist's `loggedAt` lies on an
+earlier local day than the bridge's clock (a log tapped at 23:55 and delivered after
+midnight keeps the day it was tapped).
 A quick-log is filed by the phone's rule, not the bridge's — one row per food
 per day means a redelivered message updates the row it made the first time, so
 "exactly once" needs no ledger of its own. A food the library no longer holds is
