@@ -151,20 +151,37 @@ double nativeMetricDisplayValue(
   }
 }
 
+/// Whether [metric]'s chart axis reads as a clock (`15:00`) rather than a bare
+/// number. These are the metrics whose plotted value is seconds, so the axis
+/// carries no unit text — the clock is the unit.
+bool nativeMetricIsClock(NativeMetric metric) {
+  switch (metric) {
+    case NativeMetric.pace:
+    case NativeMetric.duration:
+    case NativeMetric.hold:
+      return true;
+    case NativeMetric.estimatedOneRepMax:
+    case NativeMetric.reps:
+    case NativeMetric.rounds:
+    case NativeMetric.roundMinutes:
+      return false;
+  }
+}
+
 /// The unit a [metric]'s chart axis is read in. Empty for the metrics whose
-/// numbers are unit-free counts.
+/// numbers are unit-free counts and for the clock metrics, whose labels are
+/// times (see [nativeMetricIsClock]).
 String nativeMetricUnitLabel(NativeMetric metric, SettingsState settings) {
   switch (metric) {
     case NativeMetric.estimatedOneRepMax:
       return UnitFormatter.weightLabel(settings);
     case NativeMetric.reps:
       return 'reps';
-    case NativeMetric.pace:
-      return 's/${UnitFormatter.distanceLabel(settings)}';
     case NativeMetric.rounds:
       return 'rounds';
     case NativeMetric.roundMinutes:
       return 'min';
+    case NativeMetric.pace:
     case NativeMetric.duration:
     case NativeMetric.hold:
       return '';

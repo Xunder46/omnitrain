@@ -234,7 +234,10 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
       );
     }
 
-    final bounds = ChartAxisHelper.computeBounds(values);
+    final isClock = nativeMetricIsClock(metric);
+    final bounds = isClock
+        ? ChartAxisHelper.computeTimeBounds(values)
+        : ChartAxisHelper.computeBounds(values);
     final spots = List.generate(
       values.length,
       (i) => FlSpot(i.toDouble(), values[i]),
@@ -244,6 +247,7 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
       themeColors: themeColors,
       bounds: bounds,
       unitLabel: nativeMetricUnitLabel(metric, widget.settingsState),
+      yLabelFormatter: isClock ? ChartAxisHelper.formatClockAxisValue : null,
       pointCount: points.length,
       chartBuilder: (plotWidth) {
         return LineChart(
@@ -296,6 +300,9 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
             gridData: FlGridData(
               show: true,
               drawVerticalLine: false,
+              // Same interval as the pinned labels, so each gridline sits on
+              // a label instead of fl_chart picking its own spacing.
+              horizontalInterval: bounds.interval,
               getDrawingHorizontalLine: (_) =>
                   FlLine(color: themeColors.divider, strokeWidth: 1),
             ),

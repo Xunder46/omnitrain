@@ -145,6 +145,15 @@ yields no value contributes no point, so a series can hold fewer points than the
 exercise has training days. Sessions that were never completed contribute nothing,
 so a cancelled session is absent from both the series and the list.
 
+The trend chart's y-axis reads as a clock for the time-valued metrics — pace, a
+timed duration and a hold — with ticks like `10:00`, `15:00`, `20:00` and no unit
+text beneath them. Tick steps land on whole clock units (seconds, minutes, hours)
+rather than powers of ten, and the gridlines sit on the labels. Every other metric
+keeps a bare number with its unit once under the labels. Verified by
+`test/chart_axis_helper_test.dart` (group `ChartAxisHelper clock axis`) and
+`test/scrollable_trend_chart_test.dart` (group `ScrollableTrendChart — clock
+y-axis`).
+
 An id with no history reaches the shared empty state (`OmniEmptyState`, title
 `No history for this exercise`, hint `Log this exercise in a session to see
 its history.`) instead of throwing. The entry list
