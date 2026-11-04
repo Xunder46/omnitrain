@@ -90,9 +90,10 @@ class StatsPrimerSheet extends StatelessWidget {
               key: Key('stats_primer_block_page'),
               label: 'WHAT THIS PAGE SHOWS',
               body:
-                  'Your training mix by kind of work, the exercises you have '
-                  'trained and how they changed since last time, all-time '
-                  'totals, and your Fuel row once you log food.',
+                  'Your training mix over the last four weeks, the exercises '
+                  'you trained and how they changed against the four weeks '
+                  'before, your Fuel row once you log food, and your weight '
+                  'change once you have two weigh-ins a week apart.',
             ),
             const SizedBox(height: 16),
             // Block 2: the Signals cards.
@@ -101,10 +102,11 @@ class StatsPrimerSheet extends StatelessWidget {
               label: 'SIGNALS',
               body:
                   'Short notes about your own patterns, compared only with '
-                  'your own history. They start after about four weeks of '
-                  'rating how hard each workout felt, and a few need food '
-                  'logging or a watch. Dismiss any card and it stays hidden '
-                  'for 14 days.',
+                  'your own history. Some speak from your first sessions. '
+                  'Others need about four weeks of rating how hard each '
+                  'workout felt, a few weeks of history, food logging, or a '
+                  'watch. A line under the cards says what is still missing. '
+                  'Dismiss any card and it stays hidden for 14 days.',
             ),
             const SizedBox(height: 16),
             // Block 3: the header chart icon.
