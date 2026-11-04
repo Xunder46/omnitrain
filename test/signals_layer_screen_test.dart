@@ -20,6 +20,7 @@
 // never settles and the test hangs. S-1712 is the one exception — it restarts
 // the repository *after* a pump, inside `tester.runAsync`.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -29,6 +30,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/models/signals.dart';
 import 'package:omnitrain/core/services/signals/signal.dart';
 import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
@@ -198,6 +200,91 @@ class _StubSignal implements Signal {
     seenOnWaiting = context.startOfWeek;
     waitingCalls++;
     return waiting;
+  }
+}
+
+/// S-18203: a signal whose first evaluation blocks on a gate, so a reload can
+/// finish while the older load is still in flight. Its card names the Start of
+/// Week the evaluation saw, so a stale overwrite is visible as text.
+class _GatedSignal implements Signal {
+  @override
+  final String id = 'g-1';
+
+  @override
+  final SignalKind kind = SignalKind.positive;
+
+  @override
+  final int priority = 10;
+
+  @override
+  final bool needsRatedWeeks = false;
+
+  final Completer<void> gate = Completer<void>();
+
+  int calls = 0;
+
+  @override
+  Future<SignalCard?> evaluate(SignalContext context) async {
+    final first = calls++ == 0;
+    if (first) await gate.future;
+    return SignalCard(
+      id: id,
+      kind: kind,
+      priority: priority,
+      title: 'Gated',
+      observation: 'started on ${context.startOfWeek}',
+    );
+  }
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async => null;
+}
+
+/// S-18207: a signal whose first evaluation throws, so the first load fails;
+/// later evaluations return a card.
+class _FlakySignal implements Signal {
+  @override
+  final String id = 'f-1';
+
+  @override
+  final SignalKind kind = SignalKind.positive;
+
+  @override
+  final int priority = 10;
+
+  @override
+  final bool needsRatedWeeks = false;
+
+  int calls = 0;
+
+  @override
+  Future<SignalCard?> evaluate(SignalContext context) async {
+    if (calls++ == 0) throw StateError('the first load fails');
+    return SignalCard(
+      id: id,
+      kind: kind,
+      priority: priority,
+      title: 'Flaky',
+      observation: 'recovered on ${context.startOfWeek}',
+    );
+  }
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async => null;
+}
+
+/// S-18206: a Mock repository whose write of the dismissal store waits on a
+/// gate, so a reload can start while a dismissal is still being written.
+class _GatedDismissalRepository extends MockWorkoutRepository {
+  Completer<void>? dismissalGate;
+
+  @override
+  Future<void> setPreferenceString(String key, String value) async {
+    if (key == kSignalDismissalsKey) {
+      final gate = dismissalGate;
+      if (gate != null) await gate.future;
+    }
+    return super.setPreferenceString(key, value);
   }
 }
 
@@ -846,6 +933,252 @@ void main() {
       // tap inside a widget test's fake-async zone cannot drain, so the Hive
       // variant never completes at teardown. The assertions are store-independent.
       if (harness.name == 'Mock') {
+        // ─── S-182 ──────────────────────────────────────────────────────────
+
+        group('S-182 Stats follows Start of Week while it is open', () {
+          setUp(() => _seedGateMet(repo));
+
+          testWidgets(
+            'S-18201 flipping to Sunday re-asks the signals, with no spinner',
+            (tester) async {
+              final stub = _StubSignal(
+                id: 'w-1',
+                kind: SignalKind.caution,
+                priority: 10,
+                abstains: true,
+                waiting: 'Waiting line one',
+              );
+              await pumpStats(tester, signals: [stub]);
+
+              expect(stub.seenOnEvaluate, 'monday');
+              expect(stub.evaluations, 1);
+              expect(stub.waitingCalls, 1);
+              // The gate is met, so the first pump showed the layer, not the
+              // locked line; the same key must survive the swap.
+              expect(find.byKey(const Key('signals_layer')), findsOneWidget);
+
+              await tester.runAsync(
+                () => settingsState.setStartOfWeek('sunday'),
+              );
+              await tester.pump();
+
+              expect(find.byType(CircularProgressIndicator), findsNothing);
+              expect(find.byKey(const Key('signals_layer')), findsOneWidget);
+
+              // The silent reload was started inside `runAsync`, so it runs on
+              // the real event loop and needs the real turns `settleStore`
+              // gives (a bare `pumpAndSettle` never reaches it).
+              await settleStore(tester);
+              await tester.pumpAndSettle();
+
+              expect(stub.seenOnEvaluate, 'sunday');
+              expect(stub.seenOnWaiting, 'sunday');
+              expect(stub.evaluations, 2);
+              expect(stub.waitingCalls, 2);
+            },
+          );
+
+          testWidgets(
+            'S-18202 Weight on Stats and a repeated Start of Week do not '
+            'reload',
+            (tester) async {
+              final stub = _StubSignal(
+                id: 'w-1',
+                kind: SignalKind.caution,
+                priority: 10,
+                abstains: true,
+                waiting: 'Waiting line one',
+              );
+              await pumpStats(tester, signals: [stub]);
+
+              await tester.runAsync(
+                () => settingsState.setShowWeightTrend(false),
+              );
+              await tester.pumpAndSettle();
+              await tester.runAsync(
+                () => settingsState.setStartOfWeek('monday'),
+              );
+              await tester.pumpAndSettle();
+
+              // Real turns, so a wrongful reload would have the chance to
+              // show itself here rather than stalling unseen.
+              await settleStore(tester);
+              await tester.pumpAndSettle();
+
+              expect(stub.evaluations, 1);
+              expect(stub.waitingCalls, 1);
+            },
+          );
+
+          testWidgets(
+            'S-18203 a slow older load never overwrites a newer one',
+            (tester) async {
+              final gated = _GatedSignal();
+              // The body of pumpStats, without its settling pumpAndSettle: the
+              // first load must still be blocked inside the gate here.
+              await tester.binding.setSurfaceSize(_kTallViewport);
+              addTearDown(() => tester.binding.setSurfaceSize(null));
+              await tester.pumpWidget(
+                MaterialApp(
+                  home: StatsScreen(
+                    workoutState: workoutState,
+                    settingsState: settingsState,
+                    signals: [gated],
+                  ),
+                ),
+              );
+              await tester.pump();
+              await tester.pump();
+              expect(gated.calls, 1);
+
+              await tester.runAsync(
+                () => settingsState.setStartOfWeek('sunday'),
+              );
+              // Load 2 was started inside `runAsync`, so it needs the real
+              // turns `settleStore` gives to run to the end.
+              await settleStore(tester);
+              await tester.pump();
+              expect(gated.calls, 2);
+
+              gated.gate.complete();
+              await settleStore(tester);
+              await tester.pumpAndSettle();
+
+              expect(find.text('started on sunday'), findsOneWidget);
+              expect(find.text('started on monday'), findsNothing);
+            },
+          );
+
+          testWidgets(
+            'S-18204 a Stats screen under another route follows the flip',
+            (tester) async {
+              final stub = _StubSignal(
+                id: 'w-1',
+                kind: SignalKind.caution,
+                priority: 10,
+                abstains: true,
+                waiting: 'Waiting line one',
+              );
+              await pumpStats(tester, signals: [stub]);
+              expect(stub.seenOnEvaluate, 'monday');
+
+              final nav = tester.state<NavigatorState>(
+                find.byType(Navigator),
+              );
+              nav.push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const Scaffold(body: Text('covering')),
+                ),
+              );
+              await tester.pumpAndSettle();
+              expect(find.text('covering'), findsOneWidget);
+
+              await tester.runAsync(
+                () => settingsState.setStartOfWeek('sunday'),
+              );
+              // The reload was started inside `runAsync`; give it the real
+              // turns it needs while the Stats screen stays covered.
+              await settleStore(tester);
+              await tester.pumpAndSettle();
+
+              nav.pop();
+              await tester.pumpAndSettle();
+
+              expect(find.text('covering'), findsNothing);
+              expect(stub.seenOnEvaluate, 'sunday');
+              expect(stub.evaluations, 2);
+            },
+          );
+
+          testWidgets(
+            'S-18207 a reload that succeeds replaces the failure view',
+            (tester) async {
+              final flaky = _FlakySignal();
+              await pumpStats(tester, signals: [flaky]);
+
+              expect(find.text('Could not load your stats.'), findsOneWidget);
+              expect(flaky.calls, 1);
+
+              await tester.runAsync(
+                () => settingsState.setStartOfWeek('sunday'),
+              );
+              await settleStore(tester);
+              await tester.pumpAndSettle();
+
+              expect(flaky.calls, 2);
+              expect(find.text('Could not load your stats.'), findsNothing);
+              expect(find.text('recovered on sunday'), findsOneWidget);
+            },
+          );
+        });
+
+        group('S-18206 a card dismissed just before the flip stays dismissed',
+            () {
+          late _GatedDismissalRepository gated;
+          late WorkoutState dismissWorkout;
+          late SettingsState dismissSettings;
+
+          setUp(() async {
+            gated = _GatedDismissalRepository();
+            await gated.initialize();
+            dismissWorkout = WorkoutState(gated);
+            dismissSettings = SettingsState(gated, fakePreferencesService());
+            await dismissSettings.initialize();
+            await _seedGateMet(gated);
+          });
+
+          testWidgets('S-18206 the reload waits for the dismissal write',
+              (tester) async {
+            final positive = _StubSignal(
+              id: 'p-1',
+              kind: SignalKind.positive,
+              priority: 10,
+            );
+            // The body of pumpStats, with the gated repository's states in
+            // place of the harness ones.
+            await tester.binding.setSurfaceSize(_kTallViewport);
+            addTearDown(() => tester.binding.setSurfaceSize(null));
+            await tester.pumpWidget(
+              MediaQuery(
+                data: MediaQueryData(
+                  textScaler: TextScaler.linear(1.0),
+                ),
+                child: MaterialApp(
+                  home: StatsScreen(
+                    workoutState: dismissWorkout,
+                    settingsState: dismissSettings,
+                    signals: [positive],
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+
+            expect(_cardKeys(), ['signal_card_p-1']);
+
+            // From here the dismissal write is held open.
+            gated.dismissalGate = Completer<void>();
+            await tester.tap(find.byKey(const Key('signal_dismiss_p-1')));
+            await tester.pump();
+            expect(_cardKeys(), isEmpty);
+
+            // The flip starts a reload that must wait for the dismissal write
+            // before it reads the store (D-18203).
+            await tester.runAsync(
+              () => dismissSettings.setStartOfWeek('sunday'),
+            );
+            await settleStore(tester);
+            await tester.pump();
+
+            gated.dismissalGate!.complete();
+            await settleStore(tester);
+            await tester.pumpAndSettle();
+
+            expect(_cardKeys(), isEmpty);
+            expect(positive.evaluations, 2);
+          });
+        });
+
         group('S-17507 dismissing the only card at an unmet gate', () {
           setUp(() => _seedGateUnmet(repo));
 

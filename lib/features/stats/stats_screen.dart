@@ -86,18 +86,49 @@ class _StatsScreenState extends State<StatsScreen> {
   /// the last write wins (S-1709, D-1010).
   Future<void> _signalsWriteTail = Future<void>.value();
 
+  /// The Start of Week the newest load started with (plan 108, D-18201), or
+  /// null until the first load has started.
+  String? _startOfWeekInUse;
+
+  /// Counts loads, so a load that is no longer the newest drops its result
+  /// instead of overwriting a newer one (D-18202).
+  int _loadGeneration = 0;
+
   @override
   void initState() {
     super.initState();
+    widget.settingsState.addListener(_onSettingsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
 
-  Future<void> _loadData() async {
+  @override
+  void dispose() {
+    widget.settingsState.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
+
+  /// Reloads in the background when Start of Week moved, because the Mix
+  /// strip's week columns and the signals' week were computed with the old
+  /// one. Every other setting only repaints (D-18201).
+  void _onSettingsChanged() {
+    final inUse = _startOfWeekInUse;
+    if (inUse == null || inUse == widget.settingsState.startOfWeek) return;
+    _loadData(silent: true);
+  }
+
+  Future<void> _loadData({bool silent = false}) async {
     if (!mounted) return;
-    setState(() {
-      _loadFailed = false;
-      _isLoading = true;
-    });
+    final generation = ++_loadGeneration;
+    // One value for the whole load: the Mix layer and the signals can never
+    // be computed under different weeks (D-18202).
+    final startOfWeek = widget.settingsState.startOfWeek;
+    _startOfWeekInUse = startOfWeek;
+    if (!silent) {
+      setState(() {
+        _loadFailed = false;
+        _isLoading = true;
+      });
+    }
     try {
       // One service instance for the whole load. The service caches its
       // history snapshot per instance, so every `compute*` call below
@@ -132,7 +163,7 @@ class _StatsScreenState extends State<StatsScreen> {
       final mixLayer = await service.computeMixLayer(
         window: window,
         now: now,
-        startOfWeek: widget.settingsState.startOfWeek,
+        startOfWeek: startOfWeek,
       );
 
       // The signals share this load: the same service instance, so no second
@@ -145,6 +176,10 @@ class _StatsScreenState extends State<StatsScreen> {
       );
       final evaluateSignals = totals.completedSessions > 0;
       final gateMet = signalsGateMet(mixLayer);
+      // A dismissal tapped a moment ago is written through a chain; wait for
+      // it, or this load would read the old store and bring the card back
+      // (D-18203). The chain never throws.
+      if (evaluateSignals) await _signalsWriteTail;
       final signalsDismissedAtMs = evaluateSignals
           ? await signalsService.loadDismissals()
           : const <String, int>{};
@@ -154,7 +189,7 @@ class _StatsScreenState extends State<StatsScreen> {
               window: window,
               mix: mixLayer,
               dismissedAtMs: signalsDismissedAtMs,
-              startOfWeek: widget.settingsState.startOfWeek,
+              startOfWeek: startOfWeek,
             )
           : const <SignalCard>[];
       final signalsData = evaluateSignals
@@ -170,7 +205,7 @@ class _StatsScreenState extends State<StatsScreen> {
               now: now,
               window: window,
               mix: mixLayer,
-              startOfWeek: widget.settingsState.startOfWeek,
+              startOfWeek: startOfWeek,
             )
           : const <String>[];
 
@@ -180,7 +215,7 @@ class _StatsScreenState extends State<StatsScreen> {
             ).compute(now: now)
           : null;
 
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
 
       setState(() {
         _totalSessions = totals.completedSessions;
@@ -195,9 +230,12 @@ class _StatsScreenState extends State<StatsScreen> {
         _signalsData = signalsData;
         _signalsWaiting = signalsWaiting;
         _isLoading = false;
+        // A silent reload skips the head reset, so a success clears an earlier
+        // failure itself (plan 108, D-18207).
+        _loadFailed = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _isLoading = false;
         _loadFailed = true;

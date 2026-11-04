@@ -1389,6 +1389,60 @@ void main() {
         });
       });
 
+      // ─── S-18205 ─────────────────────────────────────────────────────────
+      //
+      // The strip follows Start of Week while Stats is open (D-18201): the
+      // screen listens to the settings state and reloads silently, so the
+      // oldest column's date moves without a spinner (D-18205: Mock only).
+
+      if (harness.name == 'Mock') {
+        group('S-18205 the strip follows Start of Week while Stats is open', () {
+          setUp(() => _seedEveryStripWeek(repo));
+
+          testWidgets('S-18205 the oldest column’s date moves when the setting '
+              'flips mid-session', (tester) async {
+            await pumpStats(tester);
+
+            expect(
+              _labelOf(tester, const Key('mix_week_0_semantics')),
+              startsWith(
+                '${OmniDateUtils.formatShort(_oldestWeekStart('monday'))}: ',
+              ),
+            );
+
+            await tester.runAsync(
+              () => settingsState.setStartOfWeek('sunday'),
+            );
+            await tester.pump();
+            // The silent reload was started inside `runAsync`, so it runs on
+            // the real event loop and needs the real turns these rounds give
+            // (a bare `pumpAndSettle` never reaches it) — same reason the
+            // signals screen tests give for their `settleStore`.
+            for (var round = 0; round < 3; round++) {
+              await tester.runAsync(
+                () => Future<void>.delayed(const Duration(milliseconds: 20)),
+              );
+              await tester.pump();
+            }
+            await tester.pumpAndSettle();
+
+            expect(
+              _labelOf(tester, const Key('mix_week_0_semantics')),
+              startsWith(
+                '${OmniDateUtils.formatShort(_oldestWeekStart('sunday'))}: ',
+              ),
+            );
+            expect(
+              OmniDateUtils.formatShort(_oldestWeekStart('sunday')),
+              isNot(OmniDateUtils.formatShort(_oldestWeekStart('monday'))),
+              reason: 'Monday and Sunday really start the strip on two days',
+            );
+            expect(tester.takeException(), isNull);
+            expect(find.byType(CircularProgressIndicator), findsNothing);
+          });
+        });
+      }
+
       // ─── S-4006, S-4007, S-4008, S-4015 ──────────────────────────────────
       //
       // An all-empty strip (D-4004): eight columns of zero are not a strip, and
