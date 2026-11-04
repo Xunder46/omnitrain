@@ -38,6 +38,7 @@ import 'package:omnitrain/features/stats/widgets/mix_layer.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
+import 'package:omnitrain/widgets/layout/omni_card_header.dart';
 
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/repository_harness.dart';
@@ -50,7 +51,7 @@ const Size _kTallViewport = Size(400, 2400);
 /// everything the layer pushes down.
 const Size _kFirstBlockViewport = Size(400, 1600);
 
-/// The five section titles the removed legacy layout rendered (D-606).
+/// The five section titles the removed legacy layout rendered (D-18705).
 const List<String> _kLegacyTitles = <String>[
   'STRENGTH',
   'CARDIO',
@@ -94,10 +95,13 @@ List<String> _legendSections() => [
     entry.replaceFirst(RegExp(r' \d+%$'), ''),
 ];
 
-/// The section each Instruments header names, in document order.
+/// The section each Instruments header names, in document order. The header
+/// renders the uppercase label (D-18704), so the match is case-insensitive and
+/// the canonical title-case label is returned.
 List<String> _listSections() => [
   for (final text in _textsUnder(find.byType(InstrumentList)))
-    if (_kSectionLabels.contains(text)) text,
+    for (final label in _kSectionLabels)
+      if (label.toLowerCase() == text.toLowerCase()) label,
 ];
 
 // ─── readers ────────────────────────────────────────────────────────────────
@@ -995,8 +999,8 @@ void main() {
             'and the legend only as its full string', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('Resistance'), findsOneWidget);
-          expect(find.text('Cardio'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
+          expect(find.text('CARDIO'), findsOneWidget);
           expect(find.text('Resistance 80%'), findsOneWidget);
           expect(find.text('Cardio 20%'), findsOneWidget);
           expect(tester.takeException(), isNull);
@@ -1964,7 +1968,41 @@ void main() {
           expect(find.byType(LineChart), findsNothing);
           expect(find.byType(ScrollableTrendChart), findsNothing);
           for (final title in _kLegacyTitles) {
-            expect(find.text(title), findsNothing, reason: title);
+            if (title == 'STRENGTH' || title == 'NUTRITION') {
+              expect(
+                find.text(title),
+                findsNothing,
+                reason: 'D-18705: `$title` must never return to the screen',
+              );
+              continue;
+            }
+            // D-18705: CARDIO, ISOMETRIC and SPORTS survive only as
+            // Instruments headings — at most once each, only as an
+            // OmniCardHeader title under Key('instrument_list').
+            final matches = find.text(title);
+            expect(
+              matches.evaluate().length,
+              lessThanOrEqualTo(1),
+              reason: 'D-18705: `$title` may appear at most once on Stats',
+            );
+            if (matches.evaluate().isEmpty) {
+              continue;
+            }
+            expect(
+              find.ancestor(of: matches, matching: find.byType(OmniCardHeader)),
+              findsOneWidget,
+              reason:
+                  'D-18705: `$title` renders only as an OmniCardHeader title',
+            );
+            expect(
+              find.ancestor(
+                of: matches,
+                matching: find.byKey(const Key('instrument_list')),
+              ),
+              findsOneWidget,
+              reason:
+                  'D-18705: `$title` descends from Key(\'instrument_list\')',
+            );
           }
 
           expect(_textsUnder(find.byKey(const Key('mix_legend'))), [
@@ -2158,15 +2196,22 @@ void main() {
           expect(_kSectionLabels.contains('Your usual'), isFalse);
 
           for (final label in _kSectionLabels) {
+            // D-18704: the list header is the uppercase label, so the bare
+            // title-case name renders nowhere on the screen.
             expect(
               find.text(label),
+              findsNothing,
+              reason: 'a bare "$label" is not on the screen',
+            );
+            expect(
+              find.text(label.toUpperCase()),
               findsOneWidget,
               reason: 'a bare "$label" is not the list header',
             );
             expect(
               find.descendant(
                 of: find.byType(InstrumentList),
-                matching: find.text(label),
+                matching: find.text(label.toUpperCase()),
               ),
               findsOneWidget,
               reason: label,
@@ -2174,7 +2219,7 @@ void main() {
             expect(
               find.descendant(
                 of: find.byKey(const Key('mix_layer')),
-                matching: find.text(label),
+                matching: find.text(label.toUpperCase()),
               ),
               findsNothing,
               reason: label,

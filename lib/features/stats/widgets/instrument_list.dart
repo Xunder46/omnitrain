@@ -92,8 +92,7 @@ class _InstrumentListState extends State<InstrumentList> {
           ? section.rows
           : section.rows.take(kInstrumentRowCap).toList();
 
-      children.add(OmniCardHeader(title: section.section.label));
-      children.add(const SizedBox(height: 8));
+      children.add(OmniCardHeader(title: section.section.label.toUpperCase()));
 
       if (i == 0) children.add(_caption(context));
 
@@ -138,6 +137,7 @@ class _InstrumentListState extends State<InstrumentList> {
     }
 
     return Column(
+      key: const Key('instrument_list'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: children,
     );

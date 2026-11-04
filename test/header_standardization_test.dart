@@ -2942,7 +2942,7 @@ void main() {
         // renders too. Every section the list does render is an
         // `OmniCardHeader(title: section.label)` (S-1208 covers the list's
         // own state).
-        for (final label in const ['TRAINING MIX', 'SIGNALS', 'Fuel']) {
+        for (final label in const ['TRAINING MIX', 'SIGNALS', 'FUEL']) {
           final titleFinder = find.descendant(
             of: find.byType(OmniCardHeader),
             matching: find.text(label),
@@ -2979,7 +2979,7 @@ void main() {
               )
               .map((text) => text.data)
               .toSet(),
-          {'TRAINING MIX', 'SIGNALS', 'Fuel'},
+          {'TRAINING MIX', 'SIGNALS', 'FUEL'},
         );
       },
     );

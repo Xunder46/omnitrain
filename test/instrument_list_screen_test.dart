@@ -556,10 +556,10 @@ void main() {
               ExerciseSection.sports,
             ],
           );
-          expect(find.text('Resistance'), findsOneWidget);
-          expect(find.text('Cardio'), findsOneWidget);
-          expect(find.text('Isometric'), findsOneWidget);
-          expect(find.text('Sports'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
+          expect(find.text('CARDIO'), findsOneWidget);
+          expect(find.text('ISOMETRIC'), findsOneWidget);
+          expect(find.text('SPORTS'), findsOneWidget);
         });
 
         testWidgets('one row per exercise, in section order, sorted by '
@@ -791,10 +791,10 @@ void main() {
           // Nothing is logged, so nothing is selectable.
           expect(sections, isEmpty);
 
-          expect(find.text('Resistance'), findsNothing);
-          expect(find.text('Cardio'), findsNothing);
-          expect(find.text('Isometric'), findsNothing);
-          expect(find.text('Sports'), findsNothing);
+          expect(find.text('RESISTANCE'), findsNothing);
+          expect(find.text('CARDIO'), findsNothing);
+          expect(find.text('ISOMETRIC'), findsNothing);
+          expect(find.text('SPORTS'), findsNothing);
           expect(
             find.byKey(const Key('instrument_show_all_resistance')),
             findsNothing,
@@ -882,22 +882,32 @@ void main() {
             'section is present', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('Resistance'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
           expect(find.byKey(const Key('stats_legacy_sections')), findsNothing);
           // The live order: the Mix layer, then the list.
           expect(
             tester.getTopLeft(find.byKey(const Key('mix_layer'))).dy,
-            lessThan(tester.getTopLeft(find.text('Resistance')).dy),
+            lessThan(tester.getTopLeft(find.text('RESISTANCE')).dy),
           );
-          // No legacy header survives anywhere on the screen.
-          for (final title in const [
-            'STRENGTH',
-            'CARDIO',
-            'ISOMETRIC',
-            'SPORTS',
-            'NUTRITION',
-          ]) {
-            expect(find.text(title), findsNothing);
+          // D-18705: STRENGTH and NUTRITION never return; CARDIO, ISOMETRIC
+          // and SPORTS survive only as Instruments headings — at most once
+          // each, only as an OmniCardHeader title under Key('instrument_list').
+          expect(find.text('STRENGTH'), findsNothing);
+          expect(find.text('NUTRITION'), findsNothing);
+          for (final title in const <String>['CARDIO', 'ISOMETRIC', 'SPORTS']) {
+            final matches = find.text(title);
+            expect(matches, findsOneWidget);
+            expect(
+              find.ancestor(of: matches, matching: find.byType(OmniCardHeader)),
+              findsOneWidget,
+            );
+            expect(
+              find.ancestor(
+                of: matches,
+                matching: find.byKey(const Key('instrument_list')),
+              ),
+              findsOneWidget,
+            );
           }
         });
       });
@@ -1291,7 +1301,7 @@ void main() {
 
           final captionTop = tester.getTopLeft(caption).dy;
           expect(
-            tester.getTopLeft(find.text('Resistance')).dy,
+            tester.getTopLeft(find.text('RESISTANCE')).dy,
             lessThan(captionTop),
           );
           expect(
@@ -1303,14 +1313,14 @@ void main() {
             ),
           );
           expect(
-            tester.getTopLeft(find.text('Cardio')).dy,
+            tester.getTopLeft(find.text('CARDIO')).dy,
             greaterThan(captionTop),
           );
 
           // One `Text`, never a repeated section title: every header still
           // renders exactly once.
           for (final section in ExerciseSection.values) {
-            expect(find.text(section.label), findsOneWidget);
+            expect(find.text(section.label.toUpperCase()), findsOneWidget);
           }
           // The headers themselves carry no caption.
           expect(

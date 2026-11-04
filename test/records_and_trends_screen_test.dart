@@ -126,8 +126,8 @@ void main() {
         );
         // S-2802: the empty state renders the shared composition.
         expect(find.byType(OmniEmptyState), findsOneWidget);
-        expect(find.text('Resistance'), findsNothing);
-        expect(find.text('Sports'), findsNothing);
+        expect(find.text('RESISTANCE'), findsNothing);
+        expect(find.text('SPORTS'), findsNothing);
         expect(find.byType(RecentPRList), findsNothing);
       });
 
@@ -247,8 +247,8 @@ void main() {
 
           // Unfiltered: one header per section that has an exercise, and one
           // entry per exercise.
-          expect(find.text('Resistance'), findsOneWidget);
-          expect(find.text('Sports'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
+          expect(find.text('SPORTS'), findsOneWidget);
           expect(entry('ex-bench'), findsOneWidget);
           expect(entry('ex-incline'), findsOneWidget);
           expect(entry('ex-squat'), findsOneWidget);
@@ -277,8 +277,8 @@ void main() {
           // section that has no match.
           await tester.enterText(field, 'bench');
           await tester.pumpAndSettle();
-          expect(find.text('Resistance'), findsOneWidget);
-          expect(find.text('Sports'), findsNothing);
+          expect(find.text('RESISTANCE'), findsOneWidget);
+          expect(find.text('SPORTS'), findsNothing);
           expect(entry('ex-bench'), findsOneWidget);
           expect(entry('ex-incline'), findsOneWidget);
           expect(entry('ex-squat'), findsNothing);
@@ -290,8 +290,8 @@ void main() {
           // A query only the round exercise matches hides the other section.
           await tester.enterText(field, 'squat');
           await tester.pumpAndSettle();
-          expect(find.text('Resistance'), findsNothing);
-          expect(find.text('Sports'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsNothing);
+          expect(find.text('SPORTS'), findsOneWidget);
           expect(entry('ex-squat'), findsOneWidget);
           expect(entry('ex-bench'), findsNothing);
           expect(entry('ex-incline'), findsNothing);
@@ -300,8 +300,8 @@ void main() {
           // still there to clear.
           await tester.enterText(field, 'zzzz');
           await tester.pumpAndSettle();
-          expect(find.text('Resistance'), findsNothing);
-          expect(find.text('Sports'), findsNothing);
+          expect(find.text('RESISTANCE'), findsNothing);
+          expect(find.text('SPORTS'), findsNothing);
           expect(entry('ex-bench'), findsNothing);
           expect(entry('ex-incline'), findsNothing);
           expect(entry('ex-squat'), findsNothing);
@@ -310,8 +310,8 @@ void main() {
           // Clearing restores the unfiltered list.
           await tester.enterText(field, '');
           await tester.pumpAndSettle();
-          expect(find.text('Resistance'), findsOneWidget);
-          expect(find.text('Sports'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
+          expect(find.text('SPORTS'), findsOneWidget);
           expect(entry('ex-bench'), findsOneWidget);
           expect(entry('ex-incline'), findsOneWidget);
           expect(entry('ex-squat'), findsOneWidget);

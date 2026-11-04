@@ -90,7 +90,7 @@ class FuelSection extends StatelessWidget {
       key: const Key('fuel_section'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const OmniCardHeader(title: 'Fuel'),
+        const OmniCardHeader(title: 'FUEL'),
         OmniSurface(
           padding: EdgeInsets.zero,
           child: Semantics(

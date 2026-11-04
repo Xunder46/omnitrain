@@ -125,6 +125,11 @@ list`) and `test/stats_instruments_horizon_screen_test.dart` (group `S-17307
 ALL TIME is on Records & Trends only` › `Stats shows no all-time block, and
 its blocks keep their order`).
 
+Every block's heading sits above its content, on the page background and never
+inside its card. Verified by `test/stats_heading_consistency_screen_test.dart`
+(group `S-18701 no Stats heading sits inside a card` › `F-A: every
+OmniCardHeader is on the background, above its block's first content`).
+
 Nothing else is rendered. The screen holds no chart section, no segmented
 control and no block beyond those five: `test/stats_legacy_removal_test.dart`
 fails if a removed section's identifier returns to the file (`S-1209`) or if a
@@ -142,8 +147,8 @@ all eight strip columns. Verified by `test/mix_layer_screen_test.dart`
 (`S-1601`, `S-1602`, `S-1609`).
 
 **The explainer.**
-One sentence under the card's title names the window, then says what the bars are:
-under the load measure it reads
+One sentence at the top of the card, under the `TRAINING MIX` header above it, names the window
+and says what the bars are: under the load measure it reads
 `Last 4 weeks. Your training split by how hard each session felt.`, and under
 the time measure it reads `Last 4 weeks. Your training split by time spent.` —
 the only place the measure is named in words, and the old `by load` / `by time`
@@ -152,7 +157,10 @@ split is`, `S-3201 the twin: the time measure reads in its own words`) and by
 `test/stats_mix_horizon_screen_test.dart` (groups `S-17301 the time-measure
 explainer opens with the window` › `the explainer names the window and the
 chip is gone` and `S-17302 the load-measure explainer opens with the window`
-› `the explainer names the window and the measure`).
+› `the explainer names the window and the measure`). The `TRAINING MIX`
+heading sits above the card, never inside it; verified by
+`test/stats_heading_consistency_screen_test.dart` (group `S-18701 no Stats
+heading sits inside a card`).
 
 **The bar.** One horizontal bar split by modality, largest share first. The
 shares are the window's own measure by modality — its measured time in the time
@@ -276,10 +284,12 @@ the window logged of that kind, with `ExerciseSection`'s declared order as the
 tiebreak; the rule lives in `computeInstrumentSections`, verified by
 `test/instrument_list_service_test.dart` (`S-1006`).
 
-The section headers are `Resistance`, `Cardio`, `Isometric` and `Sports`, and
+The section headers are `RESISTANCE`, `CARDIO`, `ISOMETRIC` and `SPORTS`, and
 the caption under the first one names the window. Verified by
 `test/instrument_list_screen_test.dart` (group `S-1011` › `the Instruments
-list is the four-week window, named in words, whatever periods exist`).
+list is the four-week window, named in words, whatever periods exist`) and by
+`test/stats_heading_consistency_screen_test.dart` (group `S-18703 every Stats
+heading is uppercase`).
 
 The list is data-driven rather than fixed. A kind of work with nothing in the
 window is absent instead of empty, and the whole list is absent when the window

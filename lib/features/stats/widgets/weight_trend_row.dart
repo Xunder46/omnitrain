@@ -29,7 +29,7 @@ class WeightTrendRow extends StatelessWidget {
       key: const Key('weight_trend'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const OmniCardHeader(title: 'Weight'),
+        const OmniCardHeader(title: 'WEIGHT'),
         OmniSurface(
           child: Text(
             weightTrendLine(

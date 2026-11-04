@@ -204,7 +204,7 @@ void main() {
           expect(
             find.descendant(
               of: find.byKey(const Key('weight_trend')),
-              matching: find.text('Weight'),
+              matching: find.text('WEIGHT'),
             ),
             findsOneWidget,
           );

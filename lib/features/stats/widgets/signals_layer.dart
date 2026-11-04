@@ -74,7 +74,6 @@ class SignalsLockedSection extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         const OmniCardHeader(title: 'SIGNALS'),
-        const SizedBox(height: 8),
         Text(
           signalsLockedLine(ratedWeeks),
           key: const Key('signals_locked_line'),

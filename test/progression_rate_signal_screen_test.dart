@@ -375,7 +375,7 @@ void main() {
           // The blocks below are undisturbed.
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
-          expect(find.text('Resistance'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
           expect(find.byKey(const Key('fuel_section')), findsOneWidget);
           expect(tester.takeException(), isNull);
         });

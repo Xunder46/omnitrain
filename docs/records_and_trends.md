@@ -74,8 +74,9 @@ otherwise leave old history unreachable. Verified by
 
 One entry per exercise that appears in at least one **completed** session; a
 session still in progress contributes nothing. Entries are grouped under one
-header per `ExerciseSection`, in the enum's declaration order (Resistance →
-Cardio → Isometric → Sports), and a section with no matching entry is omitted.
+header per `ExerciseSection`, uppercase, in the enum's declaration order (`RESISTANCE` →
+`CARDIO` → `ISOMETRIC` → `SPORTS`), and a section with no matching entry is
+omitted.
 
 An exercise's section is the effort kind it was logged under most: `set` →
 Resistance, `timed` → Cardio, `drill` → Isometric, `round` → Sports. A tie
@@ -88,7 +89,9 @@ to return rows in.
 
 Verified by `test/records_and_trends_screen_test.dart` (`S-912` for the section
 order and the entry order) and `test/exercise_metric_service_test.dart` (`S-905`
-for the section rule).
+for the section rule). The headings' case is pinned by
+`test/stats_heading_consistency_screen_test.dart` (group `S-18713 R&T headings
+are uppercase in the enum order`).
 
 ---
 

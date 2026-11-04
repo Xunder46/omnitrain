@@ -1,8 +1,10 @@
 // Stats PR 4c — the removed Stats layout is unreachable, proven twice (D-606).
 //
-// S-1208 (behavioural): in a pumped `StatsScreen` no legacy section title and
-// no `Key('stats_legacy_sections')` is findable in any of the three states —
-// all kinds of history, sessions without food, zero sessions.
+// S-1208 (behavioural, D-18705): in a pumped `StatsScreen` no legacy section
+// title and no `Key('stats_legacy_sections')` is findable in any of the three
+// states — all kinds of history, sessions without food, zero sessions.
+// STRENGTH and NUTRITION never return; CARDIO, ISOMETRIC and SPORTS survive
+// only as Instruments headings.
 // S-1209 (structural): the source text of the screen holds none of the removed
 // fragments. S-1210: no chart widget remains on the screen.
 //
@@ -27,6 +29,7 @@ import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
+import 'package:omnitrain/widgets/layout/omni_card_header.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
@@ -61,10 +64,10 @@ const List<String> _kForbiddenFragments = <String>[
 
 /// The Instruments section headers the live list draws.
 const List<String> _kInstrumentSections = <String>[
-  'Resistance',
-  'Cardio',
-  'Isometric',
-  'Sports',
+  'RESISTANCE',
+  'CARDIO',
+  'ISOMETRIC',
+  'SPORTS',
 ];
 
 /// Tall enough that the whole screen is laid out, so an assertion on a widget's
@@ -366,7 +369,7 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // S-1208 — the legacy titles are absent in every state (behavioural)
+  // S-1208 — the legacy titles are governed in every state (D-18705)
   // ══════════════════════════════════════════════════════════════════════════
 
   for (final factory in harnessFactories) {
@@ -408,10 +411,38 @@ void main() {
         expect(find.byKey(const Key('stats_legacy_sections')), findsNothing);
         expect(find.text('ALL TIME'), findsNothing);
         for (final title in _kLegacyTitles) {
+          if (title == 'STRENGTH' || title == 'NUTRITION') {
+            expect(
+              find.text(title),
+              findsNothing,
+              reason: 'D-18705: `$title` must never return to the screen',
+            );
+            continue;
+          }
+          // D-18705: CARDIO, ISOMETRIC and SPORTS survive only as Instruments
+          // headings — at most once each, only as an OmniCardHeader title
+          // under Key('instrument_list').
+          final matches = find.text(title);
           expect(
-            find.text(title),
-            findsNothing,
-            reason: 'D-606(a): `$title` must never return to the screen',
+            matches.evaluate().length,
+            lessThanOrEqualTo(1),
+            reason: 'D-18705: `$title` may appear at most once on Stats',
+          );
+          if (matches.evaluate().isEmpty) {
+            continue;
+          }
+          expect(
+            find.ancestor(of: matches, matching: find.byType(OmniCardHeader)),
+            findsOneWidget,
+            reason: 'D-18705: `$title` renders only as an OmniCardHeader title',
+          );
+          expect(
+            find.ancestor(
+              of: matches,
+              matching: find.byKey(const Key('instrument_list')),
+            ),
+            findsOneWidget,
+            reason: 'D-18705: `$title` descends from Key(\'instrument_list\')',
           );
         }
         expect(tester.takeException(), isNull);
@@ -448,7 +479,7 @@ void main() {
           expect(find.byKey(const Key('fuel_section')), findsOneWidget);
           expect(
             tester.getTopLeft(find.byKey(const Key('fuel_section'))).dy,
-            greaterThan(tester.getTopLeft(find.text('Resistance')).dy),
+            greaterThan(tester.getTopLeft(find.text('RESISTANCE')).dy),
           );
 
           expectNoLegacySurface(tester);
@@ -468,7 +499,7 @@ void main() {
 
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           expect(_instrumentRowKeys(), hasLength(2));
-          expect(find.text('Resistance'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
           expect(find.byKey(const Key('fuel_section')), findsNothing);
 
           expectNoLegacySurface(tester);

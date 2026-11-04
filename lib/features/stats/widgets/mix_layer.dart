@@ -140,84 +140,89 @@ class MixLayerSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (layer.windowIsEmpty) {
-      return OmniSurface(
+      return Column(
         key: const Key('mix_layer'),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const OmniCardHeader(title: 'TRAINING MIX'),
-            const SizedBox(height: _blockGap),
-            _buildEmptyWindow(theme),
-          ],
-        ),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const OmniCardHeader(title: 'TRAINING MIX'),
+          OmniSurface(
+            key: const Key('mix_layer_card'),
+            child: _buildEmptyWindow(theme),
+          ),
+        ],
       );
     }
     final usualSegments = _usualSegments;
     final maxWeekMeasure = _maxWeekMeasure;
 
-    return OmniSurface(
+    return Column(
       key: const Key('mix_layer'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const OmniCardHeader(title: 'TRAINING MIX'),
-          const SizedBox(height: _blockGap),
-          _buildExplainer(theme),
-          const SizedBox(height: _tightGap),
-          if (usualSegments.isNotEmpty) ...[
-            _buildWindowBarLabel(theme),
-            const SizedBox(height: _tightGap),
-          ],
-          _buildBar(),
-          if (usualSegments.isNotEmpty) ...[
-            const SizedBox(height: _tightGap),
-            Text(
-              'Your usual',
-              key: const Key('mix_usual_label'),
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: themeColors.textMuted,
-              ),
-            ),
-            const SizedBox(height: 2),
-            _buildUsualBar(usualSegments),
-          ],
-          const SizedBox(height: _blockGap),
-          _buildLegend(theme),
-          if (!_isLoad) ...[
-            const SizedBox(height: _tightGap),
-            Text(
-              layer.ratedWeeks < kTrainingLoadMinRatedWeeks
-                  ? 'Showing time for now. Effort appears once '
-                        '$kTrainingLoadMinRatedWeeks weeks are rated '
-                        '($_ratedWeeks of $kTrainingLoadMinRatedWeeks so far).'
-                  : 'Showing time for now. Effort needs most of the last '
-                        '4 weeks rated.',
-              key: const Key('mix_baseline_note'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: themeColors.textMuted,
-              ),
-            ),
-          ],
-          const SizedBox(height: _blockGap),
-          if (_stripIsEmpty)
-            _buildEmptyStrip(theme)
-          else if (layer.weeks.isNotEmpty) ...[
-            Text(
-              'Last $kMixStripWeeks weeks, week by week',
-              key: const Key('mix_strip_title'),
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: themeColors.textMuted,
-              ),
-            ),
-            const SizedBox(height: _tightGap),
-            _buildStrip(maxWeekMeasure),
-            const SizedBox(height: _tightGap),
-            _buildCaption(theme),
-          ],
-        ],
-      ),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const OmniCardHeader(title: 'TRAINING MIX'),
+        OmniSurface(
+          key: const Key('mix_layer_card'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildExplainer(theme),
+              const SizedBox(height: _tightGap),
+              if (usualSegments.isNotEmpty) ...[
+                _buildWindowBarLabel(theme),
+                const SizedBox(height: _tightGap),
+              ],
+              _buildBar(),
+              if (usualSegments.isNotEmpty) ...[
+                const SizedBox(height: _tightGap),
+                Text(
+                  'Your usual',
+                  key: const Key('mix_usual_label'),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: themeColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                _buildUsualBar(usualSegments),
+              ],
+              const SizedBox(height: _blockGap),
+              _buildLegend(theme),
+              if (!_isLoad) ...[
+                const SizedBox(height: _tightGap),
+                Text(
+                  layer.ratedWeeks < kTrainingLoadMinRatedWeeks
+                      ? 'Showing time for now. Effort appears once '
+                            '$kTrainingLoadMinRatedWeeks weeks are rated '
+                            '($_ratedWeeks of $kTrainingLoadMinRatedWeeks so far).'
+                      : 'Showing time for now. Effort needs most of the last '
+                            '4 weeks rated.',
+                  key: const Key('mix_baseline_note'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: themeColors.textMuted,
+                  ),
+                ),
+              ],
+              const SizedBox(height: _blockGap),
+              if (_stripIsEmpty)
+                _buildEmptyStrip(theme)
+              else if (layer.weeks.isNotEmpty) ...[
+                Text(
+                  'Last $kMixStripWeeks weeks, week by week',
+                  key: const Key('mix_strip_title'),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: themeColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: _tightGap),
+                _buildStrip(maxWeekMeasure),
+                const SizedBox(height: _tightGap),
+                _buildCaption(theme),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 

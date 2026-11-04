@@ -720,7 +720,7 @@ void main() {
           // The rest of the screen is unchanged and unmoved.
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
-          expect(find.text('Resistance'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
           expect(find.byKey(const Key('fuel_section')), findsOneWidget);
           expect(
             tester.getTopLeft(find.byKey(const Key('mix_layer'))).dy,

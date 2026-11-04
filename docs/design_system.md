@@ -181,13 +181,19 @@ Every section / card header in the app routes through `OmniCardHeader`. The widg
 |--------|---------|
 | **Settings** | `PREFERENCES`, `SOUNDS & ALERTS`, `WORKOUT`, `APPEARANCE` |
 | **Session Summary** | Date (with the modality chip in actions), `DISTANCE`, `SESSION NOTE` (note card), month label (with `Open Calendar` in actions) |
-| **Daily Nutrition** | `Today` (with `nutrition_target_button` labelled `OutlinedButton.icon` in actions), `Foods I Eat` (with `food_library_manage_pencil` in actions) |
-| **Records & Trends** | `ALL TIME`; `RECENT PRS` (via `RecentPRList`); the per-section list labels (`section.label`). Verified by `test/records_and_trends_screen_test.dart` (group `Records & Trends / Exercise Progress — ${harness.name}`) and `test/ui_standards_widget_test.dart` (group `Mock S-2605a RecentPRList`). |
+| **Daily Nutrition** | `TODAY` (with `nutrition_target_button` labelled `OutlinedButton.icon` in actions), `Foods I Eat` (with `food_library_manage_pencil` in actions) |
+| **Records & Trends** | `ALL TIME`; `RECENT PRS` (via `RecentPRList`); `NUTRITION`; the per-kind list labels in uppercase (`RESISTANCE`, `CARDIO`, `ISOMETRIC`, `SPORTS`). Verified by `test/stats_heading_consistency_screen_test.dart` (group `S-18713 R&T headings are uppercase in the enum order`), `test/records_and_trends_screen_test.dart` (group `Records & Trends / Exercise Progress — ${harness.name}`) and `test/ui_standards_widget_test.dart` (group `Mock S-2605a RecentPRList`). |
 | **Exercise Progress** | `ALL TIME`, `TREND`, `RECENT SESSIONS`. Verified by `test/records_and_trends_screen_test.dart` (group `Records & Trends / Exercise Progress — ${harness.name}`). |
 | **Day session list (calendar)** | `COMPLETED`, `PLANNED`, `IN PROGRESS` group labels. Verified by `test/ui_standards_widget_test.dart` (group `Mock S-2605b DaySessionListScreen headers`). |
 | **Profile** | One title-only header per measurement definition; the `+` add button lives in the card body. Verified by `test/header_standardization_test.dart` (`S-011`). |
-| **Stats** | `TRAINING MIX`; `SIGNALS`; the Instruments list's four title-case headers, `Resistance`, `Cardio`, `Isometric`, `Sports`, the Fuel row's `Fuel` and the Weight block's `Weight` (`test/weight_trend_screen_test.dart`, group `S-17705 the Weight block — Mock` › `two weigh-ins 27 days apart`). Verified by `test/mix_layer_screen_test.dart` (`S-1601`, `S-1612`), `test/stats_mix_horizon_screen_test.dart` (`S-17301`), `test/signals_layer_screen_test.dart` (`S-1701`), `test/instrument_list_screen_test.dart` (`S-1001`, `S-1011`, `S-1015`), `test/stats_instruments_horizon_screen_test.dart` (`S-17304`) and `test/fuel_row_screen_test.dart`. |
+| **Stats** | `TRAINING MIX`; `SIGNALS`; the Instruments list's four uppercase headers, `RESISTANCE`, `CARDIO`, `ISOMETRIC`, `SPORTS`, the Fuel row's `FUEL` and the Weight block's `WEIGHT` (`test/weight_trend_screen_test.dart`, group `S-17705 the Weight block — Mock` › `two weigh-ins 27 days apart`). Verified by `test/stats_heading_consistency_screen_test.dart` (group `S-18703 every Stats heading is uppercase`), `test/mix_layer_screen_test.dart` (`S-1601`, `S-1612`), `test/stats_mix_horizon_screen_test.dart` (`S-17301`), `test/signals_layer_screen_test.dart` (`S-1701`), `test/instrument_list_screen_test.dart` (`S-1001`, `S-1011`, `S-1015`), `test/stats_instruments_horizon_screen_test.dart` (`S-17304`) and `test/fuel_row_screen_test.dart`. |
 | **Exercise editor** | `MODALITY`, `CAPABILITIES`, `MUSCLES` (the last only when the modality shows muscles). Verified by `test/muscle_editor_screen_test.dart` (group `S-6 modality grid and headers` · `the section headers are OmniCardHeader, the old title gone`). |
+
+On the Stats screen, a Stats heading never sits inside its card: each block's
+`OmniCardHeader` sits on the page background, above its block's first content.
+Verified by `test/stats_heading_consistency_screen_test.dart` (group `S-18701
+no Stats heading sits inside a card` › `F-A: every OmniCardHeader is on the
+background, above its block's first content`).
 
 ### Intentional exceptions (D-10 — sheet / title chrome, not card headers)
 
@@ -686,12 +692,17 @@ above its ratchet").
 ### Label case
 
 Case is part of the `OmniCardHeader` title string, not a style the widget
-applies. Screen-level section labels are uppercase; the per-exercise-kind
-lists on Stats and the Fuel row are title case.
+applies. Screen-level section labels are uppercase.
+Every Stats and Records & Trends heading is uppercase. Title case survives in
+non-heading text only: the exercise-kind names in the Mix legend and the Mix
+bar's semantics label, the instrument and Records & Trends entry rows, and the
+search text.
 
-*Unguarded*, except `test/instrument_list_screen_test.dart` (group `S-1001` ·
-"four sections render in the order Resistance, Cardio, Isometric, Sports"),
-which pins the four title-case labels.
+*Unguarded*, except `test/stats_heading_consistency_screen_test.dart` (group
+`S-18703 every Stats heading is uppercase`), which pins every Stats heading's
+case, and (group `S-18713 R&T headings are uppercase in the enum order`), which
+pins Records & Trends' kind headings; the non-heading case rule is pinned by
+the same file (group `S-18712 non-heading text keeps its case`).
 
 ### Bottom actions
 

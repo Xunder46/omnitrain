@@ -238,7 +238,7 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
       if (entries.isEmpty) continue;
 
       children.add(const SizedBox(height: 24));
-      children.add(OmniCardHeader(title: section.label));
+      children.add(OmniCardHeader(title: section.label.toUpperCase()));
       for (final summary in entries) {
         children.add(_buildEntry(context, themeColors, summary));
       }
