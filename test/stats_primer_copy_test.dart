@@ -39,7 +39,7 @@ void main() {
         'Your training mix over the last four weeks, the exercises you '
         'trained and how they changed against the four weeks before, your '
         'Fuel row once you log food, and your weight change once you have '
-        'two weigh-ins a week apart.',
+        'two weigh-ins at least a week apart in the last four weeks.',
       );
       expect(body, isNot(contains('all-time')));
     });

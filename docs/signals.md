@@ -131,8 +131,14 @@ adds nothing and suppresses nothing`).
 ## The quiet line
 
 When the gate is met and no card qualifies, the framework reports the quiet-line
-state instead of cards: `kSignalQuietLine` is the sentence and the caller draws
-it without a card.
+state instead of cards: `kSignalQuietLine` is the sentence the caller draws
+without a card, or `kSignalQuietLineWithWaiting` (`No signals right now.`) when
+waiting lines sit under it, because "nothing outside your usual range" would
+read as "nothing here" above lines about what is still missing. Verified by
+`test/signals_layer_screen_test.dart` (`the quiet line shortens and the line
+follows it`, `S-18401 with no waiting line the quiet line keeps its full copy`)
+and `test/signals_framework_test.dart` (`S-18402 the quiet line with waiting
+lines under it is the pinned shorter sentence`).
 A gate-unmet load reports the cards of the unlocked signals but never the quiet line,
 so a caller can tell "nothing to say" from "not yet speaking". Verified by
 `test/signals_framework_test.dart` (`S-1703 gate met, nothing qualifies` ›

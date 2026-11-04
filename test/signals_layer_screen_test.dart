@@ -861,7 +861,7 @@ void main() {
         group('gate met, nothing speaking: under the quiet line', () {
           setUp(() => _seedGateMet(repo));
 
-          testWidgets('the quiet line keeps its copy and the line follows it', (
+          testWidgets('the quiet line shortens and the line follows it', (
             tester,
           ) async {
             final waits = _StubSignal(
@@ -875,13 +875,31 @@ void main() {
 
             expect(
               tester.widget<Text>(find.byKey(const Key('signals_quiet_line'))).data,
-              kSignalQuietLine,
+              kSignalQuietLineWithWaiting,
             );
+            expect(find.text('No signals right now.'), findsOneWidget);
             expect(
               top(tester, 'signals_waiting_0'),
               greaterThan(top(tester, 'signals_quiet_line')),
             );
             expect(find.byKey(const Key('signals_locked')), findsNothing);
+          });
+
+          testWidgets('S-18401 with no waiting line the quiet line keeps its '
+              'full copy', (tester) async {
+            final abstainer = _StubSignal(
+              id: 'a-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              abstains: true,
+            );
+            await pumpStats(tester, signals: [abstainer]);
+
+            expect(
+              tester.widget<Text>(find.byKey(const Key('signals_quiet_line'))).data,
+              kSignalQuietLine,
+            );
+            expect(find.byKey(const Key('signals_waiting_0')), findsNothing);
           });
         });
       });

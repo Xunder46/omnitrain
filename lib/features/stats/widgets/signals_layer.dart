@@ -156,7 +156,7 @@ class SignalsLayerSection extends StatelessWidget {
   Widget _quietLine(BuildContext context) {
     final theme = Theme.of(context);
     return Text(
-      kSignalQuietLine,
+      waiting.isNotEmpty ? kSignalQuietLineWithWaiting : kSignalQuietLine,
       key: const Key('signals_quiet_line'),
       style: theme.textTheme.bodyMedium?.copyWith(
         color: themeColors.textSecondary,

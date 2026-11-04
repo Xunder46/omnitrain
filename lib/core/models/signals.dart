@@ -26,6 +26,11 @@ const String kSignalDismissalsKey = 'signal_dismissals';
 /// The line shown when the gate is met and no card qualifies (D-1007).
 const String kSignalQuietLine = 'No signals — nothing outside your usual range.';
 
+/// The quiet line when waiting lines sit under it (plan 110, D-18401): "nothing
+/// outside your usual range" would read as "nothing here" right above lines
+/// that name what is still missing, so this one claims only the present.
+const String kSignalQuietLineWithWaiting = 'No signals right now.';
+
 /// The label a card of [kind] carries. Kind is carried by the label and the
 /// icon, never by a colour (D-1002).
 String signalKindLabel(SignalKind kind) => switch (kind) {

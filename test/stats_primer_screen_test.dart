@@ -106,6 +106,8 @@ void main() {
         findsOneWidget,
       );
 
+      await tester.ensureVisible(find.byKey(const Key('stats_primer_dismiss')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('stats_primer_dismiss')));
       await tester.pumpAndSettle();
 
@@ -132,6 +134,8 @@ void main() {
 
       expect(find.byType(StatsPrimerSheet), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const Key('stats_primer_dismiss')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('stats_primer_dismiss')));
       await tester.pumpAndSettle();
 
@@ -215,6 +219,10 @@ void main() {
           findsOneWidget,
         );
 
+        await tester.ensureVisible(
+          find.byKey(const Key('stats_primer_dismiss')),
+        );
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('stats_primer_dismiss')));
         await tester.pumpAndSettle();
 

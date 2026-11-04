@@ -86,6 +86,11 @@ void main() {
       );
     });
 
+    test('S-18402 the quiet line with waiting lines under it is the pinned '
+        'shorter sentence', () {
+      expect(kSignalQuietLineWithWaiting, 'No signals right now.');
+    });
+
     test('an empty candidate list yields no cards and the quiet line', () {
       final data = resolveSignals(
         candidates: const [],

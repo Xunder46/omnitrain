@@ -321,6 +321,7 @@ reader can find the owner; the file itself states each rule.
 | `kSignalDismissalDays` | How many local calendar days a dismissal hides its signal |
 | `kSignalDismissalsKey` | The repository preference key the dismissal store persists under |
 | `kSignalQuietLine` | The sentence a gate-met load reports when no card qualifies |
+| `kSignalQuietLineWithWaiting` | The shorter sentence the layer draws instead when waiting lines sit under the quiet line |
 | `kSignalPositiveLabel` / `kSignalCautionLabel` | The two kind labels, resolved by `signalKindLabel` |
 
 Verified by `test/signals_framework_test.dart` (the selection group, the kind

@@ -93,7 +93,8 @@ class StatsPrimerSheet extends StatelessWidget {
                   'Your training mix over the last four weeks, the exercises '
                   'you trained and how they changed against the four weeks '
                   'before, your Fuel row once you log food, and your weight '
-                  'change once you have two weigh-ins a week apart.',
+                  'change once you have two weigh-ins at least a week apart '
+                  'in the last four weeks.',
             ),
             const SizedBox(height: 16),
             // Block 2: the Signals cards.

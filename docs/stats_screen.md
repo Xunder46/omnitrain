@@ -288,13 +288,12 @@ Verified by `test/signals_layer_screen_test.dart` (`S-1704`–`S-1708`) and
 `D-1005 priority order within a kind`).
 
 **The quiet line.** When the gate is met and no card qualifies, the layer shows
-its header and `kSignalQuietLine`, then
-one line for each signal that is still waiting for data
-(see [Signals](signals.md#the-waiting-lines)). The layer is never hidden
+its header and `kSignalQuietLine` (`kSignalQuietLineWithWaiting` above waiting
+lines; see [Signals](signals.md#the-waiting-lines)). The layer is never hidden
 once the gate is met, because "nothing to say" is a state the user can see.
 Verified by `test/signals_layer_screen_test.dart` (`S-1703`, `S-1708`) and,
 for the waiting lines' place under the quiet line, group `S-17605 the waiting
-lines sit under whatever the block shows` › `the quiet line keeps its copy and
+lines sit under whatever the block shows` › `the quiet line shortens and
 the line follows it`.
 
 **The waiting lines.** Under whatever the block shows — the cards and the hint,
@@ -613,8 +612,9 @@ file (`S-1101`, `S-1103`).
 ### Weight block
 
 The body weight and its four-week change, only with a completed session and
-the `Weight on Stats` switch on. Verified by
-`test/weight_trend_screen_test.dart` (`S-17705`).
+the `Weight on Stats` switch on; the rule is in
+[Profile & Measurements](profile_and_measurements.md#the-weight-line-on-stats).
+Verified by `test/weight_trend_screen_test.dart` (`S-17705`).
 
 ---
 
