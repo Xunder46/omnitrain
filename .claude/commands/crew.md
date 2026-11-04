@@ -55,7 +55,10 @@ what the team will do, in plain language, before spending any run.
    hit is a REMOVED or MODIFIED row). Re-derive every fixture number with a throwaway script. When the seed
    changes a shared fixture or contract file, grep for every reader and list them (an unlisted reader cost a
    fix round in 23a-c); for a handler that concurrent messages can reach, name how they are dispatched and
-   seed an interleaving test.
+   seed an interleaving test. Answer the **Input-reality checklist** in `crew-rules.md` (writers and units,
+   lifecycle, settings changing while open, time edges, load cost, wording, slot competition) in the seed:
+   units 102-106 shipped without it and an independent review found a live-refresh bug, a triple read and a
+   stale Settings label afterwards.
 4. **Plan.** Brief `crew-architect` (`brief-plan.md`; paths exact; "this plan is seeded"; scout sheets
    named). Validate: seed intact (diff against `seed.md`), numbers re-derived, "the framework does X"
    claims checked in code, no phase over 8 items, each guard has a stated way to be proven, scope guard

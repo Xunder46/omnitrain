@@ -119,6 +119,25 @@ The UI/UX standards are in `docs/design_system.md`, `docs/global_conventions.md`
   list it for the owner.
 - Docs keeper: a rule you add to the standards names its enforcing test or says `unguarded`.
 
+## Input-reality checklist (crew-architect, crew-reviewer, crew-scout)
+
+A feature that reads stored values or settings is checked against how those values really arrive, not
+only against the fixtures its tests build. The governor's seed answers each line (or writes `n/a - why`);
+the architect copies the answers into the plan; the reviewer checks each against the code and the tests.
+
+1. Writers: for every stored value the feature reads, who writes it (Profile screen, Health import, watch
+   importer, seed, migration), in what unit, and from what source? Name the file and symbol of each writer.
+2. Lifecycle: what do unfinished, rolling, imported, edited and deleted records look like to this feature?
+3. Settings: which settings change the answer, and what happens when one changes while the screen is open
+   or sits in the back stack?
+4. Time: week start, midnight, a clock-change day, a record dated in the future, several records in one day.
+5. Cost: how many times does one screen load read the same data?
+6. Words: which strings and docs describe the changed behaviour? Found by grepping the old wording, not
+   from memory.
+7. Competition: when two cards or rows want the same slot, which wins, and is that tested?
+
+Each answer that matters becomes a scenario, and a scenario needs a fixture the real writer could produce.
+
 ## Architect (crew-architect)
 
 A seeded plan (the brief says so) holds the governor's Decision Ledger, core scenarios and phase outline:
