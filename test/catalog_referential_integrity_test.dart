@@ -90,7 +90,7 @@ void main() {
         ids,
         equals(MuscleTaxonomy.entries.map((entry) => entry.id).toList()),
         reason:
-            'SeedData.sampleMuscleGroups must carry exactly the 23 taxonomy '
+            'SeedData.sampleMuscleGroups must carry exactly the taxonomy '
             'ids, in taxonomy order',
       );
     });
@@ -259,6 +259,50 @@ void main() {
         'muscle-hamstrings',
         'muscle-lower-back',
       });
+
+      // S-18803: Tibialis Raise is tagged Shins only, no secondary.
+      expect(SeedData.exerciseMuscleLinks['exercise-tibialis-raise'], [
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-tibialis',
+          role: MuscleRole.primary,
+        ),
+      ]);
+      expect(SeedData.exerciseMuscleLinks, hasLength(178));
+
+      final tibialisTagged = {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (entry.value.any(
+            (link) => link.muscleGroupId == 'muscle-tibialis',
+          ))
+            entry.key,
+      };
+      expect(tibialisTagged, {'exercise-tibialis-raise'});
+
+      final mainCalves = {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (rolesIn(entry.key, MuscleRole.primary).contains('muscle-calves'))
+            entry.key,
+      };
+      expect(mainCalves, {
+        'exercise-standing-calf-raise',
+        'exercise-seated-calf-raise',
+        'exercise-calf-raise-hold',
+        'exercise-single-leg-calf-raise-hold',
+        'exercise-standing-calf-stretch',
+        'exercise-soleus-stretch',
+        'exercise-jump-rope-steady',
+        'exercise-jump-rope-intervals',
+      });
+
+      final assistingCalves = {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (rolesIn(
+            entry.key,
+            MuscleRole.secondary,
+          ).contains('muscle-calves'))
+            entry.key,
+      };
+      expect(assistingCalves, {'exercise-nordic-curl', 'exercise-wall-sit'});
     });
   });
 
@@ -287,6 +331,8 @@ void main() {
           'muscle-rear-delts',
           'muscle-abs',
           'muscle-obliques',
+          // Plan 114: Shins, added in catalog version 13.
+          'muscle-tibialis',
         ];
         await repo.setCatalogVersion(bundledCatalogVersion - 1);
 

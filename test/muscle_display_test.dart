@@ -49,10 +49,11 @@ void main() {
           'muscle-hamstrings',
           'muscle-glutes',
           'muscle-calves',
+          'muscle-tibialis',
           'muscle-adductors',
         ],
       );
-      expect(entries, hasLength(23));
+      expect(entries, hasLength(24));
 
       const topLevel = [
         'muscle-chest',
@@ -73,12 +74,51 @@ void main() {
     },
   );
 
+  test('S-18809: Shins sits between Calves and Adductors at depth 1', () {
+    final entries = muscleFilterEntries(_groups());
+
+    expect([for (final entry in entries) entry.group.id], const [
+      'muscle-chest',
+      'muscle-neck',
+      'muscle-back',
+      'muscle-lats',
+      'muscle-traps',
+      'muscle-lower-back',
+      'muscle-shoulders',
+      'muscle-front-delts',
+      'muscle-side-delts',
+      'muscle-rear-delts',
+      'muscle-arms',
+      'muscle-biceps',
+      'muscle-triceps',
+      'muscle-forearms',
+      'muscle-core',
+      'muscle-abs',
+      'muscle-obliques',
+      'muscle-legs',
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+      'muscle-calves',
+      'muscle-tibialis',
+      'muscle-adductors',
+    ]);
+    expect(entries, hasLength(24));
+
+    final tibialis = entries.firstWhere(
+      (entry) => entry.group.id == 'muscle-tibialis',
+    );
+    expect(tibialis.group.name, 'Shins');
+    expect(tibialis.group.parentId, 'muscle-legs');
+    expect(tibialis.depth, 1);
+  });
+
   test('S-1 a group missing from the list is skipped, the rest unchanged', () {
     final entries = muscleFilterEntries(_groups(exclude: {'muscle-obliques'}));
 
     final ids = [for (final entry in entries) entry.group.id];
     expect(ids, isNot(contains('muscle-obliques')));
-    expect(ids, hasLength(22));
+    expect(ids, hasLength(23));
     expect(
       ids.indexOf('muscle-abs') + 1,
       ids.indexOf('muscle-legs'),

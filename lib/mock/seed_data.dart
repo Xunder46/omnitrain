@@ -4633,7 +4633,7 @@ class SeedData {
     'exercise-prone-y-raise': _muscles(primary: ['muscle-traps', 'muscle-rear-delts']),
     'exercise-cable-external-rotation': _muscles(primary: ['muscle-rear-delts']),
     'exercise-dumbbell-pullover': _muscles(primary: ['muscle-chest'], secondary: ['muscle-lats']),
-    'exercise-tibialis-raise': _muscles(primary: ['muscle-calves']),
+    'exercise-tibialis-raise': _muscles(primary: ['muscle-tibialis']),
     'exercise-wrist-curl': _muscles(primary: ['muscle-forearms']),
     'exercise-reverse-wrist-curl': _muscles(primary: ['muscle-forearms']),
     'exercise-hammer-pronation-supination': _muscles(primary: ['muscle-forearms'], secondary: ['muscle-biceps']),

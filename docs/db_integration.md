@@ -123,7 +123,11 @@ order-insensitively. Verified by `test/catalog_refresh_test.dart`
 (`S-MH-1: refresh from v10 lands the taxonomy parents, the Traps rename and
 role-aware links, and leaves custom / copy / touched rows alone`). The
 bundled version that ships the hierarchy is `11` (`bundledCatalogVersion`,
-`lib/core/constants/catalog_version.dart`).
+`lib/core/constants/catalog_version.dart`). Catalog version `13` adds the Shins
+muscle (`muscle-tibialis`, under Legs) and moves the bundled Tibialis Raise to
+it from Calves; a Tibialis Raise the user has edited keeps its muscles.
+Verified by `test/tibialis_muscle_refresh_test.dart` (`S-18805 a v12 install
+refreshes to v13`, `S-18806 a user-edited Tibialis Raise keeps its muscles`).
 
 `SeedEntryType` enumerates the tombstone key spaces the refresh understands:
 
@@ -596,7 +600,7 @@ And the muscle hierarchy:
   link.
 
 Verified by `test/db_seed_test.dart` (`Pipeline schema documentation` ·
-`S-9 app_muscle_group carries parent_id and seeds the 23 groups the taxonomy
+`S-9 app_muscle_group carries parent_id and seeds the 24 groups the taxonomy
 defines`).
 
 Recommended SQL ordering for retrieval parity:

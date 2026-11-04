@@ -46,9 +46,12 @@
 ///   receive the new groups, parent links, roles and renames on next launch.
 ///   When `chicken_thigh_skin_on` ("Chicken thigh, with skin") was added we
 ///   bumped to `12` so existing installs receive the new food on next launch.
+///   When Shins (`muscle-tibialis`, under Legs) was added and Tibialis Raise
+///   moved to it from Calves, we bumped to `13` so existing installs receive
+///   the new muscle and the corrected tagging on next launch.
 library;
 
-const int bundledCatalogVersion = 12;
+const int bundledCatalogVersion = 13;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///

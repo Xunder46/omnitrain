@@ -572,7 +572,7 @@ so storage, unit, and widget agree.
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `bundledCatalogVersion` | `12` | Content version of the bundled catalog (exercises, capability / muscle-group / equipment links, food catalog, demo routines) |
+| `bundledCatalogVersion` | `13` | Content version of the bundled catalog (exercises, capability / muscle-group / equipment links, food catalog, demo routines) |
 
 At app start the device compares its stored version against
 `bundledCatalogVersion`; when the bundled version is newer,

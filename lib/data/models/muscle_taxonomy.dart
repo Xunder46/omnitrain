@@ -32,6 +32,7 @@ class MuscleTaxonomy {
     MuscleTaxonomyEntry('muscle-hamstrings', 'Hamstrings', 'muscle-legs'),
     MuscleTaxonomyEntry('muscle-glutes', 'Glutes', 'muscle-legs'),
     MuscleTaxonomyEntry('muscle-calves', 'Calves', 'muscle-legs'),
+    MuscleTaxonomyEntry('muscle-tibialis', 'Shins', 'muscle-legs'),
     MuscleTaxonomyEntry('muscle-adductors', 'Adductors', 'muscle-legs'),
     MuscleTaxonomyEntry('muscle-back', 'Back'),
     MuscleTaxonomyEntry('muscle-lats', 'Lats', 'muscle-back'),

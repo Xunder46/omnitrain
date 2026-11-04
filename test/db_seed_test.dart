@@ -415,7 +415,7 @@ void main() {
 
     // Plan 33, Phase A part 2 (S-9): the muscle hierarchy is part of the SQL
     // contract the schema/seed documentation defines.
-    test('S-9 app_muscle_group carries parent_id and seeds the 23 groups the '
+    test('S-9 app_muscle_group carries parent_id and seeds the 24 groups the '
         'taxonomy defines', () async {
       final db = await _openSchemaDatabase();
 
@@ -433,7 +433,7 @@ void main() {
       }
 
       final groups = await db.query('app_muscle_group');
-      expect(groups, hasLength(23));
+      expect(groups, hasLength(24));
 
       final legs = await db.query(
         'app_muscle_group',
@@ -447,6 +447,15 @@ void main() {
       );
       expect(legs.single['parent_id'], isNull, reason: 'Legs is a region');
       expect(quadriceps.single['parent_id'], equals(legs.single['id']));
+
+      // S-18808: the SQL contract carries Shins under Legs, exactly once.
+      final shins = await db.query(
+        'app_muscle_group',
+        where: 'name = ?',
+        whereArgs: ['Shins'],
+      );
+      expect(shins, hasLength(1));
+      expect(shins.single['parent_id'], equals(legs.single['id']));
 
       await db.close();
     });

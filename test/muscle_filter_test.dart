@@ -163,6 +163,127 @@ void main() {
         );
         expect(chest, contains('ex-secondary-only'));
       });
+
+      // Plan 114, S-18804 — Shins (`muscle-tibialis`) is a Legs muscle of its
+      // own: the bundled Tibialis Raise matches Shins only, an exercise
+      // carrying Calves *and* Shins matches both, a secondary-only Shins link
+      // matches nothing, and a Legs selection still reaches every leg muscle.
+      group('S-18804 Shins filtering on a fresh install', () {
+        Future<void> custom(
+          String id,
+          String name,
+          List<ExerciseMuscleLink> links,
+        ) async {
+          await repo.createExercise(
+            Exercise(
+              id: id,
+              ownerUserId: 'user-1',
+              name: name,
+              createdAtMs: _atMs,
+              updatedAtMs: _atMs,
+            ),
+          );
+          await repo.setExerciseMuscleLinks(id, links);
+        }
+
+        test('S-18804 Shins, Calves and Legs by hierarchy', () async {
+          // X: two primary leg muscles, one of them the new one.
+          await custom('ex-shin-box-hop', 'Shin Box Hop', [
+            _link('muscle-calves'),
+            _link('muscle-tibialis'),
+          ]);
+          // Y: Shins as an assist only.
+          await custom('ex-step-down', 'Step-Down', [
+            _link('muscle-quads'),
+            _link('muscle-tibialis', MuscleRole.secondary),
+          ]);
+          // Z: the region itself, primary.
+          await custom('ex-hill-walk', 'Hill Walk', [_link('muscle-legs')]);
+          // E: tagged with nothing.
+          await custom('ex-mobility-flow', 'Mobility Flow', const []);
+          // W: the user's own near-twin of the bundled row — same name,
+          // different id, still on Calves.
+          await custom('ex-custom-tibialis-raise', 'Tibialis Raise', [
+            _link('muscle-calves'),
+          ]);
+
+          final shins = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-tibialis']),
+          );
+          expect(
+            shins.toSet(),
+            equals({'exercise-tibialis-raise', 'ex-shin-box-hop'}),
+            reason: 'Shins matches a primary Shins link and nothing else',
+          );
+          expect(shins, hasLength(2), reason: 'each match appears once');
+          expect(
+            shins.where((id) => id == 'exercise-tibialis-raise'),
+            hasLength(1),
+          );
+          expect(shins.where((id) => id == 'ex-shin-box-hop'), hasLength(1));
+          expect(shins, isNot(contains('ex-step-down')));
+          expect(shins, isNot(contains('ex-hill-walk')));
+          expect(shins, isNot(contains('ex-custom-tibialis-raise')));
+          expect(shins, isNot(contains('ex-mobility-flow')));
+
+          final calves = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-calves']),
+          );
+          expect(calves, contains('ex-shin-box-hop'));
+          expect(calves, contains('ex-custom-tibialis-raise'));
+          expect(calves, contains('exercise-standing-calf-raise'));
+          expect(calves, isNot(contains('exercise-tibialis-raise')));
+          expect(calves, isNot(contains('exercise-nordic-curl')));
+          expect(calves, isNot(contains('ex-step-down')));
+
+          final legs = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-legs']),
+          );
+          for (final id in [
+            'exercise-tibialis-raise',
+            'ex-shin-box-hop',
+            'ex-step-down',
+            'ex-hill-walk',
+            'ex-custom-tibialis-raise',
+          ]) {
+            expect(legs.where((other) => other == id), hasLength(1), reason: id);
+          }
+          expect(legs, isNot(contains('ex-mobility-flow')));
+
+          final both = _ids(
+            await repo.searchExercises(
+              muscleGroupIds: ['muscle-tibialis', 'muscle-legs'],
+            ),
+          );
+          expect(
+            both.where((id) => id == 'exercise-tibialis-raise'),
+            hasLength(1),
+            reason: 'two selections of the same lift return it once',
+          );
+
+          final unfiltered = _ids(
+            await repo.getExercisesRankedForModality('resistance_lifting'),
+          );
+          final ranked = _ids(
+            await repo.getExercisesRankedForModality(
+              'resistance_lifting',
+              muscleGroupIds: ['muscle-tibialis'],
+            ),
+          );
+          expect(
+            ranked,
+            equals([
+              for (final id in unfiltered)
+                if (id == 'exercise-tibialis-raise' || id == 'ex-shin-box-hop')
+                  id,
+            ]),
+            reason: 'the ranked query keeps its order and filters the same way',
+          );
+          expect(ranked, contains('exercise-tibialis-raise'));
+          expect(ranked, contains('ex-shin-box-hop'));
+          expect(ranked, isNot(contains('ex-step-down')));
+        });
+      });
     });
   }
 }

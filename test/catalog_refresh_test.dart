@@ -274,7 +274,7 @@ void main() {
         final groups = {
           for (final g in await repo.getMuscleGroups()) g.id: g,
         };
-        expect(groups, hasLength(23));
+        expect(groups, hasLength(MuscleTaxonomy.entries.length));
         for (final entry in MuscleTaxonomy.entries) {
           expect(
             groups[entry.id],

@@ -24,8 +24,8 @@ List<String> _ids(List<ExerciseMuscleLink> links) => [
 
 void main() {
   group('S-1 taxonomy integrity', () {
-    test('23 entries: 5 regions, 16 muscles, 2 standalone', () {
-      expect(MuscleTaxonomy.entries, hasLength(23));
+    test('24 entries: 5 regions, 17 muscles, 2 standalone', () {
+      expect(MuscleTaxonomy.entries, hasLength(24));
 
       final regions = {
         for (final entry in MuscleTaxonomy.entries)
@@ -43,7 +43,7 @@ void main() {
         for (final entry in MuscleTaxonomy.entries)
           if (entry.parentId != null) entry.id,
       };
-      expect(muscles, hasLength(16));
+      expect(muscles, hasLength(17));
 
       final standalone = {
         for (final entry in MuscleTaxonomy.entries)
@@ -54,13 +54,14 @@ void main() {
     });
 
     test('musclesOf lists the muscles of a region', () {
-      expect(MuscleTaxonomy.musclesOf('muscle-legs').toSet(), {
+      expect(MuscleTaxonomy.musclesOf('muscle-legs'), const [
         'muscle-quads',
         'muscle-hamstrings',
         'muscle-glutes',
         'muscle-calves',
+        'muscle-tibialis',
         'muscle-adductors',
-      });
+      ]);
       expect(MuscleTaxonomy.musclesOf('muscle-back').toSet(), {
         'muscle-lats',
         'muscle-traps',
@@ -117,6 +118,59 @@ void main() {
       );
       expect(MuscleTaxonomy.regionOf('muscle-quads'), 'muscle-legs');
       expect(MuscleTaxonomy.regionOf('muscle-arms'), isNull);
+    });
+
+    test('S-18801: Shins sits under Legs, after Calves', () {
+      expect(MuscleTaxonomy.entries, hasLength(24));
+
+      final regions = {
+        for (final entry in MuscleTaxonomy.entries)
+          if (MuscleTaxonomy.isRegion(entry.id)) entry.id,
+      };
+      expect(regions, {
+        'muscle-arms',
+        'muscle-legs',
+        'muscle-back',
+        'muscle-shoulders',
+        'muscle-core',
+      });
+
+      final muscles = {
+        for (final entry in MuscleTaxonomy.entries)
+          if (entry.parentId != null) entry.id,
+      };
+      expect(muscles, hasLength(17));
+
+      expect(MuscleTaxonomy.musclesOf('muscle-legs'), const [
+        'muscle-quads',
+        'muscle-hamstrings',
+        'muscle-glutes',
+        'muscle-calves',
+        'muscle-tibialis',
+        'muscle-adductors',
+      ]);
+
+      expect(MuscleTaxonomy.regionOf('muscle-tibialis'), 'muscle-legs');
+      expect(MuscleTaxonomy.isRegion('muscle-tibialis'), isFalse);
+
+      final tibialis = MuscleTaxonomy.entries.firstWhere(
+        (entry) => entry.id == 'muscle-tibialis',
+      );
+      expect(tibialis.name, 'Shins');
+
+      final groups = SeedData.sampleMuscleGroups;
+      expect(
+        [for (final group in groups) group.id],
+        [for (final entry in MuscleTaxonomy.entries) entry.id],
+      );
+      expect(
+        [for (final group in groups) group.name],
+        [for (final entry in MuscleTaxonomy.entries) entry.name],
+      );
+      expect(
+        [for (final group in groups) group.parentId],
+        [for (final entry in MuscleTaxonomy.entries) entry.parentId],
+      );
     });
 
     test('sampleMuscleGroups mirrors the taxonomy, Traps included', () {
@@ -219,6 +273,82 @@ void main() {
           ]),
         ),
         ['muscle-quads', 'muscle-chest', 'muscle-glutes'],
+      );
+    });
+
+    test('S-18802: storage rules with Shins', () {
+      // (a) A region link next to its own muscle is dropped.
+      expect(
+        MuscleTaxonomy.normalize([
+          _link('muscle-legs'),
+          _link('muscle-tibialis'),
+        ]),
+        [_link('muscle-tibialis')],
+      );
+
+      // (b) Both primaries survive, in taxonomy order.
+      expect(
+        MuscleTaxonomy.normalize([
+          _link('muscle-tibialis'),
+          _link('muscle-calves'),
+        ]),
+        [_link('muscle-calves'), _link('muscle-tibialis')],
+      );
+
+      // (c) Shins sorts before Adductors.
+      expect(
+        MuscleTaxonomy.normalize([
+          _link('muscle-adductors'),
+          _link('muscle-tibialis'),
+        ]),
+        [_link('muscle-tibialis'), _link('muscle-adductors')],
+      );
+
+      // (d) A secondary without a primary throws.
+      expect(
+        () => MuscleTaxonomy.normalize([
+          _link('muscle-tibialis', MuscleRole.secondary),
+        ]),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      // (e) One id in both roles throws.
+      expect(
+        () => MuscleTaxonomy.normalize([
+          _link('muscle-tibialis'),
+          _link('muscle-tibialis', MuscleRole.secondary),
+        ]),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      // (f) Identical links are de-duplicated.
+      expect(
+        MuscleTaxonomy.normalize([
+          _link('muscle-tibialis'),
+          _link('muscle-tibialis'),
+        ]),
+        [_link('muscle-tibialis')],
+      );
+
+      // (g) Selecting Legs matches a primary Shins link.
+      expect(
+        MuscleTaxonomy.matches('muscle-legs', [_link('muscle-tibialis')]),
+        isTrue,
+      );
+
+      // (h) Calves does not match a Shins link.
+      expect(
+        MuscleTaxonomy.matches('muscle-calves', [_link('muscle-tibialis')]),
+        isFalse,
+      );
+
+      // (i) A secondary Shins link never matches Shins.
+      expect(
+        MuscleTaxonomy.matches('muscle-tibialis', [
+          _link('muscle-calves'),
+          _link('muscle-tibialis', MuscleRole.secondary),
+        ]),
+        isFalse,
       );
     });
   });
