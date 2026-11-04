@@ -1831,6 +1831,12 @@ class StatsProgressService {
     }
   }
 
+  /// The local midnight [kTopExerciseRecencyDays] calendar days before
+  /// [now]'s day. Calendar arithmetic, not a 24 h step, so the cutoff is
+  /// still a midnight when a DST change falls inside the window.
+  static DateTime topExerciseRecencyCutoff(DateTime now) =>
+      DateTime(now.year, now.month, now.day - kTopExerciseRecencyDays);
+
   /// Returns the top-[n] exercise IDs ordered by distinct training-day count
   /// (descending), with alphabetical name as a tiebreaker. Applies
   /// the recency floor ([kTopExerciseRecencyDays]) so any candidate
@@ -1854,14 +1860,10 @@ class StatsProgressService {
   }) {
     if (data.isEmpty) return const [];
 
-    final today = now ?? DateTime.now();
-    final todayMidnight = DateTime(today.year, today.month, today.day);
     // Threshold is inclusive on the trailing edge: a training day
     // exactly `kTopExerciseRecencyDays` days ago still qualifies.
     // Anything strictly older drops out.
-    final cutoff = todayMidnight.subtract(
-      Duration(days: kTopExerciseRecencyDays),
-    );
+    final cutoff = topExerciseRecencyCutoff(now ?? DateTime.now());
 
     final ranked =
         data.entries
@@ -2673,12 +2675,10 @@ class StatsProgressService {
     var cursor = earliestDay;
     var currentTarget = firstTarget;
     while (cursor.isBefore(lastDay)) {
-      cursor = cursor.add(const Duration(days: 1));
-      final ms = DateTime(
-        cursor.year,
-        cursor.month,
-        cursor.day,
-      ).millisecondsSinceEpoch;
+      // Calendar arithmetic: a 24 h step drifts off midnight after a DST
+      // change, which repeats a day and keys the step at the wrong hour.
+      cursor = DateTime(cursor.year, cursor.month, cursor.day + 1);
+      final ms = cursor.millisecondsSinceEpoch;
       final t = await _repository.getNutritionTargetForDate(ms);
       if (t == null) {
         // No target extends this far back from the cursor.
