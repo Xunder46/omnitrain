@@ -100,4 +100,48 @@ void main() {
       expect(await repo.getTemplateEfforts(extraId), isEmpty);
     });
   });
+
+  // The ids used to be built from the clock alone, so two rows made in the
+  // same millisecond shared an id and the second overwrote the first. That
+  // made S-R3 pass or fail by timing. Building many rows in a tight loop makes
+  // a repeat near-certain without the fix.
+  group('RoutineState ids never repeat inside one routine', () {
+    test('S-R4: blocks added back to back all get their own id', () async {
+      final repo = await _freshRepo();
+      final state = RoutineState(repo);
+      state.setAutosaveEnabled(false);
+
+      await state.createNewRoutine('Many Blocks');
+      for (var i = 0; i < 40; i++) {
+        await state.addSegment(segmentType: 'accessory');
+      }
+
+      final ids = state.currentSegments.map((s) => s.id).toList();
+      expect(ids, hasLength(41));
+      expect(ids.toSet(), hasLength(41));
+    });
+
+    test('S-R5: exercises and cloned blocks added back to back stay apart',
+        () async {
+      final repo = await _freshRepo();
+      final exercises = await repo.getExercises();
+      final state = RoutineState(repo);
+      state.setAutosaveEnabled(false);
+
+      await state.createNewRoutine('Clones');
+      final mainId = state.currentSegments.first.id;
+      for (var i = 0; i < 20; i++) {
+        await state.addExerciseToRoutine(exercises[0], 'set');
+      }
+      for (var i = 0; i < 10; i++) {
+        await state.cloneSegment(mainId);
+      }
+
+      final segmentIds = state.currentSegments.map((s) => s.id).toList();
+      expect(segmentIds.toSet(), hasLength(segmentIds.length));
+      final effortIds = state.currentEfforts.map((e) => e.id).toList();
+      expect(effortIds, hasLength(20 * 11));
+      expect(effortIds.toSet(), hasLength(effortIds.length));
+    });
+  });
 }
