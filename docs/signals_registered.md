@@ -615,11 +615,16 @@ The definition reads no clock, no repository and no service — `now`, the
 session starts and the week's first day are arguments. The adapter asks
 `completedSessionStarts` (`lib/core/services/signals/session_history.dart`) for
 the start of every completed session — a session still in progress is not a
-session yet — so it walks no history of its own. The signal reads no ratings
+session yet — and the call is served from
+the service's cached history snapshot, so the repository is not read again.
+The signal reads no ratings
 (`needsRatedWeeks` is false) and waits for nothing. Verified by
 `test/consistency_signal_test.dart` (group `S-17809 the signals on real
 sessions — Mock` › `a session still in progress is not a session`, `both
-signals read no ratings and wait for nothing`).
+signals read no ratings and wait for nothing`) and
+`test/stats_load_single_read_test.dart` (group `S-18102 one Stats load reads
+the session list once` › `computeTotals plus the signals evaluate on one
+getAllSessions`).
 
 `trainingGap({required sessionStarts, required now, required startOfWeek})` in
 `lib/core/models/consistency.dart` is the Training Gap signal's definition, and
@@ -711,13 +716,16 @@ proposes a positive card.
 The definition reads no clock, no repository and no service — the Instruments
 sections are the argument. The adapter asks
 `StatsProgressService.computeInstrumentSections` for the signal context's
-window and hands the sections to the rule, so it walks no history of its own.
-The signal reads no ratings (`needsRatedWeeks` is false, so it speaks before
-four rated weeks) and waits for nothing. Verified by
+window, which returns the same sections the Instruments list built, and hands
+them to the rule. The signal reads no ratings (`needsRatedWeeks` is false, so
+it speaks before four rated weeks) and waits for nothing. Verified by
 `test/hold_progress_signal_test.dart` (groups `S-17908 the Hold Progress
 signal on real sessions — Mock` and `S-17908 the Hold Progress signal on real
-sessions — Hive`) and `test/signals_service_test.dart` (group `S-17503 which
-registered signals need rated weeks`).
+sessions — Hive`), `test/signals_service_test.dart` (group `S-17503 which
+registered signals need rated weeks`) and
+`test/stats_load_single_read_test.dart` (group `S-18104 the Instruments
+sections are built once per window` › `a second ask for the same window is the
+first list; a new window rebuilds`).
 
 Cardio is not covered on purpose: a cardio row already shows its own pace or
 duration change in the Instruments list, and a lower pace is the better one —

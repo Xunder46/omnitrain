@@ -309,11 +309,27 @@ rate is the pure math's rule, not the walk's.
 
 Verified by `test/progression_samples_service_test.dart`.
 
+`completedSessionStarts({required DateTime now})` returns the start of every
+completed session at or before `now`, oldest first, served from the service's
+cached history snapshot, so it makes no repository read of its own. The
+Consistency and Training Gap adapters reach it through
+`completedSessionStarts(SignalContext)` in
+`lib/core/services/signals/session_history.dart`. Verified by
+`test/stats_load_single_read_test.dart` (groups `S-18103
+completedSessionStarts — Mock` and `S-18103 completedSessionStarts — Hive` ›
+`oldest first, no open session, no future one, the one at now in`).
+
 `computeInstrumentSections({required StatsWindow window})` returns the window's
 sections and rows, built from two `computeExerciseMetrics` calls — the window
 itself, and the immediately preceding range of the same calendar length, so a
 row's change compares like with like. It is the window's sections-and-rows read,
-and nothing it produces is persisted.
+and nothing it produces is persisted. One service instance builds a window's
+sections once:
+a second call for the same window returns the first call's sections
+and a caller needing fresh data constructs a new service. Verified by
+`test/stats_load_single_read_test.dart` (group `S-18104 the Instruments
+sections are built once per window` › `a second ask for the same window is the
+first list; a new window rebuilds`).
 
 - **Section order is by work done, not by declaration.** A section's rank is the
   number of distinct days in the window on which an effort of that kind was

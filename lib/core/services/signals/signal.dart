@@ -7,8 +7,10 @@ import '../stats_progress_service.dart';
 /// The contract every signal implements (D-1015).
 ///
 /// A signal reads the load it is handed and either proposes a card or abstains
-/// by returning null (D-1008). It reads the repository only through
-/// [SignalContext], and it never walks history a second time (D-1014).
+/// by returning null (D-1008). It reads history only through the
+/// [StatsProgressService] in its [SignalContext] — the cached snapshot and the
+/// memoised sections the screen already built — and never from the repository
+/// itself, so a load walks history once (D-1014, D-18105).
 abstract class Signal {
   /// The stable id used for the dismissal store, the widget key and the
   /// semantic label.

@@ -1534,7 +1534,7 @@ void main() {
 
       // Start of Week row is present with its subtitle.
       expect(find.text('Start of Week'), findsOneWidget);
-      expect(find.text('First day shown in the calendar'), findsOneWidget);
+      expect(find.text('Week start in the calendar and on Stats'), findsOneWidget);
 
       // Default is Monday.
       expect(settingsState.startOfWeek, 'monday');

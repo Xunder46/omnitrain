@@ -97,6 +97,14 @@ class StatsProgressService {
   /// method; caching keeps repeated passes off the repository entirely.
   final Map<String, Exercise?> _exerciseCache = <String, Exercise?>{};
 
+  /// The Instruments sections already built by this instance, per window
+  /// (plan 107, D-18103): the Stats screen builds them for the list, and the
+  /// Hold Progress signal asks for the same window, so the second ask is free.
+  /// Same freshness rule as [_historyIndex]: a caller that needs fresh data
+  /// after a write constructs a new service.
+  final Map<String, Future<List<InstrumentSectionData>>>
+  _instrumentSectionsByWindow = <String, Future<List<InstrumentSectionData>>>{};
+
   Future<_HistoryIndex> _loadHistory() async {
     final cached = _historyIndex;
     if (cached != null) return cached;
@@ -135,6 +143,25 @@ class StatsProgressService {
     final exercise = await _repository.getExerciseById(id);
     _exerciseCache[id] = exercise;
     return exercise;
+  }
+
+  /// The start of every completed session at or before [now], oldest first
+  /// (plan 107, D-18102).
+  ///
+  /// Served from the cached history snapshot, so the Consistency and Training
+  /// Gap signals cost no repository read of their own. A session still in
+  /// progress has no end and is not a session yet; one dated after [now] has
+  /// not happened yet.
+  Future<List<DateTime>> completedSessionStarts({required DateTime now}) async {
+    final nowMs = now.millisecondsSinceEpoch;
+    final startsMs = <int>[
+      for (final session in (await _loadHistory()).sessions)
+        if (session.endedAtMs != null &&
+            session.startedAtMs >= 0 &&
+            session.startedAtMs <= nowMs)
+          session.startedAtMs,
+    ]..sort();
+    return [for (final ms in startsMs) DateTime.fromMillisecondsSinceEpoch(ms)];
   }
 
   /// The cap on the lifts whose full history the PR scan walks. Not a
@@ -1195,9 +1222,23 @@ class StatsProgressService {
   /// Each row also carries the same exercise's value over the immediately
   /// preceding range of the same calendar length, when the two are comparable,
   /// plus the cadence and heart-rate figures its section reads.
+  ///
+  /// One instance builds a window's sections once: a second call for the same
+  /// window returns the first call's result.
   Future<List<InstrumentSectionData>> computeInstrumentSections({
     required StatsWindow window,
-  }) async {
+  }) {
+    final key =
+        '${window.fromMs.millisecondsSinceEpoch}|'
+        '${window.toMs.millisecondsSinceEpoch}';
+    return _instrumentSectionsByWindow[key] ??= _buildInstrumentSections(
+      window,
+    );
+  }
+
+  Future<List<InstrumentSectionData>> _buildInstrumentSections(
+    StatsWindow window,
+  ) async {
     final fromMs = window.fromMs.millisecondsSinceEpoch;
     final toMs = window.toMs.millisecondsSinceEpoch;
 

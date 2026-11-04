@@ -698,7 +698,7 @@ class _MeasurementsSection extends StatelessWidget {
         children: [
           _SettingsRow(
             label: 'Start of Week',
-            subtitle: 'First day shown in the calendar',
+            subtitle: 'Week start in the calendar and on Stats',
             trailing: _SegmentedToggle(
               groupValue: settingsState.startOfWeek,
               options: const [
