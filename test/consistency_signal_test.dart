@@ -180,5 +180,97 @@ void main() {
         expect(await const TrainingGapSignal().waitingFor(_context(repo)), isNull);
       });
     });
+
+    group('S-18305 the Training Gap signal follows Start of Week — ${harness.name}', () {
+      late WorkoutRepository repo;
+
+      setUp(() async {
+        repo = await harness.open();
+        await _clearSessions(repo);
+      });
+
+      tearDown(() async {
+        await harness.close();
+      });
+
+      final List<DateTime> sundayStart = [
+        for (var i = 0; i < 11; i++) DateTime(2026, 2, 8 + 3 * i, 12),
+      ];
+
+      test('Monday weeks: the card speaks', () async {
+        for (final start in sundayStart) {
+          await _seed(repo, start);
+        }
+
+        final card = await const TrainingGapSignal().evaluate(_context(repo));
+
+        expect(card, isNotNull);
+        expect(
+          card!.observation,
+          'No session in 8 days, longer than any gap in your last 8 weeks '
+          '(the longest was 3 days).',
+        );
+      });
+
+      test('Sunday weeks: five completed weeks of history is too little', () async {
+        for (final start in sundayStart) {
+          await _seed(repo, start);
+        }
+
+        expect(
+          await const TrainingGapSignal().evaluate(
+            _context(repo, startOfWeek: 'sunday'),
+          ),
+          isNull,
+        );
+      });
+    });
+
+    group('S-18306 a session dated after now changes neither card — ${harness.name}', () {
+      late WorkoutRepository repo;
+
+      setUp(() async {
+        repo = await harness.open();
+        await _clearSessions(repo);
+      });
+
+      tearDown(() async {
+        await harness.close();
+      });
+
+      test('the Training Gap card is the same with a session dated after now', () async {
+        for (final start in _fixtureG) {
+          await _seed(repo, start);
+        }
+        await _seed(repo, DateTime(2026, 3, 20, 12), suffix: '-future');
+
+        final card = await const TrainingGapSignal().evaluate(_context(repo));
+
+        expect(card, isNotNull);
+        expect(
+          card!.observation,
+          'No session in 6 days, longer than any gap in your last 8 weeks '
+          '(the longest was 3 days).',
+        );
+      });
+
+      test('the Consistency card is the same with sessions dated after now', () async {
+        for (final start in _fixtureA) {
+          await _seed(repo, start);
+        }
+        await _seed(repo, _d(3, 19), suffix: '-f1');
+        await _seed(repo, _d(3, 20), suffix: '-f2');
+        await _seed(repo, _d(3, 21), suffix: '-f3');
+
+        final card = await const ConsistencySignal().evaluate(_context(repo));
+
+        expect(card, isNotNull);
+        expect(
+          card!.observation,
+          'Last week you logged 4 sessions, above your usual 2.5 a week over '
+          'the last 8 weeks.',
+        );
+      });
+    });
   }
 }

@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/models/app_version_info.dart';
+import 'package:omnitrain/core/models/signals.dart';
+import 'package:omnitrain/core/services/signals/signal.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
@@ -23,6 +25,36 @@ import 'helpers/repository_harness.dart';
 
 /// Tall enough that every block is laid out.
 const Size _kTallViewport = Size(400, 2400);
+
+/// S-18307: a signal that needs no rated weeks, so it speaks while the gate is
+/// unmet (card, then the locked hint), and names something it waits for.
+class _StackSignal implements Signal {
+  @override
+  final String id = 'stack-1';
+
+  @override
+  final SignalKind kind = SignalKind.positive;
+
+  @override
+  final int priority = 10;
+
+  @override
+  final bool needsRatedWeeks = false;
+
+  @override
+  Future<SignalCard?> evaluate(SignalContext context) async => SignalCard(
+    id: id,
+    kind: kind,
+    priority: priority,
+    title: 'Stack',
+    observation: 'Last week you logged 4 sessions, above your usual 2.5 a week '
+        'over the last 8 weeks.',
+  );
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async =>
+      'Protein Consistency: log food on 9 more days of the last 14.';
+}
 
 DateTime _noon(int daysAgo) {
   final now = DateTime.now();
@@ -256,6 +288,81 @@ void main() {
         });
       });
     });
+
+    group(
+      'S-18307 the Weight block under the Signals lines at a phone width — '
+      '${harness.name}',
+      () {
+        late WorkoutRepository repo;
+        late WorkoutState workoutState;
+        late SettingsState settingsState;
+
+        setUp(() async {
+          repo = await harness.open();
+          workoutState = WorkoutState(repo);
+          settingsState = SettingsState(repo, fakePreferencesService());
+          await settingsState.initialize();
+          await _clearWeights(repo);
+          await _clearConsumedFoods(repo);
+          await _seedSession(repo);
+          await _seedWeight(repo, 'w1', 80.8, 27);
+          await _seedWeight(repo, 'w2', 80.2, 0);
+          await _seedFood(repo, 1);
+        });
+
+        tearDown(() async {
+          await harness.close();
+        });
+
+        testWidgets(
+          'S-18307 the Signals hint, the waiting lines and the Weight block '
+          'fit 390x844 at 1.3x text',
+          (tester) async {
+            await tester.binding.setSurfaceSize(const Size(390, 844));
+            addTearDown(() => tester.binding.setSurfaceSize(null));
+            await tester.pumpWidget(
+              MediaQuery(
+                data: const MediaQueryData(
+                  textScaler: TextScaler.linear(1.3),
+                ),
+                child: MaterialApp(
+                  home: StatsScreen(
+                    workoutState: workoutState,
+                    settingsState: settingsState,
+                    signals: [_StackSignal()],
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+
+            expect(tester.takeException(), isNull);
+            expect(find.byKey(const Key('signal_card_stack-1')), findsOneWidget);
+            expect(find.byKey(const Key('signals_layer')), findsOneWidget);
+            expect(
+              find.byKey(const Key('signals_locked_hint')),
+              findsOneWidget,
+            );
+            expect(find.byKey(const Key('signals_waiting_0')), findsOneWidget);
+
+            await tester.drag(find.byType(Scrollable).first, const Offset(0, -3000));
+            await tester.pumpAndSettle();
+            expect(find.byKey(const Key('weight_trend')), findsOneWidget);
+            expect(
+              tester
+                  .widget<Text>(find.byKey(const Key('weight_trend_line')))
+                  .data!,
+              '80.2 kg, −0.6 kg over 4 weeks',
+            );
+            expect(
+              tester.getBottomLeft(find.byKey(const Key('weight_trend'))).dy,
+              lessThanOrEqualTo(844),
+            );
+            expect(tester.takeException(), isNull);
+          },
+        );
+      },
+    );
   }
 
   // Mock-only: the tap writes a preference, and a Hive write started inside a

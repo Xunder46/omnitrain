@@ -59,6 +59,33 @@ ConsistencyResult? _consistency(List<DateTime> sessions, String sow) =>
 TrainingGapResult? _gap(List<DateTime> sessions, DateTime now) =>
     trainingGap(sessionStarts: sessions, now: now, startOfWeek: 'monday');
 
+DateTime _at(int month, int day, int hour, int minute) => DateTime(2026, month, day, hour, minute);
+
+TrainingGapResult? _gapOn(List<DateTime> sessions, String sow) =>
+    trainingGap(sessionStarts: sessions, now: _now, startOfWeek: sow);
+
+/// Fixture A without its last week (W1): 16 sessions in W8..W2.
+final List<DateTime> _baseM = [
+  _d(1, 20), _d(1, 21), _d(1, 22), _d(1, 23), // W8
+  _d(1, 27), _d(1, 29), // W7
+  _d(2, 3), _d(2, 5), // W6
+  _d(2, 10), _d(2, 12), // W5
+  _d(2, 17), _d(2, 19), // W4
+  _d(2, 24), _d(2, 26), // W3
+  _d(3, 3), _d(3, 5), // W2
+];
+
+/// The same weeks for the Sunday setting: 14 sessions in W8..W2.
+final List<DateTime> _baseS = [
+  _d(1, 20), _d(1, 22), // W8
+  _d(1, 27), _d(1, 29), // W7
+  _d(2, 3), _d(2, 5), // W6
+  _d(2, 10), _d(2, 12), // W5
+  _d(2, 17), _d(2, 19), // W4
+  _d(2, 24), _d(2, 26), // W3
+  _d(3, 3), _d(3, 5), // W2
+];
+
 void main() {
   test('the constants the rules are built from are the ones the plan names', () {
     expect(kConsistencyWeeks, 8);
@@ -154,6 +181,23 @@ void main() {
       ];
       expect(_consistency(sessions, 'monday'), isNull);
     });
+
+    test('exactly three sessions last week is enough when the average allows it', () {
+      // Six completed weeks, 12 sessions, three last week: 3 * 6 = 18 =
+      // 12 + 6, so the average clause passes exactly.
+      final result = _consistency([
+        _d(2, 3), _d(2, 4), // W6
+        _d(2, 10), _d(2, 11), // W5
+        _d(2, 17), _d(2, 18), // W4
+        _d(2, 24), _d(2, 25), // W3
+        _d(3, 3), // W2
+        _d(3, 10), _d(3, 11), _d(3, 13), // W1
+      ], 'monday');
+      expect(result, isNotNull);
+      expect(result!.lastWeekSessions, 3);
+      expect(result.weeks, 6);
+      expect(result.totalSessions, 12);
+    });
   });
 
   group('S-17807 the training gap', () {
@@ -214,6 +258,16 @@ void main() {
       expect(result!.days, 6);
       expect(result.longestBefore, 3);
     });
+
+    test('exactly four session days in the window is enough', () {
+      // Jan 19 is before the 56-day window, which starts Jan 21, so the
+      // window holds exactly the four days Feb 20, 23, 26 and Mar 1; Jan 19
+      // only gives the history floor.
+      final result = _gap([_d(1, 19), _d(2, 20), _d(2, 23), _d(2, 26), _d(3, 1)], _now);
+      expect(result, isNotNull);
+      expect(result!.days, 17);
+      expect(result.longestBefore, 3);
+    });
   });
 
   group('S-17808 the copy', () {
@@ -245,6 +299,184 @@ void main() {
         'Last week you logged 4 sessions, above your usual 3 a week over the '
         'last 8 weeks.',
       );
+    });
+  });
+
+  group('S-18301 a session at midnight belongs to its own Monday week', () {
+    test("midnight on the first day of the last week counts in it; midnight "
+        "on the running week's first day does not", () {
+      final result = _consistency([
+        ..._baseM,
+        _at(3, 9, 0, 0),
+        _d(3, 11),
+        _d(3, 13),
+        _at(3, 15, 23, 59),
+        _at(3, 16, 0, 0),
+      ], 'monday');
+      expect(result, isNotNull);
+      expect(result!.lastWeekSessions, 4);
+      expect(result.weeks, 8);
+      expect(result.totalSessions, 20);
+    });
+
+    test('without the midnight session the last week falls short', () {
+      expect(
+        _consistency([
+          ..._baseM,
+          _d(3, 11),
+          _d(3, 13),
+          _at(3, 15, 23, 59),
+          _at(3, 16, 0, 0),
+        ], 'monday'),
+        isNull,
+      );
+    });
+
+    test('23:59 the day before belongs to the week before', () {
+      final result = _consistency([
+        ..._baseM,
+        _at(3, 8, 23, 59),
+        _d(3, 10),
+        _d(3, 11),
+        _d(3, 13),
+        _at(3, 15, 23, 59),
+      ], 'monday');
+      expect(result, isNotNull);
+      expect(result!.lastWeekSessions, 4);
+      expect(result.totalSessions, 21);
+    });
+  });
+
+  group('S-18302 a session at midnight belongs to its own Sunday week', () {
+    test("midnight on the first day of the last week counts in it; midnight "
+        "on the running week's first day does not", () {
+      final result = _consistency([
+        ..._baseS,
+        _at(3, 8, 0, 0),
+        _d(3, 10),
+        _d(3, 12),
+        _at(3, 14, 23, 59),
+        _at(3, 15, 0, 0),
+      ], 'sunday');
+      expect(result, isNotNull);
+      expect(result!.lastWeekSessions, 4);
+      expect(result.weeks, 8);
+      expect(result.totalSessions, 18);
+    });
+
+    test('without the midnight session the last week falls short', () {
+      expect(
+        _consistency([
+          ..._baseS,
+          _d(3, 10),
+          _d(3, 12),
+          _at(3, 14, 23, 59),
+          _at(3, 15, 0, 0),
+        ], 'sunday'),
+        isNull,
+      );
+    });
+
+    test('23:59 the day before belongs to the week before', () {
+      final result = _consistency([
+        ..._baseS,
+        _at(3, 7, 23, 59),
+        _d(3, 10),
+        _d(3, 11),
+        _d(3, 12),
+        _at(3, 14, 23, 59),
+      ], 'sunday');
+      expect(result, isNotNull);
+      expect(result!.lastWeekSessions, 4);
+      expect(result.totalSessions, 19);
+    });
+
+    test('the same sessions as A read as Monday weeks give another total', () {
+      final result = _consistency([
+        ..._baseS,
+        _at(3, 8, 0, 0),
+        _d(3, 10),
+        _d(3, 12),
+        _at(3, 14, 23, 59),
+        _at(3, 15, 0, 0),
+      ], 'monday');
+      expect(result, isNotNull);
+      expect(result!.lastWeekSessions, 4);
+      expect(result.totalSessions, 19);
+    });
+  });
+
+  group('S-18303 the Training Gap history floor follows Start of Week', () {
+    // Feb 8 is a Sunday; the last is Mar 10.
+    final sundayStart = [
+      for (var i = 0; i < 11; i++) DateTime(2026, 2, 8 + 3 * i, 12),
+    ];
+
+    test('a first session on a Sunday opens a new Sunday week but ends a '
+        'Monday week', () {
+      final monday = _gapOn(sundayStart, 'monday');
+      expect(monday, isNotNull);
+      expect(monday!.days, 8);
+      expect(monday.longestBefore, 3);
+      expect(_gapOn(sundayStart, 'sunday'), isNull);
+    });
+
+    // Feb 1 is a Sunday; the last is Mar 3.
+    final earlier = [
+      for (var i = 0; i < 11; i++) DateTime(2026, 2, 1 + 3 * i, 12),
+    ];
+
+    test('enough history under either start', () {
+      for (final sow in const ['monday', 'sunday']) {
+        final result = _gapOn(earlier, sow);
+        expect(result, isNotNull);
+        expect(result!.days, 15);
+        expect(result.longestBefore, 3);
+      }
+    });
+
+    // Feb 7 is a Saturday; the last is Mar 9.
+    final saturdayStart = [
+      for (var i = 0; i < 11; i++) DateTime(2026, 2, 7 + 3 * i, 12),
+    ];
+
+    test('a first session on a Saturday counts six Sunday weeks, which a '
+        'Monday-anchored first week would count as five', () {
+      // A first week anchored on Monday while the running week starts on
+      // Sunday would count 41 days, five weeks.
+      final sunday = _gapOn(saturdayStart, 'sunday');
+      expect(sunday, isNotNull);
+      expect(sunday!.days, 9);
+      expect(sunday.longestBefore, 3);
+      final monday = _gapOn(saturdayStart, 'monday');
+      expect(monday, isNotNull);
+      expect(monday!.days, 9);
+      expect(monday.longestBefore, 3);
+    });
+  });
+
+  group('S-18304 a session dated after now changes neither rule', () {
+    test('the gap ignores sessions after now', () {
+      final without = _gapOn(_fixtureG, 'monday');
+      final withFuture = _gapOn([..._fixtureG, _d(3, 19), _d(3, 20)], 'monday');
+      expect(without, isNotNull);
+      expect(withFuture!.days, without!.days);
+      expect(withFuture.longestBefore, without.longestBefore);
+      expect(withFuture.days, 6);
+      expect(withFuture.longestBefore, 3);
+    });
+
+    test('the consistency figures ignore sessions after now', () {
+      final result = _consistency([
+        ..._fixtureA,
+        _d(3, 19),
+        _d(3, 20),
+        _d(3, 21),
+      ], 'monday');
+      expect(result, isNotNull);
+      expect(result!.lastWeekSessions, 4);
+      expect(result.weeks, 8);
+      expect(result.totalSessions, 20);
     });
   });
 }

@@ -586,7 +586,10 @@ than the user's usual, and proposes a positive card.
   on the `startOfWeek` setting (`monday` or `sunday`) — a Monday start ends the
   week on Sunday, a Sunday start on Saturday. Verified by
   `test/consistency_test.dart` (`S-17803 the running week is never counted`,
-  `S-17802 the week ends on the day the setting says`).
+  `S-17802 the week ends on the day the setting says`). A session at local
+  midnight belongs to the week that starts that day, and one at 23:59 to the week
+  before, under both settings (`S-18301 a session at midnight belongs to its own
+  Monday week`, `S-18302 a session at midnight belongs to its own Sunday week`).
 - **The history floor.** The signal needs at least
   `kConsistencyMinHistoryWeeks` completed weeks of history, counted from the
   week of the first session. Verified by `test/consistency_test.dart`
@@ -651,8 +654,17 @@ and proposes a caution card.
   one day, and none is a gap`).
 - **The history floor.** The same `kConsistencyMinHistoryWeeks` completed weeks
   of history, counted from the week of the first session on the
-  `startOfWeek` setting. Verified by `test/consistency_test.dart` (`S-17807 the
-  training gap` › `five completed weeks of history is too little`).
+  `startOfWeek` setting, so the same sessions can pass under one start and fall
+  short under the other. Verified by `test/consistency_test.dart` (`S-17807 the
+  training gap` › `five completed weeks of history is too little`; group
+  `S-18303 the Training Gap history floor follows Start of Week`) and
+  `test/consistency_signal_test.dart` (group `S-18305 the Training Gap signal
+  follows Start of Week`).
+- **Sessions after today.** A completed session dated after today changes
+  neither card. Verified by `test/consistency_test.dart` (group `S-18304 a
+  session dated after now changes neither rule`) and
+  `test/consistency_signal_test.dart` (group `S-18306 a session dated after now
+  changes neither card`).
 - **Kind and priority.** The kind is caution; the priority is
   `kTrainingGapPriority`, the lowest caution. Verified by
   `test/consistency_test.dart` (`the constants the rules are built from are the
