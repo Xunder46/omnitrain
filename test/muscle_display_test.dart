@@ -37,10 +37,12 @@ void main() {
           'muscle-front-delts',
           'muscle-side-delts',
           'muscle-rear-delts',
+          'muscle-rotator-cuff',
           'muscle-arms',
           'muscle-biceps',
           'muscle-triceps',
           'muscle-forearms',
+          'muscle-brachialis',
           'muscle-core',
           'muscle-abs',
           'muscle-obliques',
@@ -51,9 +53,10 @@ void main() {
           'muscle-calves',
           'muscle-tibialis',
           'muscle-adductors',
+          'muscle-abductors',
         ],
       );
-      expect(entries, hasLength(24));
+      expect(entries, hasLength(27));
 
       const topLevel = [
         'muscle-chest',
@@ -88,10 +91,12 @@ void main() {
       'muscle-front-delts',
       'muscle-side-delts',
       'muscle-rear-delts',
+      'muscle-rotator-cuff',
       'muscle-arms',
       'muscle-biceps',
       'muscle-triceps',
       'muscle-forearms',
+      'muscle-brachialis',
       'muscle-core',
       'muscle-abs',
       'muscle-obliques',
@@ -102,8 +107,9 @@ void main() {
       'muscle-calves',
       'muscle-tibialis',
       'muscle-adductors',
+      'muscle-abductors',
     ]);
-    expect(entries, hasLength(24));
+    expect(entries, hasLength(27));
 
     final tibialis = entries.firstWhere(
       (entry) => entry.group.id == 'muscle-tibialis',
@@ -118,7 +124,7 @@ void main() {
 
     final ids = [for (final entry in entries) entry.group.id];
     expect(ids, isNot(contains('muscle-obliques')));
-    expect(ids, hasLength(23));
+    expect(ids, hasLength(26));
     expect(
       ids.indexOf('muscle-abs') + 1,
       ids.indexOf('muscle-legs'),
@@ -201,5 +207,55 @@ void main() {
       'muscle-core',
       'muscle-legs',
     ]);
+  });
+
+  test('S-18903: Brachialis, Rotator cuff and Abductors sit in the dropdown '
+      'where the taxonomy puts them', () {
+    final entries = muscleFilterEntries(_groups());
+
+    expect([for (final entry in entries) entry.group.id], const [
+      'muscle-chest',
+      'muscle-neck',
+      'muscle-back',
+      'muscle-lats',
+      'muscle-traps',
+      'muscle-lower-back',
+      'muscle-shoulders',
+      'muscle-front-delts',
+      'muscle-side-delts',
+      'muscle-rear-delts',
+      'muscle-rotator-cuff',
+      'muscle-arms',
+      'muscle-biceps',
+      'muscle-triceps',
+      'muscle-forearms',
+      'muscle-brachialis',
+      'muscle-core',
+      'muscle-abs',
+      'muscle-obliques',
+      'muscle-legs',
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+      'muscle-calves',
+      'muscle-tibialis',
+      'muscle-adductors',
+      'muscle-abductors',
+    ]);
+    expect(entries, hasLength(27));
+
+    for (final id in const [
+      'muscle-brachialis',
+      'muscle-rotator-cuff',
+      'muscle-abductors',
+    ]) {
+      final entry = entries.firstWhere((entry) => entry.group.id == id);
+      expect(entry.depth, 1, reason: '$id is a muscle, indented once');
+    }
+
+    final withoutObliques = muscleFilterEntries(
+      _groups(exclude: {'muscle-obliques'}),
+    );
+    expect(withoutObliques, hasLength(26));
   });
 }

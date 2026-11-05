@@ -199,16 +199,16 @@ muscle, and `null` for a region and for a standalone entry.
 The hierarchy has exactly two levels and one code source, `MuscleTaxonomy`
 (`lib/data/models/muscle_taxonomy.dart`); `SeedData.sampleMuscleGroups` is
 built from it and never hand-edited. Verified by `test/muscle_taxonomy_test.dart`
-(`S-1 taxonomy integrity` · `24 entries: 5 regions, 17 muscles, 2 standalone`,
+(`S-1 taxonomy integrity` · `27 entries: 5 regions, 20 muscles, 2 standalone`,
 `no entry hangs off a muscle: the hierarchy has two levels`,
 `sampleMuscleGroups mirrors the taxonomy, Traps included`).
 
 | Region (id) | Muscles (ids) |
 |---|---|
-| Arms (`muscle-arms`) | Biceps (`muscle-biceps`), Triceps (`muscle-triceps`), Forearms (`muscle-forearms`) |
-| Legs (`muscle-legs`) | Quadriceps (`muscle-quads`), Hamstrings (`muscle-hamstrings`), Glutes (`muscle-glutes`), Calves (`muscle-calves`), Shins (`muscle-tibialis`), Adductors (`muscle-adductors`) |
+| Arms (`muscle-arms`) | Biceps (`muscle-biceps`), Triceps (`muscle-triceps`), Forearms (`muscle-forearms`), Brachialis (`muscle-brachialis`) |
+| Legs (`muscle-legs`) | Quadriceps (`muscle-quads`), Hamstrings (`muscle-hamstrings`), Glutes (`muscle-glutes`), Calves (`muscle-calves`), Shins (`muscle-tibialis`), Adductors (`muscle-adductors`), Abductors (`muscle-abductors`) |
 | Back (`muscle-back`) | Lats (`muscle-lats`), Traps (`muscle-traps`), Lower back (`muscle-lower-back`) |
-| Shoulders (`muscle-shoulders`) | Front delts (`muscle-front-delts`), Side delts (`muscle-side-delts`), Rear delts (`muscle-rear-delts`) |
+| Shoulders (`muscle-shoulders`) | Front delts (`muscle-front-delts`), Side delts (`muscle-side-delts`), Rear delts (`muscle-rear-delts`), Rotator cuff (`muscle-rotator-cuff`) |
 | Core (`muscle-core`) | Abs (`muscle-abs`), Obliques (`muscle-obliques`) |
 
 Chest (`muscle-chest`) and Neck (`muscle-neck`) are standalone: no parent and

@@ -1,7 +1,7 @@
 /// Catalog content version constants.
 ///
-/// The bundled app-authored catalog (exercises, capability / muscle-group /
-/// equipment relationships, and the food catalog) is versioned with an integer
+/// The bundled app-authored catalog (exercises, capability and muscle-group
+/// relationships, and the food catalog) is versioned with an integer
 /// that advances every time the bundled catalog changes. At app start, the
 /// device compares its stored version against [bundledCatalogVersion]; when
 /// the bundled version is newer, [CatalogRefreshService] walks the bundled
@@ -49,9 +49,13 @@
 ///   When Shins (`muscle-tibialis`, under Legs) was added and Tibialis Raise
 ///   moved to it from Calves, we bumped to `13` so existing installs receive
 ///   the new muscle and the corrected tagging on next launch.
+///   When Brachialis, Rotator cuff and Abductors were added, Cable Hip
+///   Abduction, Cable External Rotation and Hammer Curl were re-tagged and 28
+///   strength exercises were added, we bumped to `14` so existing installs
+///   receive them on next launch.
 library;
 
-const int bundledCatalogVersion = 13;
+const int bundledCatalogVersion = 14;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///

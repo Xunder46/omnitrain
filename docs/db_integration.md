@@ -105,9 +105,11 @@ Ordering persistence behavior:
 
 ### Catalog version + seed-entry tombstones (July 2026)
 
-The bundled app-authored catalog (exercises + capability / muscle-group /
-equipment relationships + the food catalog + seeded demo workout
-templates) is versioned. At app start, `CatalogRefreshService`
+The bundled app-authored catalog (exercises + capability / muscle-group
+relationships + the food catalog + seeded demo workout templates) is
+versioned. Equipment links, disciplines and categories are written at first
+install only; the refresh does not deliver them (pinned for equipment by
+`test/strength_catalog_refresh_test.dart`, `S-18906`). At app start, `CatalogRefreshService`
 (`lib/core/services/catalog_refresh_service.dart`) compares the device's
 stored catalog version against the bundled constant
 (`bundledCatalogVersion` in `lib/core/constants/catalog_version.dart`); if
@@ -128,6 +130,12 @@ muscle (`muscle-tibialis`, under Legs) and moves the bundled Tibialis Raise to
 it from Calves; a Tibialis Raise the user has edited keeps its muscles.
 Verified by `test/tibialis_muscle_refresh_test.dart` (`S-18805 a v12 install
 refreshes to v13`, `S-18806 a user-edited Tibialis Raise keeps its muscles`).
+Catalog version `14` adds the Brachialis, Rotator cuff and Abductors muscles,
+re-tags Cable Hip Abduction, Cable External Rotation and Hammer Curl, and adds
+28 strength exercises; exercises the user edited or copied, and the user's own
+exercises (including one with the same name as a new bundled one), are never
+rewritten. Verified by `test/strength_catalog_refresh_test.dart` (`S-18906 a v13
+install refreshes to v14`, `S-18907 a user-edited row keeps its muscles`).
 
 `SeedEntryType` enumerates the tombstone key spaces the refresh understands:
 
@@ -600,7 +608,7 @@ And the muscle hierarchy:
   link.
 
 Verified by `test/db_seed_test.dart` (`Pipeline schema documentation` ·
-`S-9 app_muscle_group carries parent_id and seeds the 24 groups the taxonomy
+`S-9 app_muscle_group carries parent_id and seeds the 27 groups the taxonomy
 defines`).
 
 Recommended SQL ordering for retrieval parity:

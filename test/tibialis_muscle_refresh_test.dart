@@ -142,7 +142,7 @@ void main() {
         final refreshed = await CatalogRefreshService(repo, _source).refresh();
         expect(refreshed, isTrue, reason: 'a v12 device is behind v13');
 
-        expect(await repo.getCatalogVersion(), equals(13));
+        expect(await repo.getCatalogVersion(), equals(bundledCatalogVersion));
 
         final groups = {
           for (final group in await repo.getMuscleGroups()) group.id: group,
@@ -222,7 +222,7 @@ void main() {
           isFalse,
           reason: 'the device is at the bundled version now',
         );
-        expect(await repo.getCatalogVersion(), equals(13));
+        expect(await repo.getCatalogVersion(), equals(bundledCatalogVersion));
         for (final entry in linksAfterFirst.entries) {
           expect(
             await repo.getExerciseMuscleLinks(entry.key),
@@ -280,7 +280,7 @@ void main() {
         );
         expect(shins, isNot(contains('exercise-tibialis-raise')));
 
-        expect(await repo.getCatalogVersion(), equals(13));
+        expect(await repo.getCatalogVersion(), equals(bundledCatalogVersion));
       });
     });
 

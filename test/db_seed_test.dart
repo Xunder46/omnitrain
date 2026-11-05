@@ -415,7 +415,7 @@ void main() {
 
     // Plan 33, Phase A part 2 (S-9): the muscle hierarchy is part of the SQL
     // contract the schema/seed documentation defines.
-    test('S-9 app_muscle_group carries parent_id and seeds the 24 groups the '
+    test('S-9 app_muscle_group carries parent_id and seeds the 27 groups the '
         'taxonomy defines', () async {
       final db = await _openSchemaDatabase();
 
@@ -433,7 +433,7 @@ void main() {
       }
 
       final groups = await db.query('app_muscle_group');
-      expect(groups, hasLength(24));
+      expect(groups, hasLength(27));
 
       final legs = await db.query(
         'app_muscle_group',
@@ -456,6 +456,31 @@ void main() {
       );
       expect(shins, hasLength(1));
       expect(shins.single['parent_id'], equals(legs.single['id']));
+
+      // S-18910: the SQL contract carries the three muscles under their
+      // regions, exactly once each.
+      for (final entry in const {
+        'Brachialis': 'Arms',
+        'Rotator cuff': 'Shoulders',
+        'Abductors': 'Legs',
+      }.entries) {
+        final muscle = await db.query(
+          'app_muscle_group',
+          where: 'name = ?',
+          whereArgs: [entry.key],
+        );
+        final region = await db.query(
+          'app_muscle_group',
+          where: 'name = ?',
+          whereArgs: [entry.value],
+        );
+        expect(muscle, hasLength(1), reason: '${entry.key} is seeded once');
+        expect(
+          muscle.single['parent_id'],
+          equals(region.single['id']),
+          reason: '${entry.key} hangs off ${entry.value}',
+        );
+      }
 
       await db.close();
     });

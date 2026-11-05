@@ -284,6 +284,224 @@ void main() {
           expect(ranked, isNot(contains('ex-step-down')));
         });
       });
+
+      // Plan 115a, S-18905 — Brachialis, Rotator cuff and Abductors are
+      // muscles of their own: the re-tagged bundled rows sit on the new
+      // muscle only as a main link, a user's near-twin keeps its own tags,
+      // and a secondary-only link to a new muscle matches nothing.
+      group('S-18905 Brachialis, Rotator cuff and Abductors', () {
+        Future<void> custom(
+          String id,
+          String name,
+          List<ExerciseMuscleLink> links,
+        ) async {
+          await repo.createExercise(
+            Exercise(
+              id: id,
+              ownerUserId: 'user-1',
+              name: name,
+              createdAtMs: _atMs,
+              updatedAtMs: _atMs,
+            ),
+          );
+          await repo.setExerciseMuscleLinks(id, links);
+        }
+
+        test('S-18905 the new muscles, their regions and the re-tags', () async {
+          // G: the user tagged it Glutes before the change, and it stays.
+          await custom('ex-glute-side-raise', 'Glute Side Raise', [
+            _link('muscle-glutes'),
+          ]);
+          // B: both the old muscle and the new one, primary.
+          await custom('ex-band-abduction', 'Band Abduction', [
+            _link('muscle-abductors'),
+            _link('muscle-glutes'),
+          ]);
+          // H: the user's own near-twin of the bundled Hammer Curl — same
+          // name, its own id, still on Biceps alone.
+          await custom('ex-custom-hammer-curl', 'Hammer Curl', [
+            _link('muscle-biceps'),
+          ]);
+          // R: the new muscle as an assist only.
+          await custom('ex-shoulder-prehab', 'Shoulder Prehab', [
+            _link('muscle-rear-delts'),
+            _link('muscle-rotator-cuff', MuscleRole.secondary),
+          ]);
+          // E: tagged with nothing.
+          await custom('ex-empty-move', 'Empty Move', const []);
+
+          const abductionRows = [
+            'exercise-cable-hip-abduction',
+            'exercise-machine-hip-abduction',
+            'exercise-banded-clamshell',
+            'exercise-banded-lateral-walk',
+          ];
+          const cuffRows = [
+            'exercise-cable-external-rotation',
+            'exercise-side-lying-external-rotation',
+            'exercise-cable-internal-rotation',
+          ];
+          const brachialisRows = [
+            'exercise-hammer-curl',
+            'exercise-reverse-curl',
+            'exercise-zottman-curl',
+            'exercise-cross-body-hammer-curl',
+          ];
+
+          final abduction = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-abductors']),
+          );
+          expect(
+            abduction.toSet(),
+            equals({...abductionRows, 'ex-band-abduction'}),
+            reason: 'Abductors matches the four bundled rows and the custom',
+          );
+          expect(abduction, hasLength(5), reason: 'each match appears once');
+
+          final glutes = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-glutes']),
+          );
+          expect(glutes, contains('ex-glute-side-raise'));
+          expect(glutes, contains('ex-band-abduction'));
+          expect(glutes, contains('exercise-barbell-hip-thrust'));
+          expect(
+            glutes,
+            isNot(contains('exercise-cable-hip-abduction')),
+            reason: 'Glutes is only an assist on the re-tagged row',
+          );
+          expect(
+            glutes,
+            isNot(contains('exercise-machine-hip-abduction')),
+            reason: 'Glutes is only an assist on the new machine row',
+          );
+
+          final legs = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-legs']),
+          );
+          for (final id in [
+            ...abductionRows,
+            'ex-glute-side-raise',
+            'ex-band-abduction',
+          ]) {
+            expect(legs.where((other) => other == id), hasLength(1), reason: id);
+          }
+          expect(legs, isNot(contains('ex-empty-move')));
+
+          final rotatorCuff = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-rotator-cuff']),
+          );
+          expect(
+            rotatorCuff.toSet(),
+            equals(cuffRows.toSet()),
+            reason: 'only a main Rotator cuff link matches',
+          );
+          expect(rotatorCuff, hasLength(3));
+          expect(rotatorCuff, isNot(contains('ex-shoulder-prehab')));
+          expect(
+            rotatorCuff,
+            isNot(contains('exercise-band-pull-apart')),
+            reason: 'the band pull-apart links Rotator cuff as an assist only',
+          );
+
+          final rearDelts = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-rear-delts']),
+          );
+          for (final id in [
+            'ex-shoulder-prehab',
+            'exercise-band-pull-apart',
+            'exercise-cable-rear-delt-fly',
+            'exercise-reverse-pec-deck',
+            'exercise-rear-delt-fly',
+          ]) {
+            expect(rearDelts, contains(id), reason: id);
+          }
+          expect(rearDelts, isNot(contains('exercise-cable-external-rotation')));
+
+          final shoulders = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-shoulders']),
+          );
+          expect(
+            shoulders.where((id) => id == 'exercise-cable-external-rotation'),
+            hasLength(1),
+            reason: 'the region reaches the row through Rotator cuff',
+          );
+          expect(
+            shoulders.where((id) => id == 'ex-shoulder-prehab'),
+            hasLength(1),
+            reason: 'the region reaches the custom through Rear delts',
+          );
+
+          final brachialis = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-brachialis']),
+          );
+          expect(brachialis.toSet(), equals(brachialisRows.toSet()));
+          expect(brachialis, hasLength(4));
+          expect(
+            brachialis,
+            isNot(contains('ex-custom-hammer-curl')),
+            reason: 'the custom twin is tagged Biceps only',
+          );
+
+          final biceps = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-biceps']),
+          );
+          expect(biceps, contains('exercise-hammer-curl'));
+          expect(biceps, contains('ex-custom-hammer-curl'));
+          expect(biceps, contains('exercise-incline-dumbbell-curl'));
+          expect(
+            biceps,
+            isNot(contains('exercise-reverse-curl')),
+            reason: 'Biceps is only an assist on the reverse curl',
+          );
+
+          final armsAndBrachialis = _ids(
+            await repo.searchExercises(
+              muscleGroupIds: ['muscle-arms', 'muscle-brachialis'],
+            ),
+          );
+          expect(
+            armsAndBrachialis.where((id) => id == 'exercise-hammer-curl'),
+            hasLength(1),
+            reason: 'two selections that both match return the lift once',
+          );
+
+          final unfiltered = _ids(
+            await repo.getExercisesRankedForModality('resistance_lifting'),
+          );
+          final ranked = _ids(
+            await repo.getExercisesRankedForModality(
+              'resistance_lifting',
+              muscleGroupIds: ['muscle-abductors'],
+            ),
+          );
+          final abductorSet = abduction.toSet();
+          expect(
+            ranked,
+            equals([
+              for (final id in unfiltered)
+                if (abductorSet.contains(id)) id,
+            ]),
+            reason: 'the ranked query keeps its order and filters the same way',
+          );
+          expect(ranked, hasLength(5));
+
+          final legExtensionEquipment = await repo.getExerciseEquipment(
+            'exercise-leg-extension',
+          );
+          expect(
+            [for (final equipment in legExtensionEquipment) equipment.name],
+            equals(['Machine']),
+          );
+
+          final bandEquipment = await repo.getExerciseEquipment(
+            'exercise-band-pull-apart',
+          );
+          expect(
+            [for (final equipment in bandEquipment) equipment.name],
+            equals(['Resistance Band']),
+          );
+        });
+      });
     });
   }
 }

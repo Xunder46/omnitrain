@@ -21,9 +21,9 @@ import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
-const Size _pickerSurface = Size(800, 1400);
+const Size _pickerSurface = Size(800, 1800);
 
-/// The 24 rows of the Muscle filter, top to bottom (S-2).
+/// The 28 rows of the Muscle filter, top to bottom (S-2).
 const List<String> _displayOrder = [
   'All',
   'Chest',
@@ -36,10 +36,12 @@ const List<String> _displayOrder = [
   'Front delts',
   'Side delts',
   'Rear delts',
+  'Rotator cuff',
   'Arms',
   'Biceps',
   'Triceps',
   'Forearms',
+  'Brachialis',
   'Core',
   'Abs',
   'Obliques',
@@ -48,7 +50,9 @@ const List<String> _displayOrder = [
   'Hamstrings',
   'Glutes',
   'Calves',
+  'Shins',
   'Adductors',
+  'Abductors',
 ];
 
 /// The rows that are indented one step under their region.
@@ -59,16 +63,20 @@ const List<String> _indentedOrder = [
   'Front delts',
   'Side delts',
   'Rear delts',
+  'Rotator cuff',
   'Biceps',
   'Triceps',
   'Forearms',
+  'Brachialis',
   'Abs',
   'Obliques',
   'Quadriceps',
   'Hamstrings',
   'Glutes',
   'Calves',
+  'Shins',
   'Adductors',
+  'Abductors',
 ];
 
 Future<MockWorkoutRepository> _freshRepo() async {
@@ -254,6 +262,12 @@ void main() {
           FontWeight.w400,
           reason: 'a depth-1 row label is regular',
         );
+        expect(
+          _displayOrder,
+          hasLength(28),
+          reason: 'All plus the 27 taxonomy entries',
+        );
+        expect(_indentedOrder, hasLength(20), reason: 'one per muscle');
       },
     );
 

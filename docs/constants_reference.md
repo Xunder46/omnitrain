@@ -572,13 +572,14 @@ so storage, unit, and widget agree.
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `bundledCatalogVersion` | `13` | Content version of the bundled catalog (exercises, capability / muscle-group / equipment links, food catalog, demo routines) |
+| `bundledCatalogVersion` | `14` | Content version of the bundled catalog (exercises, capability and muscle-group links, food catalog, demo routines; equipment links, disciplines and categories are written at first install only) |
 
 At app start the device compares its stored version against
 `bundledCatalogVersion`; when the bundled version is newer,
 `CatalogRefreshService` writes new / changed entries in place. **Bumping this
-integer by 1 is the only step required for a catalog change to reach existing
-users.** Versions are monotonically increasing integers; there is no
+integer by 1 is the only step required for an exercise, capability, muscle-link,
+food or demo-routine change to reach existing users.** Equipment links,
+disciplines and categories are not delivered by the refresh. Versions are monotonically increasing integers; there is no
 cross-version schema compatibility story, because the refresh always reads the
 bundled catalog directly.
 

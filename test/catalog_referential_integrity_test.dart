@@ -202,7 +202,7 @@ void main() {
     });
 
     test('S-3: the map holds one entry per tagged exercise', () {
-      expect(SeedData.exerciseMuscleLinks, hasLength(178));
+      expect(SeedData.exerciseMuscleLinks, hasLength(206));
     });
 
     test('S-3: only the twelve region-tagged exercises carry a region', () {
@@ -267,7 +267,43 @@ void main() {
           role: MuscleRole.primary,
         ),
       ]);
-      expect(SeedData.exerciseMuscleLinks, hasLength(178));
+      expect(SeedData.exerciseMuscleLinks, hasLength(206));
+
+      // S-18904 (plan 115a): the three D-18902 re-tags, compared as lists.
+      expect(SeedData.exerciseMuscleLinks['exercise-cable-hip-abduction'], [
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-abductors',
+          role: MuscleRole.primary,
+        ),
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-glutes',
+          role: MuscleRole.secondary,
+        ),
+      ]);
+      expect(SeedData.exerciseMuscleLinks['exercise-cable-external-rotation'], [
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-rotator-cuff',
+          role: MuscleRole.primary,
+        ),
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-rear-delts',
+          role: MuscleRole.secondary,
+        ),
+      ]);
+      expect(SeedData.exerciseMuscleLinks['exercise-hammer-curl'], [
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-biceps',
+          role: MuscleRole.primary,
+        ),
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-brachialis',
+          role: MuscleRole.primary,
+        ),
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-forearms',
+          role: MuscleRole.secondary,
+        ),
+      ]);
 
       final tibialisTagged = {
         for (final entry in SeedData.exerciseMuscleLinks.entries)
@@ -303,6 +339,63 @@ void main() {
             entry.key,
       };
       expect(assistingCalves, {'exercise-nordic-curl', 'exercise-wall-sit'});
+
+      // S-18904 (plan 115a): the exercise sets that the Phase 2A rows complete.
+      Set<String> mainIds(String muscleId) => {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (rolesIn(entry.key, MuscleRole.primary).contains(muscleId))
+            entry.key,
+      };
+      Set<String> assistIds(String muscleId) => {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (rolesIn(entry.key, MuscleRole.secondary).contains(muscleId))
+            entry.key,
+      };
+
+      expect(mainIds('muscle-abductors'), {
+        'exercise-cable-hip-abduction',
+        'exercise-machine-hip-abduction',
+        'exercise-banded-clamshell',
+        'exercise-banded-lateral-walk',
+      });
+
+      expect(mainIds('muscle-rotator-cuff'), {
+        'exercise-cable-external-rotation',
+        'exercise-side-lying-external-rotation',
+        'exercise-cable-internal-rotation',
+      });
+      expect(assistIds('muscle-rotator-cuff'), {
+        'exercise-band-pull-apart',
+      });
+
+      expect(mainIds('muscle-brachialis'), {
+        'exercise-hammer-curl',
+        'exercise-reverse-curl',
+        'exercise-zottman-curl',
+        'exercise-cross-body-hammer-curl',
+      });
+      expect(assistIds('muscle-brachialis'), isEmpty);
+
+      expect(mainIds('muscle-biceps'), {
+        'exercise-barbell-curl',
+        'exercise-dumbbell-curl',
+        'exercise-hammer-curl',
+        'exercise-preacher-curl',
+        'exercise-incline-dumbbell-curl',
+        'exercise-cable-curl',
+        'exercise-concentration-curl',
+        'exercise-zottman-curl',
+        'exercise-cross-body-hammer-curl',
+      });
+
+      expect(
+        mainIds('muscle-glutes'),
+        isNot(contains('exercise-cable-hip-abduction')),
+      );
+      expect(
+        mainIds('muscle-rear-delts'),
+        isNot(contains('exercise-cable-external-rotation')),
+      );
     });
   });
 
@@ -333,6 +426,11 @@ void main() {
           'muscle-obliques',
           // Plan 114: Shins, added in catalog version 13.
           'muscle-tibialis',
+          // Plan 115a: Brachialis, Rotator cuff and Abductors, added in
+          // catalog version 14.
+          'muscle-brachialis',
+          'muscle-rotator-cuff',
+          'muscle-abductors',
         ];
         await repo.setCatalogVersion(bundledCatalogVersion - 1);
 

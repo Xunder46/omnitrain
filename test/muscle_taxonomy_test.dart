@@ -24,8 +24,8 @@ List<String> _ids(List<ExerciseMuscleLink> links) => [
 
 void main() {
   group('S-1 taxonomy integrity', () {
-    test('24 entries: 5 regions, 17 muscles, 2 standalone', () {
-      expect(MuscleTaxonomy.entries, hasLength(24));
+    test('27 entries: 5 regions, 20 muscles, 2 standalone', () {
+      expect(MuscleTaxonomy.entries, hasLength(27));
 
       final regions = {
         for (final entry in MuscleTaxonomy.entries)
@@ -43,7 +43,7 @@ void main() {
         for (final entry in MuscleTaxonomy.entries)
           if (entry.parentId != null) entry.id,
       };
-      expect(muscles, hasLength(17));
+      expect(muscles, hasLength(20));
 
       final standalone = {
         for (final entry in MuscleTaxonomy.entries)
@@ -61,6 +61,7 @@ void main() {
         'muscle-calves',
         'muscle-tibialis',
         'muscle-adductors',
+        'muscle-abductors',
       ]);
       expect(MuscleTaxonomy.musclesOf('muscle-back').toSet(), {
         'muscle-lats',
@@ -120,8 +121,52 @@ void main() {
       expect(MuscleTaxonomy.regionOf('muscle-arms'), isNull);
     });
 
+    test('S-18901: Brachialis, Rotator cuff and Abductors sit in their '
+        'regions', () {
+      expect(MuscleTaxonomy.entries, hasLength(27));
+
+      expect(MuscleTaxonomy.musclesOf('muscle-arms'), const [
+        'muscle-biceps',
+        'muscle-triceps',
+        'muscle-forearms',
+        'muscle-brachialis',
+      ]);
+      expect(MuscleTaxonomy.musclesOf('muscle-shoulders'), const [
+        'muscle-front-delts',
+        'muscle-side-delts',
+        'muscle-rear-delts',
+        'muscle-rotator-cuff',
+      ]);
+      expect(MuscleTaxonomy.musclesOf('muscle-legs'), const [
+        'muscle-quads',
+        'muscle-hamstrings',
+        'muscle-glutes',
+        'muscle-calves',
+        'muscle-tibialis',
+        'muscle-adductors',
+        'muscle-abductors',
+      ]);
+
+      for (final entry in const {
+        'muscle-brachialis': ('Brachialis', 'muscle-arms'),
+        'muscle-rotator-cuff': ('Rotator cuff', 'muscle-shoulders'),
+        'muscle-abductors': ('Abductors', 'muscle-legs'),
+      }.entries) {
+        expect(
+          MuscleTaxonomy.regionOf(entry.key),
+          entry.value.$2,
+          reason: '${entry.key} belongs to its region',
+        );
+        expect(MuscleTaxonomy.isRegion(entry.key), isFalse);
+        final found = MuscleTaxonomy.entries.firstWhere(
+          (candidate) => candidate.id == entry.key,
+        );
+        expect(found.name, entry.value.$1);
+      }
+    });
+
     test('S-18801: Shins sits under Legs, after Calves', () {
-      expect(MuscleTaxonomy.entries, hasLength(24));
+      expect(MuscleTaxonomy.entries, hasLength(27));
 
       final regions = {
         for (final entry in MuscleTaxonomy.entries)
@@ -139,7 +184,7 @@ void main() {
         for (final entry in MuscleTaxonomy.entries)
           if (entry.parentId != null) entry.id,
       };
-      expect(muscles, hasLength(17));
+      expect(muscles, hasLength(20));
 
       expect(MuscleTaxonomy.musclesOf('muscle-legs'), const [
         'muscle-quads',
@@ -148,6 +193,7 @@ void main() {
         'muscle-calves',
         'muscle-tibialis',
         'muscle-adductors',
+        'muscle-abductors',
       ]);
 
       expect(MuscleTaxonomy.regionOf('muscle-tibialis'), 'muscle-legs');
@@ -349,6 +395,88 @@ void main() {
           _link('muscle-tibialis', MuscleRole.secondary),
         ]),
         isFalse,
+      );
+    });
+
+    test('S-18902: storage rules with the new muscles', () {
+      // (a) Arms is dropped next to its own new muscle.
+      expect(
+        MuscleTaxonomy.normalize([
+          _link('muscle-arms'),
+          _link('muscle-brachialis'),
+        ]),
+        [_link('muscle-brachialis')],
+      );
+
+      // (b) Both primaries survive, in taxonomy order.
+      expect(
+        MuscleTaxonomy.normalize([
+          _link('muscle-brachialis'),
+          _link('muscle-biceps'),
+        ]),
+        [_link('muscle-biceps'), _link('muscle-brachialis')],
+      );
+
+      // (c) Abductors sorts after Adductors.
+      expect(
+        MuscleTaxonomy.normalize([
+          _link('muscle-abductors'),
+          _link('muscle-adductors'),
+        ]),
+        [_link('muscle-adductors'), _link('muscle-abductors')],
+      );
+
+      // (d) Shoulders is dropped next to its own muscles.
+      expect(
+        MuscleTaxonomy.normalize([
+          _link('muscle-shoulders'),
+          _link('muscle-rotator-cuff'),
+          _link('muscle-rear-delts', MuscleRole.secondary),
+        ]),
+        [
+          _link('muscle-rotator-cuff'),
+          _link('muscle-rear-delts', MuscleRole.secondary),
+        ],
+      );
+
+      // (e) One id in both roles throws.
+      expect(
+        () => MuscleTaxonomy.normalize([
+          _link('muscle-abductors'),
+          _link('muscle-abductors', MuscleRole.secondary),
+        ]),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      // Region filters match a primary link to a new muscle; a secondary or
+      // another muscle's primary link never matches.
+      expect(
+        MuscleTaxonomy.matches('muscle-legs', [_link('muscle-abductors')]),
+        isTrue,
+      );
+      expect(
+        MuscleTaxonomy.matches('muscle-glutes', [
+          _link('muscle-abductors'),
+          _link('muscle-glutes', MuscleRole.secondary),
+        ]),
+        isFalse,
+      );
+      expect(
+        MuscleTaxonomy.matches('muscle-shoulders', [
+          _link('muscle-rotator-cuff'),
+        ]),
+        isTrue,
+      );
+      expect(
+        MuscleTaxonomy.matches('muscle-rear-delts', [
+          _link('muscle-rotator-cuff'),
+          _link('muscle-rear-delts', MuscleRole.secondary),
+        ]),
+        isFalse,
+      );
+      expect(
+        MuscleTaxonomy.matches('muscle-arms', [_link('muscle-brachialis')]),
+        isTrue,
       );
     });
   });

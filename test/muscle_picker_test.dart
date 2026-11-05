@@ -141,6 +141,70 @@ void main() {
     expect(_text(tester, MusclePicker.assistsSummaryKey), 'Assists: none');
   });
 
+  testWidgets('S-18912 the new muscles sit last in their region rows', (
+    tester,
+  ) async {
+    await _pumpPicker(tester, _PickerHost(groups: _allGroups()));
+
+    void expectReadingOrder(List<String> ids) {
+      final points = [
+        for (final id in ids)
+          tester.getTopLeft(find.byKey(MusclePicker.chipKey(id))),
+      ];
+      for (var i = 1; i < points.length; i++) {
+        final sameLine = (points[i].dy - points[i - 1].dy).abs() < 1.0;
+        expect(
+          sameLine
+              ? points[i].dx > points[i - 1].dx
+              : points[i].dy > points[i - 1].dy,
+          isTrue,
+          reason: '${ids[i]} must follow ${ids[i - 1]}',
+        );
+      }
+    }
+
+    expectReadingOrder([
+      'muscle-biceps',
+      'muscle-triceps',
+      'muscle-forearms',
+      'muscle-brachialis',
+    ]);
+    expectReadingOrder([
+      'muscle-front-delts',
+      'muscle-side-delts',
+      'muscle-rear-delts',
+      'muscle-rotator-cuff',
+    ]);
+    expectReadingOrder([
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+      'muscle-calves',
+      'muscle-tibialis',
+      'muscle-adductors',
+      'muscle-abductors',
+    ]);
+    expect(find.text('Brachialis'), findsOneWidget);
+    expect(find.text('Rotator cuff'), findsOneWidget);
+    expect(find.text('Abductors'), findsOneWidget);
+    expect(find.text('Shins'), findsOneWidget);
+  });
+
+  testWidgets('S-18912 whole arms then brachialis keeps just brachialis', (
+    tester,
+  ) async {
+    await _pumpPicker(tester, _PickerHost(groups: _allGroups()));
+
+    await tester.tap(find.byKey(MusclePicker.chipKey('muscle-arms')));
+    await tester.pump();
+    expect(_text(tester, MusclePicker.mainSummaryKey), 'Main: Arms');
+
+    await tester.tap(find.byKey(MusclePicker.chipKey('muscle-brachialis')));
+    await tester.pump();
+    expect(_text(tester, MusclePicker.mainSummaryKey), 'Main: Brachialis');
+    expect(_text(tester, MusclePicker.assistsSummaryKey), 'Assists: none');
+  });
+
   testWidgets('S-3 the hint is present and the chip semantics name the role', (
     tester,
   ) async {
