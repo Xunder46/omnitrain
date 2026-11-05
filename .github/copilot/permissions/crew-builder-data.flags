@@ -1,0 +1,7 @@
+# crew-builder-data: models, repositories, seed, SQL contract, their tests; docs and plan evidence. Narrow per run with --scope.
+--allow-tool=write(lib/data/**)
+--allow-tool=write(lib/mock/**)
+--allow-tool=write(scripts/sqlite_*.sql)
+--allow-tool=write(test/**)
+--allow-tool=write(docs/**)
+--allow-tool=write(.work/crew/**)

@@ -309,15 +309,17 @@ final class WatchCaptureContractTests: XCTestCase {
         try await replay.run()
 
         assertEventsEqual(replay.emittedEvents, replay.expectedEvents, "F-CAP prompt-off")
-        XCTAssertEqual(replay.emittedEvents.count, 11, "F-CAP prompt-off: no rating, so eleven events")
+        XCTAssertEqual(replay.emittedEvents.count, 13, "F-CAP prompt-off: no rating, so thirteen events")
         XCTAssertFalse(replay.rating.isPromptOwed, "F-CAP prompt-off: the setting is off, so nothing is owed")
     }
 
     // MARK: - S-1303: a length is never dialled
 
     /// S-1303 (D-1305): the effort's own clock is its length, so neither the
-    /// timed effort nor a period offers a row to dial, and the replay refuses
-    /// the dial that the timeline used to carry.
+    /// timed effort nor a period offers a length row to dial, and the replay
+    /// refuses the dial that the timeline used to carry. A timed effort shows a
+    /// distance only once GPS measured it (plan 93 D-1), and this timeline has
+    /// no GPS, so it shows no row at all.
     func testS1303ATimedSurfaceHasNoLengthToDial() async throws {
         let timed = try CaptureReplay("full")
         try await timed.run(stoppingBefore: ["log"])

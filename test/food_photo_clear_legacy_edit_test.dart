@@ -1,29 +1,17 @@
 // filepath: test/food_photo_clear_legacy_edit_test.dart
 //
-// Regression test for the **can't remove a photo from a food in
-// the library** bug, on the *legacy library-only* edit path.
+// S-92a.8 — a photo cleared on the **legacy library-only** edit path waits
+// for the Save tap.
 //
-// Symptom: tapping × on a food's photo in the My Foods tab
-// cleared it from the form, but the photo was still there after
-// backing out and reopening the food.
+// History: tapping × on a food's photo in My Foods cleared it from the form
+// but the photo was still there after backing out and reopening the food.
+// The first fix made the shim write the photo the moment it changed; plan
+// 92a replaced that rule — nothing writes until Save on any `FoodForm`
+// host, and Discard leaves the stored photo and its file untouched.
 //
-// Root cause: My Foods routes user-created catalog rows to
-// `EditFoodScreen` (which wires `onImageSave`, so photo changes
-// persist the moment they happen) but routes legacy
-// library-only rows — `isCatalog = false`, created before the
-// catalog-backed custom-food path — to a shim screen that only
-// persisted on Save. Since the catalog editor needs no Save tap,
-// backing out is the natural gesture, and on the legacy path that
-// discarded the change.
-//
-// Fix: the legacy shim wires `onImageSave` to the same partial
-// save, so picking and clearing a photo persist immediately on
-// both paths.
-//
-// The test drives the real screen (row tap → editor → × tap), so
-// it covers the wiring, not just the state method — the state
-// layer's clear path is already covered by
-// `image_persistence_round_trip_test.dart`.
+// The test drives the real screen (row tap → editor → × tap), so it
+// covers the wiring, not just the state method — the state layer's clear
+// path is already covered by `image_persistence_round_trip_test.dart`.
 
 import 'dart:io';
 
@@ -56,7 +44,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'clearing a legacy library food\'s photo persists without a Save tap',
+    'clearing a legacy library food\'s photo waits for the Save tap',
     (tester) async {
       final imageStorage = TestImageStorage.create();
       addTearDown(imageStorage.dispose);
@@ -84,8 +72,8 @@ void main() {
       );
 
       // A legacy library-only custom: isCatalog = false and no
-      // catalog twin, so My Foods renders it and the row tap
-      // opens the legacy shim editor.
+      // catalog twin, so the Library list renders it and the row
+      // tap opens the legacy shim editor.
       final foodId = await state.createFood(
         Food(
           id: '',
@@ -116,11 +104,23 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('My Foods'));
+      // The Library list is lazy: bring the legacy row into view
+      // via the search field.
+      await tester.enterText(
+        find.byKey(const Key('catalog_search_field')),
+        'Grandma\'s Stew',
+      );
       await tester.pumpAndSettle();
 
-      // Row tap opens the editor for this food.
-      await tester.tap(find.text('Grandma\'s Stew'));
+      // Row tap opens the editor for this food. The row title is
+      // scoped to the list because the search field's
+      // EditableText carries the same text.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.text('Grandma\'s Stew'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(
         find.text('Edit Food'),
@@ -128,20 +128,88 @@ void main() {
         reason: 'row tap must open the food editor',
       );
 
-      // Tap the × on the photo tile — and nothing else. No Save.
-      final clearButton = find.byTooltip('Remove photo');
-      expect(
-        clearButton,
-        findsOneWidget,
-        reason: 'a user-set photo must offer a remove affordance',
-      );
-      await tester.runAsync(() async {
+      // Tap the × on the photo tile — and nothing else.
+      Future<void> clearPhoto() async {
+        final clearButton = find.byTooltip('Remove photo');
+        expect(
+          clearButton,
+          findsOneWidget,
+          reason: 'a user-set photo must offer a remove affordance',
+        );
         await tester.tap(clearButton);
-        // The clear awaits a real repository write and a real
-        // file delete. Poll the end state against a generous deadline
-        // instead of sleeping a fixed time, so a loaded machine only
-        // makes the test slower; the assertions below still decide
-        // pass or fail once the deadline passes.
+        await tester.pumpAndSettle();
+      }
+
+      // Reopen the legacy row. The search text still filters the list, so
+      // the row is back in view after the editor pops.
+      Future<void> reopenEditor() async {
+        await tester.tap(
+          find.descendant(
+            of: find.byType(ListView),
+            matching: find.text('Grandma\'s Stew'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Edit Food'),
+          findsOneWidget,
+          reason: 'row tap must reopen the food editor',
+        );
+      }
+
+      // Leg 1 of S-92a.8 — clearing writes nothing.
+      await clearPhoto();
+      // Give an instant write a real chance to land before asserting: a
+      // save-on-clear (the behaviour this test replaces) completes well
+      // inside this window, while a form-local clear never writes at all.
+      await tester.runAsync(() async {
+        final deadline = DateTime.now().add(const Duration(seconds: 1));
+        while (DateTime.now().isBefore(deadline)) {
+          if ((await repo.getFoodById(foodId))!.imagePath != basename) break;
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
+      expect(
+        (await repo.getFoodById(foodId))!.imagePath,
+        basename,
+        reason: 'a cleared photo must not reach the data layer before Save',
+      );
+      expect(
+        managedFile.existsSync(),
+        isTrue,
+        reason: 'the managed file must survive an unwritten clear',
+      );
+
+      // Leg 2 — Discard drops the clear: the stored path and its file stay.
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Unsaved changes'),
+        findsOneWidget,
+        reason: 'a cleared photo is unsaved work, so back must ask',
+      );
+      await tester.tap(find.byKey(const Key('legacy-food-unsaved-discard')));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit Food'), findsNothing);
+      expect(
+        (await repo.getFoodById(foodId))!.imagePath,
+        basename,
+        reason: 'Discard must leave the stored photo alone',
+      );
+      expect(
+        managedFile.existsSync(),
+        isTrue,
+        reason: 'Discard must leave the managed file on disk',
+      );
+
+      // Leg 3 — Save writes the clear and the state layer deletes the file.
+      await reopenEditor();
+      await clearPhoto();
+      // Save runs a real repository write and a real file delete; neither
+      // completes inside the fake-async zone, so drive the tap and poll the
+      // end state against a deadline rather than sleeping a fixed time.
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const Key('food_form_save')));
         final deadline = DateTime.now().add(const Duration(seconds: 5));
         while (DateTime.now().isBefore(deadline)) {
           final food = await repo.getFoodById(foodId);
@@ -151,21 +219,18 @@ void main() {
       });
       await tester.pumpAndSettle();
 
-      // The photo is gone from the data layer, so it stays gone
-      // when the user backs out and reopens the food.
       final reloaded = (await repo.getFoodById(foodId))!;
       expect(
         reloaded.imagePath,
         isNull,
-        reason:
-            'the × must clear the photo in the data layer, not just '
-            'in the form',
+        reason: 'Save must write the cleared photo through to the data layer',
       );
       expect(
         managedFile.existsSync(),
         isFalse,
-        reason: 'the orphaned managed file must be cleaned up (D-7)',
+        reason: 'the orphaned managed file must be cleaned up on Save (D-7)',
       );
+      expect(find.text('Edit Food'), findsNothing);
     },
   );
 }

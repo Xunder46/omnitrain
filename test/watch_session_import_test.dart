@@ -231,17 +231,34 @@ Future<bool> _rowsExist(
         (r) => r.id == WatchSessionImporter.roundInstanceIdFor(_capId, entryId),
       );
     case 'rest':
+      // A rest lands beside the entry it follows, in that entry's own effort
+      // (D-167): the effort kind comes from the followed entry's kind, and the
+      // index is its position among the entries of the same effort.
+      final after = _eventOf(caseName, event['afterEntryId']! as String);
+      final effortKind = WatchSessionImporter.effortKindFor(
+        after['kind']! as String,
+      );
       final effortId = WatchSessionImporter.effortIdFor(
         _capId,
-        event['sessionExerciseId']! as String,
-        event['exerciseId']! as String,
-        'set',
+        after['sessionExerciseId']! as String,
+        after['exerciseId']! as String,
+        effortKind,
       );
-      final setEntries = [
+      final sameEffort = [
         for (final e in captureEvents(caseName))
-          if (e['kind'] == 'set') e['entryId'],
+          if (const {
+                WatchInboxEntry.kindSet,
+                WatchInboxEntry.kindTimed,
+                WatchInboxEntry.kindRound,
+                WatchInboxEntry.kindHold,
+              }.contains(e['kind']) &&
+              e['sessionExerciseId'] == after['sessionExerciseId'] &&
+              e['exerciseId'] == after['exerciseId'] &&
+              WatchSessionImporter.effortKindFor(e['kind']! as String) ==
+                  effortKind)
+            e['entryId'],
       ];
-      final index = setEntries.indexOf(event['afterEntryId']! as String) + 1;
+      final index = sameEffort.indexOf(after['entryId']) + 1;
       return (await repository.getEntryRests(effortId)).any(
         (row) =>
             row.id == 'rest-$effortId-$index' &&
@@ -302,11 +319,36 @@ class _RecordingHealthPlatform implements HealthPlatformService {
   }
 
   @override
+  Future<bool> deleteWorkouts(DateTime start, DateTime end) async => false;
+
+  @override
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  ) async => HealthEffortOutcome.unavailable;
+
+  @override
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end) async => false;
+
+  @override
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since) async =>
       const [];
 }
 
 void main() {
+  test('S-90-7 the recording fake answers the effort calls with '
+      'unavailable', () async {
+    final fake = _RecordingHealthPlatform();
+    final start = DateTime(2026, 10, 28, 9);
+    final end = DateTime(2026, 10, 28, 10);
+    expect(
+      await fake.setWorkoutEffort(start, end, 8),
+      HealthEffortOutcome.unavailable,
+    );
+    expect(await fake.clearWorkoutEffort(start, end), isFalse);
+  });
+
   group('S-261 import from the offline stream', () {
     for (final caseName in const ['full', 'no-sensors', 'prompt-off']) {
       test('S-261 $caseName: every envelope through the router imports exactly '
@@ -2426,7 +2468,7 @@ void main() {
   //   S-323 zero length is dropped                  → `S-323 ...`
   //   S-324 duplicate delivery, and a re-run pass   → `S-324 ...`
   //   S-326 a rest alone imports no session         → `S-326 ...`
-  //   S-327 deleting the set leaves the rest        → `S-327 ...`
+  //   S-327 deleting the set takes its rest with it  → `S-327 ...`
   //   S-328 an unresolvable rest is consumed        → `S-328 ...`
   group('the wrist’s rests (D-210)', () {
     final bench = WatchSessionImporter.effortIdFor(
@@ -2643,7 +2685,7 @@ void main() {
       );
     });
 
-    test('S-327 deleting the set leaves its rest', () async {
+    test('S-327 deleting the set takes its rest with it', () async {
       final repository = await _repository();
       final inbox = _inbox(repository, CaptureTransport());
 
@@ -2671,10 +2713,10 @@ void main() {
       );
       expect(
         (await repository.getEntryRests(bench)).map((r) => r.toMap()),
-        [before.single.toMap()],
+        isEmpty,
         reason:
-            'S-327 D-167(b) a rest is not an entry: deleting the set deletes '
-            'the observations and nothing else',
+            'S-327 D-1 the user deleted the set, so the rest that followed it '
+            'goes with it (this flips D-167(b) for the phone delete path)',
       );
     });
 

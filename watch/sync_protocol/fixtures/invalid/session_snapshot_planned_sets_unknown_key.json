@@ -1,0 +1,29 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-planned-sets-unknown-key",
+  "sessionId": "s-2026-10-15-1",
+  "type": "session_snapshot",
+  "origin": "phone",
+  "sentAt": "2026-10-15T18:00:00Z",
+  "payload": {
+    "sessionId": "s-2026-10-15-1",
+    "revision": 1,
+    "status": "active",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-bench",
+        "name": "Bench Press",
+        "capabilities": ["sets", "reps", "load"],
+        "plannedSets": [
+          { "reps": 10, "loadKg": 40, "setNumber": 1 },
+          { "reps": 10, "loadKg": 40 },
+          { "reps": 8, "loadKg": 42.5 }
+        ]
+      }
+    ],
+    "entries": [],
+    "timers": {}
+  }
+}

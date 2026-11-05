@@ -128,7 +128,7 @@ Future<void> _seedWork(
   }
 }
 
-/// F-MIX: a mixed history — rated sessions across the last four months carrying
+/// F-MIX: a mixed history — rated sessions across the last twelve weeks carrying
 /// resistance, cardio, isometric and sports work, five rated baseline blocks
 /// before `day(27)`, and a period bar with more than one non-zero modality.
 Future<void> _seedFMix(WorkoutRepository repo) async {
@@ -149,20 +149,23 @@ Future<void> _seedFMix(WorkoutRepository repo) async {
     rating: 3,
   );
 
-  // One rated session in each of the baseline blocks 0…4 — days 108, 101, 94,
-  // 87 and 80 ago. Blocks 5…11 stay empty, so a session that lands there is
-  // visible in `ratedBaselineWeeks`.
+  // One rated session in each of the baseline blocks 4…8 — days 80, 73, 66, 59
+  // and 52 ago. All five sit inside the 12 rated weeks ending at the period's
+  // end day (rated block `11 − ⌊d / 7⌋` = 0…4, D-17105), so with the period's
+  // own sessions — days 20 and 10 ago, rated blocks 9 and 10 — the payload
+  // counts 7 rated weeks. Rated blocks 5…8 and 11 stay empty, so a session
+  // that lands there is visible in `ratedWeeks`.
   await _seedWork(
     repo,
     id: 'fmix-b0',
-    start: _at(108, 9),
+    start: _at(80, 9),
     kind: 'drill',
     seconds: 1200,
   );
   await _seedWork(
     repo,
     id: 'fmix-b1',
-    start: _at(101, 9),
+    start: _at(73, 9),
     kind: 'round',
     seconds: 600,
     rating: 3,
@@ -170,14 +173,14 @@ Future<void> _seedFMix(WorkoutRepository repo) async {
   await _seedWork(
     repo,
     id: 'fmix-b2',
-    start: _at(94, 9),
+    start: _at(66, 9),
     kind: 'set',
     seconds: 0,
   );
   await _seedWork(
     repo,
     id: 'fmix-b3',
-    start: _at(87, 9),
+    start: _at(59, 9),
     kind: 'timed',
     seconds: 900,
     rating: 2,
@@ -185,7 +188,7 @@ Future<void> _seedFMix(WorkoutRepository repo) async {
   await _seedWork(
     repo,
     id: 'fmix-b4',
-    start: _at(80, 9),
+    start: _at(52, 9),
     kind: 'set',
     seconds: 0,
   );
@@ -217,10 +220,12 @@ Future<void> _seedS1913(WorkoutRepository repo) async {
   );
 }
 
-/// F-TIME: five rated sessions with one timed effort each, a week apart, so the
-/// period `[day(27), now]` holds three of them and the baseline only two.
+/// F-TIME: five rated sessions with one timed effort each — three inside the
+/// period `[day(27), now]` (days 1, 3 and 5 back, all in rated block 11) and
+/// two behind it (days 29 and 36 back, rated blocks 7 and 6) — so the payload
+/// counts 3 rated weeks, one short of the 4 the load measure needs (D-17105).
 Future<void> _seedFTime(WorkoutRepository repo) async {
-  for (final days in [10, 17, 24, 31, 38]) {
+  for (final days in [1, 3, 5, 29, 36]) {
     await _seedWork(
       repo,
       id: 'ftime-$days',
@@ -293,14 +298,14 @@ void main() {
             _shape(layer.baselineSegments),
           );
           expect(period.unratedSessionCount, layer.unratedSessionCount);
-          expect(period.ratedBaselineWeeks, layer.ratedBaselineWeeks);
+          expect(period.ratedWeeks, layer.ratedWeeks);
 
           expect(period.measure, MixMeasure.load);
           expect(_shape(period.segments), [
             '${ExerciseSection.resistance.name}|320.0|76',
             '${ExerciseSection.cardio.name}|100.0|24',
           ]);
-          expect(period.ratedBaselineWeeks, 5);
+          expect(period.ratedWeeks, 7);
           expect(period.weeks, isEmpty);
           expect(layer.weeks, isNotEmpty);
         },
@@ -315,7 +320,7 @@ void main() {
 
           expect(period.measure, MixMeasure.time);
           expect(period.baselineSegments, isEmpty);
-          expect(period.ratedBaselineWeeks, 2);
+          expect(period.ratedWeeks, 3);
           expect(period.unratedSessionCount, 0);
           expect(period.segments, isNotEmpty);
         },
@@ -346,10 +351,14 @@ void main() {
             isFalse,
           );
 
-          // The session one millisecond earlier is not, and it joins the block
-          // that abuts the period's start day — block 11, which F-MIX alone
-          // leaves empty. The session at `day(28)` 00:00 is in that block too.
-          expect(period.ratedBaselineWeeks, 6);
+          // The session one millisecond earlier is not, and it joins the rated
+          // week that abuts the period's start day — block 7, which spans
+          // `[endDay − 34, endDay − 27)` and which F-MIX alone leaves empty.
+          // The session at `day(28)` 00:00 is in that block too, and the
+          // session at `day(27)` 00:00 — the period's own first instant —
+          // lands in block 8: the period's sessions count (D-17105). F-MIX
+          // alone fills blocks 0…4, 9 and 10; adding 7 and 8 counts 9.
+          expect(period.ratedWeeks, 9);
           expect(
             _segment(period.baselineSegments, ExerciseSection.sports).measure,
             110.0,

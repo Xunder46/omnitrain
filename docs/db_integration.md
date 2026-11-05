@@ -105,15 +105,57 @@ Ordering persistence behavior:
 
 ### Catalog version + seed-entry tombstones (July 2026)
 
-The bundled app-authored catalog (exercises + capability / muscle-group /
-equipment relationships + the food catalog + seeded demo workout
-templates) is versioned. At app start, `CatalogRefreshService`
+The bundled app-authored catalog (exercises + capability / muscle-group
+relationships + the food catalog + seeded demo workout templates) is
+versioned. From catalog version `16` the refresh also delivers sport categories,
+disciplines, units, metric definitions, metric effort kinds and tags: a stored
+row that differs from the bundled one in a compared field is corrected,
+timestamps are never compared, and rows whose id is not bundled are never
+written (the tags leg lists the stored tags once and ignores ids the bundle
+does not carry). Verified by `test/catalog_reference_refresh_test.dart`
+(`S-19102 a v15 install missing reference rows refreshes to v16`,
+`S-19103 user rows that share a name or key stay byte-identical`,
+`S-19106 Mock: an interrupted refresh keeps version 15 and the next
+launch finishes`). Equipment,
+equipment links and the default food groups are written at first install only
+(equipment pinned by `test/strength_catalog_refresh_test.dart`, `S-18906`;
+food groups because users can delete them and no marker exists). Every public
+`SeedData` member is classified as delivered or excluded with a written reason
+by `test/catalog_delivery_contract_test.dart`, so a new seed list that the
+refresh does not carry fails a test. At app start, `CatalogRefreshService`
 (`lib/core/services/catalog_refresh_service.dart`) compares the device's
 stored catalog version against the bundled constant
 (`bundledCatalogVersion` in `lib/core/constants/catalog_version.dart`); if
 the bundled version is newer, the refresh re-applies new / changed seed
 entries to the device in place, never touching user-created entries and
 never overwriting a seed entry the user has edited.
+
+The refresh also carries the muscle hierarchy: `_refreshMuscleGroups`
+upserts a group that is missing or whose name or `parentId` differs from the
+bundled taxonomy, and `_refreshExerciseMuscleGroups` rewrites an untouched
+exercise's links when they differ from the bundled ones, roles included and
+order-insensitively. Verified by `test/catalog_refresh_test.dart`
+(`S-MH-1: refresh from v10 lands the taxonomy parents, the Traps rename and
+role-aware links, and leaves custom / copy / touched rows alone`). The
+bundled version that ships the hierarchy is `11` (`bundledCatalogVersion`,
+`lib/core/constants/catalog_version.dart`). Catalog version `13` adds the Shins
+muscle (`muscle-tibialis`, under Legs) and moves the bundled Tibialis Raise to
+it from Calves; a Tibialis Raise the user has edited keeps its muscles.
+Verified by `test/tibialis_muscle_refresh_test.dart` (`S-18805 a v12 install
+refreshes to v13`, `S-18806 a user-edited Tibialis Raise keeps its muscles`).
+Catalog version `14` adds the Brachialis, Rotator cuff and Abductors muscles,
+re-tags Cable Hip Abduction, Cable External Rotation and Hammer Curl, and adds
+28 strength exercises; exercises the user edited or copied, and the user's own
+exercises (including one with the same name as a new bundled one), are never
+rewritten. Verified by `test/strength_catalog_refresh_test.dart` (`S-18906 a v13
+install refreshes to v14`, `S-18907 a user-edited row keeps its muscles`).
+Catalog version `15` adds 20 core, leg/hip and press exercises (Sit-Up through
+Sled Drag); exercises the user edited or copied, a user's own exercise with a new
+bundled name, and a bundled row the user renamed to a new name are never
+rewritten. Verified by `test/strength_catalog_v15_refresh_test.dart` (`S-19006 a
+v14 install refreshes to v15`, `S-19007 a renamed touched row and near-twins
+keep their own`). The Trap Bar and Sled equipment rows reach new installs only
+(`S-19008 a new install knows the equipment`).
 
 `SeedEntryType` enumerates the tombstone key spaces the refresh understands:
 
@@ -188,6 +230,8 @@ Repository methods used by the service:
 | `getLegacyAppliedDataVersion()` | Back-compat shim: returns the highest version implied by any legacy marker (`1` if none). |
 | `getLastDataVersionTransition()` | Diagnostic: most recent `(from, to)` transition, or `null`. |
 | `setLastDataVersionTransition(int from, int to)` | Diagnostic: records a transition. |
+| `referenceRevision` | Null on the Mock; a counter on Hive that changes when any food, routine or exercise row is written. The watch sync reads it to skip re-reading storage. |
+| `historyRevision` | Null on the Mock; a counter on Hive that changes when any session, segment, effort or observation row is written. The watch sync reads it to skip re-reading history for the bests: the same contract as `referenceRevision` — a number that differs whenever a row was written, compared for equality only, `null` meaning the repository cannot tell, so the caller must read. Pinned by `test/repository_reference_revision_test.dart` (group `S-87c-15 Hive: the four history boxes move the number`, tests `S-87c-15 session, segment, effort and observation writes move it` and `S-87c-15 timed instances, foods and exercises leave it alone`). |
 
 Storage shape (Hive runtime; SQL parity noted for the future importer):
 
@@ -202,6 +246,13 @@ and bump `currentDataVersion` in
 [`lib/core/constants/data_version.dart`](../lib/core/constants/data_version.dart).
 The next launch runs the new step exactly once per device. No new meta-box
 key is required for the step itself.
+
+The most recent step is `muscleLinkRoles` (target version 16): it rewrites
+every stored exercise→muscle link row into the role-aware shape — a legacy
+all-primary row keeps its ids as primaries, and a region tag sitting next to
+one of its own muscles is dropped. Verified by `test/data_migration_test.dart`
+(`S-8: the muscleLinkRoles step on the Mock`,
+`S-8: the muscleLinkRoles step on Hive (seeded before step 16)`).
 
 Idempotency: every consolidated step preserves its existing effect — same
 box writes, same upsert semantics, same idempotency — only the gating
@@ -250,7 +301,9 @@ nutrition-target methods:
 | Method | Behaviour |
 |---|---|
 | `getWaterVolumeForDate(int dateMs)` | Returns the stored milliliter value for [dateMs]. Returns `0` when no row exists — the absence of a row is the same as a 0 ml day, callers never see `null`. |
-| `saveWaterVolumeForDate(int dateMs, int volumeMl)` | Upserts the row for [dateMs]. `volumeMl` is clamped to `>= 0` as a last line of defense against bad inputs. Past dates other than [dateMs] are never touched. |
+| `saveWaterVolumeForDate(int dateMs, int volumeMl)` | Upserts the row for [dateMs]. `volumeMl` is clamped to `>= 0` as a last line of defense against bad inputs. Past dates other than [dateMs] are never touched. The day's applied-tap ledger is kept as it is. |
+| `applyWaterTap({dateMs, tapId, deltaMl})` | Applies one watch tap (`deltaMl` = ±`kWaterGlassMl`) at most once: a new `tapId` changes the volume (floored at 0 ml) and is appended to the day's ledger in one write, and returns `true`; a remove at 0 ml still records the id. A known id, or a ledger already holding `kWatchWaterTapsPerDay` ids, changes nothing and returns `false` (plan 94 D-3, D-5). |
+| `getAppliedWaterTapIds(int dateMs)` | The day's applied tap ids in append order; `[]` with no row or a row written before the ledger. |
 
 The row id is deterministic (`'water-<dateMs>'`) so the same day always
 maps to the same storage key in both implementations. The per-glass
@@ -263,10 +316,16 @@ tracked and stored for the historical record only.
 Implementation requirements (both `HiveWorkoutRepository` and `MockWorkoutRepository`):
 - **Storage shape**:
   - Hive: a dedicated box `water_log` keyed by `dateMs.toString()`
-    with a `Map<String, dynamic>` value matching `WaterLogEntry.toMap()`.
-  - Mock: an in-memory `Map<int, int>` keyed by `dateMs` (just the ml value).
-  - SQLite: the `app_water_log` table is keyed by `date_ms` (`INTEGER
-    UNIQUE`) with `volume_ml INTEGER NOT NULL CHECK (volume_ml >= 0)`;
+    with a `Map<String, dynamic>` value holding `WaterLogEntry.toMap()`'s
+    keys, except that `applied_tap_ids` is a `List<String>` (absent, and read
+    as `[]`, on a row written before the ledger existed or created by the
+    phone's own +, until the row's next write), so volume and ledger change
+    in one `put`.
+  - Mock: an in-memory `Map<int, int>` keyed by `dateMs` (just the ml value)
+    and a `Map<int, List<String>>` ledger beside it.
+  - SQL contract: the `app_water_log` table is keyed by `date_ms` (`INTEGER
+    UNIQUE`) with `volume_ml INTEGER NOT NULL CHECK (volume_ml >= 0)` and
+    `applied_tap_ids TEXT NOT NULL DEFAULT '[]'` (a JSON array);
     see `scripts/sqlite_schema.sql` for the schema narrative.
 - **Past dates are immutable**: the repository never walks forward and
   modifies dates earlier than the explicitly-written [dateMs].
@@ -279,7 +338,10 @@ Tests: see `test/state_test.dart` (`NutritionState daily water log`
 group) for the per-day volume contract — increment / decrement,
 floor at 0, immediate persistence round-trip, date isolation, and the
 extended day-rollover test (the existing `rolloverToDate` test now
-also asserts water behavior).
+also asserts water behavior). The tap ledger — math, a remove at 0,
+duplicates across a relaunch, a save keeping the ledger, the 500 cap,
+day independence — runs on both implementations in
+`test/water_tap_ledger_test.dart` (S-94a-3..S-94a-8).
 
 ## Food Library & Catalog
 
@@ -399,7 +461,7 @@ the existing `updateFood`).
 | `getCatalogFoods({includeArchived})` | Returns catalog foods (`isCatalog == true`). |
 | `getCatalogFoodById(id)` | Returns a catalog food by ID. |
 | `addCatalogFoodToLibrary(catalogFoodId)` | Copies a catalog food to the library with a new ID and `isCatalog = false`. The original catalog food remains unchanged. || `reassignFoodsToGroup(foodIds, targetGroupId)` | Moves a list of library foods to a new group (or `null` for "Ungrouped") in place. Used by the Groups tab when deleting a non-empty group; foods are never deleted. Catalog foods are excluded. Empty list is a no-op. |
-| `reassignCatalogFoodsToGroup(catalogFoodIds, targetGroupId)` | Parallel to `reassignFoodsToGroup` but targets the catalog box. Used by `FoodLibraryState.deleteFoodGroupReassigningFoods` so user-created catalog foods (those created via **+ New Item**) are moved off a deleted category. Bundled catalog foods are never passed here — the bundled-food guard at the state layer rejects them. Empty list is a no-op. || `getConsumedFoodsForDate(dateMs)` | Returns consumed food entries for a specific day (matching `dateMs`). |
+| `reassignCatalogFoodsToGroup(catalogFoodIds, targetGroupId)` | Parallel to `reassignFoodsToGroup` but targets the catalog box. Used by `FoodLibraryState.deleteFoodGroupReassigningFoods` so user-created catalog foods (those created via the header **+ New Food**) are moved off a deleted category. Bundled catalog foods are never passed here — the bundled-food guard at the state layer rejects them. Empty list is a no-op. || `getConsumedFoodsForDate(dateMs)` | Returns consumed food entries for a specific day (matching `dateMs`). |
 | `createConsumedFood(entry)` | Creates a new consumed food log entry. |
 | `updateConsumedFood(entry)` | Updates an existing consumed food entry by `id`. Throws `StateError` if the id is not present. Used by the day-uniqueness update path in `NutritionState.logConsumedFoodAt`. |
 | `getConsumedFoodById(id)` | Returns a single consumed food entry by id, or `null` if not found. Used as a cache-miss fallback by `NutritionState.findLoggedTodayForFood`. |
@@ -558,6 +620,17 @@ Active-session ordering parity columns for future `SqliteWorkoutRepository`:
 - `app_segment_effort.top_level_order_index`
 - `app_segment_effort.block_order_index`
 
+And the muscle hierarchy:
+
+- `app_muscle_group.parent_id` — the parent region of a muscle; NULL for a
+  region and for a standalone entry.
+- `app_exercise_muscle_group.is_primary` — 1 = primary link, 0 = secondary
+  link.
+
+Verified by `test/db_seed_test.dart` (`Pipeline schema documentation` ·
+`S-9 app_muscle_group carries parent_id and seeds the 27 groups the taxonomy
+defines`).
+
 Recommended SQL ordering for retrieval parity:
 
 - Blocks: `ORDER BY top_level_order_index, order_index, created_at_ms, id`
@@ -577,7 +650,10 @@ Recommended SQL ordering for retrieval parity:
 > (only `sqflite_common_ffi` remains, under `dev_dependencies`, for the
 > validation test), and the SQL files are no longer bundled as Flutter
 > assets. The app persists exclusively through `HiveWorkoutRepository` on
-> every platform.
+> every platform. `pubspec.yaml` also sets `hooks: user_defines: sqlite3:
+> source: system`, so the dev-only `sqlite3` package uses the operating
+> system's SQLite and no `sqlite3.framework` is bundled into iOS builds (an
+> unsigned copy of it once made a device install fail).
 
 What remains is the **schema documentation**, and it is still authoritative
 for the data model:
@@ -599,7 +675,9 @@ for the data model:
 
 Runtime **data** migrations (the ones that actually execute today) are a
 separate mechanism keyed on `currentDataVersion` — see
-[Constants Reference](constants_reference.md#data_versiondart).
+[Constants Reference](constants_reference.md#data_versiondart). Their latest
+step is `muscleLinkRoles` (version 16), which rewrites stored muscle links
+into the role-aware shape; see the data-migration sequence above.
 
 ---
 

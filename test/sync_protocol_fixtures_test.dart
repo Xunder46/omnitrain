@@ -244,6 +244,83 @@ void main() {
     }
   });
 
+  group('S-3808 a batch carries at most one hundred exercises', () {
+    test('a batch of 101 exercises is refused by maxItems', () {
+      final fixture = _readJson('fixtures/valid/exercises_down.json');
+      final message = {
+        ...fixture,
+        'payload': {
+          ..._payloadOf(fixture),
+          'totalCount': 101,
+          'batchCount': 2,
+          'exercises': [
+            for (var index = 0; index < 101; index++)
+              {
+                'exerciseId': 'ex-batch-$index',
+                'name': 'Batch exercise $index',
+                'capabilities': <String>['sets', 'reps', 'load'],
+              },
+          ],
+        },
+      };
+
+      final rejections = _validator.validateEnvelope(message);
+
+      expect(
+        rejections.map((r) => r.toString()).toList(),
+        hasLength(1),
+        reason: 'only the batch size is wrong',
+      );
+      expect(rejections.single.code, 'constraint_violation');
+      expect(rejections.single.message, 'expected at most 100 items, found 101');
+    });
+
+    test('a 65-character catalogVersion is refused by maxLength', () {
+      final fixture = _readJson('fixtures/valid/exercises_down.json');
+      final message = {
+        ...fixture,
+        'payload': {
+          ..._payloadOf(fixture),
+          'catalogVersion': List.filled(65, 'a').join(),
+        },
+      };
+
+      final rejections = _validator.validateEnvelope(message);
+
+      expect(
+        rejections.map((r) => r.toString()).toList(),
+        hasLength(1),
+        reason: 'only the version length is wrong',
+      );
+      expect(rejections.single.code, 'constraint_violation');
+      expect(
+        rejections.single.message,
+        'expected at most 64 characters, found 65',
+      );
+    });
+  });
+
+  test('S-3834 an empty fallback with routines still fails coverage (D-3812)', () {
+    final fixture = _readJson('fixtures/valid/routines_down.json');
+    final message = {
+      ...fixture,
+      'payload': {
+        ..._payloadOf(fixture),
+        'fallbackExercises': <Object?>[],
+      },
+    };
+
+    final rejections = _validator.validateEnvelope(message);
+
+    expect(
+      rejections.map((r) => r.toString()).toList(),
+      hasLength(1),
+      reason: 'the relax must not open a coverage hole',
+    );
+    expect(rejections.single.code, 'semantic_violation');
+    expect(rejections.single.path, r'$.payload.fallbackExercises');
+  });
+
   group('S-165 the wire refuses a rest length', () {
     test('a rest carries no planned length, a round keeps one, and a rest '
         'with one is refused', () {

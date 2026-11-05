@@ -185,12 +185,18 @@ class WatchSessionStartPaths {
         held.status == WatchSessionStatus.active &&
         held.exercises.isEmpty) {
       var filled = held;
-      for (final slot in routine.slots) {
+      for (final slot in routine.slotsFor(sessionToken(held.sessionId))) {
         filled = await _engine.insertExercise(slot, moveTo: false);
       }
       return filled;
     }
-    return _engine.createSession(modality: null, exercises: routine.slots);
+    // The session id is minted inside `createSession`, so the slots built here
+    // carry the token of the id the start paths mint for the start (plan 81
+    // D-9).
+    return _engine.createSession(
+      modality: null,
+      exercises: routine.slotsFor(sessionToken(_newId())),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -232,19 +238,38 @@ class WatchSessionStartPaths {
   /// A slot id the session is not using yet. The same exercise may legitimately
   /// fill two slots — that is what a superset is — so a second pick gets its
   /// own id rather than being swallowed as a duplicate.
+  ///
+  /// The de-duplication runs on the plain bases — the session's own ids with
+  /// their token removed — and the token goes back on last, so a second pick
+  /// of one exercise is `sx-<id>-2~<token>` (plan 81 D-1, S-15002).
   String _availableSlotId(WatchCatalogExercise exercise) {
     final taken = {
       for (final slot
           in _engine.session?.exercises ?? const <Map<String, Object?>>[])
-        slot['sessionExerciseId'],
+        _plainSlotId(slot['sessionExerciseId']),
     };
 
     final base = exercise.slotId;
-    if (!taken.contains(base)) return base;
-    for (var suffix = 2; ; suffix++) {
-      final candidate = '$base-$suffix';
-      if (!taken.contains(candidate)) return candidate;
+    var free = base;
+    if (taken.contains(base)) {
+      for (var suffix = 2; ; suffix++) {
+        final candidate = '$base-$suffix';
+        if (!taken.contains(candidate)) {
+          free = candidate;
+          break;
+        }
+      }
     }
+    final token = sessionToken(_engine.session?.sessionId ?? _newId());
+    return '$free~$token';
+  }
+
+  /// A slot id with its session token removed — the text before the last `~`
+  /// (plan 81 D-1). An id with no `~` is already plain.
+  static String _plainSlotId(Object? id) {
+    final text = id is String ? id : '';
+    final at = text.lastIndexOf('~');
+    return at < 0 ? text : text.substring(0, at);
   }
 
   /// The exercises the wrist used most recently, newest session first.

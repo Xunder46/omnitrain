@@ -50,10 +50,10 @@ public struct WatchUnitPreferences: Equatable {
 
 /// What one rotary detent does, per metric.
 public enum WatchMetricStepping {
-    /// Points of crown travel that count as one detent on every wrist surface.
-    /// A Digital Crown detent and a Wear OS rotary notch both arrive as a scroll
-    /// or a drag, and the Flutter surface accumulates against the same number.
-    public static let pointsPerDetent: Double = 32
+    /// Crown value units per detent on watchOS: the step `.digitalCrownRotation(by:)`
+    /// takes, so one click of the Crown is one step of a value. The Dart client
+    /// counts drag points separately (`WatchRotaryTurn`); the two are not tied.
+    public static let pointsPerDetent: Double = 1
 
     /// Load moves in the saved increment: 2.5 kg, or the 5 lb plate the user
     /// thinks in — converted once here, so the display reads exactly 5 lb.
@@ -69,6 +69,14 @@ public enum WatchMetricStepping {
 
     /// Counts move by one.
     public static let countPerDetent = 1.0
+
+    /// What one Crown click moves: one unit of the digit the value is read in,
+    /// finer than the quick step the − / + buttons take (plan 52 D-1). Weight
+    /// moves a kilogram or a pound, a duration a second; counts and distance
+    /// already move by one digit and keep their step.
+    public static let fineKilogramsPerDetent = 1.0
+    public static let finePoundsPerDetent = 1.0
+    public static let fineSecondsPerDetent = 1.0
 
     /// The lowest canonical load the wire carries, in kilograms — a band or
     /// partner assist. Mirrors `envelope.schema.json` `$defs.entry.loadKg` and
@@ -126,20 +134,46 @@ public enum WatchMetricStepping {
         }
     }
 
+    /// The canonical change one Crown click applies to `metricKey`.
+    public static func fineStep(
+        for metricKey: String,
+        units: WatchUnitPreferences = WatchUnitPreferences()
+    ) -> Double {
+        switch metricKey {
+        case WatchMetricKey.weight, WatchMetricKey.extraWeight:
+            return toKilograms(
+                units.isPounds ? finePoundsPerDetent : fineKilogramsPerDetent,
+                unit: units.isPounds ? "lbs" : "kg"
+            )
+        case WatchMetricKey.duration, WatchMetricKey.roundDuration:
+            return fineSecondsPerDetent
+        default:
+            return step(for: metricKey, units: units)
+        }
+    }
+
     /// `value` after `detents` rotations of the crown — positive is clockwise.
     public static func adjust(
         _ value: Double,
         metricKey: String,
         detents: Double,
-        units: WatchUnitPreferences = WatchUnitPreferences()
+        units: WatchUnitPreferences = WatchUnitPreferences(),
+        fine: Bool = false
     ) -> Double {
-        clamp(quantize(value + detents * step(for: metricKey, units: units)), metricKey: metricKey)
+        let size = fine
+            ? fineStep(for: metricKey, units: units)
+            : step(for: metricKey, units: units)
+        return clamp(quantize(value + detents * size), metricKey: metricKey)
     }
 
     /// Holds `value` inside the range the metric's own semantics allow: counts
     /// start at one, load is floored at the wire's own `-200 kg` (band assist,
     /// D-58/D-62), distance never goes negative, and extra load is signed
     /// because negative is band assist.
+    ///
+    /// A period's length floors at one second rather than zero: the schema
+    /// accepts no shorter period, and a wrist that dialled one would hold a
+    /// length it cannot send (D-3405).
     public static func clamp(_ value: Double, metricKey: String) -> Double {
         switch metricKey {
         case WatchMetricKey.reps, WatchMetricKey.rounds:
@@ -148,8 +182,9 @@ public enum WatchMetricStepping {
             return value
         case WatchMetricKey.weight:
             return value < minimumLoadKg ? minimumLoadKg : value
-        case WatchMetricKey.duration, WatchMetricKey.distance,
-             WatchMetricKey.roundDuration:
+        case WatchMetricKey.roundDuration:
+            return value < 1 ? 1 : value
+        case WatchMetricKey.duration, WatchMetricKey.distance:
             return value < 0 ? 0 : value
         default:
             return value

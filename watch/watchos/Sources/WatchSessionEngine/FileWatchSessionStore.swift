@@ -76,7 +76,23 @@ public final class FileWatchSessionStore: WatchSessionStore {
         locked { pruneSensorSamplesLocked(sessionIds) }
     }
 
-    // MARK: - The four operations
+    public func pruneExerciseBatches(keepingVersion: String) async -> [String] {
+        locked { pruneExerciseBatchesLocked(keepingVersion) }
+    }
+
+    public func pruneBests(keepingRecordId: String) async -> [String] {
+        locked { pruneBestsLocked(keepingRecordId) }
+    }
+
+    public func pruneWater(keepingRecordId: String) async -> [String] {
+        locked { pruneWaterLocked(keepingRecordId) }
+    }
+
+    public func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String] {
+        locked { pruneWaterTapsLocked(cutoff) }
+    }
+
+    // MARK: - The store's operations
 
     private func appendLocked(_ record: StoredWatchRecord) -> StoredWatchRecord {
         let loaded = loadRows()
@@ -113,6 +129,9 @@ public final class FileWatchSessionStore: WatchSessionStore {
         var foodCatalogs: [WatchFoodCatalogRecord] = []
         var preferences: [WatchPreferencesRecord] = []
         var ratingPrompts: [WatchRatingPromptRecord] = []
+        var exerciseBatches: [WatchExerciseBatchRecord] = []
+        var bests: [WatchBestsRecord] = []
+        var water: [WatchWaterRecord] = []
 
         for row in loaded {
             switch row {
@@ -125,6 +144,9 @@ public final class FileWatchSessionStore: WatchSessionStore {
             case .foodCatalog(let value): foodCatalogs.append(value)
             case .preferences(let value): preferences.append(value)
             case .ratingPrompt(let value): ratingPrompts.append(value)
+            case .exerciseBatch(let value): exerciseBatches.append(value)
+            case .bests(let value): bests.append(value)
+            case .water(let value): water.append(value)
             }
         }
 
@@ -137,7 +159,10 @@ public final class FileWatchSessionStore: WatchSessionStore {
             routineCatalogs: routineCatalogs,
             foodCatalogs: foodCatalogs,
             preferences: preferences,
-            ratingPrompts: ratingPrompts
+            ratingPrompts: ratingPrompts,
+            exerciseBatches: exerciseBatches,
+            bests: bests,
+            water: water
         )
     }
 
@@ -185,6 +210,117 @@ public final class FileWatchSessionStore: WatchSessionStore {
             return !named.contains(value.sessionId)
         }
 
+        guard compact(survivors) else { return [] }
+        rows = survivors
+        return dropped
+    }
+
+    private func pruneExerciseBatchesLocked(_ keepingVersion: String) -> [String] {
+        let loaded = loadRows()
+        guard !unsupported else { return [] }
+
+        let dropped = loaded.compactMap { row -> String? in
+            guard case .exerciseBatch(let value) = row,
+                  value.catalogVersion != keepingVersion else { return nil }
+            return value.recordId
+        }
+        let kept = Set(dropped)
+        let survivors = loaded.filter { row in
+            guard case .exerciseBatch(let value) = row else { return true }
+            return !kept.contains(value.recordId)
+        }
+
+        // A prune that finds nothing is not a write (D-3821): the file keeps
+        // every byte it had, marker and torn tail included.
+        guard !dropped.isEmpty else { return [] }
+        guard compact(survivors) else { return [] }
+        rows = survivors
+        return dropped
+    }
+
+    private func pruneBestsLocked(_ keepingRecordId: String) -> [String] {
+        let loaded = loadRows()
+        guard !unsupported else { return [] }
+
+        let stored = loaded.contains { row in
+            if case .bests(let value) = row { return value.recordId == keepingRecordId }
+            return false
+        }
+        guard stored else { return [] }
+
+        let dropped = loaded.compactMap { row -> String? in
+            guard case .bests(let value) = row,
+                  value.recordId != keepingRecordId else { return nil }
+            return value.recordId
+        }
+        let drop = Set(dropped)
+        let survivors = loaded.filter { row in
+            guard case .bests(let value) = row else { return true }
+            return !drop.contains(value.recordId)
+        }
+
+        // A prune that finds nothing is not a write (D-3821): the file keeps
+        // every byte it had, marker and torn tail included.
+        guard !dropped.isEmpty else { return [] }
+        guard compact(survivors) else { return [] }
+        rows = survivors
+        return dropped
+    }
+
+    private func pruneWaterLocked(_ keepingRecordId: String) -> [String] {
+        let loaded = loadRows()
+        guard !unsupported else { return [] }
+
+        let stored = loaded.contains { row in
+            if case .water(let value) = row { return value.recordId == keepingRecordId }
+            return false
+        }
+        guard stored else { return [] }
+
+        let dropped = loaded.compactMap { row -> String? in
+            guard case .water(let value) = row,
+                  value.recordId != keepingRecordId else { return nil }
+            return value.recordId
+        }
+        let drop = Set(dropped)
+        let survivors = loaded.filter { row in
+            guard case .water(let value) = row else { return true }
+            return !drop.contains(value.recordId)
+        }
+
+        // A prune that finds nothing is not a write (D-3821): the file keeps
+        // every byte it had, marker and torn tail included.
+        guard !dropped.isEmpty else { return [] }
+        guard compact(survivors) else { return [] }
+        rows = survivors
+        return dropped
+    }
+
+    private func pruneWaterTapsLocked(_ cutoff: Date) -> [String] {
+        let loaded = loadRows()
+        guard !unsupported else { return [] }
+
+        let confirmations = loaded.compactMap { row -> WatchConfirmationRecord? in
+            guard case .confirmation(let value) = row else { return nil }
+            return value
+        }
+        let observations = loaded.compactMap { row -> WatchObservationRecord? in
+            guard case .observation(let value) = row else { return nil }
+            return value
+        }
+        let dropped = confirmedWaterTapIds(
+            in: applyConfirmations(observations, confirmations),
+            loggedBefore: cutoff
+        )
+        let drop = Set(dropped)
+        let survivors = loaded.filter { row in
+            guard case .observation(let value) = row else { return true }
+            return !drop.contains(value.recordId)
+        }
+
+        // A prune that finds nothing is not a write (D-3821): the file keeps
+        // every byte it had, marker and torn tail included.
+        guard !dropped.isEmpty else { return [] }
         guard compact(survivors) else { return [] }
         rows = survivors
         return dropped

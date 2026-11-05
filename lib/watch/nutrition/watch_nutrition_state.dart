@@ -79,7 +79,7 @@ class WatchNutritionState {
   /// logged here recently lifted to the front.
   List<WatchFood> get foods => List.unmodifiable(
     deriveWatchFoodList(
-      foods: _syncedFoods,
+      foods: [for (final food in _syncedFoods) _effectiveFood(food)],
       categories: _categories,
       recentFoodIds: _recentFoodIds,
     ),
@@ -89,7 +89,7 @@ class WatchNutritionState {
   /// not sent one.
   WatchFood? food(String foodId) {
     for (final candidate in _syncedFoods) {
-      if (candidate.foodId == foodId) return candidate;
+      if (candidate.foodId == foodId) return _effectiveFood(candidate);
     }
     return null;
   }
@@ -211,17 +211,48 @@ class WatchNutritionState {
     return recent;
   }
 
+  /// [food] with the starting portion the wrist last logged of it, when that
+  /// log is newer than the list the phone sent (D-9, the twin of the watch
+  /// app's own rule).
+  ///
+  /// Derived on every read from the log and the catalog rather than stored
+  /// beside them, in the style of [_recentFoodIds]: a relaunch cannot lose what
+  /// storage kept, and a list the phone generated after the log — which carries
+  /// the phone's own last amount — wins over it.
+  WatchFood _effectiveFood(WatchFood food) {
+    final catalog = _catalog;
+    if (catalog == null) return food;
+    for (final observation in _engine.nutritionLog.reversed) {
+      if (observation.payload['foodId'] != food.foodId) continue;
+      final loggedAt = observation.payload['loggedAt'];
+      final servings = observation.payload['servings'];
+      if (loggedAt is! String || servings is! num) return food;
+      if (!parseUtcIso(loggedAt).isAfter(catalog.generatedAt)) return food;
+      return food.copyWithDefaultServings(servings.toDouble());
+    }
+    return food;
+  }
+
   // ---------------------------------------------------------------------------
   // The portion
   // ---------------------------------------------------------------------------
 
-  /// Picks [foodId] and starts its portion where the phone left it — the amount
-  /// the user logged last, or one serving.
+  /// Picks [foodId] and starts its portion at the food's starting amount — the
+  /// wrist's own last log where that is newer than the phone's list, the
+  /// phone's own pre-fill otherwise.
   void select(String foodId) {
     final food = this.food(foodId);
     if (food == null) return;
     _selectedFoodId = foodId;
     _servings = _clampServings(food.defaultServings);
+    _confirmation = null;
+  }
+
+  /// Leaves the selected food: the next one opens at its own starting amount
+  /// rather than at the portion this one was left at (D-9).
+  void deselect() {
+    _selectedFoodId = null;
+    _servings = WatchNutritionPortion.minServings;
     _confirmation = null;
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/models/models.dart';
 import '../../core/constants/capability.dart';
+import '../../core/constants/omni_theme.dart';
 
 /// Dialog for choosing a tracking metric for an exercise in Free Training mode
 /// Only shows metrics the exercise supports
@@ -42,6 +43,15 @@ class MetricChooserDialog extends StatelessWidget {
         ),
         actions: [
           TextButton(
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Close'),
           ),
@@ -107,6 +117,15 @@ class MetricChooserDialog extends StatelessWidget {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
+                  style: ButtonStyle(
+                    shape: WidgetStateProperty.all(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonUtilityRadius,
+                        ),
+                      ),
+                    ),
+                  ),
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Cancel'),
                 ),

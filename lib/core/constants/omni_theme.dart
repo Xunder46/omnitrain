@@ -591,6 +591,10 @@ class OmniTheme {
   /// safe-area-aware vertical anchor.
   static const double bottomCTAVerticalBottomPadding = 16.0;
 
+  /// Vertical gap between the optional secondary action of
+  /// `OmniBottomCTA` and the primary button beneath it.
+  static const double bottomCTASecondaryGap = 8.0;
+
   /// Bottom padding applied to scrollable form bodies so the
   /// last form field is never hidden behind the bottom CTA.
   /// Tuned to the shared CTA footprint

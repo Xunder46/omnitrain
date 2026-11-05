@@ -1,0 +1,29 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-routines-catalog-only-1",
+  "type": "routines_down",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-07-13T17:00:00Z",
+    "routines": [],
+    "fallbackExercises": [
+      {
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      },
+      {
+        "exerciseId": "ex-soccer",
+        "name": "Soccer",
+        "capabilities": ["time", "rounds"],
+        "roundDurationSecs": 2400
+      }
+    ]
+  }
+}

@@ -43,6 +43,22 @@ const int kCardioEfficiencyLiftLoadRisePercent = 15;
 /// The period the lifting sentence reads, in local calendar days (D-1807).
 const int kCardioEfficiencyLiftLoadWindowDays = 28;
 
+/// What would wake Cardio Efficiency Drift, in one sentence, or null (D-17604).
+///
+/// [eligibleEfforts] counts the efforts that already carry a measured distance
+/// and an average heart rate. Null with none (nothing the user can supply
+/// without a watch) and with `2 * kCardioEfficiencyMinEffortsPerWindow` or
+/// more (the floor of the two windows can be met).
+String? cardioEfficiencyWaitingLine(int eligibleEfforts) {
+  if (eligibleEfforts < 1 ||
+      eligibleEfforts >= 2 * kCardioEfficiencyMinEffortsPerWindow) {
+    return null;
+  }
+  return 'Cardio Efficiency: needs heart rate from the watch on at least '
+      '$kCardioEfficiencyMinEffortsPerWindow workouts of the same kind in '
+      'each of two periods.';
+}
+
 /// One eligible cardio effort as the rule sees it (D-1802).
 ///
 /// [start] is the instance's own start, [durationSecs] its measured duration,

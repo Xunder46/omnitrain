@@ -52,7 +52,7 @@ The info sheet (`_showExerciseInfoSheet`) is a modal bottom sheet with:
 - optional hero image (`exercise.imageAssetPath`)
 - exercise name
 - ordered how-to list (`exercise.howToSteps`)
-- empty state: "No information available yet" when no image/steps exist
+- empty state: "No information available yet" when no image and no steps exist and the exercise is not bilateral; a bilateral exercise with no image/steps shows the bilateral logging note instead (`workout_session_global_timer.dart` guards on `!hasImage && !hasSteps && !isBilateral`)
 
 ### Rendering details
 

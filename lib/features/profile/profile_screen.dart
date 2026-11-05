@@ -13,6 +13,7 @@ import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
+import '../../widgets/feedback/omni_message.dart';
 import 'widgets/avatar_crop_sheet.dart';
 import 'widgets/measurement_history_chart_sheet.dart';
 import 'widgets/measurement_sparkline.dart';
@@ -50,6 +51,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ...ProfileMeasurements.additional.map((d) => d.type),
         'height',
       });
+      // D-27.2: the screen states the failure in plain words; the
+      // exception's text is only ever logged.
+      final loadError = widget.profileState.error;
+      if (loadError != null) {
+        debugPrint('Profile: load failed: $loadError');
+      }
     });
   }
 
@@ -81,6 +88,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
             return ListView(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               children: [
+                // D-27.2: a failed load is stated in plain words at the top
+                // of the screen, with the retry that re-runs the load. The
+                // exception's text is only ever logged (see `initState`).
+                if (widget.profileState.error != null) ...[
+                  Text(
+                    'Could not load your profile. Try again.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: OmniTheme.buttonPrimaryHeight,
+                    width: double.infinity,
+                    child: FilledButton(
+                      key: const Key('profile_load_retry'),
+                      onPressed: () => widget.profileState.loadProfile(),
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            OmniTheme.buttonBorderRadius,
+                          ),
+                        ),
+                      ),
+                      child: const Text('Try again'),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
                 _buildIdentitySection(theme, profile),
                 const SizedBox(height: 24),
                 // Single charted column. The cleanup pass dropped the
@@ -92,15 +129,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   theme,
                   definitions: ProfileMeasurements.additional,
                 ),
-                if (widget.profileState.error != null) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    widget.profileState.error!,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ],
               ],
             );
           },
@@ -555,7 +583,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
       await handlePickedImage(pickedImage);
     } catch (e) {
-      _showMessage('Failed to update avatar: $e');
+      debugPrint('Update avatar: $e');
+      _showError('Could not update your photo. Try again.');
     }
   }
 
@@ -688,7 +717,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       await widget.profileState.updateDisplayName(value);
     } catch (e) {
-      _showMessage('Failed to update name: $e');
+      debugPrint('Update name: $e');
+      _showError('Could not update your name. Try again.');
     }
   }
 
@@ -712,7 +742,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       await widget.profileState.updateHeight(saved);
     } catch (e) {
-      _showMessage('Failed to update height: $e');
+      debugPrint('Update height: $e');
+      _showError('Could not update your height. Try again.');
     }
   }
 
@@ -755,9 +786,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    OmniMessage.show(context, message);
+  }
+
+  void _showError(String message) {
+    OmniMessage.error(context, message);
   }
 }
 
@@ -1008,9 +1041,8 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
       setState(() {
         _isSaving = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to save entry: $e')));
+      debugPrint('Save entry: $e');
+      OmniMessage.error(context, 'Could not save the entry. Try again.');
       return;
     }
 
@@ -1094,9 +1126,8 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
       setState(() {
         _isSaving = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to save entry: $e')));
+      debugPrint('Save entry: $e');
+      OmniMessage.error(context, 'Could not save the entry. Try again.');
       return;
     }
 

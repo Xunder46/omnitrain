@@ -4,11 +4,13 @@
 
 OmniTrain's Settings screen is fully implemented. It owns persisted preferences for:
 
-- calendar display (`Start of Week`)
+- calendar display and the weeks the Consistency signal counts (`Start of Week`) — verified by `test/consistency_test.dart`, group `S-17802 the week ends on the day the setting says`, and `test/signals_layer_screen_test.dart`, group `S-17812 the Start of Week setting reaches the signals`
+- the Stats screen following `Start of Week`: changing `Start of Week` while Stats is open, or underneath another screen, refreshes Stats in the background with no spinner, so the Mix strip's week columns and the signals' week and waiting lines follow at once; no other setting reloads Stats, and setting Start of Week to the value it already has does not either, and a card dismissed a moment before the change stays dismissed — verified by `test/signals_layer_screen_test.dart`, group `S-182 Stats follows Start of Week while it is open` (`S-18201`, `S-18202`, `S-18204`), group `S-18206 a card dismissed just before the flip stays dismissed`, and `test/mix_layer_screen_test.dart`, group `S-18205 the strip follows Start of Week while Stats is open`
 - measurement units (`Weight`, `Distance`, `Height`)
 - timer alert behavior (`Effort Timer Sound`, `Rest Ping`, `Rest Ping Sound`): the rest ping is a count-up nudge about the open rest, never a rest timer and never an end-of-rest alarm, and the one Rest Ping setting drives it on the phone and a haptic tap on the watch with no sound there, while Rest Ping Sound stays phone-only — round and hold timer alerts are unchanged ([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up"; `WatchLoggingTimersTests.testS164ARestIsNeverOwedAnAlert`, `WatchRestPingTests.testS241AnIntervalTapsAtItsMultiplesAndNowhereElse`)
 - notification permission copy that covers both rest reminders and effort-expiry alerts
 - workout follow-up (`Effort Rating`, the automatic post-workout effort-rating prompt; copy verified by `test/screen_widget_test.dart`, `settings screen keeps the streamlined section layout`)
+- the weight line on Stats (`Weight on Stats`)
 - appearance (`AppTheme` selection)
 
 All settings apply immediately. There is no save button and no staged draft state.
@@ -19,46 +21,22 @@ All settings apply immediately. There is no save button and no staged draft stat
 
 **File**: `lib/core/constants/omni_theme.dart`
 
-> **Flagged, not owned here (documentation standard §5).** The `AppTheme` enum
-> block and the token-field table below are copied implementation content
-> (§3.5/§3.4). They predate this document's conformance pass and are left as
-> they are rather than silently rewritten: bringing them into conformance is a
-> follow-up, and until then the class and
-> [Design System](design_system.md) are the owners.
-
-### `AppTheme` Enum
-
-```dart
-enum AppTheme {
-  abyssalNeon,
-  forgeEmber,
-  obsidianVolt,
-  voidPulse,
-  crimsonDojo,
-  malachiteCore,
-}
-```
-
 ### Available Themes
 
-Six themes: Abyssal Neon, Forge & Ember, Obsidian Volt, Void Pulse, Crimson Dojo, and Malachite
+The `AppTheme` enum in `lib/core/constants/omni_theme.dart` declares six themes: Abyssal Neon,
+Forge & Ember, Obsidian Volt, Void Pulse, Crimson Dojo, and Malachite
 Core. Their palettes and the reasoning behind each are in [Design System](design_system.md); the
 values themselves live only in `lib/core/constants/omni_theme.dart`.
 
 ### `OmniTheme` Token Resolver
 
-`OmniTheme.colorsForTheme(AppTheme theme)` returns a typed record with these fields:
-
-| Token Field | Purpose |
-|-------------|---------|
-| `backgroundTop` | Top stop of the app gradient |
-| `backgroundBottom` | Bottom stop of the app gradient |
-| `surface` | Surface and sheet background |
-| `primary` | Primary CTA / active accent |
-| `secondary` | Supporting accent |
-| `textMuted` | Secondary and metadata text |
-| `divider` | Dividers and low-emphasis separators |
-| `surfaceBorder` | Subtle surface outline |
+`OmniTheme.colorsForTheme(AppTheme theme)` returns the `OmniThemeColors`
+record defined by the typedef of the same name in
+`lib/core/constants/omni_theme.dart` — one field per token group
+(gradient stops, surface, primary and secondary accents, text tiers,
+divider, surface border, macro chart palette, strip macros, intensity
+ramp). The field list is the typedef's own; read it there rather than
+restating it here.
 
 ### Helper API
 
@@ -96,6 +74,14 @@ defines as whether a session ended on the wrist asks for the rating. The phone
 never pushes it: a change reaches the wrist with the answer to the wrist's next
 sync request. Verified by `test/watch_transport_test.dart` (`S-253`).
 
+**The weight and distance units are the wrist's too.** The Units setting
+(`preferredWeightUnit`: kg or lbs; `preferredDistanceUnit`: km or miles) travels
+as `preferences_down`'s `weightUnit` and `distanceUnit`, so the watch's logging
+screens show and step in the units the phone does. Like the effort rating, a
+change reaches the wrist with its next sync; a wrist that has never synced shows
+kg and km. Verified by `test/watch_sync_request_handler_test.dart` (`S-3903`) and
+`WatchUnitsTests.swift`.
+
 ---
 
 ## Settings Screen
@@ -110,8 +96,8 @@ enumerated here — the list is presentation, and prose enumeration of it drifts
 
 ### Sections
 
-The screen groups preferences, sound and alert behaviour, workout follow-up, appearance, and the
-platform-health sync toggles. Two
+The screen groups preferences, sound and alert behaviour, workout follow-up, appearance, the
+platform-health sync toggles, and the watch's link status. Two
 rules matter beyond the row list:
 
 - **Height is stored canonically in centimetres regardless of the display unit.** Switching the
@@ -120,6 +106,25 @@ rules matter beyond the row list:
   one measurement with a compound display form.
 - **Sound choices preview immediately on tap** through `TimerAlertService.playPreview`, and audio
   playback no-ops safely on web rather than throwing.
+- **Silent mode:** the phone's silent switch silences the **rest ping** sound (the haptic tap still
+  fires), because the ping is a nudge, not an alarm. The effort-timer alert and the sound preview
+  still play with the switch on, since the user asked to hear them (`TimerAlertAudio.nudge` /
+  `.alarm` in `TimerAlertService`). Not yet confirmed on a device.
+
+The STATS section follows WORKOUT and holds the `Weight on Stats` switch —
+`Show your weight change over the last 4 weeks` — which shows and hides the
+Weight block on Stats without touching any other setting. Verified by
+`test/weight_trend_screen_test.dart`, group `S-17706 the Weight on Stats
+switch — Mock` › `the row sits after Effort Rating and flips only its own
+setting`.
+
+The APPLE WATCH section is the one read-only status readout, built only when the platform's
+transport can report a link: one `Apple Watch` row, not tappable, with the link phase on the
+right — `Connected`, `Not reachable`, `Not paired` or `Watch app not installed` — and the
+last-synced line under the label (`Never synced` until the phone first hears a frame). Verified
+by `test/settings_watch_status_test.dart` (S-6910 no section without a link state; S-6911 the
+row per phase; S-6912 the row offers no tap target; S-6913 the section sits between WORKOUT and
+HEALTH; S-6914 a heard frame updates the line while the screen is open).
 
 ### Version Footer
 
@@ -139,7 +144,13 @@ The Settings screen does not include account-management rows such as sign-in, ex
 The platform-health toggles are the one settings area that can fail to take effect: an OS permission
 denial is persisted as its own toggle state (rather than silently reading as off) so the row can
 point the user at system settings. The gate each pipeline reads is owned by `SettingsState`; see
-[State Management](state_management.md).
+[State Management](state_management.md). With Write workouts on, deleting a finished session also
+asks Health to remove the workout this phone saved for it; with it off, Health is left alone.
+With it on, a finished session's effort rating is also sent as that workout's Workout Effort, and
+a delete clears it first (plan 90). Switching Write workouts on asks Health for Workout Effort in the same sheet; iOS 18 and later only.
+A session the watch runs gets its workout from the watch, never also from the phone: the phone
+writes nothing when the wrist ends it, or when the phone ends a session the wrist is running with an
+exercise in it (plan 89c1; `S-89c1-*` in `test/health_platform_test.dart`).
 
 ---
 

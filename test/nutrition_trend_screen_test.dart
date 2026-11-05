@@ -2,10 +2,12 @@
 // only home of the nutrition trend now that Stats PR 4c removed the Stats
 // NUTRITION card.
 //
-// Scenarios S-1109 (the Calories / Macros toggle swaps the plotted datasets),
-// S-1110(a) (the extracted screen plots the repository's full food history)
+// Scenarios S-1109 (the Calories and Macros charts are both on screen, stacked,
+// with no toggle), S-1110(a) (the extracted screen plots the repository's full
+// food history)
 // and S-1110(b) (the zero-session empty state wins over the Fuel row), plus
-// the empty-chart path.
+// the empty path (S-2803: no logged day is the shared `OmniEmptyState`, not a
+// flat line at zero).
 //
 // Plan: `docs/plans/2026-10-01-04b3-stats-pr4b3-fuel-row-plan/`.
 //
@@ -22,6 +24,8 @@ import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/features/nutrition/nutrition_trend_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
+import 'package:omnitrain/widgets/common/omni_empty_state.dart';
+import 'package:omnitrain/widgets/layout/omni_surface.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
@@ -32,33 +36,7 @@ import 'helpers/repository_harness.dart';
 /// is then never just an off-screen miss.
 const Size _kTallViewport = Size(400, 3000);
 
-/// The largest text scale iOS offers through Accessibility settings.
-const double _kMaxTextScale = 5.0;
-
-/// Wide enough that the toggle's two labels have room for a full line each at
-/// [_kMaxTextScale]. `flutter test` renders with a placeholder font whose
-/// glyphs are a full em wide, so the labels measure far wider here than they
-/// do on a device: this viewport is a measuring instrument, not a device size.
-const Size _kWideViewport = Size(1400, 3000);
-
 // ─── finders and readers ────────────────────────────────────────────────────
-
-/// The size [label] takes on one unbounded line at [scale], in the style the
-/// card renders it in.
-///
-/// A label that wrapped is taller than this.
-Size _oneLineSize(WidgetTester tester, String label, double scale) {
-  final finder = find.text(label);
-  final style =
-      tester.widget<Text>(finder).style ??
-      DefaultTextStyle.of(tester.element(finder)).style;
-  final painter = TextPainter(
-    text: TextSpan(text: label, style: style),
-    textDirection: TextDirection.ltr,
-    textScaler: TextScaler.linear(scale),
-  )..layout();
-  return painter.size;
-}
 
 Finder _scrollable(String unitLabel) => find.byWidgetPredicate(
   (widget) => widget is ScrollableTrendChart && widget.unitLabel == unitLabel,
@@ -66,8 +44,8 @@ Finder _scrollable(String unitLabel) => find.byWidgetPredicate(
 
 /// The `LineChartData` of the one scrollable chart labelled [unitLabel].
 ///
-/// The trend screen renders a single card, so the unit label identifies its
-/// chart.
+/// The trend screen renders one Calories card (`kcal`) and one Macros card
+/// (`g`), so the unit label identifies the chart.
 LineChartData _chartData(WidgetTester tester, String unitLabel) {
   final finder = _scrollable(unitLabel);
   expect(finder, findsOneWidget);
@@ -208,18 +186,14 @@ void main() {
       Future<void> pumpTrend(
         WidgetTester tester, {
         Size surface = _kTallViewport,
-        double textScale = 1.0,
       }) async {
         await tester.binding.setSurfaceSize(surface);
         addTearDown(() => tester.binding.setSurfaceSize(null));
         await tester.pumpWidget(
           MaterialApp(
-            home: MediaQuery(
-              data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
-              child: NutritionTrendScreen(
-                workoutState: workoutState,
-                settingsState: settingsState,
-              ),
+            home: NutritionTrendScreen(
+              workoutState: workoutState,
+              settingsState: settingsState,
             ),
           ),
         );
@@ -241,7 +215,27 @@ void main() {
           final data = _chartData(tester, 'kcal');
           expect(data.lineBarsData, hasLength(2));
           expect(data.lineBarsData.last.spots, isNotEmpty);
-          expect(find.text('Target (kcal)'), findsOneWidget);
+          // The legend names the target's number (the seeded 2200), so the
+          // dashed line is never an unlabelled mark.
+          expect(find.text('Target 2200 kcal'), findsOneWidget);
+        });
+
+        testWidgets('the legend stays inside its card in both cards on a '
+            'narrow screen', (tester) async {
+          // Tall enough that both stacked cards are laid out at phone width.
+          await pumpTrend(tester, surface: const Size(320, 1400));
+
+          final cards = find.byType(OmniSurface);
+          expect(cards, findsNWidgets(2));
+
+          expect(
+            tester.getRect(find.text('Target 2200 kcal')).right,
+            lessThanOrEqualTo(tester.getRect(cards.at(0)).right),
+          );
+          expect(
+            tester.getRect(find.text('Target')).right,
+            lessThanOrEqualTo(tester.getRect(cards.at(1)).right),
+          );
         });
       });
 
@@ -285,7 +279,7 @@ void main() {
         });
       });
 
-      // ─── S-1109: the Calories / Macros toggle ─────────────────────────────
+      // ─── S-1109: both charts, stacked, no toggle ──────────────────────────
 
       group('S-1109', () {
         setUp(() async {
@@ -294,85 +288,58 @@ void main() {
         });
 
         testWidgets(
-          'the toggle swaps the calories dataset for the macros one',
+          'the Calories and Macros cards are both on screen, Calories first',
           (tester) async {
             await pumpTrend(tester);
 
-            // Calories view: the kcal chart and its legend.
+            // No segmented control anywhere on the screen.
+            expect(
+              find.byWidgetPredicate((w) => w is SegmentedButton),
+              findsNothing,
+            );
+
+            // Each card under its own header, Calories above Macros.
+            expect(find.text('CALORIES'), findsOneWidget);
+            expect(find.text('MACROS'), findsOneWidget);
+            expect(
+              tester.getTopLeft(find.text('CALORIES')).dy,
+              lessThan(tester.getTopLeft(find.text('MACROS')).dy),
+            );
+
+            // The kcal chart and its legend.
             expect(_scrollable('kcal'), findsOneWidget);
-            expect(_scrollable('g'), findsNothing);
             expect(find.text('Calories (kcal)'), findsOneWidget);
 
-            await tester.tap(find.text('Macros'));
-            await tester.pumpAndSettle();
-
-            // Macros view: the grams chart and its three-macro legend.
-            expect(_scrollable('kcal'), findsNothing);
+            // The grams chart and its three-macro legend, below it.
             expect(_scrollable('g'), findsOneWidget);
             expect(find.text('Protein (g)'), findsOneWidget);
             expect(find.text('Carbs (g)'), findsOneWidget);
             expect(find.text('Fat (g)'), findsOneWidget);
+            expect(
+              tester.getTopLeft(_scrollable('kcal')).dy,
+              lessThan(tester.getTopLeft(_scrollable('g')).dy),
+            );
           },
         );
       });
 
-      // ─── the toggle's labels at the largest text scale ────────────────────
-
-      group('Calories / Macros labels at max text scale', () {
-        setUp(() async {
-          await _clearConsumedFoods(repo);
-          await _seedNutrition(repo);
-        });
-
-        testWidgets('both labels lay out on one line at $_kMaxTextScale x text', (
-          tester,
-        ) async {
-          // The chart's pinned y-axis is a fixed-height band holding 9px tick
-          // labels, so at 5.0x text those labels are five times taller than the
-          // band and overflow it. That is the chart's geometry, not the
-          // toggle's, and this guard measures the toggle's labels.
-          final previous = FlutterError.onError;
-          FlutterError.onError = (details) {
-            if (!details.exceptionAsString().contains('overflowed')) {
-              previous?.call(details);
-            }
-          };
-          try {
-            await pumpTrend(
-              tester,
-              surface: _kWideViewport,
-              textScale: _kMaxTextScale,
-            );
-          } finally {
-            FlutterError.onError = previous;
-          }
-
-          for (final label in ['Calories', 'Macros']) {
-            final oneLine = _oneLineSize(tester, label, _kMaxTextScale);
-            expect(
-              tester.getSize(find.text(label)).height,
-              closeTo(oneLine.height, 1),
-              reason: '$label wrapped onto more than one line',
-            );
-          }
-        });
-      });
-
-      // ─── the empty-chart path ─────────────────────────────────────────────
+      // ─── the empty path (S-2803) ──────────────────────────────────────────
 
       group('no food logged', () {
         setUp(() => _clearConsumedFoods(repo));
 
-        testWidgets('renders the empty chart, not an error', (tester) async {
+        testWidgets('shows one empty state, never an all-zero chart', (
+          tester,
+        ) async {
           await pumpTrend(tester);
 
-          final data = _chartData(tester, '');
-          expect(data.lineBarsData, hasLength(1));
-          expect(data.lineBarsData.single.spots, hasLength(7));
-          expect(
-            data.lineBarsData.single.spots.every((spot) => spot.y == 0),
-            isTrue,
-          );
+          // One card, not an empty Calories card over an empty Macros card.
+          expect(find.byType(OmniSurface), findsOneWidget);
+          expect(find.text('NUTRITION'), findsOneWidget);
+          expect(find.byType(OmniEmptyState), findsOneWidget);
+          expect(find.text('No data yet'), findsOneWidget);
+          expect(find.text('Log food to see your trend.'), findsOneWidget);
+          expect(find.byType(LineChart), findsNothing);
           expect(tester.takeException(), isNull);
         });
       });
@@ -395,12 +362,13 @@ void main() {
           );
         });
 
-        testWidgets('is still plotted, as the single-point card', (
+        testWidgets('is still plotted, as the single-point cards', (
           tester,
         ) async {
           await pumpTrend(tester);
 
           expect(find.text('Calories: 490 kcal'), findsOneWidget);
+          expect(find.text('P 50 g · C 50 g · F 10 g'), findsOneWidget);
         });
       });
     });

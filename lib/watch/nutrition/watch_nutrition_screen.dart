@@ -85,7 +85,7 @@ class _WatchNutritionScreenState extends State<WatchNutritionScreen> {
   Widget _nothingSynced() {
     return Center(
       child: Text(
-        'No foods yet. Sync with your phone to get them.',
+        'No foods yet. On your phone, open Nutrition and tap Choose foods.',
         style: Theme.of(context).textTheme.bodySmall,
         textAlign: TextAlign.center,
       ),

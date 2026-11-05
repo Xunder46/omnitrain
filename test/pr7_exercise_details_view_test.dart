@@ -376,7 +376,12 @@ void main() {
         updatedAtMs: now,
       );
       await repo.createExercise(full);
-      await repo.setExerciseMuscleGroups(full.id, ['muscle-chest']);
+      await repo.setExerciseMuscleLinks(full.id, const [
+        ExerciseMuscleLink(
+          muscleGroupId: 'muscle-chest',
+          role: MuscleRole.primary,
+        ),
+      ]);
 
       await tester.pumpWidget(
         MaterialApp(

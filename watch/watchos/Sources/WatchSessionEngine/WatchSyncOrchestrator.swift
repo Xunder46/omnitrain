@@ -19,6 +19,10 @@
 //     everything; later ones say what the watch already has, so the phone can
 //     send what changed rather than the whole set.
 //
+//  A wrist that shows the day's water count asks for it on every request and
+//  routes the phone's `water_down` to its water state
+//  (`docs/plans/2026-11-01-95-watch-water-bar-plan/`, D-28, D-29).
+//
 
 import Foundation
 
@@ -29,9 +33,19 @@ public protocol WatchSyncTransport: AnyObject {
     var isPhoneReachable: Bool { get }
 
     /// Asks the phone for `routines_down`, optionally for everything newer than
-    /// `since`. The reply arrives through `WatchSyncOrchestrator.receive` — this
-    /// call carries no payload of its own.
-    func requestRoutines(since: Date?) async
+    /// `since`, and tells it which exercise-list version the wrist already
+    /// holds (`exercisesVersion`, nil when it holds none) so the phone can send
+    /// only what changed. `holdsBests` says whether the wrist holds a bests
+    /// frame, so the phone can skip a frame that has not changed (87c, D-7).
+    /// `wantsWater` asks for the day's water count as well (plan 95 D-28).
+    /// The reply arrives through `WatchSyncOrchestrator.receive` — this call
+    /// carries no payload of its own.
+    func requestRoutines(
+        since: Date?,
+        exercisesVersion: String?,
+        holdsBests: Bool,
+        wantsWater: Bool
+    ) async
 
     /// Asks the phone for a `session_snapshot`. The reply arrives through
     /// `WatchSyncOrchestrator.receive`, exactly as a `routines_down` reply does.
@@ -55,6 +69,16 @@ public final class WatchSyncOrchestrator {
     /// has nothing to do with a `preferences_down`.
     private let preferences: WatchPhonePreferences?
 
+    /// The phone's standing bests, when the app keeps them. A watch without
+    /// them has nothing to do with a `bests_down`, and announces nothing about
+    /// a record (D-3).
+    private let bests: WatchPersonalBests?
+
+    /// The day's water count, when the app shows one. A watch without it does
+    /// not ask for the count and has nothing to do with a `water_down`, so its
+    /// requests are the ones it sent before water existed (plan 95 D-28, I-9).
+    private let water: WatchWaterState?
+
     /// Whether a catch-up is running. The class is not main-actor isolated, so
     /// the flag is protected by a lock: the test-and-set in `catchUp` has no
     /// suspension point between the check and the set, so two triggers can never
@@ -67,13 +91,17 @@ public final class WatchSyncOrchestrator {
         paths: WatchSessionStartPaths,
         engine: WatchSessionEngine,
         nutrition: WatchNutritionState? = nil,
-        preferences: WatchPhonePreferences? = nil
+        preferences: WatchPhonePreferences? = nil,
+        bests: WatchPersonalBests? = nil,
+        water: WatchWaterState? = nil
     ) {
         self.transport = transport
         self.paths = paths
         self.engine = engine
         self.nutrition = nutrition
         self.preferences = preferences
+        self.bests = bests
+        self.water = water
     }
 
     /// Brings the watch up to date with the phone: the routines, and then the
@@ -91,7 +119,16 @@ public final class WatchSyncOrchestrator {
     /// protocol asks of both devices on connect.
     public func sync(reconnect: Bool = false) async {
         paths.phoneReachable = transport.isPhoneReachable
-        await transport.requestRoutines(since: reconnect ? paths.syncedAt : nil)
+        await transport.requestRoutines(
+            since: reconnect ? paths.syncedAt : nil,
+            exercisesVersion: paths.exercisesVersion,
+            // The wrist's own copy is the truth about "holds" (87c, D-7): a
+            // wrist with no frame asks for one, and one that holds says so.
+            holdsBests: bests?.hasFrame ?? false,
+            // A wrist that shows the water count asks for it on every sync,
+            // manual or catch-up; one that does not never asks (plan 95 D-28).
+            wantsWater: water != nil
+        )
 
         for message in engine.pendingObservations() {
             await transport.send(message)
@@ -157,6 +194,8 @@ public final class WatchSyncOrchestrator {
         switch envelope["type"] as? String {
         case "routines_down":
             return await paths.applyRoutinesDown(envelope).applied
+        case "exercises_down":
+            return await paths.applyExercisesDown(envelope).stored
         case "foods_down":
             guard let nutrition else { return false }
             return await nutrition.applyFoodsDown(envelope).applied
@@ -165,6 +204,18 @@ public final class WatchSyncOrchestrator {
             // the watch cannot read is refused with nothing stored (D-113).
             guard let preferences else { return false }
             return await preferences.applyPreferencesDown(envelope).applied
+        case "bests_down":
+            // The phone's standing bests, gated the same way: a frame the watch
+            // cannot read is refused with nothing stored and the copy it holds
+            // still deciding (D-5).
+            guard let bests else { return false }
+            return await bests.applyBestsDown(envelope).applied
+        case "water_down":
+            // The phone's water count for its today, gated the same way: a
+            // frame the watch cannot read is refused with nothing stored and
+            // the frame it holds still counting (plan 95 D-24, D-29).
+            guard let water else { return false }
+            return await water.applyWaterDown(envelope).applied
         case "exercise_push", "session_snapshot", "structure_change",
              "session_lifecycle", "timer_state", "observations_up",
              "receipt":

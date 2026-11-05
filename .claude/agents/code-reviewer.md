@@ -420,6 +420,12 @@ internals instead of asking it a question.
 DRY violations matter but are rarely blocking. Clean-code items are suggestions.
 Architecture violations are critical.
 
+**UI standards** (`docs/design_system.md`, enforced by `test/ui_standards_contract_test.dart`): a diff that
+adds an entry to `test/helpers/ui_standards_allowlist.dart`, raises a ratchet number, or introduces a raw
+piece the standards name (`Card`, `SnackBar`, a bare `IconButton` without `tooltip`, a button without an
+explicit `shape`, a colour literal) is **CRITICAL**. A copy change to a message, empty state or label is a
+product change: a WARNING that lists it for the owner.
+
 ## Report Formats
 
 Findings, one line each:

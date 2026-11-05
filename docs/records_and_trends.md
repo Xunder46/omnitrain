@@ -25,6 +25,20 @@ Verified by `test/records_and_trends_screen_test.dart` (`S-913` for the totals a
 the PR list, `S-914` for the shared best) and
 `test/exercise_metric_service_test.dart`.
 
+The Streak figure is the live streak and reads 0 d once it has lapsed. Verified
+by `test/calendar_streak_screen_test.dart` (group `S-17408 the Records and
+Trends Streak figure`: `S-17408 a live streak reads 2 d`, `S-17408 a lapsed
+streak reads 0 d, not the month best run`).
+
+A load that throws is not an empty state: each screen shows its failure line
+(`Could not load your records.` on the index, `Could not load this exercise.`
+on the detail page) with a full-width `Try again` button that re-runs the
+screen's load, through the shared `LoadFailureView`. Verified by
+`test/stats_load_failure_test.dart` (group `S-2704: a failed load is not an
+empty state`: `Records & Trends: the failure text and Try again replace the
+empty state`, `Exercise Progress: the failure text and Try again replace the
+empty state`).
+
 ---
 
 ## Navigation Entry Point
@@ -32,6 +46,7 @@ the PR list, `S-914` for the shared best) and
 ```
 StatsScreen
   ├── header chart icon → RecordsAndTrendsScreen
+  │     ├── Nutrition entry → NutritionTrendScreen
   │     └── entry → ExerciseProgressScreen
   └── Instruments row → ExerciseProgressScreen
 ```
@@ -46,14 +61,22 @@ Verified by `test/records_and_trends_screen_test.dart` (the single-entry-point
 case, the Exercise Progress entry-point guard, and `S-913`) and by
 `test/instrument_list_screen_test.dart` (`S-1014`).
 
+Records & Trends also carries a **Nutrition** entry, directly under the All-time
+card, that opens the full-history nutrition trend. It appears whenever any food
+has ever been logged and is absent when none has. It exists because the Stats
+screen's Fuel row hides once food has not been logged for a while, which would
+otherwise leave old history unreachable. Verified by
+`test/records_nutrition_entry_test.dart`.
+
 ---
 
 ## Sections and the effort-kind rule
 
 One entry per exercise that appears in at least one **completed** session; a
 session still in progress contributes nothing. Entries are grouped under one
-header per `ExerciseSection`, in the enum's declaration order (Resistance →
-Cardio → Isometric → Sports), and a section with no matching entry is omitted.
+header per `ExerciseSection`, uppercase, in the enum's declaration order (`RESISTANCE` →
+`CARDIO` → `ISOMETRIC` → `SPORTS`), and a section with no matching entry is
+omitted.
 
 An exercise's section is the effort kind it was logged under most: `set` →
 Resistance, `timed` → Cardio, `drill` → Isometric, `round` → Sports. A tie
@@ -66,7 +89,9 @@ to return rows in.
 
 Verified by `test/records_and_trends_screen_test.dart` (`S-912` for the section
 order and the entry order) and `test/exercise_metric_service_test.dart` (`S-905`
-for the section rule).
+for the section rule). The headings' case is pinned by
+`test/stats_heading_consistency_screen_test.dart` (group `S-18713 R&T headings
+are uppercase in the enum order`).
 
 ---
 
@@ -123,12 +148,28 @@ yields no value contributes no point, so a series can hold fewer points than the
 exercise has training days. Sessions that were never completed contribute nothing,
 so a cancelled session is absent from both the series and the list.
 
-An id with no history reaches an empty state instead of throwing. The entry list
+The trend chart's y-axis reads as a clock for the time-valued metrics — pace, a
+timed duration and a hold — with ticks like `10:00`, `15:00`, `20:00` and no unit
+text beneath them. Tick steps land on whole clock units (seconds, minutes, hours)
+rather than powers of ten, and the gridlines sit on the labels. Every other metric
+keeps a bare number with its unit once under the labels. Verified by
+`test/chart_axis_helper_test.dart` (group `ChartAxisHelper clock axis`) and
+`test/scrollable_trend_chart_test.dart` (group `ScrollableTrendChart — clock
+y-axis`).
+
+An id with no history reaches the shared empty state (`OmniEmptyState`, title
+`No history for this exercise`, hint `Log this exercise in a session to see
+its history.`) instead of throwing. The entry list
 cannot offer such an id, so that state guards against a stale id rather than being
 a route a user walks.
 
-Verified by `test/records_and_trends_screen_test.dart` (`S-910` for both empty
-states, `S-915` for the series, the best and the list order).
+Verified by `test/records_and_trends_screen_test.dart` (group `Records & Trends
+/ Exercise Progress — ${harness.name}`: `S-910 an empty history shows the
+Records & Trends empty state` for the index's empty state, `S-910 an id with
+no history shows the guard empty state instead of throwing` for the detail
+page's, `S-915` for the series, the best and the list order). Both S-910 tests
+assert the composition with `find.byType(OmniEmptyState)`, so the shared piece
+itself is pinned, not just the copy.
 
 ---
 

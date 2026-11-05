@@ -199,4 +199,38 @@ void main() {
     // scroll fade effects) that have nothing to do with the chart
     // chrome the plan set out to remove.
   });
+
+  group('ScrollableTrendChart — clock y-axis', () {
+    testWidgets('a yLabelFormatter replaces the bare numbers on the pinned '
+        'axis', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 400,
+              child: ScrollableTrendChart(
+                themeColors: themeColors,
+                bounds: const ChartAxisBounds(
+                  min: 600,
+                  max: 1800,
+                  interval: 300,
+                ),
+                unitLabel: '',
+                yLabelFormatter: ChartAxisHelper.formatClockAxisValue,
+                pointCount: 3,
+                chartBuilder: (_) => LineChart(LineChartData()),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      for (final label in ['10:00', '15:00', '20:00', '25:00', '30:00']) {
+        expect(find.text(label), findsOneWidget);
+      }
+      expect(find.text('600'), findsNothing);
+      expect(find.text('1800'), findsNothing);
+    });
+  });
 }

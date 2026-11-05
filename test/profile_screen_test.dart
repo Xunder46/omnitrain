@@ -9,6 +9,13 @@ import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'helpers/fake_preferences_service.dart';
 
+/// A repository whose profile read fails with an exception whose text must
+/// never reach the screen (D-27.2): only `debugPrint` may see it.
+class _ThrowingProfileRepository extends MockWorkoutRepository {
+  @override
+  Future<UserProfile?> getProfile() async => throw Exception('boom');
+}
+
 void main() {
   testWidgets('all charted-measurement log sheets hide note and date input', (
     tester,
@@ -851,4 +858,57 @@ void main() {
       );
     },
   );
+
+  group('D-27.2: a failed profile load says so in plain words', () {
+    testWidgets(
+      'the screen shows the plain line and the exception text is nowhere on it',
+      (tester) async {
+        final repository = _ThrowingProfileRepository();
+        await repository.initialize();
+        final profileState = ProfileState(repository);
+        final settingsState = SettingsState(
+          repository,
+          fakePreferencesService(),
+        );
+        await settingsState.initialize();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ProfileScreen(
+              profileState: profileState,
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Could not load your profile. Try again.'),
+          findsOneWidget,
+          reason:
+              'D-27.2 a failed load is a plain sentence, and the retry '
+              'instruction is part of the copy',
+        );
+        expect(
+          find.textContaining('Exception'),
+          findsNothing,
+          reason:
+              'D-27.2 the exception text belongs in a `debugPrint`, never '
+              'on the screen',
+        );
+        expect(
+          find.textContaining('boom'),
+          findsNothing,
+          reason:
+              'D-27.2 the exception message belongs in a `debugPrint`, '
+              'never on the screen',
+        );
+        expect(
+          find.text('Try again'),
+          findsOneWidget,
+          reason: 'the failure keeps a retry affordance',
+        );
+      },
+    );
+  });
 }

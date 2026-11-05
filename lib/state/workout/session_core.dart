@@ -65,6 +65,11 @@ class SessionCore {
   /// behaves exactly as it did before the recovery existed (D-803, D-811).
   final WatchLateEntryRecovery? _lateEntryRecovery;
 
+  /// Whether the wrist is running the session with this id, and so saves its
+  /// own Fitness workout for it (plan 89c1 D-2). Null in tests and in builds
+  /// without a watch; the phone's end then writes as it always has.
+  final bool Function(String sessionId)? _wristRunsSession;
+
   late final SessionBlockManager _blockManager;
   late final SessionSummaryBuilder _summaryBuilder;
 
@@ -85,6 +90,12 @@ class SessionCore {
 
   bool _isLoading = false;
 
+  /// Bumped where a watch-driven write changes the data the open session
+  /// screen reads (D-3505): the end of [refreshEfforts] and of
+  /// [appendSessionSlots]. The phone's own writes never move it, so a screen
+  /// that reacts to it cannot loop on its own reload.
+  int _watchRefreshRevision = 0;
+
   SessionCore(
     this._repository, {
     required void Function() notify,
@@ -94,13 +105,15 @@ class SessionCore {
     required ExerciseLibrary exerciseLibrary,
     HealthSyncService? healthSync,
     WatchLateEntryRecovery? lateEntryRecovery,
+    bool Function(String sessionId)? wristRunsSession,
   }) : _notify = notify,
        _setErrorCallback = setError,
        _clearErrorCallback = clearError,
        _timerManager = timerManager,
        _exerciseLibrary = exerciseLibrary,
        _healthSync = healthSync,
-       _lateEntryRecovery = lateEntryRecovery {
+       _lateEntryRecovery = lateEntryRecovery,
+       _wristRunsSession = wristRunsSession {
     _blockManager = SessionBlockManager(
       _repository,
       notify: _notify,
@@ -132,6 +145,10 @@ class SessionCore {
       _efforts.values.any((list) => list.isNotEmpty);
   bool get isRollingSession => _currentSession?.isRolling ?? false;
   String? get currentSessionModality => _currentSession?.modality;
+
+  /// The revision of the watch-driven writes the open session screen last
+  /// read (D-3505). See [_watchRefreshRevision].
+  int get watchRefreshRevision => _watchRefreshRevision;
 
   Map<String, List<EffortObservation>> get observationsMap => _observations;
 

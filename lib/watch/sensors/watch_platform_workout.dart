@@ -122,6 +122,12 @@ abstract final class WatchGpsPolicy {
     return config.primaryCapabilities.contains(distanceCapability) ||
         config.secondaryCapabilities.contains(distanceCapability);
   }
+
+  /// True when an exercise's capabilities include distance — the exercise, not
+  /// its name. The wrist decides GPS by the exercise the user is on as well as
+  /// by the session's modality (the Swift client's `WatchGpsPolicy.coversDistance`).
+  static bool coversDistance(Iterable<String> capabilities) =>
+      capabilities.contains(distanceCapability);
 }
 
 /// The health service's own view of workouts: the OS-level surface, which is the

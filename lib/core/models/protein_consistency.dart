@@ -123,6 +123,21 @@ class ProteinBaseline {
 bool proteinConsistencyGate({required Iterable<ProteinDay> recentDays}) =>
     recentDays.length >= kProteinConsistencyMinLoggedDays;
 
+/// What would wake Protein Consistency, in one sentence, or null (D-17603).
+///
+/// Null with no logged day at all — a user who does not log food is not
+/// nagged — and once [kProteinConsistencyMinLoggedDays] days are logged, when
+/// the signal is no longer short of anything the user can supply.
+String? proteinConsistencyWaitingLine(int loggedDays) {
+  if (loggedDays < 1 || loggedDays >= kProteinConsistencyMinLoggedDays) {
+    return null;
+  }
+  final more = kProteinConsistencyMinLoggedDays - loggedDays;
+  return 'Protein Consistency: log food on $more more '
+      '${more == 1 ? 'day' : 'days'} of the last '
+      '$kProteinConsistencyWindowDays.';
+}
+
 /// Whether every logged day in the window carries a positive stored protein
 /// target, which selects the target comparison (D-1506).
 ///

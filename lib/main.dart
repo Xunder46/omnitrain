@@ -35,6 +35,7 @@ import 'state/nutrition/nutrition_primer_state.dart';
 import 'state/stats/stats_primer_state.dart';
 import 'state/exercise/exercise_library_state.dart';
 import 'state/watch/watch_sync_wiring.dart';
+import 'state/watch/watch_rest_ping_wiring.dart';
 import 'core/utils/timer_alert_service.dart';
 import 'core/services/crash_reporting_service.dart';
 import 'core/utils/rest_notification_service.dart';
@@ -374,6 +375,8 @@ Future<Widget> runStartup({
     settingsState: settingsState,
     // A wrist session that lands in history shows in the calendar's month.
     onHistoryChanged: calendarState.refresh,
+    // A wrist rating becomes the Fitness workout's effort (plan 90 D-4).
+    healthSync: healthSyncService,
     onFailure: (error, stackTrace) {
       debugPrint('Watch transport unavailable: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -387,6 +390,9 @@ Future<Widget> runStartup({
     repository,
     healthSync: healthSyncService,
     watchLateEntryRecovery: watchSync?.lateEntryRecovery,
+    // Plan 89c1 D-2: a session the wrist is running gets its Fitness workout
+    // from the watch, so the phone's own end does not write a second one.
+    wristRunsSession: watchSync?.mirror.wristRunsSession,
   );
 
   // The session the wrist is running becomes this phone's own (D-2): the graph
@@ -396,6 +402,17 @@ Future<Widget> runStartup({
   // The phone's own session reaches the wrist by itself (D-75): the graph's one
   // push listens to the same state.
   watchSync?.autoPush.bindWorkoutState(workoutState);
+  watchSync?.timerPush.bindWorkoutState(workoutState);
+  watchSync?.timerAdoption.bindWorkoutState(workoutState);
+  // Plan 86 D-3/D-8: while the wrist is connected and mirroring this phone's
+  // session it owns the rest pings; the wiring listens for the flips. With no
+  // watch graph both states are null and the gate stays null.
+  bindRestPingGate(
+    service: restNotificationService,
+    link: watchSync?.link,
+    mirror: watchSync?.mirror,
+    workoutState: workoutState,
+  );
   final exerciseLibraryState = ExerciseLibraryState(
     service: exerciseLibraryService,
     workoutState: workoutState,
@@ -436,5 +453,7 @@ Future<Widget> runStartup({
     // D-96: the phone asks the wrist for its session once per resume. Null
     // without a watch graph, so no observer is mounted at all.
     onWatchResume: watchSync?.sync,
+    // 47c D-3: the Settings row's status, null without a watch graph.
+    watchLinkState: watchSync?.link,
   );
 }

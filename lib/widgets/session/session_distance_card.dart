@@ -33,6 +33,10 @@ class DistanceRowModel {
 /// The Session Summary's DISTANCE card: one tap-to-edit row per entry that
 /// carries a distance.
 ///
+/// The card says so itself: a hint above the rows explains the tap, and each
+/// row ends with a pencil. Both are decoration — the row's own `InkWell` and
+/// its semantics label remain the control.
+///
 /// Reads no state. It is hidden by its caller when it has no rows, and it
 /// renders nothing itself in that case so a stale empty card can never show.
 class SessionDistanceCard extends StatelessWidget {
@@ -57,9 +61,19 @@ class SessionDistanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              'Tap a row to enter or correct it.',
+              key: const Key('session_distance_hint'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
           for (var i = 0; i < rows.length; i++) ...[
             if (i > 0) Divider(color: themeColors.surfaceBorder, height: 1),
-            _buildRow(context, theme, rows[i]),
+            _buildRow(context, theme, rows[i], i),
           ],
         ],
       ),
@@ -70,6 +84,7 @@ class SessionDistanceCard extends StatelessWidget {
     BuildContext context,
     ThemeData theme,
     DistanceRowModel row,
+    int index,
   ) {
     final unitStyle = theme.textTheme.labelSmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
@@ -101,6 +116,18 @@ class SessionDistanceCard extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Text(row.unitLabel.toUpperCase(), style: unitStyle),
+              const SizedBox(width: 12),
+              // The pencil marks the row as editable; the row's own
+              // Semantics(button: true) already names the action, so the
+              // icon says nothing to a screen reader.
+              ExcludeSemantics(
+                child: Icon(
+                  Icons.edit_outlined,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                  key: Key('session_distance_edit_icon_$index'),
+                ),
+              ),
             ],
           ),
         ),

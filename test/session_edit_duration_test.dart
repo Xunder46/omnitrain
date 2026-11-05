@@ -286,11 +286,10 @@ void main() {
       // Choose Discard. Scope to the dialog to avoid colliding with
       // the screen-level Discard button (PR 4 added a secondary
       // hollow red OutlinedButton "Discard" to the session list).
-      // The unsaved-changes dialog uses an OutlinedButton for Discard.
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
-          matching: find.widgetWithText(OutlinedButton, 'Discard'),
+          matching: find.widgetWithText(FilledButton, 'Discard'),
         ),
       );
       await tester.pumpAndSettle();

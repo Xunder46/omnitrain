@@ -132,6 +132,9 @@ abstract final class WatchMetricStepping {
   /// start at one, load is floored at the wire's own `-200 kg` (band assist,
   /// D-58/D-62), distance never goes negative, and extra load is signed because
   /// negative is band assist.
+  ///
+  /// A period's length floors at one second rather than zero: the schema
+  /// accepts no shorter period (D-3405).
   static double clampTo(String metricKey, double value) {
     switch (metricKey) {
       case WatchMetricKey.reps:
@@ -141,9 +144,10 @@ abstract final class WatchMetricStepping {
         return value;
       case WatchMetricKey.weight:
         return value < WireLimits.minLoadKg ? WireLimits.minLoadKg : value;
+      case WatchMetricKey.roundDuration:
+        return value < 1 ? 1 : value;
       case WatchMetricKey.duration:
       case WatchMetricKey.distance:
-      case WatchMetricKey.roundDuration:
         return value < 0 ? 0 : value;
       default:
         return value;

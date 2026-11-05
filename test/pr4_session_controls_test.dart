@@ -209,7 +209,7 @@ void main() {
     });
 
     testWidgets(
-      'three visual states — running shows meditation icon, paused swaps to pause icon (same size)',
+      'three visual states — running shows pause icon, paused swaps to play icon (same size)',
       (WidgetTester tester) async {
         final repo = await _freshRepo();
         final harness = await _pumpSession(repo);
@@ -217,8 +217,8 @@ void main() {
 
         await _logSetToOpenRest(tester, harness);
 
-        // Running: meditation icon.
-        expect(find.byIcon(Icons.self_improvement), findsOneWidget);
+        // Running: pause icon.
+        expect(find.byIcon(Icons.pause), findsOneWidget);
         final runningRect = tester.getRect(
           find.byKey(const Key('rest-overlay-chip')),
         );
@@ -233,10 +233,10 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         await tester.pump();
 
-        // Paused: meditation icon is gone (replaced by the pause
+        // Paused: the pause icon is gone (replaced by the play
         // icon). The caption is intentionally absent — the chip
         // must stay the same size in both states.
-        expect(find.byIcon(Icons.self_improvement), findsNothing);
+        expect(find.byIcon(Icons.play_arrow), findsOneWidget);
         expect(find.text('Paused · tap to resume'), findsNothing);
         final pausedRect = tester.getRect(
           find.byKey(const Key('rest-overlay-chip')),

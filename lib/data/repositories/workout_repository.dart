@@ -131,10 +131,16 @@ abstract class WorkoutRepository {
   /// reference a group the device has never heard of.
   Future<void> upsertMuscleGroup(MuscleGroup group);
 
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId);
-  Future<void> setExerciseMuscleGroups(
+  /// The muscle links of [exerciseId] in stored order, each carrying the
+  /// muscle group id and the role it plays.
+  Future<List<ExerciseMuscleLink>> getExerciseMuscleLinks(String exerciseId);
+
+  /// Stores [links] in normalised form: de-duplicated, primary before
+  /// secondary, and without a region link that sits next to one of its own
+  /// muscles. Throws an [ArgumentError] for a link set that is invalid.
+  Future<void> setExerciseMuscleLinks(
     String exerciseId,
-    List<String> muscleGroupIds,
+    List<ExerciseMuscleLink> links,
   );
 
   // Equipment
@@ -153,6 +159,32 @@ abstract class WorkoutRepository {
   Future<List<MetricDefinition>> getMetricDefinitions();
   Future<List<MetricDefinition>> getMetricsForEffortKind(String effortKind);
   Future<MetricDefinition?> getMetricById(String id);
+
+  /// Insert or replace the sport category with [category]'s id. Exists for the
+  /// catalog refresh: categories are app-authored reference data with no user
+  /// editing surface.
+  Future<void> upsertSportCategory(SportCategory category);
+
+  /// Insert or replace the discipline with [discipline]'s id. Exists for the
+  /// catalog refresh (app-authored reference data, no user editing surface).
+  Future<void> upsertDiscipline(Discipline discipline);
+
+  /// Insert or replace the tag with [tag]'s id. Exists for the catalog refresh.
+  Future<void> upsertTag(Tag tag);
+
+  /// Insert or replace the unit with [unit]'s id. Exists for the catalog refresh.
+  Future<void> upsertUnit(UnitModel unit);
+
+  /// Insert or replace the metric definition with [metric]'s id. Exists for the
+  /// catalog refresh.
+  Future<void> upsertMetricDefinition(MetricDefinition metric);
+
+  /// Stored effort kinds of [metricId], in stored order; `[]` when absent.
+  Future<List<String>> getMetricEffortKinds(String metricId);
+
+  /// Replaces the effort kinds of [metricId] with a copy of [effortKinds].
+  /// Exists for the catalog refresh.
+  Future<void> setMetricEffortKinds(String metricId, List<String> effortKinds);
 
   // Templates
   Future<List<WorkoutTemplate>> getTemplates();
@@ -652,7 +684,28 @@ abstract class WorkoutRepository {
   /// The row id is derived from [dateMs] via [WaterLogEntry.idForDate] so
   /// the same day always maps to the same storage key in both
   /// implementations.
+  ///
+  /// Keeps the day's applied-tap ledger ([getAppliedWaterTapIds]) as it is.
   Future<void> saveWaterVolumeForDate(int dateMs, int volumeMl);
+
+  /// Applies one watch tap to [dateMs] at most once (plan 94 D-3, D-5).
+  ///
+  /// [deltaMl] is `kWaterGlassMl` (add) or `-kWaterGlassMl` (remove). When
+  /// [tapId] is not yet in the day's ledger and the ledger holds fewer than
+  /// `kWatchWaterTapsPerDay` ids, ONE write sets the volume to
+  /// `volume + deltaMl` (floored at 0 ml, the [saveWaterVolumeForDate] clamp)
+  /// and appends [tapId], then returns `true`; a remove at 0 ml is applied
+  /// too (the row exists at 0 ml and records the id). A duplicate id or a full
+  /// ledger changes nothing and returns `false`.
+  Future<bool> applyWaterTap({
+    required int dateMs,
+    required String tapId,
+    required int deltaMl,
+  });
+
+  /// The ids of the watch taps applied to [dateMs], in append order; `[]`
+  /// when the day has no row or a row written before the ledger existed.
+  Future<List<String>> getAppliedWaterTapIds(int dateMs);
 
   // ─── Catalog Version + Seed-Entry Tombstones ─────────────────────────────
   //
@@ -701,6 +754,17 @@ abstract class WorkoutRepository {
   /// either a brand-new install or a legacy install that has not yet been
   /// mapped by the back-compat shim.
   Future<int> getDataVersion({int defaultValue = 1});
+
+  /// A number that differs whenever any food, food group, catalog food,
+  /// template, template segment/effort/target, exercise or exercise-capability
+  /// row was written since it was last read; `null` means the repository
+  /// cannot tell, so a caller must re-read.
+  int? get referenceRevision;
+
+  /// A number that differs whenever any session, segment, effort or
+  /// observation row was written since it was last read; `null` means the
+  /// repository cannot tell, so a caller must re-read.
+  int? get historyRevision;
 
   /// Persist the device's data-migration version. Called by
   /// `DataMigrationService` after each step completes so subsequent

@@ -82,8 +82,9 @@ class SyncMessageDecision {
 ///
 /// The schema dialect is the subset of JSON Schema 2020-12 the protocol
 /// actually uses: `type`, `const`, `enum`, `required`, `properties`,
-/// `additionalProperties`, `items`, `minItems`, `minLength`, `minimum`,
-/// `maximum`, `pattern`, `allOf`, `oneOf`, and `$ref` — where a `$ref` target is
+/// `additionalProperties`, `items`, `minItems`, `maxItems`, `minLength`,
+/// `maxLength`, `minimum`, `maximum`, `pattern`, `allOf`, `oneOf`, and
+/// `$ref` — where a `$ref` target is
 /// either `#/…` inside the current document or `<document>.schema.json#/…`
 /// relative to `schemas/`.
 class SyncProtocolValidator {
@@ -104,7 +105,10 @@ class SyncProtocolValidator {
 
   static const List<String> messageTypes = [
     'routines_down',
+    'exercises_down',
     'foods_down',
+    'bests_down',
+    'water_down',
     'preferences_down',
     'exercise_push',
     'structure_change',
@@ -118,9 +122,11 @@ class SyncProtocolValidator {
   static const List<String> timerKinds = ['rest', 'round', 'hold', 'elapsed'];
 
   /// Entry kinds that are not logged against a slot: a nutrition quick-log,
-  /// and the two session-scoped kinds, which describe the whole session.
+  /// a glass of water, and the two session-scoped kinds, which describe the
+  /// whole session.
   static const Set<String> _slotlessKinds = {
     'nutrition_quick_log',
+    'water_glass',
     'effort_rating',
     'session_end',
   };
@@ -139,6 +145,8 @@ class SyncProtocolValidator {
     'rating': ['effort_rating'],
     'status': ['session_end'],
     'modality': ['session_end'],
+    'followed': ['session_end'],
+    'glassChange': ['water_glass'],
   };
 
   /// Every code this validator can emit. PROTOCOL.md documents each one, and
@@ -295,6 +303,12 @@ class SyncProtocolValidator {
         return _duplicateAcknowledgementRejections(payload);
       case 'routines_down':
         return _fallbackCoverageRejections(payload);
+      case 'exercises_down':
+        return _exerciseBatchRejections(payload);
+      case 'bests_down':
+        return _bestsRejections(payload);
+      case 'water_down':
+        return _waterRejections(payload);
       default:
         return const [];
     }
@@ -679,6 +693,155 @@ class SyncProtocolValidator {
     ];
   }
 
+  /// A batch of the exercise list. The list is assembled from batches, so a
+  /// batch's own numbers must agree with each other and with what it carries:
+  /// (a) the batch is one of `batchCount` slices, (b) the whole list's size
+  /// fits both the exercises this batch carries and the exercises the batches
+  /// can hold, and (c) one exercise appears once in the list. The rules are
+  /// reported in that order, and the Swift twin reports the same three, in the
+  /// same order, with the same words (D-3811).
+  List<SyncProtocolRejection> _exerciseBatchRejections(
+    Map<String, Object?> payload,
+  ) {
+    final exercises = payload['exercises']! as List;
+    final batchIndex = payload['batchIndex'] as int?;
+    final batchCount = payload['batchCount'] as int?;
+    final totalCount = payload['totalCount'] as int?;
+
+    final rejections = <SyncProtocolRejection>[];
+
+    if (batchIndex != null && batchCount != null && batchIndex >= batchCount) {
+      rejections.add(
+        SyncProtocolRejection(
+          code: _semanticViolation,
+          path: '$_root.payload.batchIndex',
+          message:
+              'batchIndex $batchIndex must be less than batchCount $batchCount',
+        ),
+      );
+    }
+
+    if (totalCount != null) {
+      if (exercises.length > totalCount) {
+        rejections.add(
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: '$_root.payload.totalCount',
+            message:
+                'totalCount $totalCount is less than the ${exercises.length} '
+                'exercises this batch carries',
+          ),
+        );
+      }
+      if (batchCount != null && totalCount > batchCount * 100) {
+        rejections.add(
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: '$_root.payload.totalCount',
+            message:
+                'totalCount $totalCount exceeds the ${batchCount * 100} '
+                'exercises $batchCount batches can carry',
+          ),
+        );
+      }
+    }
+
+    final seen = <String>{};
+    final duplicates = <String>[];
+    for (final exercise in exercises) {
+      final exerciseId = _asObject(exercise)['exerciseId']! as String;
+      if (!seen.add(exerciseId)) duplicates.add(exerciseId);
+    }
+    if (duplicates.isNotEmpty) {
+      rejections.add(
+        SyncProtocolRejection(
+          code: _semanticViolation,
+          path: '$_root.payload.exercises',
+          message: 'the same exerciseId appears twice: ${duplicates.join(', ')}',
+        ),
+      );
+    }
+
+    return rejections;
+  }
+
+  /// Each exercise's standing best. The dialect cannot state these rules as
+  /// constraints (no `anyOf`, and `oneOf` is exactly-one, so "at least one
+  /// axis" would refuse an entry that carries both), and `minimum: 0` admits a
+  /// zero estimate: an entry names at least one axis, both numbers are
+  /// positive, and an exercise appears once. The Swift twin reports the same
+  /// rules in the same order with the same words (D-14).
+  List<SyncProtocolRejection> _bestsRejections(Map<String, Object?> payload) {
+    final entries = payload['bests']! as List;
+    final rejections = <SyncProtocolRejection>[];
+    final seen = <String>{};
+
+    for (var i = 0; i < entries.length; i++) {
+      final entry = _asObject(entries[i]);
+      final path = '$_root.payload.bests[$i]';
+      final exerciseId = entry['exerciseId'];
+      final e1rmKg = entry['e1rmKg'];
+      final repsBest = entry['repsBest'];
+
+      if (e1rmKg == null && repsBest == null) {
+        rejections.add(
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: path,
+            message: 'entry carries neither e1rmKg nor repsBest',
+          ),
+        );
+      }
+      if (e1rmKg is num && e1rmKg <= 0) {
+        rejections.add(
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: path,
+            message: 'e1rmKg must be greater than 0',
+          ),
+        );
+      }
+      if (repsBest is num && repsBest <= 0) {
+        rejections.add(
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: path,
+            message: 'repsBest must be at least 1',
+          ),
+        );
+      }
+      if (exerciseId is String && !seen.add(exerciseId)) {
+        rejections.add(
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: path,
+            message:
+                'the same exerciseId appears twice: $exerciseId',
+          ),
+        );
+      }
+    }
+
+    return rejections;
+  }
+
+  /// The phone applies a wrist tap once, so the day's count lists its id once:
+  /// the dialect has no `uniqueItems`, so a repeated id is a semantic rule
+  /// (plan 94 D-10). The Swift twin reports it with the same words.
+  List<SyncProtocolRejection> _waterRejections(Map<String, Object?> payload) {
+    final tapIds = payload['appliedTapIds']! as List;
+    final seen = <String>{};
+    return [
+      for (final tapId in tapIds)
+        if (tapId is String && !seen.add(tapId))
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: '$_root.payload.appliedTapIds',
+            message: 'the same tap id appears twice: $tapId',
+          ),
+    ];
+  }
+
   // ---------------------------------------------------------------------------
   // Schema layer.
   // ---------------------------------------------------------------------------
@@ -830,6 +993,16 @@ class SyncProtocolValidator {
       );
     }
 
+    final maxItems = schema['maxItems'];
+    if (maxItems is int && value.length > maxItems) {
+      rejections.add(
+        _constraint(
+          path,
+          'expected at most $maxItems items, found ${value.length}',
+        ),
+      );
+    }
+
     final items = schema['items'];
     if (items is Map) {
       for (var index = 0; index < value.length; index++) {
@@ -855,6 +1028,16 @@ class SyncProtocolValidator {
         _constraint(
           path,
           'expected at least $minLength characters, found ${value.length}',
+        ),
+      );
+    }
+
+    final maxLength = schema['maxLength'];
+    if (maxLength is int && value.length > maxLength) {
+      rejections.add(
+        _constraint(
+          path,
+          'expected at most $maxLength characters, found ${value.length}',
         ),
       );
     }

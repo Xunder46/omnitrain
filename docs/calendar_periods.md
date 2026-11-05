@@ -27,10 +27,17 @@ overflow count, so a heavy day never overruns its cell.
 ### Monthly Stats Strip
 
 A strip below the grid reports four figures for the **displayed month**: completed session count,
-total training time, the current streak (computed from up to 90 days of history, not just the
-displayed month), and a per-modality breakdown. Values render as an em dash rather than a zero
+total training time, the streak slot, and a per-modality breakdown. The streak slot's label comes
+from `CalendarState.isActiveStreak` (`lib/state/calendar/calendar_state.dart`): it reads STREAK
+in the current month when the streak is live (a session today or yesterday), otherwise BEST RUN (the longest
+consecutive-day run within the displayed month's data). A multi-day streak renders with a flame
+prefix. Values render as an em dash rather than a zero
 when the month has no data, and the strip stays blank while the month is loading rather than
-flashing placeholder values.
+flashing placeholder values. A live streak shows even before the month's first session. Verified
+by `test/calendar_streak_state_test.dart` (groups `S-17403 to S-17405 a live streak, a lapsed
+one, none`, `S-17406 a live streak before the first session of the month`, `S-17401 two sessions
+on one day count as one day`, `S-17402 the streak across a clock change`) and
+`test/calendar_streak_screen_test.dart` (group `S-17406 and S-17407 the Calendar strip`).
 
 ### Day Routing
 
@@ -43,7 +50,18 @@ Routing behavior is date-sensitive:
 
 ### Day Session List
 
-`DaySessionListScreen` groups entries into Completed first, then Planned.
+`DaySessionListScreen` groups entries into Completed first, then Planned, then In Progress.
+The three group labels are shared `OmniCardHeader`s (`COMPLETED`, `PLANNED`,
+`IN PROGRESS`), not screen-local header widgets. Verified by
+`test/ui_standards_widget_test.dart` (group `Mock S-2605b DaySessionListScreen
+headers`: `a completed, a planned and an open session give three uppercase
+OmniCardHeaders`, `no header renders when the day is empty`).
+
+An empty day is the shared empty state (`OmniEmptyState`): a past day shows
+`No sessions on this day.`; a today or future day shows `No sessions planned
+yet.` with hint `Add one with the button below.` Verified by
+`test/screen_widget_test.dart` (group `DaySessionListScreen`: `empty day
+renders the shared OmniEmptyState (S-2802)`).
 
 **Past days are read-only.** Today and future days allow adding, editing, deleting, and starting a
 planned session; a past day allows none of those. Tapping a completed entry opens its summary;
@@ -93,6 +111,14 @@ unlocks four pieces of historical-aware behavior:
 
 ### Periods
 
+The Training periods list opens from the Calendar header's Training periods
+action (label `Training periods`, key `calendar_training_periods_button`). It
+goes to another place, so it is not a header "+"; how it looks is in
+[Design System](design_system.md), "Header actions". Returning from the list
+refreshes the calendar. Verified by `test/header_standardization_test.dart`
+(group `OmniBackHeader presence – CalendarScreen` · `S-9155`, `S-9156`,
+"S-9156: returning from the Training periods list refreshes the calendar").
+
 Period capabilities:
 - List name + date range
 - Create and edit
@@ -102,6 +128,19 @@ Period capabilities:
 - Curated color palette (stored as `colorHex`)
 
 Calendar highlights days covered by periods with a semi-transparent background.
+
+An empty periods list is the shared empty state (`OmniEmptyState`, title
+`No training periods yet.`, hint `Add one with the button below.`). Verified
+by `test/screen_widget_test.dart` (group `PeriodListScreen`: `empty list
+renders the shared OmniEmptyState (S-2802)`).
+
+Create Period — in new and edit mode alike — warns about unsaved changes:
+leaving the form with edits open a two-button dialog (keep editing / discard),
+so typed values cannot be lost silently. Verified by
+`test/screen_widget_test.dart` (group `CreatePeriodScreen unsaved changes
+guard (S-2901)`: `typed name + system back shows the Unsaved changes dialog`,
+`Discard pops and persists nothing`, `edit mode: an untouched stored period pops with no dialog`,
+`edit mode: Discard leaves the stored period unchanged`).
 
 ---
 
@@ -191,17 +230,17 @@ Responsibilities:
 | `completedSessionCount` | `int` | Count of entries where `isCompleted == true` |
 | `totalTrainingMs` | `int` | Sum of `endedAtMs − startedAtMs` for completed entries with a real session |
 | `modalityBreakdown` | `Map<String?, int>` | Completed session count grouped by modality key (null = Free Training) |
-| `streakDays` | `int` | Current consecutive-day streak (see below) |
+| `streakDays` | `int` | The live streak, else the displayed month's longest run (see below) |
 
 #### Streak Calculation (`_computeStreak`)
 
 Called concurrently with `_loadPeriods()` at the end of each `_loadMonth()`:
 
 1. Fetches sessions for the last 90 days via `repository.getSessionsByDateRange`.
-2. Builds a `Set<int>` of UTC-midnight timestamps for days that have a completed session.
+2. Builds a `Set<int>` of local start-of-day timestamps, so two sessions on one day count once.
 3. Anchors on **today** if today has a session, else on **yesterday** if yesterday has one.
-4. Walks backwards day-by-day counting consecutive days present in the set.
-5. Stores the result in `_streakDays` (defaults to 0 on error or no anchor day).
+4. Walks backwards one calendar day at a time, never 24 h, so a clock change cannot hide a day.
+5. Stores the result in `_streakDays` (0 on error; with no anchor day, the displayed month's longest run).
 
 > The 90-day window caps the displayed streak at 90. Increase the window if longer streaks are needed.
 
@@ -244,7 +283,7 @@ Supporting flows:
 
 1. Calendar indicators include both planned and historical sessions.
 2. Indicator style communicates state (filled vs outlined).
-3. Day list is grouped: Completed first, Planned second.
+3. Day list is grouped: Completed first, Planned second, In Progress third.
 4. Past days are read-only in day list.
 5. Planned-session tap starts workout using correct modality/routine path.
 6. Completed-session tap opens summary.

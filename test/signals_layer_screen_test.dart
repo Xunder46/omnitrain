@@ -10,15 +10,17 @@
 // gate's "no work when the gate is unmet" claim (D-1006) is checked rather than
 // assumed.
 //
-// The gate is the load baseline: Fixture U carries no ratings and renders no
-// layer at all, Fixture R carries four rated weeks and renders one. Both are
-// built in the shape `test/mix_layer_screen_test.dart` already uses.
+// The gate is the load baseline: Fixture U carries no ratings and shows the
+// locked line in the layer's place, Fixture R carries four rated weeks and
+// renders the layer. Both are built in the shape `test/mix_layer_screen_test.dart`
+// already uses.
 //
 // The harness is opened and seeded in `setUp`, never inside a `testWidgets`
 // body: a widget test body runs under `FakeAsync`, where Hive's real file I/O
 // never settles and the test hangs. S-1712 is the one exception — it restarts
 // the repository *after* a pump, inside `tester.runAsync`.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -28,6 +30,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/models/signals.dart';
 import 'package:omnitrain/core/services/signals/signal.dart';
 import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
@@ -150,6 +153,11 @@ class _StubSignal implements Signal {
   @override
   int priority;
 
+  @override
+  final bool needsRatedWeeks;
+
+  final String? waiting;
+
   final bool abstains;
   bool flag = true;
 
@@ -157,11 +165,16 @@ class _StubSignal implements Signal {
   final String? suggestion;
 
   int evaluations = 0;
+  int waitingCalls = 0;
+  String? seenOnEvaluate;
+  String? seenOnWaiting;
 
   _StubSignal({
     required this.id,
     required this.kind,
     this.priority = 10,
+    this.needsRatedWeeks = true,
+    this.waiting,
     this.abstains = false,
     String? observation,
     this.suggestion,
@@ -169,6 +182,7 @@ class _StubSignal implements Signal {
 
   @override
   Future<SignalCard?> evaluate(SignalContext context) async {
+    seenOnEvaluate = context.startOfWeek;
     evaluations++;
     if (abstains || !flag) return null;
     return SignalCard(
@@ -179,6 +193,98 @@ class _StubSignal implements Signal {
       observation: observation,
       suggestion: suggestion,
     );
+  }
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async {
+    seenOnWaiting = context.startOfWeek;
+    waitingCalls++;
+    return waiting;
+  }
+}
+
+/// S-18203: a signal whose first evaluation blocks on a gate, so a reload can
+/// finish while the older load is still in flight. Its card names the Start of
+/// Week the evaluation saw, so a stale overwrite is visible as text.
+class _GatedSignal implements Signal {
+  @override
+  final String id = 'g-1';
+
+  @override
+  final SignalKind kind = SignalKind.positive;
+
+  @override
+  final int priority = 10;
+
+  @override
+  final bool needsRatedWeeks = false;
+
+  final Completer<void> gate = Completer<void>();
+
+  int calls = 0;
+
+  @override
+  Future<SignalCard?> evaluate(SignalContext context) async {
+    final first = calls++ == 0;
+    if (first) await gate.future;
+    return SignalCard(
+      id: id,
+      kind: kind,
+      priority: priority,
+      title: 'Gated',
+      observation: 'started on ${context.startOfWeek}',
+    );
+  }
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async => null;
+}
+
+/// S-18207: a signal whose first evaluation throws, so the first load fails;
+/// later evaluations return a card.
+class _FlakySignal implements Signal {
+  @override
+  final String id = 'f-1';
+
+  @override
+  final SignalKind kind = SignalKind.positive;
+
+  @override
+  final int priority = 10;
+
+  @override
+  final bool needsRatedWeeks = false;
+
+  int calls = 0;
+
+  @override
+  Future<SignalCard?> evaluate(SignalContext context) async {
+    if (calls++ == 0) throw StateError('the first load fails');
+    return SignalCard(
+      id: id,
+      kind: kind,
+      priority: priority,
+      title: 'Flaky',
+      observation: 'recovered on ${context.startOfWeek}',
+    );
+  }
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async => null;
+}
+
+/// S-18206: a Mock repository whose write of the dismissal store waits on a
+/// gate, so a reload can start while a dismissal is still being written.
+class _GatedDismissalRepository extends MockWorkoutRepository {
+  Completer<void>? dismissalGate;
+
+  @override
+  Future<void> setPreferenceString(String key, String value) async {
+    if (key == kSignalDismissalsKey) {
+      final gate = dismissalGate;
+      if (gate != null) await gate.future;
+    }
+    return super.setPreferenceString(key, value);
   }
 }
 
@@ -386,9 +492,10 @@ Future<void> _seedFood(
 }
 
 /// Fixture U (gate unmet): three completed unrated sessions, no period, so
-/// `ratedBaselineWeeks` is below `kTrainingLoadMinRatedWeeks` and the layer must
-/// not exist (S-1702). The Instruments list and the Fuel row are seeded anyway,
-/// so their presence is asserted on the same load.
+/// `ratedWeeks` is below `kTrainingLoadMinRatedWeeks` and the layer must
+/// not exist — the locked section takes its slot instead (S-1702, D-4001). The
+/// Instruments list and the Fuel row are seeded anyway, so their presence is
+/// asserted on the same load.
 Future<void> _seedGateUnmet(WorkoutRepository repo) async {
   await _seedLifting(repo, sessionId: 's-u1', daysAgo: 1);
   await _seedLifting(repo, sessionId: 's-u2', daysAgo: 2);
@@ -397,6 +504,25 @@ Future<void> _seedGateUnmet(WorkoutRepository repo) async {
   await _clearConsumedFoods(repo);
   await _seedFood(repo, id: 'food-u1', daysAgo: 1);
   await _seedFood(repo, id: 'food-u2', daysAgo: 2);
+}
+
+/// Fixture U's window with three rated baseline weeks (S-4013): one unrated
+/// session per day inside the window, so the Mix layer exists, and three rated
+/// baseline sessions 30, 50 and 70 days back — three of the twelve 7-day
+/// blocks `ratedWeekBlockStarts` (anchored at today) tiles, so
+/// `ratedWeeks == 3` and the gate is
+/// unmet while the layer's slot is occupied.
+Future<void> _seedGateUnmetThreeRatedWeeks(WorkoutRepository repo) async {
+  await _seedPeriod(repo, name: 'Test Block', daysAgo: 10);
+  await _seedGateUnmet(repo);
+  await _seedRatedBaseline(repo, fromDay: 10, offsets: const [20, 40, 60]);
+}
+
+/// A window holding no measurable time (S-4004): one completed session with no
+/// duration and nothing logged, so `computeMixLayer` returns null while the
+/// profile still has a session (the empty state is not the branch under test).
+Future<void> _seedWindowWithoutTime(WorkoutRepository repo) async {
+  await _seedLifting(repo, sessionId: 's-empty', daysAgo: 1, minutes: 0);
 }
 
 /// Fixture R (gate met): a period-scoped window holding one rated 60-minute
@@ -532,8 +658,8 @@ void main() {
       group('S-1701 the layer is the second block', () {
         setUp(() => _seedGateMet(repo));
 
-        testWidgets('the layer sits below the Mix layer and above ALL TIME, '
-            'with no quiet line', (tester) async {
+        testWidgets('the layer sits below the Mix layer and above the '
+            'Instruments caption, with no quiet line', (tester) async {
           final positive = _StubSignal(
             id: 'p-1',
             kind: SignalKind.positive,
@@ -551,10 +677,12 @@ void main() {
           final mixTop = tester
               .getTopLeft(find.byKey(const Key('mix_layer')))
               .dy;
-          final allTimeTop = tester.getTopLeft(find.text('ALL TIME')).dy;
+          final instrumentsTop = tester
+              .getTopLeft(find.byKey(const Key('instrument_caption')))
+              .dy;
 
           expect(signalsTop, greaterThan(mixTop));
-          expect(signalsTop, lessThan(allTimeTop));
+          expect(signalsTop, lessThan(instrumentsTop));
           expect(find.byKey(const Key('signals_layer')), findsOneWidget);
           expect(tester.takeException(), isNull);
         });
@@ -562,11 +690,11 @@ void main() {
 
       // ─── S-1702 ────────────────────────────────────────────────────────────
 
-      group('S-1702 gate unmet renders nothing', () {
+      group('S-1702 gate unmet locks the signals', () {
         setUp(() => _seedGateUnmet(repo));
 
-        testWidgets('no layer, no card, no quiet line, no SIGNALS text, and no '
-            'signal is evaluated', (tester) async {
+        testWidgets('no layer, no card, no quiet line, the locked line in '
+            "SIGNALS' place, and no signal is evaluated", (tester) async {
           final caution = _StubSignal(
             id: 'c-1',
             kind: SignalKind.caution,
@@ -581,21 +709,636 @@ void main() {
 
           expect(find.byKey(const Key('signals_layer')), findsNothing);
           expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
-          expect(find.text('SIGNALS'), findsNothing);
+          expect(find.text('SIGNALS'), findsOneWidget);
+          expect(find.byKey(const Key('signals_locked')), findsOneWidget);
+          expect(
+            find.byKey(const Key('signals_locked_line')),
+            findsOneWidget,
+          );
           expect(_cardKeys(), isEmpty);
 
           // The rest of the screen is unchanged and unmoved.
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
-          expect(find.text('ALL TIME'), findsOneWidget);
-          expect(find.byKey(const Key('all_time_card')), findsOneWidget);
-          expect(find.text('Resistance'), findsOneWidget);
+          expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
           expect(find.byKey(const Key('fuel_section')), findsOneWidget);
           expect(
             tester.getTopLeft(find.byKey(const Key('mix_layer'))).dy,
-            lessThan(tester.getTopLeft(find.text('ALL TIME')).dy),
+            lessThan(
+              tester
+                  .getTopLeft(find.byKey(const Key('instrument_caption')))
+                  .dy,
+            ),
           );
 
           expect(caution.evaluations, 0);
+          expect(positive.evaluations, 0);
+        });
+      });
+
+      // ─── S-17505, S-17507 ──────────────────────────────────────────────────
+
+      group('S-17505 a signal that needs no ratings speaks while the gate is '
+          'unmet', () {
+        setUp(() => _seedGateUnmet(repo));
+
+        testWidgets('S-17505 its card shows with the hint under it and the '
+            'load-reading signal is not evaluated', (tester) async {
+          final open = _StubSignal(
+            id: 'p-open',
+            kind: SignalKind.positive,
+            priority: 10,
+            needsRatedWeeks: false,
+          );
+          final locked = _StubSignal(
+            id: 'c-locked',
+            kind: SignalKind.caution,
+            priority: 10,
+          );
+          await pumpStats(tester, signals: [open, locked]);
+
+          expect(find.byKey(const Key('signals_layer')), findsOneWidget);
+          expect(_cardKeys(), ['signal_card_p-open']);
+          expect(find.byKey(const Key('signals_locked')), findsNothing);
+          expect(find.byKey(const Key('signals_locked_line')), findsNothing);
+          expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
+
+          final hint = tester.widget<Text>(
+            find.byKey(const Key('signals_locked_hint')),
+          );
+          expect(hint.data, signalsMoreLine(0));
+          expect(
+            hint.data,
+            'More signals unlock after 4 weeks of rating your workouts — '
+            '0 of 4 so far.',
+          );
+          expect(open.evaluations, 1);
+          expect(locked.evaluations, 0);
+        });
+      });
+
+      // ─── S-17605 ───────────────────────────────────────────────────────────
+
+      group('S-17605 the waiting lines sit under whatever the block shows', () {
+        double top(WidgetTester tester, String key) =>
+            tester.getTopLeft(find.byKey(Key(key))).dy;
+
+        group('gate unmet, nothing speaking: under the locked line', () {
+          setUp(() => _seedGateUnmet(repo));
+
+          testWidgets('two lines, in order, below the locked line', (
+            tester,
+          ) async {
+            final first = _StubSignal(
+              id: 'w-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              waiting: 'Waiting line one',
+            );
+            final second = _StubSignal(
+              id: 'w-2',
+              kind: SignalKind.caution,
+              priority: 10,
+              waiting: 'Waiting line two',
+            );
+            await pumpStats(tester, signals: [first, second]);
+
+            expect(find.byKey(const Key('signals_locked')), findsOneWidget);
+            expect(
+              tester.widget<Text>(find.byKey(const Key('signals_waiting_0'))).data,
+              'Waiting line one',
+            );
+            expect(
+              tester.widget<Text>(find.byKey(const Key('signals_waiting_1'))).data,
+              'Waiting line two',
+            );
+            expect(
+              top(tester, 'signals_waiting_0'),
+              greaterThan(top(tester, 'signals_locked_line')),
+            );
+            expect(
+              top(tester, 'signals_waiting_1'),
+              greaterThan(top(tester, 'signals_waiting_0')),
+            );
+            // The locked line keeps its copy.
+            expect(
+              tester.widget<Text>(find.byKey(const Key('signals_locked_line'))).data,
+              signalsLockedLine(0),
+            );
+          });
+        });
+
+        group('gate unmet, an unlocked card showing: under the hint', () {
+          setUp(() => _seedGateUnmet(repo));
+
+          testWidgets('the line is below the card and the hint', (tester) async {
+            final open = _StubSignal(
+              id: 'p-open',
+              kind: SignalKind.positive,
+              priority: 10,
+              needsRatedWeeks: false,
+            );
+            final waits = _StubSignal(
+              id: 'w-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              waiting: 'Waiting line one',
+            );
+            await pumpStats(tester, signals: [open, waits]);
+
+            expect(_cardKeys(), ['signal_card_p-open']);
+            expect(
+              top(tester, 'signals_waiting_0'),
+              greaterThan(top(tester, 'signals_locked_hint')),
+            );
+            expect(
+              top(tester, 'signals_locked_hint'),
+              greaterThan(top(tester, 'signal_card_p-open')),
+            );
+          });
+        });
+
+        group('gate met, nothing speaking: under the quiet line', () {
+          setUp(() => _seedGateMet(repo));
+
+          testWidgets('the quiet line shortens and the line follows it', (
+            tester,
+          ) async {
+            final waits = _StubSignal(
+              id: 'w-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              abstains: true,
+              waiting: 'Waiting line one',
+            );
+            await pumpStats(tester, signals: [waits]);
+
+            expect(
+              tester.widget<Text>(find.byKey(const Key('signals_quiet_line'))).data,
+              kSignalQuietLineWithWaiting,
+            );
+            expect(find.text('No signals right now.'), findsOneWidget);
+            expect(
+              top(tester, 'signals_waiting_0'),
+              greaterThan(top(tester, 'signals_quiet_line')),
+            );
+            expect(find.byKey(const Key('signals_locked')), findsNothing);
+          });
+
+          testWidgets('S-18401 with no waiting line the quiet line keeps its '
+              'full copy', (tester) async {
+            final abstainer = _StubSignal(
+              id: 'a-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              abstains: true,
+            );
+            await pumpStats(tester, signals: [abstainer]);
+
+            expect(
+              tester.widget<Text>(find.byKey(const Key('signals_quiet_line'))).data,
+              kSignalQuietLine,
+            );
+            expect(find.byKey(const Key('signals_waiting_0')), findsNothing);
+          });
+        });
+      });
+
+      // ─── S-17812 ───────────────────────────────────────────────────────────
+
+      group('S-17812 the Start of Week setting reaches the signals', () {
+        group('the default', () {
+          setUp(() => _seedGateMet(repo));
+
+          testWidgets('a Monday start', (tester) async {
+            final stub = _StubSignal(
+              id: 'w-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              abstains: true,
+              waiting: 'Waiting line one',
+            );
+            await pumpStats(tester, signals: [stub]);
+
+            expect(stub.seenOnEvaluate, 'monday');
+            expect(stub.seenOnWaiting, 'monday');
+          });
+        });
+
+        group('Sunday', () {
+          setUp(() async {
+            await _seedGateMet(repo);
+            await settingsState.setStartOfWeek('sunday');
+          });
+
+          testWidgets('a Sunday start', (tester) async {
+            final stub = _StubSignal(
+              id: 'w-1',
+              kind: SignalKind.caution,
+              priority: 10,
+              abstains: true,
+              waiting: 'Waiting line one',
+            );
+            await pumpStats(tester, signals: [stub]);
+
+            expect(stub.seenOnEvaluate, 'sunday');
+            expect(stub.seenOnWaiting, 'sunday');
+          });
+        });
+      });
+
+      // Mock-only, for the reason S-1709 gives below: a Hive write started by a
+      // tap inside a widget test's fake-async zone cannot drain, so the Hive
+      // variant never completes at teardown. The assertions are store-independent.
+      if (harness.name == 'Mock') {
+        // ─── S-182 ──────────────────────────────────────────────────────────
+
+        group('S-182 Stats follows Start of Week while it is open', () {
+          setUp(() => _seedGateMet(repo));
+
+          testWidgets(
+            'S-18201 flipping to Sunday re-asks the signals, with no spinner',
+            (tester) async {
+              final stub = _StubSignal(
+                id: 'w-1',
+                kind: SignalKind.caution,
+                priority: 10,
+                abstains: true,
+                waiting: 'Waiting line one',
+              );
+              await pumpStats(tester, signals: [stub]);
+
+              expect(stub.seenOnEvaluate, 'monday');
+              expect(stub.evaluations, 1);
+              expect(stub.waitingCalls, 1);
+              // The gate is met, so the first pump showed the layer, not the
+              // locked line; the same key must survive the swap.
+              expect(find.byKey(const Key('signals_layer')), findsOneWidget);
+
+              await tester.runAsync(
+                () => settingsState.setStartOfWeek('sunday'),
+              );
+              await tester.pump();
+
+              expect(find.byType(CircularProgressIndicator), findsNothing);
+              expect(find.byKey(const Key('signals_layer')), findsOneWidget);
+
+              // The silent reload was started inside `runAsync`, so it runs on
+              // the real event loop and needs the real turns `settleStore`
+              // gives (a bare `pumpAndSettle` never reaches it).
+              await settleStore(tester);
+              await tester.pumpAndSettle();
+
+              expect(stub.seenOnEvaluate, 'sunday');
+              expect(stub.seenOnWaiting, 'sunday');
+              expect(stub.evaluations, 2);
+              expect(stub.waitingCalls, 2);
+            },
+          );
+
+          testWidgets(
+            'S-18202 Weight on Stats and a repeated Start of Week do not '
+            'reload',
+            (tester) async {
+              final stub = _StubSignal(
+                id: 'w-1',
+                kind: SignalKind.caution,
+                priority: 10,
+                abstains: true,
+                waiting: 'Waiting line one',
+              );
+              await pumpStats(tester, signals: [stub]);
+
+              await tester.runAsync(
+                () => settingsState.setShowWeightTrend(false),
+              );
+              await tester.pumpAndSettle();
+              await tester.runAsync(
+                () => settingsState.setStartOfWeek('monday'),
+              );
+              await tester.pumpAndSettle();
+
+              // Real turns, so a wrongful reload would have the chance to
+              // show itself here rather than stalling unseen.
+              await settleStore(tester);
+              await tester.pumpAndSettle();
+
+              expect(stub.evaluations, 1);
+              expect(stub.waitingCalls, 1);
+            },
+          );
+
+          testWidgets(
+            'S-18203 a slow older load never overwrites a newer one',
+            (tester) async {
+              final gated = _GatedSignal();
+              // The body of pumpStats, without its settling pumpAndSettle: the
+              // first load must still be blocked inside the gate here.
+              await tester.binding.setSurfaceSize(_kTallViewport);
+              addTearDown(() => tester.binding.setSurfaceSize(null));
+              await tester.pumpWidget(
+                MaterialApp(
+                  home: StatsScreen(
+                    workoutState: workoutState,
+                    settingsState: settingsState,
+                    signals: [gated],
+                  ),
+                ),
+              );
+              await tester.pump();
+              await tester.pump();
+              expect(gated.calls, 1);
+
+              await tester.runAsync(
+                () => settingsState.setStartOfWeek('sunday'),
+              );
+              // Load 2 was started inside `runAsync`, so it needs the real
+              // turns `settleStore` gives to run to the end.
+              await settleStore(tester);
+              await tester.pump();
+              expect(gated.calls, 2);
+
+              gated.gate.complete();
+              await settleStore(tester);
+              await tester.pumpAndSettle();
+
+              expect(find.text('started on sunday'), findsOneWidget);
+              expect(find.text('started on monday'), findsNothing);
+            },
+          );
+
+          testWidgets(
+            'S-18204 a Stats screen under another route follows the flip',
+            (tester) async {
+              final stub = _StubSignal(
+                id: 'w-1',
+                kind: SignalKind.caution,
+                priority: 10,
+                abstains: true,
+                waiting: 'Waiting line one',
+              );
+              await pumpStats(tester, signals: [stub]);
+              expect(stub.seenOnEvaluate, 'monday');
+
+              final nav = tester.state<NavigatorState>(
+                find.byType(Navigator),
+              );
+              nav.push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const Scaffold(body: Text('covering')),
+                ),
+              );
+              await tester.pumpAndSettle();
+              expect(find.text('covering'), findsOneWidget);
+
+              await tester.runAsync(
+                () => settingsState.setStartOfWeek('sunday'),
+              );
+              // The reload was started inside `runAsync`; give it the real
+              // turns it needs while the Stats screen stays covered.
+              await settleStore(tester);
+              await tester.pumpAndSettle();
+
+              nav.pop();
+              await tester.pumpAndSettle();
+
+              expect(find.text('covering'), findsNothing);
+              expect(stub.seenOnEvaluate, 'sunday');
+              expect(stub.evaluations, 2);
+            },
+          );
+
+          testWidgets(
+            'S-18207 a reload that succeeds replaces the failure view',
+            (tester) async {
+              final flaky = _FlakySignal();
+              await pumpStats(tester, signals: [flaky]);
+
+              expect(find.text('Could not load your stats.'), findsOneWidget);
+              expect(flaky.calls, 1);
+
+              await tester.runAsync(
+                () => settingsState.setStartOfWeek('sunday'),
+              );
+              await settleStore(tester);
+              await tester.pumpAndSettle();
+
+              expect(flaky.calls, 2);
+              expect(find.text('Could not load your stats.'), findsNothing);
+              expect(find.text('recovered on sunday'), findsOneWidget);
+            },
+          );
+        });
+
+        group('S-18206 a card dismissed just before the flip stays dismissed',
+            () {
+          late _GatedDismissalRepository gated;
+          late WorkoutState dismissWorkout;
+          late SettingsState dismissSettings;
+
+          setUp(() async {
+            gated = _GatedDismissalRepository();
+            await gated.initialize();
+            dismissWorkout = WorkoutState(gated);
+            dismissSettings = SettingsState(gated, fakePreferencesService());
+            await dismissSettings.initialize();
+            await _seedGateMet(gated);
+          });
+
+          testWidgets('S-18206 the reload waits for the dismissal write',
+              (tester) async {
+            final positive = _StubSignal(
+              id: 'p-1',
+              kind: SignalKind.positive,
+              priority: 10,
+            );
+            // The body of pumpStats, with the gated repository's states in
+            // place of the harness ones.
+            await tester.binding.setSurfaceSize(_kTallViewport);
+            addTearDown(() => tester.binding.setSurfaceSize(null));
+            await tester.pumpWidget(
+              MediaQuery(
+                data: MediaQueryData(
+                  textScaler: TextScaler.linear(1.0),
+                ),
+                child: MaterialApp(
+                  home: StatsScreen(
+                    workoutState: dismissWorkout,
+                    settingsState: dismissSettings,
+                    signals: [positive],
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+
+            expect(_cardKeys(), ['signal_card_p-1']);
+
+            // From here the dismissal write is held open.
+            gated.dismissalGate = Completer<void>();
+            await tester.tap(find.byKey(const Key('signal_dismiss_p-1')));
+            await tester.pump();
+            expect(_cardKeys(), isEmpty);
+
+            // The flip starts a reload that must wait for the dismissal write
+            // before it reads the store (D-18203).
+            await tester.runAsync(
+              () => dismissSettings.setStartOfWeek('sunday'),
+            );
+            await settleStore(tester);
+            await tester.pump();
+
+            gated.dismissalGate!.complete();
+            await settleStore(tester);
+            await tester.pumpAndSettle();
+
+            expect(_cardKeys(), isEmpty);
+            expect(positive.evaluations, 2);
+          });
+        });
+
+        group('S-17507 dismissing the only card at an unmet gate', () {
+          setUp(() => _seedGateUnmet(repo));
+
+          testWidgets('S-17507 returns the block to the locked line', (
+            tester,
+          ) async {
+            final open = _StubSignal(
+              id: 'p-open',
+              kind: SignalKind.positive,
+              priority: 10,
+              needsRatedWeeks: false,
+            );
+            await pumpStats(tester, signals: [open]);
+            expect(_cardKeys(), ['signal_card_p-open']);
+
+            await tester.tap(find.byKey(const Key('signal_dismiss_p-open')));
+            await tester.pump();
+
+            expect(_cardKeys(), isEmpty);
+            expect(find.byKey(const Key('signals_locked')), findsOneWidget);
+            expect(
+              find.byKey(const Key('signals_locked_line')),
+              findsOneWidget,
+            );
+            expect(find.byKey(const Key('signals_locked_hint')), findsNothing);
+            expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
+            expect(find.byKey(const Key('signals_layer')), findsNothing);
+
+            await settleStore(tester);
+          });
+        });
+      }
+
+      // ─── S-4013 (carries S-4001's numbers) ─────────────────────────────────
+
+      group('S-4013 the locked section takes the layer slot', () {
+        setUp(() => _seedGateUnmetThreeRatedWeeks(repo));
+
+        testWidgets('three rated weeks read 3 of 4, between the Mix layer and '
+            'the Instruments caption, and no signal is evaluated',
+            (tester) async {
+          final positive = _StubSignal(
+            id: 'p-1',
+            kind: SignalKind.positive,
+            priority: 10,
+          );
+          await pumpStats(tester, signals: [positive]);
+
+          final locked = find.byKey(const Key('signals_locked'));
+          expect(locked, findsOneWidget);
+          expect(find.text('SIGNALS'), findsOneWidget);
+          expect(
+            tester
+                .widget<Text>(find.byKey(const Key('signals_locked_line')))
+                .data,
+            'Unlocks after 4 weeks of rating your workouts — 3 of 4 so far.',
+          );
+
+          expect(find.byKey(const Key('signals_layer')), findsNothing);
+          expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
+          expect(_cardKeys(), isEmpty);
+          expect(positive.evaluations, 0);
+
+          final lockedTop = tester.getTopLeft(locked).dy;
+          expect(
+            tester.getTopLeft(find.byKey(const Key('mix_layer'))).dy,
+            lessThan(lockedTop),
+          );
+          expect(
+            lockedTop,
+            lessThan(
+              tester
+                  .getTopLeft(find.byKey(const Key('instrument_caption')))
+                  .dy,
+            ),
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // ─── S-4002 ────────────────────────────────────────────────────────────
+
+      group('S-4002 the locked line counts rated weeks', () {
+        setUp(() => _seedGateUnmet(repo));
+
+        testWidgets('zero rated weeks reads 0 of 4, and the count never leaves '
+            'the gate', (tester) async {
+          await pumpStats(tester);
+
+          expect(
+            tester
+                .widget<Text>(find.byKey(const Key('signals_locked_line')))
+                .data,
+            'Unlocks after 4 weeks of rating your workouts — 0 of 4 so far.',
+          );
+
+          expect(signalsLockedLine(9), endsWith('4 of 4 so far.'));
+          expect(signalsLockedLine(-3), endsWith('0 of 4 so far.'));
+        });
+      });
+
+      // ─── S-4003 ────────────────────────────────────────────────────────────
+
+      group('S-4003 gate met renders the layer, not the locked line', () {
+        setUp(() => _seedGateMet(repo));
+
+        testWidgets('four rated weeks show SIGNALS as the layer', (tester) async {
+          await pumpStats(
+            tester,
+            signals: [
+              _StubSignal(id: 'p-1', kind: SignalKind.positive, priority: 10),
+            ],
+          );
+
+          expect(find.byKey(const Key('signals_layer')), findsOneWidget);
+          expect(find.text('SIGNALS'), findsOneWidget);
+          expect(find.byKey(const Key('signals_locked')), findsNothing);
+          expect(find.byKey(const Key('signals_locked_line')), findsNothing);
+        });
+      });
+
+      // ─── S-4004 ────────────────────────────────────────────────────────────
+
+      group('S-4004 a window with no time locks nothing', () {
+        setUp(() => _seedWindowWithoutTime(repo));
+
+        testWidgets('no Mix layer means no section to lock, and nothing is '
+            'evaluated', (tester) async {
+          final positive = _StubSignal(
+            id: 'p-1',
+            kind: SignalKind.positive,
+            priority: 10,
+          );
+          await pumpStats(tester, signals: [positive]);
+
+          expect(find.byKey(const Key('mix_layer')), findsNothing);
+          expect(find.byKey(const Key('signals_locked')), findsNothing);
+          expect(find.text('SIGNALS'), findsNothing);
+          // The screen itself still loaded into its normal branch: neither
+          // the empty state nor the failure view took the body over.
+          expect(find.text('No sessions yet'), findsNothing);
+          expect(find.text('Could not load your stats.'), findsNothing);
           expect(positive.evaluations, 0);
         });
       });
@@ -631,7 +1374,7 @@ void main() {
             ),
             findsNothing,
           );
-          expect(find.byKey(const Key('all_time_card')), findsOneWidget);
+          expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
           expect(abstain.evaluations, 1);
         });
 
@@ -648,7 +1391,7 @@ void main() {
             kSignalQuietLine,
           );
           expect(_cardKeys(), isEmpty);
-          expect(find.byKey(const Key('all_time_card')), findsOneWidget);
+          expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
         });
       });
 
@@ -1238,10 +1981,14 @@ void main() {
       group('the empty-state branch', () {
         testWidgets('a profile with no sessions shows the empty state and no '
             'layer, even with stubs registered', (tester) async {
+          // A signal that needs no ratings: the unmet gate would not skip it,
+          // so a zero count proves the empty profile is never evaluated.
           final positive = _StubSignal(
             id: 'p-1',
             kind: SignalKind.positive,
             priority: 10,
+            needsRatedWeeks: false,
+            waiting: 'Waiting line one',
           );
           await pumpStats(tester, signals: [positive]);
 
@@ -1252,6 +1999,8 @@ void main() {
           expect(_cardKeys(), isEmpty);
           expect(find.text('ALL TIME'), findsNothing);
           expect(positive.evaluations, 0);
+          expect(positive.waitingCalls, 0);
+          expect(find.byKey(const Key('signals_waiting_0')), findsNothing);
         });
       });
 
@@ -1261,7 +2010,7 @@ void main() {
       // breaks it. They are permanent: a change that reintroduces the defect
       // fails here, not in review.
 
-      group('Structural guard — a gate-unmet screen renders no SIGNALS and '
+      group('Structural guard — a gate-unmet screen locks the signals and '
           'evaluates nothing', () {
         setUp(() => _seedGateUnmet(repo));
 
@@ -1277,7 +2026,8 @@ void main() {
           );
           await pumpStats(tester, signals: [positive]);
 
-          expect(find.text('SIGNALS'), findsNothing);
+          expect(find.byKey(const Key('signals_locked')), findsOneWidget);
+          expect(find.text('SIGNALS'), findsOneWidget);
           expect(find.byKey(const Key('signals_layer')), findsNothing);
           expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
           expect(_cardKeys(), isEmpty);

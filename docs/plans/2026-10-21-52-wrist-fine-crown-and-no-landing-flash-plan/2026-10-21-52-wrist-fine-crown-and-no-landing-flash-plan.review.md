@@ -1,0 +1,33 @@
+# Review: 2026-10-21-52-wrist-fine-crown-and-no-landing-flash-plan · P1-P5 · 0ee570d..working tree
+Verdict: APPROVE WITH FIXES
+Counts: blocker 0 · major 2 · minor 1 · tests: not run (brief states the governor ran the full `swift test` green, `xcodebuild` ok, 20 mutants caught and restored)
+Diff vs Predicted Files: conforms — exactly the nine files the plan and brief name (5 sources, 3 test files, `watch_surface_wrist.md`); nothing outside.
+
+## Findings
+
+1. [Major] WatchLoggingPagerView.swift:130 and :156-158 — a `focusSlotId` can outlive the landing that named it, and the surface then keeps showing a different exercise than the session's. Seed (line 130): the selection binding (:123) computes the focus from the rows at the instant the swipe settles; if the engine reaches that same page before `land(on:)`'s `guard index != pager.currentIndex` runs, the guard returns without clearing, so a non-nil focus survives a finished landing with `landing == false`. Amplifier (:158): a later phone push moves the engine elsewhere; `followEngine()` snaps `selection = pager.currentIndex` as a direct `@State` write, bypassing `selectionBinding`, so the stale focus is neither recomputed nor cleared. The user then sees the stale exercise's logger (name, fields, dialled values) under the engine page's counter, and a Log there stores the entry against the stale exercise while the session sits on another. Fix: in `followEngine()` clear or recompute `state.focusSlotId` when snapping the selection, and clear it in `land(on:)`'s early return. Guard: a test that sets a focus, moves the engine, and asserts the surface shows the engine's exercise — it would fail today; S-7913's source guard (counting the two existing `state.focusSlotId = nil` clears) cannot catch either hole. Note: the doc's claim "`land(on:)` clears the focus whether it moved or was refused" (watch_surface_wrist.md, the swipe paragraph) holds for the moved/refused arms (:145, :148) but not for this third finish.
+
+2. [Major] WatchLoggingState.swift:467 (`startWork`) with WatchLoggingPagerView.swift:129-151 — a Start tapped during a landing can strand the focused exercise's clock on the snapped-back page. Path: swipe to a timed/round/hold page B (focus = B, landing in flight); tap Start on B's logger, which 52 now shows during a landing (pre-52 that surface was the preview card, so Start was not tappable); `startWork` starts the clock with `sessionExerciseId: B`. If the landing's `pager.land(on:)` then refuses — which it now can because the clock just started sets `WatchMenuState.isLocked` (WatchMenu.swift:329) before `jump`'s own guard, when the landing Task runs after the tap — the view clears the focus and snaps to A, but B's wrist-started clock keeps running: `workTimer` returns any wrist-started clock regardless of slot (WatchLoggingState.swift:434-439). The surface shows A with a running clock, and the Log it offers stores A's entry over B's clock window. Fix: refuse `startWork` while the focus names a slot the engine has not reached (focused slot ≠ the engine's current exercise). Guard: none exists; unproven.
+
+3. [Minor] Plan S-7903 and the goal table's "(a hold, a period's length)" clause vs WatchFineCrownTests.swift:110-137 — a hold exposes no duration row (`metricKeysByKind[drill] = [extraWeight]`, WatchLoggingState.swift:209-213), so the planned scenario "read the duration row" of a hold is unfulfillable; the test correctly asserts the row's absence and steps the period length instead, and the shipped doc avoids the claim ("a duration or a period's length"). Nothing false ships; the plan text is what mis-states it. Fix: a one-line correction in the plan; the test's comment already records the reason.
+
+## Assumption Log rulings
+The plan carries no Assumption Log section; nothing to rule on.
+
+## Scenario coverage
+S-7901 -> WatchFineCrownTests · testS7901TheFineStepTable
+S-7902 -> WatchFineCrownTests · testS7902ACrownClickOnAWeightStepsOneKilogram
+S-7903 -> WatchFineCrownTests · testS7903ACrownClickOnALengthStepsOneSecond (substituted: asserts a hold has no duration row; steps the period length — see finding 3)
+S-7904 -> WatchFineCrownTests · testS7904ACrownClickOnAPoundWeightMovesTheDisplayByOne
+S-7905 -> WatchFineCrownTests · testS7905AFieldWithoutAFineStepBorrowsItsStep
+S-7911 -> WatchPagerFocusTests · testS7911TheFocusShowsTheFocusedExerciseAndLogsAgainstIt
+S-7912 -> WatchPagerFocusTests · testS7912ThePagerNamesAFocusOnlyForAnotherLivePage + testS7912ALockedSessionFocusesNothing
+S-7913 -> WatchPagerFocusTests · testS7913ThePagerViewWiresTheFocusThroughItsOwnBinding (source scan; weak exactly where finding 1 sits)
+S-7914 -> WatchPagerFocusTests · testS7914AFocusNamesASlotThatHasNoIdOfItsOwn (beyond the plan; fix round 1)
+
+## Brief questions
+1. fineStep/adjust — no finding. kg mode is exact; pounds quantizes to 0.454 kg per click, and the display error stays under ~0.002 lb at one decimal (first ten clicks and the 50/100-click sums all print whole pounds); `clamp` catches the -200 kg floor after `quantize`; extraWeight stays signed (unchanged); the wire takes any kg ≥ -200; `displayValue` prints %.1f, so every fine value shows. Distance, reps and rounds delegate to `step(for:)` unchanged.
+2. slot with focusSlotId — no wrong-exercise write while the focus matches the display: every `slot` reader (exerciseName, effortKind, capabilities, metricKeys/fields, dialledKey, plannedSets, observations, plannedRoundMs, workTimer's slot check, log's event, startWork's timer id, adjust's roundLengthOverrideSecs) follows the focus, and S-7911 asserts logging against the focused slot is intended. The one hazard is finding 2 (startWork during a landing plus a refused landing). restLabels derives "next" from the engine's index while "now" follows the focus, but a focus lives only inside a sub-second landing, when the rest screen is not the shown surface.
+3. Stale focus — finding 1 names the two paths. All deliberate paths clear correctly: moved and caught up -> nil; recursion -> re-focus then its own landing; refused -> nil plus snap-back.
+4. index == selection — no standalone finding: the binding recomputes the focus on every settled swipe, out-of-range indices are unselectable, and a locked pager is unmounted; the only persistent mismatch is finding 1's stale focus (there the focus is set, only stale).
+5. Tests — none pass for the wrong reason: 3.0/5.5, 61/66 and "1.0"/"2.0"/"7.0" all discriminate fine from quick; the locked arms are exercised on indices that would be non-nil unlocked; S-7911 asserts the log's attribution; S-7914 exercises the derived id. Only the S-7913 source guard is weak, as noted in finding 1's Guard.

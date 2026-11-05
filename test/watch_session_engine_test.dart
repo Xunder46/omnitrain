@@ -29,6 +29,8 @@ import 'package:omnitrain/watch/session/watch_session_engine.dart';
 import 'package:omnitrain/watch/session/watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_timer_math.dart';
 
+import 'helpers/sync_protocol_harness.dart' show loadProtocolValidator;
+
 const String _protocolRoot = 'watch/sync_protocol';
 
 /// Deterministic clock: the engine reads time only through its injected clock,
@@ -2727,6 +2729,170 @@ void main() {
         harness.emitted.length,
         greaterThan(frames.length),
         reason: 'the terminal frame itself is re-sent, as a replay means',
+      );
+    });
+  });
+
+  group('S-6006 a work timer says which exercise it is for', () {
+    Map<String, Object?> lastTimerFrame(_Harness harness) =>
+        harness.emitted.lastWhere(
+          (envelope) => envelope['type'] == 'timer_state',
+        );
+
+    Map<String, Object?> timersOf(Map<String, Object?> frame) =>
+        _asObject(_asObject(frame['payload'])['timers']!);
+
+    test(
+      'S-6006 a work timer started with a slot names it on its own frame',
+      () async {
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        await engine.createSession(
+          modality: 'cardio_endurance',
+          exercises: [_exercise('sx-run')],
+        );
+
+        await engine.startTimer(
+          WatchTimerKind.elapsed,
+          sessionExerciseId: 'sx-run',
+        );
+
+        final frame = lastTimerFrame(harness);
+        final elapsed = _asObject(timersOf(frame)[WatchTimerKind.elapsed]!);
+        expect(elapsed['sessionExerciseId'], 'sx-run');
+        expect(
+          loadProtocolValidator().validateEnvelope(frame),
+          isEmpty,
+          reason: 'the slot is a field the wire admits (S-6001)',
+        );
+      },
+    );
+
+    test('S-6006 a rest names none, whatever it was started with', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+
+      await engine.startTimer(
+        WatchTimerKind.rest,
+        sessionExerciseId: 'sx-run',
+      );
+
+      final rest = _asObject(
+        timersOf(lastTimerFrame(harness))[WatchTimerKind.rest]!,
+      );
+      expect(
+        rest.containsKey('sessionExerciseId'),
+        isFalse,
+        reason: 'a rest belongs to no slot (D-6)',
+      );
+      expect(
+        loadProtocolValidator().validateEnvelope(lastTimerFrame(harness)),
+        isEmpty,
+      );
+    });
+
+    test('S-6006 a timer row keeps its slot across the store', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: 'cardio_endurance',
+        exercises: [_exercise('sx-run')],
+      );
+
+      await engine.startTimer(
+        WatchTimerKind.elapsed,
+        sessionExerciseId: 'sx-run',
+      );
+
+      final relaunched = await harness.runningEngine();
+      expect(
+        relaunched.timerFor(WatchTimerKind.elapsed)!.sessionExerciseId,
+        'sx-run',
+        reason: 'the slot is part of the stored row, not of the frame only',
+      );
+    });
+
+    test('S-6006 a stored timer row restores its slot through JSON', () {
+      final row = WatchTimerRecord(
+        recordId: 'rec-slot',
+        sessionId: 's-watch-1',
+        recordedAt: DateTime.utc(2026, 7, 13, 6),
+        kind: WatchTimerKind.elapsed,
+        startedAt: DateTime.utc(2026, 7, 13, 6, 1),
+        sessionExerciseId: 'sx-run',
+        sequence: 3,
+      );
+
+      final restored = WatchTimerRecord.fromJson(row.toJson());
+      expect(
+        restored.sessionExerciseId,
+        'sx-run',
+        reason:
+            'the slot travels in the row itself: a store that re-reads JSON '
+            'must not drop it',
+      );
+      expect(restored.recordId, 'rec-slot');
+      expect(restored.startedAt, row.startedAt);
+
+      final older = WatchTimerRecord.fromJson({
+        'recordId': 'rec-old',
+        'sessionId': 's-watch-1',
+        'recordedAt': '2026-07-13T06:00:00Z',
+        'sequence': 1,
+        'kind': WatchTimerKind.elapsed,
+        'startedAt': '2026-07-13T06:00:00Z',
+        'accumulatedPauseMs': 0,
+      });
+      expect(
+        older.sessionExerciseId,
+        isNull,
+        reason: 'a row whose JSON carries no slot restores with none',
+      );
+    });
+
+    test('S-6006 a row written without the slot restores with none', () {
+      final row = WatchTimerRecord.fromJson({
+        'recordId': 'rec-old',
+        'sessionId': 's-watch-1',
+        'recordedAt': '2026-07-13T06:00:00Z',
+        'sequence': 1,
+        'kind': WatchTimerKind.elapsed,
+        'startedAt': '2026-07-13T06:00:00Z',
+        'accumulatedPauseMs': 0,
+      });
+
+      expect(
+        row.sessionExerciseId,
+        isNull,
+        reason: 'a row from an older build carries no slot',
+      );
+    });
+
+    test('S-6006 a stopped row keeps the slot of the row it copies', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: 'cardio_endurance',
+        exercises: [_exercise('sx-run')],
+      );
+
+      await engine.startTimer(
+        WatchTimerKind.elapsed,
+        sessionExerciseId: 'sx-run',
+      );
+      harness.clock.advance(const Duration(seconds: 30));
+      await engine.stopTimer(kind: WatchTimerKind.elapsed);
+
+      final stopped = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(stopped.state, WatchTimerState.stopped);
+      expect(
+        stopped.sessionExerciseId,
+        'sx-run',
+        reason: 'the ending is a row copied from the start, not a new timer',
       );
     });
   });

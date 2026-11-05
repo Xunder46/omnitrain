@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'modality.dart';
 import 'modality_colors.dart';
+import 'omni_theme.dart';
 import 'tile_artwork_metrics.dart';
 import '../../widgets/icons/overhead_press_icon.dart';
 
@@ -18,7 +19,12 @@ class HomeTileConfig {
   /// states *which* artwork to draw and never how large. Custom artwork and
   /// standard icons therefore shrink and drop out at the same points.
   final TileArtworkBuilder? artworkBuilder;
-  final Color accentColor;
+
+  /// The tile's own accent, or null for a tile with no modality identity.
+  ///
+  /// Null means "no accent of its own": the tile renders with the theme's
+  /// neutral secondary text role instead of a fixed colour — see [accentFor].
+  final Color? accentColor;
   final String? modality; // null = special tile (Free Training, My Routines)
 
   /// Whether this tile belongs to the visually secondary tier.
@@ -34,10 +40,19 @@ class HomeTileConfig {
     required this.label,
     this.iconData,
     this.artworkBuilder,
-    required this.accentColor,
+    this.accentColor,
     this.modality,
     this.isSecondary = false,
   });
+
+  /// The accent this tile renders with under [colors].
+  ///
+  /// A modality tile carries a fixed [ModalityColors] accent — that is its
+  /// identity, and it is the same in every theme. A tile with no modality of
+  /// its own (Routines) has nothing to fix its colour to, so it takes the
+  /// theme's neutral `textSecondary` role and follows the active theme.
+  Color accentFor(OmniThemeColors colors) =>
+      accentColor ?? colors.textSecondary;
 }
 
 /// The 6 home screen tiles in display order (3 rows × 2 columns)
@@ -84,7 +99,8 @@ class HomeTiles {
 
     // Row 3 — secondary tier (8% own-accent fill, dimmed/smaller icon, lighter
     // Medium label, no rim, no inner shadow). Free keeps its purple tint at
-    // lower opacity; Routines uses its neutral gray at lower opacity.
+    // lower opacity; Routines has no accent of its own and takes the theme's
+    // neutral role at lower opacity.
     // Free Training — violet (open/flexible, user chooses metrics per exercise)
     HomeTileConfig(
       key: 'free_training',
@@ -94,12 +110,11 @@ class HomeTiles {
       modality: null, // No modality preset
       isSecondary: true,
     ),
-    // My Routines — neutral grey
+    // My Routines — theme neutral (no accent of its own)
     HomeTileConfig(
       key: 'my_routines',
       label: 'Routines',
       iconData: Icons.folder_open,
-      accentColor: Color(0xFF9E9E9E),
       modality: null, // Special tile, not a workout modality
       isSecondary: true,
     ),

@@ -92,4 +92,42 @@ void main() {
       );
     });
   });
+
+  // The Instruments rows' own table (D-4008): what the figure above the change
+  // chip *is*. It is a second table over the primary metric, so the secondary
+  // table's wording (`Total hold`, `Total time`) never moves.
+  group('nativePrimaryLabel', () {
+    test('every metric is pinned, including the three a row already labels '
+        'elsewhere', () {
+      const expected = <NativeMetric, String?>{
+        NativeMetric.estimatedOneRepMax: 'Est. 1RM',
+        NativeMetric.reps: 'Best set',
+        NativeMetric.duration: 'Total time',
+        NativeMetric.pace: 'Best pace',
+        NativeMetric.hold: null,
+        NativeMetric.rounds: null,
+        NativeMetric.roundMinutes: null,
+      };
+
+      expect(
+        expected.keys.toSet(),
+        NativeMetric.values.toSet(),
+        reason: 'a new metric must be given a label or an explicit null',
+      );
+      for (final entry in expected.entries) {
+        expect(nativePrimaryLabel(entry.key), entry.value, reason: '${entry.key}');
+      }
+    });
+
+    test('the nulls are the metrics whose row carries a labelled second '
+        'figure', () {
+      expect(nativePrimaryLabel(NativeMetric.hold), isNull);
+      expect(nativePrimaryLabel(NativeMetric.rounds), isNull);
+      expect(nativePrimaryLabel(NativeMetric.roundMinutes), isNull);
+
+      // The secondary table is untouched: it still names the second figure.
+      expect(nativeSecondaryLabel(NativeMetric.duration), 'Total hold');
+      expect(nativeSecondaryLabel(NativeMetric.roundMinutes), 'Total time');
+    });
+  });
 }

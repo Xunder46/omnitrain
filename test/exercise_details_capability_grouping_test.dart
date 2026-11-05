@@ -71,7 +71,8 @@ Future<void> _pumpBody(WidgetTester tester, Exercise exercise) async {
         body: ExerciseDetailViewBody(
           exercise: exercise,
           discipline: null,
-          muscleGroups: const [],
+          primaryMuscles: const [],
+          secondaryMuscles: const [],
         ),
       ),
     ),

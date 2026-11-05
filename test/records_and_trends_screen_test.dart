@@ -22,6 +22,7 @@ import 'package:omnitrain/features/stats/records_and_trends_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/features/stats/widgets/recent_pr_list.dart';
 import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
+import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
@@ -123,8 +124,10 @@ void main() {
           find.text('Complete your first session to see stats here.'),
           findsOneWidget,
         );
-        expect(find.text('Resistance'), findsNothing);
-        expect(find.text('Sports'), findsNothing);
+        // S-2802: the empty state renders the shared composition.
+        expect(find.byType(OmniEmptyState), findsOneWidget);
+        expect(find.text('RESISTANCE'), findsNothing);
+        expect(find.text('SPORTS'), findsNothing);
         expect(find.byType(RecentPRList), findsNothing);
       });
 
@@ -145,11 +148,34 @@ void main() {
         expect(find.text('Exercise Progress'), findsOneWidget);
         expect(find.text('No history for this exercise'), findsOneWidget);
         expect(
-          find.text('Log it in a completed session to see its progress here.'),
+          find.text('Log this exercise in a session to see its history.'),
           findsOneWidget,
         );
+        // S-2802: the guard empty state renders the shared composition.
+        expect(find.byType(OmniEmptyState), findsOneWidget);
         expect(find.byType(ScrollableTrendChart), findsNothing);
       });
+
+      // Focused composition guard: the test above asserts copy that this
+      // plan also changed, so at a base without the plan it fails before
+      // reaching the composition check. This one asserts only the shared
+      // composition, so it is red at such a base for the guarded reason.
+      testWidgets(
+        'S-910 the no-history guard renders the shared OmniEmptyState '
+        'composition', (tester) async {
+          await pump(
+            tester,
+            ExerciseProgressScreen(
+              workoutState: workoutState,
+              settingsState: settingsState,
+              exerciseId: 'ex-never-logged',
+            ),
+          );
+
+          expect(tester.takeException(), isNull);
+          expect(find.byType(OmniEmptyState), findsOneWidget);
+        },
+      );
 
       // ─── S-912: the search field filters the exercise list ────────────────
 
@@ -221,8 +247,8 @@ void main() {
 
           // Unfiltered: one header per section that has an exercise, and one
           // entry per exercise.
-          expect(find.text('Resistance'), findsOneWidget);
-          expect(find.text('Sports'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
+          expect(find.text('SPORTS'), findsOneWidget);
           expect(entry('ex-bench'), findsOneWidget);
           expect(entry('ex-incline'), findsOneWidget);
           expect(entry('ex-squat'), findsOneWidget);
@@ -251,8 +277,8 @@ void main() {
           // section that has no match.
           await tester.enterText(field, 'bench');
           await tester.pumpAndSettle();
-          expect(find.text('Resistance'), findsOneWidget);
-          expect(find.text('Sports'), findsNothing);
+          expect(find.text('RESISTANCE'), findsOneWidget);
+          expect(find.text('SPORTS'), findsNothing);
           expect(entry('ex-bench'), findsOneWidget);
           expect(entry('ex-incline'), findsOneWidget);
           expect(entry('ex-squat'), findsNothing);
@@ -264,8 +290,8 @@ void main() {
           // A query only the round exercise matches hides the other section.
           await tester.enterText(field, 'squat');
           await tester.pumpAndSettle();
-          expect(find.text('Resistance'), findsNothing);
-          expect(find.text('Sports'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsNothing);
+          expect(find.text('SPORTS'), findsOneWidget);
           expect(entry('ex-squat'), findsOneWidget);
           expect(entry('ex-bench'), findsNothing);
           expect(entry('ex-incline'), findsNothing);
@@ -274,8 +300,8 @@ void main() {
           // still there to clear.
           await tester.enterText(field, 'zzzz');
           await tester.pumpAndSettle();
-          expect(find.text('Resistance'), findsNothing);
-          expect(find.text('Sports'), findsNothing);
+          expect(find.text('RESISTANCE'), findsNothing);
+          expect(find.text('SPORTS'), findsNothing);
           expect(entry('ex-bench'), findsNothing);
           expect(entry('ex-incline'), findsNothing);
           expect(entry('ex-squat'), findsNothing);
@@ -284,8 +310,8 @@ void main() {
           // Clearing restores the unfiltered list.
           await tester.enterText(field, '');
           await tester.pumpAndSettle();
-          expect(find.text('Resistance'), findsOneWidget);
-          expect(find.text('Sports'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
+          expect(find.text('SPORTS'), findsOneWidget);
           expect(entry('ex-bench'), findsOneWidget);
           expect(entry('ex-incline'), findsOneWidget);
           expect(entry('ex-squat'), findsOneWidget);
@@ -380,8 +406,7 @@ void main() {
           );
         });
 
-        testWidgets('the header icon opens Records & Trends with the same '
-            'figures', (tester) async {
+        testWidgets('the header icon opens Records & Trends', (tester) async {
           await pump(
             tester,
             StatsScreen(
@@ -399,27 +424,23 @@ void main() {
             findsWidgets,
           );
 
-          // The all-time figures the Stats screen already shows.
-          final statsPills = _textsUnder(
-            find.byKey(const Key('all_time_card')),
-          );
-          expect(statsPills, contains('SESSIONS'));
-          expect(statsPills, contains('TIME'));
-          expect(statsPills, contains('STREAK'));
-
           // The PR list is not on this screen: it lives in Records & Trends.
           expect(find.byType(RecentPRList), findsNothing);
 
-          // Tapping through lands on Records & Trends with the same figures.
+          // Tapping through lands on Records & Trends, which now carries the
+          // all-time figures the Stats screen no longer shows.
           await tester.tap(find.byTooltip('Records & Trends'));
           await tester.pumpAndSettle();
 
           expect(find.text('Records & Trends'), findsOneWidget);
-          expect(_textsUnder(find.byType(OmniSurface).first), statsPills);
+          final pills = _textsUnder(find.byType(OmniSurface).first);
+          expect(pills, contains('SESSIONS'));
+          expect(pills, contains('TIME'));
+          expect(pills, contains('STREAK'));
 
           // The PR list Records & Trends renders, in the same order.
           final trendPrs = _textsUnder(find.byType(RecentPRList));
-          expect(trendPrs, contains('Recent PRs'));
+          expect(trendPrs, contains('RECENT PRS'));
           expect(trendPrs, contains('Back Squat'));
           expect(trendPrs, contains('Bench Press'));
           expect(
@@ -482,7 +503,7 @@ void main() {
           );
 
           final prTexts = _textsUnder(find.byType(RecentPRList));
-          expect(prTexts, contains('Recent PRs'));
+          expect(prTexts, contains('RECENT PRS'));
           expect(prTexts, contains('Bench Press'));
           expect(prTexts, contains(expected));
           expect(

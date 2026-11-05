@@ -54,6 +54,18 @@ class RoutineState extends ChangeNotifier {
 
   RoutineState(this._repository);
 
+  /// Counts ids handed out in this process, so two rows made inside the same
+  /// millisecond still get different ids (a clock-only id let the second row
+  /// overwrite the first).
+  static int _idSequence = 0;
+
+  /// `<millisecond clock>-<sequence>`: unique for every call.
+  static String _idStamp() =>
+      '${DateTime.now().millisecondsSinceEpoch}-${_idSequence++}';
+
+  /// A new row id that keeps its readable [prefix] (`template`, `tseg`, ...).
+  static String _newId(String prefix) => '$prefix-${_idStamp()}';
+
   // ===== GETTERS =====
 
   List<WorkoutTemplate> get routines => List.unmodifiable(_routines);
@@ -124,7 +136,7 @@ class RoutineState extends ChangeNotifier {
     _clearError();
 
     try {
-      final templateId = 'template-${DateTime.now().millisecondsSinceEpoch}';
+      final templateId = _newId('template');
       final now = DateTime.now().millisecondsSinceEpoch;
 
       _currentTemplate = WorkoutTemplate(
@@ -135,7 +147,7 @@ class RoutineState extends ChangeNotifier {
       );
 
       // Create default segment
-      final segmentId = 'tseg-${DateTime.now().millisecondsSinceEpoch}';
+      final segmentId = _newId('tseg');
       final defaultSegment = TemplateSegment(
         id: segmentId,
         templateId: templateId,
@@ -227,19 +239,7 @@ class RoutineState extends ChangeNotifier {
       // Save template
       await _repository.createTemplate(_currentTemplate!);
 
-      // Save segments and efforts
-      for (final segment in _currentSegments) {
-        await _repository.createTemplateSegment(segment);
-        final efforts = _segmentEfforts[segment.id] ?? [];
-        for (final effort in efforts) {
-          await _repository.createTemplateEffort(effort);
-        }
-      }
-
-      // Save all targets
-      for (final target in _currentTargets) {
-        await _repository.createTemplateTarget(target);
-      }
+      await _syncRowsToRepository();
 
       // Add to local cache
       if (!_routines.any((r) => r.id == _currentTemplate!.id)) {
@@ -342,7 +342,7 @@ class RoutineState extends ChangeNotifier {
         final now = DateTime.now().millisecondsSinceEpoch;
         _currentSegments = [
           TemplateSegment(
-            id: 'tseg-$now',
+            id: _newId('tseg'),
             templateId: templateId,
             orderIndex: 0,
             segmentType: 'main',
@@ -387,7 +387,7 @@ class RoutineState extends ChangeNotifier {
 
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final segmentId = 'tseg-$now';
+      final segmentId = _newId('tseg');
       final segment = TemplateSegment(
         id: segmentId,
         templateId: _currentTemplate!.id,
@@ -474,7 +474,8 @@ class RoutineState extends ChangeNotifier {
           : '$rawName (2)';
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final newSegmentId = 'tseg-clone-$now';
+      final cloneStamp = _idStamp();
+      final newSegmentId = 'tseg-clone-$cloneStamp';
       final clonedSegment = TemplateSegment(
         id: newSegmentId,
         templateId: source.templateId,
@@ -497,7 +498,7 @@ class RoutineState extends ChangeNotifier {
       // Deep-clone efforts and their targets.
       final sourceEfforts = _segmentEfforts[segmentId] ?? [];
       for (final effort in sourceEfforts) {
-        final newEffortId = 'teff-clone-$now-${effort.id}';
+        final newEffortId = 'teff-clone-$cloneStamp-${effort.id}';
         final clonedEffort = TemplateEffort(
           id: newEffortId,
           templateSegmentId: newSegmentId,
@@ -518,7 +519,7 @@ class RoutineState extends ChangeNotifier {
             .toList();
         for (final target in sourceTargets) {
           final clonedTarget = TemplateTarget(
-            id: 'ttgt-clone-$now-${target.id}',
+            id: 'ttgt-clone-$cloneStamp-${target.id}',
             templateEffortId: newEffortId,
             metricId: target.metricId,
             setIndex: target.setIndex,
@@ -578,7 +579,7 @@ class RoutineState extends ChangeNotifier {
       final resolvedSegmentId = segmentId ?? _currentSegments.first.id;
       final segmentEfforts = _segmentEfforts[resolvedSegmentId] ?? [];
       final now = DateTime.now().millisecondsSinceEpoch;
-      final effortId = 'teff-$now-${segmentEfforts.length}';
+      final effortId = _newId('teff');
       final effort = TemplateEffort(
         id: effortId,
         templateSegmentId: resolvedSegmentId,
@@ -1021,52 +1022,59 @@ class RoutineState extends ChangeNotifier {
         );
       }
 
-      final existingSegments = await _repository.getTemplateSegments(
-        _currentTemplate!.id,
-      );
-      final currentSegmentIds = _currentSegments.map((s) => s.id).toSet();
-      for (final segment in existingSegments) {
-        if (!currentSegmentIds.contains(segment.id)) {
-          await _repository.deleteTemplateSegment(segment.id);
-        }
-      }
-
-      for (final segment in _currentSegments) {
-        await _repository.createTemplateSegment(segment);
-        final existingEfforts = await _repository.getTemplateEfforts(
-          segment.id,
-        );
-        final currentEfforts = _segmentEfforts[segment.id] ?? [];
-        final currentEffortIds = currentEfforts.map((e) => e.id).toSet();
-
-        for (final effort in existingEfforts) {
-          if (!currentEffortIds.contains(effort.id)) {
-            await _repository.deleteTemplateEffort(effort.id);
-          }
-        }
-
-        for (final effort in currentEfforts) {
-          await _repository.createTemplateEffort(effort);
-
-          final existingTargets = await _repository.getTemplateTargets(
-            effort.id,
-          );
-          final currentTargets = getEffortTargets(effort.id);
-          final currentTargetIds = currentTargets.map((t) => t.id).toSet();
-
-          for (final target in existingTargets) {
-            if (!currentTargetIds.contains(target.id)) {
-              await _repository.deleteTemplateTarget(target.id);
-            }
-          }
-
-          for (final target in currentTargets) {
-            await _repository.createTemplateTarget(target);
-          }
-        }
-      }
+      await _syncRowsToRepository();
     } catch (_) {
       // Autosave failures should not block the UI.
+    }
+  }
+
+  /// Writes the in-memory segments, efforts and targets of the current
+  /// routine and deletes stored rows that are no longer in memory. Callers
+  /// own the error handling.
+  Future<void> _syncRowsToRepository() async {
+    final existingSegments = await _repository.getTemplateSegments(
+      _currentTemplate!.id,
+    );
+    final currentSegmentIds = _currentSegments.map((s) => s.id).toSet();
+    for (final segment in existingSegments) {
+      if (!currentSegmentIds.contains(segment.id)) {
+        await _repository.deleteTemplateSegment(segment.id);
+      }
+    }
+
+    for (final segment in _currentSegments) {
+      await _repository.createTemplateSegment(segment);
+      final existingEfforts = await _repository.getTemplateEfforts(
+        segment.id,
+      );
+      final currentEfforts = _segmentEfforts[segment.id] ?? [];
+      final currentEffortIds = currentEfforts.map((e) => e.id).toSet();
+
+      for (final effort in existingEfforts) {
+        if (!currentEffortIds.contains(effort.id)) {
+          await _repository.deleteTemplateEffort(effort.id);
+        }
+      }
+
+      for (final effort in currentEfforts) {
+        await _repository.createTemplateEffort(effort);
+
+        final existingTargets = await _repository.getTemplateTargets(
+          effort.id,
+        );
+        final currentTargets = getEffortTargets(effort.id);
+        final currentTargetIds = currentTargets.map((t) => t.id).toSet();
+
+        for (final target in existingTargets) {
+          if (!currentTargetIds.contains(target.id)) {
+            await _repository.deleteTemplateTarget(target.id);
+          }
+        }
+
+        for (final target in currentTargets) {
+          await _repository.createTemplateTarget(target);
+        }
+      }
     }
   }
 

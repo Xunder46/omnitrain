@@ -21,6 +21,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:health/health.dart';
 
 import '../constants/health_constants.dart';
@@ -73,13 +74,29 @@ HealthWorkoutActivityType pluginActivityTypeFor(
   }
 }
 
-/// `health`-package-backed gateway. Constructed only on iOS/Android —
-/// see [createHealthPlatformService].
-class HealthPluginPlatformService implements HealthPlatformService {
-  final Health _health = Health();
+/// The Runner's own Workout Effort channel (plan 90 D-6,
+/// `ios/Runner/HealthEffortChannel.swift`). iOS only.
+const String healthEffortChannelName = 'omnitrain/health_effort';
 
+/// `health`-package-backed gateway. Constructed only on iOS/Android —
+/// see [createHealthPlatformService]. [isIOS] and [effortChannel] are
+/// injectable so the iOS-only channel use is testable off device.
+class HealthPluginPlatformService implements HealthPlatformService {
+  HealthPluginPlatformService({bool? isIOS, MethodChannel? effortChannel})
+    : _isIOS = isIOS ?? Platform.isIOS,
+      _effortChannel =
+          effortChannel ?? const MethodChannel(healthEffortChannelName);
+
+  final Health _health = Health();
+  final bool _isIOS;
+  final MethodChannel _effortChannel;
+
+  /// Switching "Write workouts" on also asks for Workout Effort (plan 90
+  /// OQ-4). The effort request goes first and includes the workout type, so
+  /// the owner sees one Health sheet; its answer never decides the result.
   @override
   Future<bool> requestWritePermission() async {
+    await _invokeEffort('requestAuthorization');
     return _requestPermission([HealthDataType.WORKOUT], write: true);
   }
 
@@ -103,6 +120,67 @@ class HealthPluginPlatformService implements HealthPlatformService {
     } catch (e) {
       debugPrint('Health write skipped (${workout.activityKind.name}): $e');
       return false;
+    }
+  }
+
+  @override
+  Future<bool> deleteWorkouts(DateTime start, DateTime end) async {
+    try {
+      // iOS: the plugin deletes only this app's own workouts whose start
+      // lies in [start, end) (`.strictStartDate` + `HKSource.default()`),
+      // so a back-to-back neighbour or another app's workout is never hit.
+      return await _health.delete(
+        type: HealthDataType.WORKOUT,
+        startTime: start,
+        endTime: end,
+      );
+    } catch (e) {
+      debugPrint('Health workout delete skipped: $e');
+      return false;
+    }
+  }
+
+  // Plan 90 D-1, D-6, D-7: the `health` plugin has no Workout Effort
+  // support, so these go through the Runner's own channel on iOS only;
+  // Android answers "unavailable" without any work.
+  @override
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  ) async {
+    final answer = await _invokeEffort('set', {
+      'start': start.millisecondsSinceEpoch,
+      'end': end.millisecondsSinceEpoch,
+      'score': score,
+    });
+    return HealthEffortOutcome.values.firstWhere(
+      (outcome) => outcome.name == answer,
+      orElse: () => HealthEffortOutcome.unavailable,
+    );
+  }
+
+  @override
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end) async {
+    final answer = await _invokeEffort('clear', {
+      'start': start.millisecondsSinceEpoch,
+      'end': end.millisecondsSinceEpoch,
+    });
+    return answer == 'cleared';
+  }
+
+  /// The channel's string answer, or null off iOS or on any error.
+  Future<String?> _invokeEffort(String method, [Object? arguments]) async {
+    if (!_isIOS) return null;
+    try {
+      final answer = await _effortChannel.invokeMethod<Object?>(
+        method,
+        arguments,
+      );
+      return answer is String ? answer : null;
+    } catch (e) {
+      debugPrint('Health effort $method skipped: $e');
+      return null;
     }
   }
 

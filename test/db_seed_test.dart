@@ -16,6 +16,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/mock/seed_data.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void _initFfi() {
@@ -412,6 +413,101 @@ void main() {
 
       await db.close();
     });
+
+    // Plan 33, Phase A part 2 (S-9): the muscle hierarchy is part of the SQL
+    // contract the schema/seed documentation defines.
+    test('S-9 app_muscle_group carries parent_id and seeds the 27 groups the '
+        'taxonomy defines', () async {
+      final db = await _openSchemaDatabase();
+
+      expect(
+        await _columnsOf(db, 'app_muscle_group'),
+        contains('parent_id'),
+        reason: 'app_muscle_group must carry the parent region column',
+      );
+
+      final seedSql = await File(
+        '${Directory.current.path}/scripts/sqlite_seed.sql',
+      ).readAsString();
+      for (final stmt in _executableStatements(seedSql)) {
+        await db.execute(stmt);
+      }
+
+      final groups = await db.query('app_muscle_group');
+      expect(groups, hasLength(27));
+
+      final legs = await db.query(
+        'app_muscle_group',
+        where: 'name = ?',
+        whereArgs: ['Legs'],
+      );
+      final quadriceps = await db.query(
+        'app_muscle_group',
+        where: 'name = ?',
+        whereArgs: ['Quadriceps'],
+      );
+      expect(legs.single['parent_id'], isNull, reason: 'Legs is a region');
+      expect(quadriceps.single['parent_id'], equals(legs.single['id']));
+
+      // S-18808: the SQL contract carries Shins under Legs, exactly once.
+      final shins = await db.query(
+        'app_muscle_group',
+        where: 'name = ?',
+        whereArgs: ['Shins'],
+      );
+      expect(shins, hasLength(1));
+      expect(shins.single['parent_id'], equals(legs.single['id']));
+
+      // S-18910: the SQL contract carries the three muscles under their
+      // regions, exactly once each.
+      for (final entry in const {
+        'Brachialis': 'Arms',
+        'Rotator cuff': 'Shoulders',
+        'Abductors': 'Legs',
+      }.entries) {
+        final muscle = await db.query(
+          'app_muscle_group',
+          where: 'name = ?',
+          whereArgs: [entry.key],
+        );
+        final region = await db.query(
+          'app_muscle_group',
+          where: 'name = ?',
+          whereArgs: [entry.value],
+        );
+        expect(muscle, hasLength(1), reason: '${entry.key} is seeded once');
+        expect(
+          muscle.single['parent_id'],
+          equals(region.single['id']),
+          reason: '${entry.key} hangs off ${entry.value}',
+        );
+      }
+
+      await db.close();
+    });
+
+    // Plan 115b, D-19005: the SQL contract names the same equipment rows the
+    // bundled seed defines (S-19003).
+    test('S-19003 app_equipment carries the 12 equipment names the seed '
+        'defines', () async {
+      final db = await _openSchemaDatabase();
+
+      final seedSql = await File(
+        '${Directory.current.path}/scripts/sqlite_seed.sql',
+      ).readAsString();
+      for (final stmt in _executableStatements(seedSql)) {
+        await db.execute(stmt);
+      }
+
+      final rows = await db.query('app_equipment');
+      expect(rows, hasLength(12));
+      expect(
+        rows.map((row) => row['name'] as String).toSet(),
+        equals(SeedData.sampleEquipment.map((e) => e.name).toSet()),
+      );
+
+      await db.close();
+    });
   });
 
   // Stats PR 2, Phase 2 (D-131 / D-132): the watch-capture tables belong to
@@ -641,6 +737,83 @@ void main() {
         expect(await db.query('app_watch_inbox_entry'), hasLength(1));
       },
     );
+  });
+
+  // Plan 94 (PR 94a) Phase 2, D-4: the water tap ledger lives in the water row.
+  group('Water tap ledger schema contract (plan 94 D-4)', () {
+    late Database db;
+
+    setUp(() async {
+      db = await _openSchemaDatabase();
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test('S-94a-9 app_water_log carries applied_tap_ids (default []), and '
+        'WaterLogEntry agrees with it', () async {
+      final info = await db.rawQuery('PRAGMA table_info(app_water_log)');
+      final ledger = info.where((c) => c['name'] == 'applied_tap_ids');
+      expect(ledger, hasLength(1), reason: 'D-4: column missing');
+      expect(ledger.single['dflt_value'], "'[]'");
+      expect(ledger.single['notnull'], 1);
+
+      const withTap = WaterLogEntry(
+        id: 'water-1',
+        dateMs: 1,
+        volumeMl: 250,
+        createdAtMs: 2,
+        updatedAtMs: 3,
+        appliedTapIds: ['w-1'],
+      );
+      final legacy = WaterLogEntry.fromMap(<String, dynamic>{
+        'id': 'water-2',
+        'date_ms': 2,
+        'volume_ml': 750,
+        'created_at_ms': 2,
+        'updated_at_ms': 3,
+      });
+      expect(legacy.appliedTapIds, isEmpty);
+
+      final columns = await _columnsOf(db, 'app_water_log');
+      for (final entry in [withTap, legacy]) {
+        expect(
+          entry.toMap().keys.toSet().difference(columns),
+          isEmpty,
+          reason: 'D-4: WaterLogEntry.toMap writes keys app_water_log lacks',
+        );
+        expect(
+          await _insertRefusal(db, 'app_water_log', entry.toMap()),
+          isNull,
+          reason: 'D-4: app_water_log accepts ${entry.id} as-is',
+        );
+      }
+      final stored = await db.query('app_water_log', orderBy: 'date_ms');
+      expect(
+        stored.map((r) => WaterLogEntry.fromMap(r).appliedTapIds).toList(),
+        [
+          ['w-1'],
+          <String>[],
+        ],
+      );
+
+      // A row inserted without the column reads back as an empty ledger.
+      await db.insert('app_water_log', {
+        'id': 'water-3',
+        'date_ms': 3,
+        'volume_ml': 0,
+        'created_at_ms': 3,
+        'updated_at_ms': 3,
+      });
+      final bare = await db.query(
+        'app_water_log',
+        where: 'date_ms = ?',
+        whereArgs: [3],
+      );
+      expect(bare.single['applied_tap_ids'], '[]');
+      expect(WaterLogEntry.fromMap(bare.single).appliedTapIds, isEmpty);
+    });
   });
 
   // Stats PR 3a, Phase 1 (D-301, D-311): a distance records where it came

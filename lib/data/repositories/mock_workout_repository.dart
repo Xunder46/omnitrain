@@ -2,10 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
+import '../models/muscle_taxonomy.dart';
 import '../../mock/seed_data.dart';
 import '../../mock/food_catalog_seed.dart';
 import '../../core/constants/data_version.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/constants/water_constants.dart';
 import '../../core/services/data_migration_service.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
@@ -20,8 +22,8 @@ const _mockUuid = Uuid();
 /// of the early real migration steps in one shot, so those run as
 /// no-ops and exist only so the [DataMigrationService] can advance the
 /// device's `data_version` through the sequence in the same order as
-/// the Hive-backed runtime. A step that repairs already-stored rows
-/// (step 15) carries the same repair body the runtime runs, so the two
+/// the Hive-backed runtime. A step that rewrites already-stored rows
+/// (steps 15 and 16) carries the same bodies the runtime runs, so the two
 /// stores converge to the same value.
 class _MockMigrationStep extends DataMigrationStep {
   _MockMigrationStep(this.targetVersion, this.name, [this._body]);
@@ -66,8 +68,8 @@ class MockWorkoutRepository implements WorkoutRepository {
   final Map<String, TemplateTarget> _templateTargets = {};
 
   // Relationship maps
-  final Map<String, List<String>> _exerciseMuscleGroups =
-      {}; // exerciseId -> List<muscleGroupId>
+  final Map<String, List<ExerciseMuscleLink>> _exerciseMuscleLinks =
+      {}; // exerciseId -> List<ExerciseMuscleLink> in stored order
   final Map<String, List<String>> _exerciseEquipment =
       {}; // exerciseId -> List<equipmentId>
   final Map<String, List<String>> _exerciseTags =
@@ -199,8 +201,8 @@ class MockWorkoutRepository implements WorkoutRepository {
     }
 
     // Load relationships
-    for (final entry in SeedData.exerciseMuscleGroupRelationships.entries) {
-      _exerciseMuscleGroups[entry.key] = List.from(entry.value);
+    for (final entry in SeedData.exerciseMuscleLinks.entries) {
+      _exerciseMuscleLinks[entry.key] = List.from(entry.value);
     }
 
     for (final entry in SeedData.exerciseEquipmentRelationships.entries) {
@@ -270,7 +272,7 @@ class MockWorkoutRepository implements WorkoutRepository {
   /// `data_version` sequence used by the Hive runtime. Each step's
   /// `targetVersion` matches the corresponding real migration step; the
   /// early ones are no-ops (the bulk load above already applied them)
-  /// and step 15 runs the same repair body the Hive runtime does.
+  /// and steps 15 and 16 run the same bodies the Hive runtime does.
   List<DataMigrationStep> _dataMigrationSteps() {
     final repo = this;
     return [
@@ -291,6 +293,11 @@ class MockWorkoutRepository implements WorkoutRepository {
         15,
         'clampInvertedSessionWindows',
         () => repo._clampInvertedSessionWindows(),
+      ),
+      _MockMigrationStep(
+        16,
+        'muscleLinkRoles',
+        () => repo._migrateMuscleLinkRoles(),
       ),
     ];
   }
@@ -329,6 +336,25 @@ class MockWorkoutRepository implements WorkoutRepository {
         createdAtMs: session.createdAtMs,
         updatedAtMs: session.updatedAtMs,
       );
+    }
+  }
+
+  /// Rewrites every stored link row into the role-aware shape — the same
+  /// body the Hive runtime runs in step 16 (D-9). Iterates the link store's
+  /// keys, not the exercise list, so an archived exercise's links are cleaned
+  /// too. A row whose links fail [MuscleTaxonomy.normalize] is left exactly
+  /// as it is: throwing would stop the step, which is retried on every launch.
+  Future<void> _migrateMuscleLinkRoles() async {
+    for (final exerciseId in _exerciseMuscleLinks.keys.toList()) {
+      final links = List<ExerciseMuscleLink>.from(
+        _exerciseMuscleLinks[exerciseId]!,
+      );
+      try {
+        MuscleTaxonomy.normalize(links);
+      } on ArgumentError {
+        continue;
+      }
+      await setExerciseMuscleLinks(exerciseId, links);
     }
   }
 
@@ -382,8 +408,10 @@ class MockWorkoutRepository implements WorkoutRepository {
     // Filter by muscle groups (exercise must have at least one of the specified muscle groups)
     if (muscleGroupIds != null && muscleGroupIds.isNotEmpty) {
       results = results.where((e) {
-        final exerciseMuscles = _exerciseMuscleGroups[e.id] ?? [];
-        return exerciseMuscles.any((id) => muscleGroupIds.contains(id));
+        final exerciseMuscles = _exerciseMuscleLinks[e.id] ?? const [];
+        return muscleGroupIds.any(
+          (id) => MuscleTaxonomy.matches(id, exerciseMuscles),
+        );
       });
     }
 
@@ -928,6 +956,11 @@ class MockWorkoutRepository implements WorkoutRepository {
         : _sportCategories.values.firstWhere((c) => c.key == key);
   }
 
+  @override
+  Future<void> upsertSportCategory(SportCategory category) async {
+    _sportCategories[category.id] = category;
+  }
+
   // ===== DISCIPLINES =====
 
   @override
@@ -947,6 +980,11 @@ class MockWorkoutRepository implements WorkoutRepository {
         .toList();
   }
 
+  @override
+  Future<void> upsertDiscipline(Discipline discipline) async {
+    _disciplines[discipline.id] = discipline;
+  }
+
   // ===== MUSCLE GROUPS =====
 
   @override
@@ -960,20 +998,52 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
-    final muscleGroupIds = _exerciseMuscleGroups[exerciseId] ?? [];
-    return muscleGroupIds
-        .map((id) => _muscleGroups[id])
-        .whereType<MuscleGroup>()
-        .toList();
+  Future<List<ExerciseMuscleLink>> getExerciseMuscleLinks(
+    String exerciseId,
+  ) async {
+    return List.from(_exerciseMuscleLinks[exerciseId] ?? const []);
   }
 
   @override
-  Future<void> setExerciseMuscleGroups(
+  Future<void> setExerciseMuscleLinks(
     String exerciseId,
-    List<String> muscleGroupIds,
+    List<ExerciseMuscleLink> links,
   ) async {
-    _exerciseMuscleGroups[exerciseId] = List.from(muscleGroupIds);
+    _exerciseMuscleLinks[exerciseId] = MuscleTaxonomy.normalize(links);
+  }
+
+  /// Stores [links] for [exerciseId] exactly as given, without normalising.
+  ///
+  /// [setExerciseMuscleLinks] normalises on write, so a test that needs to
+  /// stage a pre-migration row (a legacy all-primary list, or a poisoned
+  /// secondary-only row) uses this instead. Tests only.
+  @visibleForTesting
+  Future<void> putRawExerciseMuscleLinksForTest(
+    String exerciseId,
+    List<ExerciseMuscleLink> links,
+  ) async {
+    _exerciseMuscleLinks[exerciseId] = List<ExerciseMuscleLink>.from(links);
+  }
+
+  /// Removes one reference row; tests only. [boxName] is the Hive box name.
+  @visibleForTesting
+  Future<void> deleteReferenceRowForTest(String boxName, String id) async {
+    switch (boxName) {
+      case 'sport_categories':
+        _sportCategories.remove(id);
+      case 'disciplines':
+        _disciplines.remove(id);
+      case 'tags':
+        _tags.remove(id);
+      case 'units':
+        _units.remove(id);
+      case 'metrics':
+        _metrics.remove(id);
+      case 'metric_effort_kinds':
+        _metricEffortKinds.remove(id);
+      default:
+        throw ArgumentError.value(boxName, 'boxName', 'unknown reference box');
+    }
   }
 
   // ===== EQUIPMENT =====
@@ -1005,6 +1075,11 @@ class MockWorkoutRepository implements WorkoutRepository {
     return tagIds.map((id) => _tags[id]).whereType<Tag>().toList();
   }
 
+  @override
+  Future<void> upsertTag(Tag tag) async {
+    _tags[tag.id] = tag;
+  }
+
   // ===== UNITS =====
 
   @override
@@ -1015,6 +1090,11 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<UnitModel?> getUnitById(String id) async {
     return _units[id];
+  }
+
+  @override
+  Future<void> upsertUnit(UnitModel unit) async {
+    _units[unit.id] = unit;
   }
 
   // ===== METRICS =====
@@ -1072,8 +1152,10 @@ class MockWorkoutRepository implements WorkoutRepository {
     // Filter by muscle groups (exercise must have at least one of the specified muscle groups)
     if (muscleGroupIds != null && muscleGroupIds.isNotEmpty) {
       results = results.where((e) {
-        final exerciseMuscles = _exerciseMuscleGroups[e.id] ?? [];
-        return exerciseMuscles.any((id) => muscleGroupIds.contains(id));
+        final exerciseMuscles = _exerciseMuscleLinks[e.id] ?? const [];
+        return muscleGroupIds.any(
+          (id) => MuscleTaxonomy.matches(id, exerciseMuscles),
+        );
       });
     }
 
@@ -1162,6 +1244,24 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<MetricDefinition?> getMetricById(String id) async {
     return _metrics[id];
+  }
+
+  @override
+  Future<void> upsertMetricDefinition(MetricDefinition metric) async {
+    _metrics[metric.id] = metric;
+  }
+
+  @override
+  Future<List<String>> getMetricEffortKinds(String metricId) async {
+    return List<String>.from(_metricEffortKinds[metricId] ?? const <String>[]);
+  }
+
+  @override
+  Future<void> setMetricEffortKinds(
+    String metricId,
+    List<String> effortKinds,
+  ) async {
+    _metricEffortKinds[metricId] = List<String>.from(effortKinds);
   }
 
   // ===== TEMPLATES =====
@@ -1608,6 +1708,32 @@ class MockWorkoutRepository implements WorkoutRepository {
     }
   }
 
+  /// Per-day applied watch-tap ledger (plan 94 D-4), in append order. Kept
+  /// beside the volumes; [saveWaterVolumeForDate] never touches it, as the
+  /// Hive row carries its ledger through a save.
+  final Map<int, List<String>> _waterTapIdsByDate = {};
+
+  @override
+  Future<bool> applyWaterTap({
+    required int dateMs,
+    required String tapId,
+    required int deltaMl,
+  }) async {
+    final ledger = _waterTapIdsByDate[dateMs] ?? const <String>[];
+    if (ledger.contains(tapId) || ledger.length >= kWatchWaterTapsPerDay) {
+      return false;
+    }
+    final volume = _waterVolumesByDate[dateMs] ?? 0;
+    _waterVolumesByDate[dateMs] = volume + deltaMl < 0 ? 0 : volume + deltaMl;
+    _waterTapIdsByDate[dateMs] = [...ledger, tapId];
+    return true;
+  }
+
+  @override
+  Future<List<String>> getAppliedWaterTapIds(int dateMs) async {
+    return List<String>.of(_waterTapIdsByDate[dateMs] ?? const <String>[]);
+  }
+
   /// Clears all data (useful for testing)
   void clear() {
     _exercises.clear();
@@ -1630,7 +1756,7 @@ class MockWorkoutRepository implements WorkoutRepository {
     _templateSegments.clear();
     _templateEfforts.clear();
     _templateTargets.clear();
-    _exerciseMuscleGroups.clear();
+    _exerciseMuscleLinks.clear();
     _exerciseEquipment.clear();
     _exerciseTags.clear();
     _metricEffortKinds.clear();
@@ -1641,6 +1767,7 @@ class MockWorkoutRepository implements WorkoutRepository {
     _catalogFoods.clear();
     _consumedFoods.clear();
     _waterVolumesByDate.clear();
+    _waterTapIdsByDate.clear();
     _watchInbox.clear();
     _sensorSummaries.clear();
     _initialized = false;
@@ -1815,6 +1942,12 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  int? get referenceRevision => null;
+
+  @override
+  int? get historyRevision => null;
+
+  @override
   Future<void> setDataVersion(int version) async {
     _dataVersion = version;
   }
@@ -1864,15 +1997,19 @@ class MockWorkoutRepository implements WorkoutRepository {
       return _nutritionTargetsByDate[dateMs];
     }
 
-    // Walk backward to find the most recent ancestor target
-    int searchDateMs = dateMs - (24 * 60 * 60 * 1000); // Start 1 day before
-    while (searchDateMs > 0) {
-      if (_nutritionTargetsByDate.containsKey(searchDateMs)) {
-        final ancestorTarget = _nutritionTargetsByDate[searchDateMs]!;
+    // Walk backward to find the most recent ancestor target. Keys are local
+    // midnights, so step by calendar day: a fixed 24 h step misses every key
+    // after a DST change (it lands at 01:00 or 23:00 local).
+    final from = DateTime.fromMillisecondsSinceEpoch(dateMs);
+    var day = DateTime(from.year, from.month, from.day - 1);
+    while (day.millisecondsSinceEpoch > 0) {
+      final ancestorTarget =
+          _nutritionTargetsByDate[day.millisecondsSinceEpoch];
+      if (ancestorTarget != null) {
         // Return a copy (rolls over to the requested date)
         return ancestorTarget.copyWith(dateMs: dateMs);
       }
-      searchDateMs -= (24 * 60 * 60 * 1000); // Go back another day
+      day = DateTime(day.year, day.month, day.day - 1);
     }
 
     // No ancestor found

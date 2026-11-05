@@ -12,14 +12,14 @@ class ModalityPickerDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Container(
         padding: EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Color(0xFF1a1a1a),
+          color: colorScheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -29,7 +29,7 @@ class ModalityPickerDialog extends StatelessWidget {
               'Select Exercise Modality',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: colorScheme.onSurface,
               ),
             ),
             SizedBox(height: 20),
@@ -37,17 +37,13 @@ class ModalityPickerDialog extends StatelessWidget {
             SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: themeColors.primary,
-                  backgroundColor: Colors.transparent,
-                  side: BorderSide(
-                    color: themeColors.primary.withValues(alpha: 0.75),
-                    width: 1,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
+              child: TextButton(
+                style: ButtonStyle(
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonUtilityRadius,
+                      ),
                     ),
                   ),
                 ),
@@ -62,6 +58,8 @@ class ModalityPickerDialog extends StatelessWidget {
   }
 
   List<Widget> _buildModalityOptions(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final modalities = [
       ('cardio_endurance', 'Cardio', Icons.favorite),
       ('resistance_lifting', 'Resistance', Icons.fitness_center),
@@ -87,16 +85,18 @@ class ModalityPickerDialog extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: isSelected ? Colors.blue : Colors.grey[700]!,
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.outline,
                   width: isSelected ? 2 : 1,
                 ),
                 color: isSelected
-                    ? Colors.blue.withOpacity(0.1)
+                    ? colorScheme.primary.withValues(alpha: 0.1)
                     : Colors.transparent,
               ),
               child: Row(
                 children: [
-                  Icon(icon, color: Colors.blue, size: 24),
+                  Icon(icon, color: colorScheme.primary, size: 24),
                   SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -104,17 +104,17 @@ class ModalityPickerDialog extends StatelessWidget {
                       children: [
                         Text(
                           displayName,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurface,
+                          ),
                         ),
                         SizedBox(height: 4),
                         Text(
                           _getModalityDescription(modality),
-                          style: Theme.of(context).textTheme.labelMedium
-                              ?.copyWith(color: Colors.grey[400]),
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -122,7 +122,7 @@ class ModalityPickerDialog extends StatelessWidget {
                     ),
                   ),
                   if (isSelected)
-                    Icon(Icons.check_circle, color: Colors.blue, size: 24),
+                    Icon(Icons.check_circle, color: colorScheme.primary, size: 24),
                 ],
               ),
             ),

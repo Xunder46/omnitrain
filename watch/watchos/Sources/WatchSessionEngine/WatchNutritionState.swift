@@ -50,6 +50,14 @@ public final class WatchNutritionState {
     private var portion: Double = WatchNutritionPortion.minServings
     private var lastConfirmation: String?
 
+    /// Called whenever what the surface shows has changed: after a restore, after
+    /// an applied `foods_down`, and after a log that becomes a new starting
+    /// amount (D-3).
+    ///
+    /// Nothing is said about which thread it lands on — the store and the log are
+    /// both `async` — so a view model hops to the main queue itself.
+    public var onFoodsChanged: (() -> Void)?
+
     public init(
         engine: WatchSessionEngine,
         store: WatchSessionStore,
@@ -70,7 +78,7 @@ public final class WatchNutritionState {
     /// logged here recently lifted to the front.
     public var foods: [WatchFood] {
         deriveWatchFoodList(
-            foods: syncedFoods,
+            foods: syncedFoods.map(effectiveFood),
             categories: categories,
             recentFoodIds: recentFoodIds
         )
@@ -79,7 +87,27 @@ public final class WatchNutritionState {
     /// The food with `foodId` as the wrist holds it, or nil when the phone has
     /// not sent one.
     public func food(_ foodId: String) -> WatchFood? {
-        syncedFoods.first { $0.foodId == foodId }
+        syncedFoods.first { $0.foodId == foodId }.map(effectiveFood)
+    }
+
+    /// `food` with the starting portion the wrist last logged of it, when that
+    /// log is newer than the list the phone sent (D-2).
+    ///
+    /// Derived on every read from the log and the catalog rather than stored
+    /// beside them, in the style of `recentFoodIds`: a relaunch cannot lose what
+    /// storage kept, and a list the phone generated after the log — which
+    /// carries the phone's own last amount — wins over it.
+    private func effectiveFood(_ food: WatchFood) -> WatchFood {
+        guard let catalog else { return food }
+        for observation in engine.nutritionLog.reversed() {
+            guard observation.payload["foodId"] as? String == food.foodId else { continue }
+            guard let loggedAt = try? parseUtcIso(observation.payload["loggedAt"]),
+                  let servings = observation.payload["servings"] as? NSNumber
+            else { return food }
+            if loggedAt <= catalog.generatedAt { return food }
+            return food.withDefaultServings(servings.doubleValue)
+        }
+        return food
     }
 
     /// When the phone generated the list the watch is holding, or nil when no
@@ -114,8 +142,15 @@ public final class WatchNutritionState {
     /// suspension: what comes back is what the phone last sent.
     public func restore() async {
         let contents = await store.readAll()
-        catalog = contents.foodCatalogs.max { $0.sequence < $1.sequence }
+        let stored = contents.foodCatalogs.max { $0.sequence < $1.sequence }
+        // A foods_down applied while this read was in flight is newer than
+        // what an older stored row says: the stored catalog is adopted only
+        // when nothing newer is already held.
+        if let stored, catalog.map({ stored.generatedAt >= $0.generatedAt }) ?? true {
+            catalog = stored
+        }
         applyCatalog()
+        onFoodsChanged?()
     }
 
     /// Applies a `foods_down` message: the list the user quick-logs from.
@@ -152,6 +187,7 @@ public final class WatchNutritionState {
         catalog = stored.foodCatalogRow
         applyCatalog()
 
+        onFoodsChanged?()
         return WatchCatalogSyncResult(applied: true, rejections: [])
     }
 
@@ -183,12 +219,21 @@ public final class WatchNutritionState {
 
     // MARK: - The portion
 
-    /// Picks `foodId` and starts its portion where the phone left it — the
-    /// amount the user logged last, or one serving.
+    /// Picks `foodId` and starts its portion at the food's starting amount — the
+    /// wrist's own last log where that is newer than the phone's list, the
+    /// phone's own pre-fill otherwise.
     public func select(_ foodId: String) {
         guard let food = food(foodId) else { return }
         selectedFoodId = foodId
         portion = Self.clampServings(food.defaultServings)
+        lastConfirmation = nil
+    }
+
+    /// Leaves the selected food: the next one opens at its own starting amount
+    /// rather than at the portion this one was left at (D-1).
+    public func deselect() {
+        selectedFoodId = nil
+        portion = WatchNutritionPortion.minServings
         lastConfirmation = nil
     }
 
@@ -225,6 +270,7 @@ public final class WatchNutritionState {
             loggedAt: clock()
         )
         lastConfirmation = "\(food.name) · \(portionLabel) · \(food.calories(at: portion)) kcal"
+        onFoodsChanged?()
         return record
     }
 

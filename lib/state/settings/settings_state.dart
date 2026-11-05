@@ -6,6 +6,20 @@ import '../../core/services/health_platform_service.dart';
 import '../../core/services/preferences_service.dart';
 import '../../data/repositories/workout_repository.dart';
 
+/// The number controls of the logger that carry a `tap to type` hint. Each
+/// kind is learned once, across every exercise, set and session.
+enum TapHintControl {
+  reps('hint_seen_tap_to_type_reps'),
+  weight('hint_seen_tap_to_type_weight'),
+  roundLength('hint_seen_tap_to_type_round_length'),
+  elapsed('hint_seen_tap_to_type_elapsed');
+
+  const TapHintControl(this.preferenceKey);
+
+  /// The preference key the learned flag is stored under.
+  final String preferenceKey;
+}
+
 class SettingsState extends ChangeNotifier {
   static const String _themeKey = 'app_theme';
   static const String _preferredWeightUnitKey = 'preferred_weight_unit';
@@ -13,6 +27,7 @@ class SettingsState extends ChangeNotifier {
   static const String _preferredHeightUnitKey = 'preferred_height_unit';
   static const String _preferredStartOfWeekKey = 'preferred_start_of_week';
   static const String _showFeelingSurveyKey = 'show_feeling_survey';
+  static const String _showWeightTrendKey = 'show_weight_trend';
   static const String _effortTimerSoundKey = 'effort_timer_sound';
   static const String _restPingIntervalKey = 'rest_ping_interval';
   static const String _restPingSoundKey = 'rest_ping_sound';
@@ -68,12 +83,14 @@ class SettingsState extends ChangeNotifier {
   String _preferredHeightUnit = 'cm';
   String _startOfWeek = 'monday';
   bool _showFeelingSurvey = true;
+  bool _showWeightTrend = true;
   String _effortTimerSound = 'boxing_bell';
   int _restPingInterval = 0;
   String _restPingSound = 'soft_chime';
   bool _notificationPermissionAsked = false;
   HealthToggleState _healthWriteWorkouts = HealthToggleState.off;
   HealthToggleState _healthReadBodyWeight = HealthToggleState.off;
+  final Set<TapHintControl> _learnedTapHints = {};
 
   AppTheme get appTheme => _appTheme;
   String get preferredWeightUnit => _preferredWeightUnit;
@@ -81,6 +98,7 @@ class SettingsState extends ChangeNotifier {
   String get preferredHeightUnit => _preferredHeightUnit;
   String get startOfWeek => _startOfWeek;
   bool get showFeelingSurvey => _showFeelingSurvey;
+  bool get showWeightTrend => _showWeightTrend;
   String get effortTimerSound => _effortTimerSound;
   int get restPingInterval => _restPingInterval;
   String get restPingSound => _restPingSound;
@@ -88,6 +106,17 @@ class SettingsState extends ChangeNotifier {
   HealthToggleState get healthWriteWorkouts => _healthWriteWorkouts;
   HealthToggleState get healthReadBodyWeight => _healthReadBodyWeight;
   bool get showHubLabel => _hubOpenCount < 2;
+
+  /// Whether the user has already tapped this kind of number to type.
+  bool isTapHintLearned(TapHintControl control) =>
+      _learnedTapHints.contains(control);
+
+  /// Remembers that the user tapped this kind of number; the hint stays gone.
+  Future<void> markTapHintLearned(TapHintControl control) async {
+    if (!_learnedTapHints.add(control)) return;
+    notifyListeners();
+    await _repository.setPreferenceBool(control.preferenceKey, true);
+  }
 
   Future<void> initialize() async {
     await _loadFromPrefs();
@@ -172,6 +201,12 @@ class SettingsState extends ChangeNotifier {
       _showFeelingSurveyKey,
       value.toString(),
     );
+    notifyListeners();
+  }
+
+  Future<void> setShowWeightTrend(bool value) async {
+    _showWeightTrend = value;
+    await _repository.setPreferenceString(_showWeightTrendKey, value.toString());
     notifyListeners();
   }
 
@@ -322,6 +357,12 @@ class SettingsState extends ChangeNotifier {
     );
     _showFeelingSurvey = savedShowFeelingSurvey != 'false';
 
+    final savedShowWeightTrend = await _repository.getPreferenceString(
+      _showWeightTrendKey,
+      defaultValue: 'true',
+    );
+    _showWeightTrend = savedShowWeightTrend != 'false';
+
     final savedEffortSound = await _repository.getPreferenceString(
       _effortTimerSoundKey,
     );
@@ -364,6 +405,13 @@ class SettingsState extends ChangeNotifier {
     _healthReadBodyWeight = parseHealthToggleState(
       await _repository.getPreferenceString(HealthPrefs.readBodyWeightKey),
     );
+
+    _learnedTapHints.clear();
+    for (final control in TapHintControl.values) {
+      if (await _repository.getPreferenceBool(control.preferenceKey)) {
+        _learnedTapHints.add(control);
+      }
+    }
 
     notifyListeners();
   }

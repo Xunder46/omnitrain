@@ -366,7 +366,7 @@ void main() {
             _shape(layer.baselineSegments),
           );
           expect(period.unratedSessionCount, layer.unratedSessionCount);
-          expect(period.ratedBaselineWeeks, layer.ratedBaselineWeeks);
+          expect(period.ratedWeeks, layer.ratedWeeks);
           expect(period.weeks, isEmpty);
 
           // Both periods report load, so the boundary assertions below read

@@ -405,7 +405,7 @@ double _sectionMeasure(List<MixSegment> segments, ExerciseSection section) =>
 /// its twelve baseline blocks.
 ///
 /// Nothing is rated, so `computeMixPeriod(day(27)…now)` measures TIME by
-/// construction — `ratedBaselineWeeks` is 0, below `kTrainingLoadMinRatedWeeks`
+/// construction — `ratedWeeks` is 0, below `kTrainingLoadMinRatedWeeks`
 /// (D-908) — and, in the time measure, carries **no** baseline segments at all.
 /// The twelve baseline sessions' 720 minutes are therefore dropped before the
 /// adapter ever sees them, while the window still holds 300 resistance minutes.
@@ -478,7 +478,7 @@ class _TimeMeasuredPayload extends StatsProgressService {
       segments: payload.segments,
       baselineSegments: payload.baselineSegments,
       unratedSessionCount: payload.unratedSessionCount,
-      ratedBaselineWeeks: payload.ratedBaselineWeeks,
+      ratedWeeks: payload.ratedWeeks,
       weeks: payload.weeks,
     );
   }
@@ -684,8 +684,8 @@ void main() {
           // other signal can qualify: this fixture isolates the card.
           expect(find.byKey(const Key(_kSustainedCardKey)), findsNothing);
 
-          // The layer sits in its slot, under the Mix layer and above ALL TIME,
-          // and the card is inside it.
+          // The layer sits in its slot, under the Mix layer and above the
+          // Instruments caption, and the card is inside it.
           final signalsTop = tester
               .getTopLeft(find.byKey(const Key('signals_layer')))
               .dy;
@@ -697,7 +697,11 @@ void main() {
           );
           expect(
             signalsTop,
-            lessThan(tester.getTopLeft(find.text('ALL TIME')).dy),
+            lessThan(
+              tester
+                  .getTopLeft(find.byKey(const Key('instrument_caption')))
+                  .dy,
+            ),
           );
           expect(
             tester.getTopLeft(find.byKey(const Key(_kCardKey))).dy,
@@ -706,7 +710,7 @@ void main() {
 
           // The blocks below are undisturbed.
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
-          expect(find.byKey(const Key('all_time_card')), findsOneWidget);
+          expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
           expect(tester.takeException(), isNull);
         });
 

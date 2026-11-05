@@ -341,6 +341,20 @@ void main() {
       expect(result, 0);
     });
 
+    // ── Duration ceiling (S-4704) ───────────────────────────────────────────
+
+    test('S-4704: parseAndClamp duration keeps 3601 (past the old hour)', () {
+      expect(MetricStepCalc.parseAndClamp('duration', '3601'), 3601);
+    });
+
+    test('S-4704: parseAndClamp duration clamps 36001 to 36000', () {
+      expect(MetricStepCalc.parseAndClamp('duration', '36001'), 36000);
+    });
+
+    test('S-4704: parseAndClamp duration clamps -5 to 0', () {
+      expect(MetricStepCalc.parseAndClamp('duration', '-5'), 0);
+    });
+
     // ── Distance (D-314, D-316) ─────────────────────────────────────────────
 
     test('parseAndClamp distance parses 5.2 to 5.2', () {

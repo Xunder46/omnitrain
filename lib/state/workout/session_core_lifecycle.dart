@@ -1,9 +1,16 @@
 part of 'session_core.dart';
 
 extension SessionCoreLifecycleMethods on SessionCore {
-  Future<void> endSession() async {
+  /// Ends the current session and, unless the watch saves its own workout for
+  /// it, writes it to Health (plan 89c1): [writeToHealth] false is the wrist's
+  /// own end (D-1); a session the wrist is running is read here, at the
+  /// phone's end, before the wrist can hear of it (D-2).
+  Future<void> endSession({required bool writeToHealth}) async {
     if (_currentSession == null) return;
     if (_currentSession!.endedAtMs != null) return;
+
+    final wristSavesWorkout =
+        _wristRunsSession?.call(_currentSession!.id) ?? false;
 
     _clearError();
 
@@ -48,7 +55,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
     // contract-bound never to throw, so nothing here can flip the
     // session into an error state.
     final completedSession = _currentSession;
-    if (completedSession != null) {
+    if (completedSession != null && writeToHealth && !wristSavesWorkout) {
       await _healthSync?.onSessionCompleted(completedSession);
     }
   }
@@ -102,12 +109,19 @@ extension SessionCoreLifecycleMethods on SessionCore {
 
     _clearError();
 
+    final discarded = _currentSession!;
     try {
-      await _repository.deleteSession(_currentSession!.id);
+      await _repository.deleteSession(discarded.id);
       clearSession();
     } catch (e) {
       _setError('Failed to discard session: $e');
+      return;
     }
+
+    // Platform health delete (plan 89 D-4). Not awaited: the discard is
+    // already complete and must not wait on the store; the service is
+    // contract-bound never to throw.
+    _healthSync?.onSessionDeleted(discarded);
   }
 
   Future<void> updateSessionNote(String note) async {
@@ -180,12 +194,20 @@ extension SessionCoreLifecycleMethods on SessionCore {
     }
   }
 
-  Future<void> updateSessionFeeling(String sessionId, int feeling) async {
+  Future<void> updateSessionFeeling(
+    String sessionId,
+    int feeling, {
+    bool onlyIfUnrated = false,
+  }) async {
     if (feeling < 1 || feeling > 5) return;
 
     _clearError();
 
     try {
+      if (onlyIfUnrated) {
+        final stored = await _repository.getSession(sessionId);
+        if (stored?.sessionFeeling != null) return;
+      }
       await _repository.updateSessionFeeling(sessionId, feeling);
 
       if (_currentSession?.id == sessionId) {
@@ -213,7 +235,59 @@ extension SessionCoreLifecycleMethods on SessionCore {
       _notify();
     } catch (e) {
       _setError('Failed to update session feeling: $e');
+      return;
     }
+
+    await _sendRatingToHealth(sessionId);
+  }
+
+  /// Plan 90 D-4: a saved rating of a finished session becomes its Fitness
+  /// workout's effort. Not awaited past the read: the service retries for
+  /// minutes and is contract-bound never to throw. A running session has no
+  /// workout yet and asks nothing.
+  Future<void> _sendRatingToHealth(String sessionId) async {
+    final healthSync = _healthSync;
+    if (healthSync == null) return;
+    TrainingSession? rated;
+    try {
+      rated = _currentSession?.id == sessionId
+          ? _currentSession
+          : await _repository.getSession(sessionId);
+    } catch (_) {
+      // The rating is saved; a failed read only means no effort is sent.
+      return;
+    }
+    if (rated == null || rated.endedAtMs == null) return;
+    healthSync.onSessionRated(rated);
+  }
+
+  /// Adopts a rating the wrist's import already wrote (D-1): updates the live
+  /// [currentSession] when it is that session and notifies. Writes nothing.
+  Future<void> adoptSessionFeeling(String sessionId, int feeling) async {
+    if (feeling < 1 || feeling > 5) return;
+    if (_currentSession?.id != sessionId) return;
+    if (_currentSession!.sessionFeeling == feeling) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _currentSession = TrainingSession(
+      id: _currentSession!.id,
+      ownerUserId: _currentSession!.ownerUserId,
+      routineTemplateId: _currentSession!.routineTemplateId,
+      startedAtMs: _currentSession!.startedAtMs,
+      endedAtMs: _currentSession!.endedAtMs,
+      title: _currentSession!.title,
+      note: _currentSession!.note,
+      locationText: _currentSession!.locationText,
+      modality: _currentSession!.modality,
+      intent: _currentSession!.intent,
+      perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+      sessionFeeling: feeling,
+      qualityRating: _currentSession!.qualityRating,
+      isRolling: _currentSession!.isRolling,
+      createdAtMs: _currentSession!.createdAtMs,
+      updatedAtMs: now,
+    );
+    _notify();
   }
 
   Future<void> updateSessionRpe(String sessionId, double rpe) async {
@@ -295,6 +369,10 @@ extension SessionCoreLifecycleMethods on SessionCore {
         for (final entry in _timerManager.timedInstancesSnapshot.entries)
           entry.key: List<TimedInstance>.from(entry.value),
       },
+      entryRests: {
+        for (final entry in _timerManager.entryRestsSnapshot.entries)
+          entry.key: List<EntryRest>.from(entry.value),
+      },
       exerciseCache: Map<String, Exercise>.from(_exerciseCache),
       sensorSummaries: List<SensorSummary>.from(_sensorSummaries),
     );
@@ -332,6 +410,11 @@ extension SessionCoreLifecycleMethods on SessionCore {
             for (final ti in snapshot.timedInstances[effort.id] ?? []) {
               await _repository.createTimedInstance(ti);
             }
+            // D-9: the effort's rests went with it (deleteEffort cascades), so
+            // the snapshot's copies come back with the effort.
+            for (final rest in snapshot.entryRests[effort.id] ?? []) {
+              await _repository.createEntryRest(rest);
+            }
           }
         }
       }
@@ -357,6 +440,15 @@ extension SessionCoreLifecycleMethods on SessionCore {
           await _repository.deleteTimedInstancesForEffort(effortId);
           for (final ti in snapshot.timedInstances[effortId]!) {
             await _repository.createTimedInstance(ti);
+          }
+        }
+
+        // D-9: a delete re-keyed this effort's rests (D-1), so the snapshot's
+        // rests replace whatever the edit left.
+        if (snapshot.entryRests.containsKey(effortId)) {
+          await _repository.deleteEntryRestsForEffort(effortId);
+          for (final rest in snapshot.entryRests[effortId]!) {
+            await _repository.createEntryRest(rest);
           }
         }
       }

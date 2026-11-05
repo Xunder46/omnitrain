@@ -1,0 +1,27 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-exercises-v1-4-a1b2c3d4-0",
+  "type": "exercises_down",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-07-13T17:00:00Z",
+    "catalogVersion": "v1-4-a1b2c3d4",
+    "batchIndex": 0,
+    "batchCount": 2,
+    "totalCount": 4,
+    "exercises": [
+      {
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "exerciseId": "ex-soccer",
+        "name": "Soccer",
+        "capabilities": ["time", "rounds"],
+        "roundDurationSecs": 2400
+      }
+    ]
+  }
+}

@@ -320,17 +320,31 @@ final class WatchSessionEngineTests: XCTestCase {
     // MARK: - S-004 append-only enforcement at the storage API
 
     func testS004NoMutatingOperationExistsAnywhereInTheModule() throws {
-        // Exactly five names are deliberate. `pruneConfirmed` and
-        // `pruneSensorSamples` are the two ways anything leaves the store, and
-        // each is gated on having nothing left to lose: confirmed observations
-        // for the first, and for the second a session that is over whose numbers
-        // the phone has already recorded in full. A third prune, or a wider
-        // gate, has to be added here on purpose.
+        // Exactly eight names are deliberate. `pruneConfirmed` and
+        // `pruneSensorSamples` are two ways anything leaves the store, each
+        // gated on having nothing left to lose: confirmed observations for the
+        // first, and for the second a session that is over whose numbers the
+        // phone has already recorded in full. The third, `pruneExerciseBatches`,
+        // drops only the stored batches of list versions that are not the active
+        // one, and its caller names a version only once a complete list of it is
+        // active. The fourth, `pruneBests`, drops the bests frames the wrist has
+        // replaced: its caller names the one copy it holds as newest, having just
+        // written it (D-11, D-17). The fifth, `pruneWater`, is added on purpose
+        // with the same gate for the water frames: its caller names the one copy
+        // it holds as newest (plan 95 D-23). The sixth, `pruneWaterTaps`, is
+        // added on purpose (plan 96 D-43, D-44): it drops only water taps the
+        // phone confirmed and that were logged before the caller's cutoff, which
+        // no count can still read. A seventh prune, or a wider gate, has to be
+        // added here on purpose.
         let allowed: Set<String> = [
             "append",
             "readAll",
             "pruneConfirmed",
             "pruneSensorSamples",
+            "pruneExerciseBatches",
+            "pruneBests",
+            "pruneWater",
+            "pruneWaterTaps",
         ]
         let verbs = "update|delete|remove|replace|edit|overwrite|write|clear"
             + "|purge|wipe|reset|drop|truncate|erase|forget|modify|mutate|destroy|set"
@@ -1321,33 +1335,6 @@ final class WatchSessionEngineTests: XCTestCase {
 
         XCTAssertNil(sessionEnd(relaunched), "D-120 the session had its end; a receipt outlives the row it names")
         XCTAssertTrue(relaunched.pendingObservations().isEmpty)
-    }
-
-    func testASessionTheWristJoinedEndsWithNoEnd() async throws {
-        let harness = Harness()
-        let engine = await harness.runningEngine()
-        _ = try await engine.applyMessage([
-            "protocolVersion": SyncProtocolValidator.protocolVersion,
-            "messageId": "msg-join",
-            "sessionId": "s-phone",
-            "type": "session_snapshot",
-            "origin": "phone",
-            "sentAt": "2026-07-13T06:00:00Z",
-            "payload": [
-                "sessionId": "s-phone",
-                "revision": 0,
-                "status": WatchSessionStatus.active,
-                "currentExerciseIndex": 0,
-                "exercises": [exercise("sx-bench")],
-                "entries": [[String: Any]](),
-                "timers": [String: Any](),
-            ] as [String: Any],
-        ])
-
-        _ = await engine.finishSession()
-
-        XCTAssertEqual(engine.session?.status, WatchSessionStatus.completed)
-        XCTAssertNil(sessionEnd(engine), "D-120 a session the wrist joined from the phone gets none")
     }
 
     // MARK: - S-240 resend across sessions

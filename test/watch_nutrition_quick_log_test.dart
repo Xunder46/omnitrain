@@ -76,6 +76,34 @@ SyncProtocolValidator _validator() {
 Map<String, Object?> _foodsDown() =>
     _readJson('$_protocolRoot/fixtures/valid/foods_down.json');
 
+/// A `foods_down` generated at [generatedAt], with the named foods'
+/// `defaultServings` replaced — what the phone sends before or after the wrist
+/// logged something (S-8303).
+Map<String, Object?> _foodsDownAt(
+  String generatedAt, {
+  Map<String, double> defaults = const {},
+}) {
+  final current = _foodsDown();
+  final payload = _payloadOf(current);
+  return {
+    ...current,
+    'messageId': 'msg-foods-$generatedAt',
+    'sentAt': generatedAt,
+    'payload': {
+      ...payload,
+      'generatedAt': generatedAt,
+      'foods': [
+        for (final row in (payload['foods']! as List).map(_asObject))
+          {
+            ...row,
+            if (defaults.containsKey(row['foodId']))
+              'defaultServings': defaults[row['foodId']],
+          },
+      ],
+    },
+  };
+}
+
 Map<String, Object?> _nutritionContract() => _readJson(_contractPath);
 
 List<String> _stringList(Object? value) =>
@@ -113,6 +141,29 @@ List<FoodGroup> _phoneGroups(Map<String, Object?> payload) => [
       updatedAtMs: 0,
     ),
 ];
+
+/// A deep copy of [envelope] whose first quick-log event carries the given
+/// edits, so a re-delivery can differ from the original without the wrist
+/// harness having to log again.
+Map<String, Object?> _withEvent(
+  Map<String, Object?> envelope, {
+  Object? loggedAt,
+  bool dropLoggedAt = false,
+  num? servings,
+}) {
+  final copy = _asObject(jsonDecode(jsonEncode(envelope)));
+  final payload = _asObject(copy['payload']);
+  final event = _asObject((payload['events']! as List).first);
+  if (dropLoggedAt) {
+    event.remove('loggedAt');
+  } else if (loggedAt != null) {
+    event['loggedAt'] = loggedAt;
+  }
+  if (servings != null) {
+    event['servings'] = servings;
+  }
+  return copy;
+}
 
 /// A food as the phone's own library holds it, macros included, so what the
 /// phone builds can be checked for the numbers it derives rather than only for
@@ -152,10 +203,17 @@ class _PhoneNutritionHarness {
   /// The phone's storage, which the router's session inbox stages into.
   final MockWorkoutRepository repository;
 
+  /// The schema set a bridge judges with. The sentinel means "the harness's
+  /// own schemas"; an explicit null means the bridge judges with none, which
+  /// is how a test reaches the bridge's own guards past the protocol's.
+  static const Object _harnessSchemas = 'harness schemas';
+
   static Future<_PhoneNutritionHarness> create({
     List<Food> foods = const [],
     List<FoodGroup> groups = const [],
     WatchMirrorTransport? transport,
+    DateTime? bridgeClock,
+    Object? validator = _harnessSchemas,
   }) async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
@@ -172,13 +230,18 @@ class _PhoneNutritionHarness {
     final nutrition = NutritionState(repository);
     await nutrition.loadConsumedToday();
 
+    final clock = bridgeClock ?? DateTime.utc(2026, 7, 13, 12);
+    final gate = validator == _harnessSchemas
+        ? _validator()
+        : validator as SyncProtocolValidator?;
     return _PhoneNutritionHarness(
       nutrition,
       WatchNutritionLogBridge(
         nutrition: nutrition,
         library: library,
-        validator: _validator(),
+        validator: gate,
         transport: transport,
+        clock: () => clock,
       ),
       repository,
     );
@@ -737,6 +800,309 @@ void main() {
     });
   });
 
+  group('S-18604 a quick-log is filed on the day it was tapped', () {
+    // The wrist tapped at 2026-07-13 12:00 UTC; the bridge clock is exactly
+    // 24 h later, so the tapped day is a past local day in every zone.
+    final tapped = DateTime.utc(2026, 7, 13, 12).toLocal();
+    final dayMs = DateTime(
+      tapped.year,
+      tapped.month,
+      tapped.day,
+    ).millisecondsSinceEpoch;
+    final tappedMs = DateTime.utc(2026, 7, 13, 12).millisecondsSinceEpoch;
+
+    test('an event tapped the day before lands on that day, not on today', () async {
+      final payload = _payloadOf(_foodsDown());
+      final wrist = _Harness();
+      final engine = await wrist.runningEngine();
+      final state = await wrist.syncedNutritionState(engine);
+
+      state.select('food-oatmeal');
+      await state.logSelected();
+
+      final phone = await _PhoneNutritionHarness.create(
+        foods: _phoneFoods(payload),
+        groups: _phoneGroups(payload),
+        bridgeClock: DateTime.utc(2026, 7, 14, 12),
+      );
+      final envelope = wrist.emitted.last;
+
+      final result = await phone.bridge.receive(envelope);
+
+      expect(result.outcome, WatchNutritionLogOutcome.applied);
+      final past = await phone.repository.getConsumedFoodsInRange(dayMs, dayMs);
+      final oatmeal = past
+          .where((row) => row.sourceFoodId == 'food-oatmeal')
+          .toList();
+      expect(
+        oatmeal,
+        hasLength(1),
+        reason: 'the meal belongs to the day the wrist tapped it',
+      );
+      expect(oatmeal.single.dateMs, dayMs);
+      expect(oatmeal.single.loggedAtMs, tappedMs);
+      expect(
+        phone.nutrition.consumedToday.where(
+          (row) => row.sourceFoodId == 'food-oatmeal',
+        ),
+        isEmpty,
+        reason: 'a past meal never reaches the today ring',
+      );
+    });
+
+    test(
+      'a delivery one month later, on the same day of the month, still files on the tapped day',
+      () async {
+        final payload = _payloadOf(_foodsDown());
+        final wrist = _Harness();
+        final engine = await wrist.runningEngine();
+        final state = await wrist.syncedNutritionState(engine);
+
+        state.select('food-oatmeal');
+        await state.logSelected();
+
+        final phone = await _PhoneNutritionHarness.create(
+          foods: _phoneFoods(payload),
+          groups: _phoneGroups(payload),
+          bridgeClock: DateTime.utc(2026, 8, 13, 12),
+        );
+        final envelope = wrist.emitted.last;
+
+        final result = await phone.bridge.receive(envelope);
+
+        expect(result.outcome, WatchNutritionLogOutcome.applied);
+        final past = await phone.repository.getConsumedFoodsInRange(dayMs, dayMs);
+        final oatmeal = past
+            .where((row) => row.sourceFoodId == 'food-oatmeal')
+            .toList();
+        expect(
+          oatmeal,
+          hasLength(1),
+          reason: 'the meal belongs to the day the wrist tapped it',
+        );
+        expect(oatmeal.single.dateMs, dayMs);
+        expect(oatmeal.single.loggedAtMs, tappedMs);
+        expect(
+          phone.nutrition.consumedToday.where(
+            (row) => row.sourceFoodId == 'food-oatmeal',
+          ),
+          isEmpty,
+          reason: 'a past meal never reaches the today ring',
+        );
+      },
+    );
+
+    test(
+      'a delivery one year later, on the same month and day, still files on the tapped day',
+      () async {
+        final payload = _payloadOf(_foodsDown());
+        final wrist = _Harness();
+        final engine = await wrist.runningEngine();
+        final state = await wrist.syncedNutritionState(engine);
+
+        state.select('food-oatmeal');
+        await state.logSelected();
+
+        final phone = await _PhoneNutritionHarness.create(
+          foods: _phoneFoods(payload),
+          groups: _phoneGroups(payload),
+          bridgeClock: DateTime.utc(2027, 7, 13, 12),
+        );
+        final envelope = wrist.emitted.last;
+
+        final result = await phone.bridge.receive(envelope);
+
+        expect(result.outcome, WatchNutritionLogOutcome.applied);
+        final past = await phone.repository.getConsumedFoodsInRange(dayMs, dayMs);
+        final oatmeal = past
+            .where((row) => row.sourceFoodId == 'food-oatmeal')
+            .toList();
+        expect(
+          oatmeal,
+          hasLength(1),
+          reason: 'the meal belongs to the day the wrist tapped it',
+        );
+        expect(oatmeal.single.dateMs, dayMs);
+        expect(oatmeal.single.loggedAtMs, tappedMs);
+        expect(
+          phone.nutrition.consumedToday.where(
+            (row) => row.sourceFoodId == 'food-oatmeal',
+          ),
+          isEmpty,
+          reason: 'a past meal never reaches the today ring',
+        );
+      },
+    );
+
+    test('a re-delivered event with a new servings value updates that row', () async {
+      final payload = _payloadOf(_foodsDown());
+      final wrist = _Harness();
+      final engine = await wrist.runningEngine();
+      final state = await wrist.syncedNutritionState(engine);
+
+      state.select('food-oatmeal');
+      await state.logSelected();
+
+      final phone = await _PhoneNutritionHarness.create(
+        foods: _phoneFoods(payload),
+        groups: _phoneGroups(payload),
+        bridgeClock: DateTime.utc(2026, 7, 14, 12),
+      );
+      final envelope = wrist.emitted.last;
+
+      final first = await phone.bridge.receive(envelope);
+      final repeated = await phone.bridge.receive(
+        _withEvent(envelope, servings: 2.5),
+      );
+
+      expect(first.outcome, WatchNutritionLogOutcome.applied);
+      expect(repeated.outcome, WatchNutritionLogOutcome.applied);
+      final past = await phone.repository.getConsumedFoodsInRange(dayMs, dayMs);
+      final oatmeal = past
+          .where((row) => row.sourceFoodId == 'food-oatmeal')
+          .toList();
+      expect(
+        oatmeal,
+        hasLength(1),
+        reason: 'a re-delivered message is not a second meal',
+      );
+      expect(oatmeal.single.amountConsumed, 2.5 * 100);
+    });
+
+    test('the row freezes the targets saved for the tapped day', () async {
+      final payload = _payloadOf(_foodsDown());
+      final wrist = _Harness();
+      final engine = await wrist.runningEngine();
+      final state = await wrist.syncedNutritionState(engine);
+
+      state.select('food-oatmeal');
+      await state.logSelected();
+
+      final phone = await _PhoneNutritionHarness.create(
+        foods: _phoneFoods(payload),
+        groups: _phoneGroups(payload),
+        bridgeClock: DateTime.utc(2026, 7, 14, 12),
+      );
+      final envelope = wrist.emitted.last;
+      await phone.repository.saveNutritionTargetForDate(
+        dayMs,
+        NutritionTarget(calories: 1111, protein: 111, carbs: 111, fat: 11),
+      );
+
+      await phone.bridge.receive(envelope);
+
+      final past = await phone.repository.getConsumedFoodsInRange(dayMs, dayMs);
+      final oatmeal = past
+          .where((row) => row.sourceFoodId == 'food-oatmeal')
+          .toList();
+      expect(oatmeal, hasLength(1));
+      expect(oatmeal.single.targetCalories, 1111);
+      expect(oatmeal.single.targetProtein, 111);
+      expect(oatmeal.single.targetCarbs, 111);
+      expect(oatmeal.single.targetFat, 11);
+    });
+
+    test('a loggedAt later than the bridge clock is filed on today', () async {
+      final payload = _payloadOf(_foodsDown());
+      final wrist = _Harness();
+      final engine = await wrist.runningEngine();
+      final state = await wrist.syncedNutritionState(engine);
+
+      state.select('food-oatmeal');
+      await state.logSelected();
+
+      final phone = await _PhoneNutritionHarness.create(
+        foods: _phoneFoods(payload),
+        groups: _phoneGroups(payload),
+        bridgeClock: DateTime.utc(2026, 7, 14, 12),
+      );
+      final envelope = wrist.emitted.last;
+
+      final result = await phone.bridge.receive(
+        _withEvent(envelope, loggedAt: '2026-07-20T12:00:00Z'),
+      );
+
+      expect(result.outcome, WatchNutritionLogOutcome.applied);
+      expect(
+        phone.nutrition.consumedToday.where(
+          (row) => row.sourceFoodId == 'food-oatmeal',
+        ),
+        hasLength(1),
+        reason: 'a wrist whose clock runs ahead still logs on today',
+      );
+      expect(await phone.repository.getConsumedFoodsInRange(dayMs, dayMs), isEmpty);
+    });
+
+    test('a missing loggedAt is filed on today', () async {
+      final payload = _payloadOf(_foodsDown());
+      final wrist = _Harness();
+      final engine = await wrist.runningEngine();
+      final state = await wrist.syncedNutritionState(engine);
+
+      state.select('food-oatmeal');
+      await state.logSelected();
+
+      final phone = await _PhoneNutritionHarness.create(
+        foods: _phoneFoods(payload),
+        groups: _phoneGroups(payload),
+        bridgeClock: DateTime.utc(2026, 7, 14, 12),
+        // The protocol schema requires a loggedAt on every event, so a
+        // message without one is refused before the bridge reads it; the
+        // guard this test exercises is the bridge's own, judged with no
+        // schema set (the receiver that cannot read does not refuse).
+        validator: null,
+      );
+      final envelope = wrist.emitted.last;
+
+      final result = await phone.bridge.receive(
+        _withEvent(envelope, dropLoggedAt: true),
+      );
+
+      expect(result.outcome, WatchNutritionLogOutcome.applied);
+      expect(
+        phone.nutrition.consumedToday.where(
+          (row) => row.sourceFoodId == 'food-oatmeal',
+        ),
+        hasLength(1),
+      );
+      expect(await phone.repository.getConsumedFoodsInRange(dayMs, dayMs), isEmpty);
+    });
+
+    test('an unreadable loggedAt is filed on today', () async {
+      final payload = _payloadOf(_foodsDown());
+      final wrist = _Harness();
+      final engine = await wrist.runningEngine();
+      final state = await wrist.syncedNutritionState(engine);
+
+      state.select('food-oatmeal');
+      await state.logSelected();
+
+      final phone = await _PhoneNutritionHarness.create(
+        foods: _phoneFoods(payload),
+        groups: _phoneGroups(payload),
+        bridgeClock: DateTime.utc(2026, 7, 14, 12),
+        // Same as the missing-loggedAt test: the schema's timestamp pattern
+        // refuses an unreadable loggedAt, so the bridge's own guard is
+        // judged with no schema set.
+        validator: null,
+      );
+      final envelope = wrist.emitted.last;
+
+      final result = await phone.bridge.receive(
+        _withEvent(envelope, loggedAt: 'not a time'),
+      );
+
+      expect(result.outcome, WatchNutritionLogOutcome.applied);
+      expect(
+        phone.nutrition.consumedToday.where(
+          (row) => row.sourceFoodId == 'food-oatmeal',
+        ),
+        hasLength(1),
+      );
+      expect(await phone.repository.getConsumedFoodsInRange(dayMs, dayMs), isEmpty);
+    });
+  });
+
   group('S-003 frequents / favorites parity with the phone', () {
     test('the phone\u2019s own rule produces the contract\u2019s order', () {
       final contract = _nutritionContract();
@@ -833,6 +1199,45 @@ void main() {
         );
         expect(state.food('food-toast'), isNull);
         expect(state.food('food-oatmeal'), isNotNull);
+      },
+    );
+
+    test(
+      'S-15209 an empty foods_down empties the list, and an older one does not',
+      () async {
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        final state = await harness.syncedNutritionState(engine);
+
+        final current = _foodsDown();
+        Map<String, Object?> emptyAt(String generatedAt, String messageId) => {
+          ...current,
+          'messageId': messageId,
+          'sentAt': generatedAt,
+          'payload': {
+            ..._payloadOf(current),
+            'generatedAt': generatedAt,
+            'categories': <Object?>[],
+            'foods': <Object?>[],
+          },
+        };
+
+        // Generated before the synced list: understood and dropped, the
+        // five-food catalog stands.
+        final older = emptyAt('2026-07-13T16:00:00Z', 'msg-foods-empty-older');
+        final olderResult = await state.applyFoodsDown(older);
+        expect(olderResult.applied, isFalse);
+        expect(olderResult.decision.accepted, isTrue);
+        expect(state.food('food-oatmeal'), isNotNull);
+        expect(state.foods, isNotEmpty);
+
+        // Generated after it: applied, the list the wrist holds empties.
+        final newer = emptyAt('2026-07-13T18:00:00Z', 'msg-foods-empty-newer');
+        final newerResult = await state.applyFoodsDown(newer);
+        expect(newerResult.applied, isTrue);
+        expect(state.foods, isEmpty);
+        expect(state.food('food-oatmeal'), isNull);
+        expect(state.syncedAt, DateTime.utc(2026, 7, 13, 18));
       },
     );
 
@@ -1251,7 +1656,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.textContaining('Sync'), findsOneWidget);
+      expect(find.textContaining('Choose foods'), findsOneWidget);
     });
 
     testWidgets('the watch home offers it with no workout running', (
@@ -1302,6 +1707,125 @@ void main() {
       expect(engine.nutritionLog, hasLength(1));
     });
   });
+
+  group(
+    'S-8307, S-8317 the Dart twin deselects and derives the starting amount',
+    () {
+      test('S-8307 (S-8301) deselecting clears the selection and the next food '
+          'starts at its own amount', () async {
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        final state = await harness.syncedNutritionState(engine);
+
+        state.select('food-egg');
+        state.stepPortion(3);
+        expect(
+          state.servings,
+          closeTo(3.5, 1e-9),
+          reason: 'S-8307 the egg opens at its catalog amount, 2, plus three '
+              'detents',
+        );
+        await state.logSelected();
+        expect(state.confirmation, isNotNull);
+
+        state.deselect();
+
+        expect(state.selectedFoodId, isNull);
+        expect(state.selected, isNull);
+        expect(
+          state.servings,
+          closeTo(WatchNutritionPortion.minServings, 1e-9),
+          reason: 'S-8307 leaving a food leaves the portion at its floor, not '
+              'at the amount that food was logged at',
+        );
+        expect(state.confirmation, isNull);
+
+        state.select('food-banana');
+        expect(
+          state.servings,
+          closeTo(1, 1e-9),
+          reason: 'S-8307 the next food opens at its own starting amount',
+        );
+      });
+
+      test('S-8307 (S-8302, S-8303) the wrist\'s own log is the starting amount '
+          'until a newer list says otherwise', () async {
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        final state = await harness.syncedNutritionState(engine);
+
+        // The fixture's list was generated at 17:00; the wrist logs after it.
+        harness.clock.advance(const Duration(hours: 6));
+        state.select('food-oatmeal');
+        state.stepPortion(3);
+        await state.logSelected();
+
+        expect(
+          state.food('food-oatmeal')!.defaultServings,
+          closeTo(3, 1e-9),
+          reason: 'S-8307 the amount just logged is the food\'s starting amount',
+        );
+        expect(
+          state.foods
+              .firstWhere((food) => food.foodId == 'food-oatmeal')
+              .defaultServings,
+          closeTo(3, 1e-9),
+          reason: 'S-8307 the list reads the same derivation the food does',
+        );
+
+        final older = _foodsDownAt(
+          '2026-07-13T17:30:00Z',
+          defaults: {'food-oatmeal': 1},
+        );
+        expect((await state.applyFoodsDown(older)).applied, isTrue);
+        expect(
+          state.food('food-oatmeal')!.defaultServings,
+          closeTo(3, 1e-9),
+          reason: 'S-8307 a list generated before the log does not revert it',
+        );
+
+        final newer = _foodsDownAt(
+          '2026-07-13T19:00:00Z',
+          defaults: {'food-oatmeal': 2},
+        );
+        expect((await state.applyFoodsDown(newer)).applied, isTrue);
+        expect(
+          state.food('food-oatmeal')!.defaultServings,
+          closeTo(2, 1e-9),
+          reason: 'S-8307 a list generated after the log carries the phone\'s '
+              'own last amount and it wins',
+        );
+      });
+
+      test('S-8317 a relaunch keeps the derived starting amount', () async {
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        final state = await harness.syncedNutritionState(engine);
+
+        harness.clock.advance(const Duration(hours: 6));
+        state.select('food-oatmeal');
+        state.stepPortion(3);
+        await state.logSelected();
+        expect(state.food('food-oatmeal')!.defaultServings, closeTo(3, 1e-9));
+
+        // Nothing is handed across in memory: a new engine and state over the
+        // same storage are a relaunch.
+        final restored = await harness.nutritionState(
+          await harness.runningEngine(),
+        );
+
+        expect(restored.syncedAt, isNotNull);
+        expect(
+          restored.food('food-oatmeal')!.defaultServings,
+          closeTo(3, 1e-9),
+          reason: 'S-8317 the log is storage the relaunch reads back, so the '
+              'derived amount survives it',
+        );
+        restored.select('food-oatmeal');
+        expect(restored.servings, closeTo(3, 1e-9));
+      });
+    },
+  );
 
   group('protocol serialization', () {
     test('the event matches the shape the protocol fixture pins', () async {

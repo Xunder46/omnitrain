@@ -6,25 +6,26 @@ import '../../core/models/instrument_list.dart';
 import '../../core/models/signals.dart';
 import '../../core/models/stats_progress.dart';
 import '../../core/models/training_load.dart';
+import '../../core/models/weight_trend.dart';
 import '../../core/services/signals/signal.dart';
 import '../../core/services/signals_service.dart';
 import '../../core/services/stats_progress_service.dart';
-import '../../core/utils/date_utils.dart';
+import '../../core/services/weight_trend_service.dart';
 import '../../core/navigation/omni_navigator.dart';
-import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
-import '../../widgets/layout/omni_card_header.dart';
 import '../nutrition/nutrition_trend_screen.dart';
 import 'records_and_trends_screen.dart';
 import 'widgets/fuel_section.dart';
 import 'widgets/instrument_list.dart';
+import 'widgets/load_failure_view.dart';
 import 'widgets/mix_layer.dart';
 import 'widgets/signals_layer.dart';
-import 'widgets/stats_pill.dart';
 import 'widgets/stats_primer_sheet.dart';
+import 'widgets/weight_trend_row.dart';
 
 class StatsScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -60,18 +61,20 @@ class StatsScreen extends StatefulWidget {
 
 class _StatsScreenState extends State<StatsScreen> {
   bool _isLoading = true;
+  bool _loadFailed = false;
   int _totalSessions = 0;
-  int _totalDurationMs = 0;
-  int _streakDays = 0;
 
   StatsWindow? _window;
   List<InstrumentSectionData> _instrumentSections = const [];
 
   FuelSummary? _fuelSummary;
 
+  WeightTrend? _weightTrend;
+
   MixLayerData? _mixLayer;
 
   SignalsData? _signalsData;
+  List<String> _signalsWaiting = const [];
   List<SignalCard> _signalsCandidates = const [];
   Map<String, int> _signalsDismissedAtMs = const {};
   SignalsService? _signalsService;
@@ -83,105 +86,160 @@ class _StatsScreenState extends State<StatsScreen> {
   /// the last write wins (S-1709, D-1010).
   Future<void> _signalsWriteTail = Future<void>.value();
 
+  /// The Start of Week the newest load started with (plan 108, D-18201), or
+  /// null until the first load has started.
+  String? _startOfWeekInUse;
+
+  /// Counts loads, so a load that is no longer the newest drops its result
+  /// instead of overwriting a newer one (D-18202).
+  int _loadGeneration = 0;
+
   @override
   void initState() {
     super.initState();
+    widget.settingsState.addListener(_onSettingsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
 
-  Future<void> _loadData() async {
-    try {
-      // Reuse CalendarState streak logic — do not re-implement the calculation.
-      final calendarState = CalendarState(widget.workoutState.repository);
-      await calendarState.init();
-      final streak = calendarState.streakDays;
+  @override
+  void dispose() {
+    widget.settingsState.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
 
+  /// Reloads in the background when Start of Week moved, because the Mix
+  /// strip's week columns and the signals' week were computed with the old
+  /// one. Every other setting only repaints (D-18201).
+  void _onSettingsChanged() {
+    final inUse = _startOfWeekInUse;
+    if (inUse == null || inUse == widget.settingsState.startOfWeek) return;
+    _loadData(silent: true);
+  }
+
+  Future<void> _loadData({bool silent = false}) async {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
+    // One value for the whole load: the Mix layer and the signals can never
+    // be computed under different weeks (D-18202).
+    final startOfWeek = widget.settingsState.startOfWeek;
+    _startOfWeekInUse = startOfWeek;
+    if (!silent) {
+      setState(() {
+        _loadFailed = false;
+        _isLoading = true;
+      });
+    }
+    try {
       // One service instance for the whole load. The service caches its
       // history snapshot per instance, so every `compute*` call below
       // shares a single read of the repository — constructing a second
       // instance here would silently double that cost.
       final service = StatsProgressService(widget.workoutState.repository);
 
-      // All-time aggregates (completed sessions and their duration) come from
-      // the service, so the screen and Records & Trends agree on the figures.
+      // Whether any completed session exists decides the empty state; the
+      // service is the same source Records & Trends reads.
       final totals = await service.computeTotals();
-
-      // Compute progress data in one call so we don't double-walk the
-      // repository: this screen reads the window (shared with the Instruments
-      // list below).
-      final progressData = await service.computeProgressData();
 
       // The Fuel row's own window, resolved in the same load as everything
       // else so the row never computes during a build.
       final fuelSummary = await service.computeFuelSummary();
-
-      // The Instruments list is the same window's work, so it resolves the
-      // window from the data we already have rather than resolving it again.
-      final instrumentSections = await service.computeInstrumentSections(
-        window: progressData.window,
-      );
 
       // One load reads one "now": the Mix layer and the signals are evaluated
       // against the same instant, so a card can never disagree with the layer
       // it sits under.
       final now = DateTime.now();
 
+      // The window the whole screen describes: the four weeks ending today,
+      // not a period-resolved one.
+      final window = StatsProgressService.statsWindow(now: now);
+
+      // The Instruments list reads the same four-week window.
+      final instrumentSections = await service.computeInstrumentSections(
+        window: window,
+      );
+
       // The Mix layer reads the same window as the Instruments list, so it
       // resolves nothing of its own.
       final mixLayer = await service.computeMixLayer(
-        window: progressData.window,
+        window: window,
         now: now,
-        startOfWeek: widget.settingsState.startOfWeek,
+        startOfWeek: startOfWeek,
       );
 
       // The signals share this load: the same service instance, so no second
-      // walk of history, and the same `now` (D-1014). When the gate is unmet
-      // nothing is evaluated and the layer is absent (D-1006).
+      // walk of history, and the same `now` (D-1014). While the gate is unmet
+      // only the signals that need no ratings are evaluated (D-17502).
       final signalsService = SignalsService(
         repository: widget.workoutState.repository,
         progressService: service,
         signals: widget.signals,
       );
+      final evaluateSignals = totals.completedSessions > 0;
       final gateMet = signalsGateMet(mixLayer);
-      final signalsDismissedAtMs = gateMet
+      // A dismissal tapped a moment ago is written through a chain; wait for
+      // it, or this load would read the old store and bring the card back
+      // (D-18203). The chain never throws.
+      if (evaluateSignals) await _signalsWriteTail;
+      final signalsDismissedAtMs = evaluateSignals
           ? await signalsService.loadDismissals()
           : const <String, int>{};
-      final signalsCandidates = gateMet
+      final signalsCandidates = evaluateSignals
           ? await signalsService.evaluateCandidates(
               now: now,
-              window: progressData.window,
+              window: window,
               mix: mixLayer,
               dismissedAtMs: signalsDismissedAtMs,
+              startOfWeek: startOfWeek,
             )
           : const <SignalCard>[];
-      final signalsData = gateMet
+      final signalsData = evaluateSignals
           ? resolveSignals(
               candidates: signalsCandidates,
               dismissedAtMs: signalsDismissedAtMs,
               now: now,
-              gateMet: true,
+              gateMet: gateMet,
             )
           : null;
+      final signalsWaiting = evaluateSignals
+          ? await signalsService.waitingLines(
+              now: now,
+              window: window,
+              mix: mixLayer,
+              startOfWeek: startOfWeek,
+            )
+          : const <String>[];
 
-      if (!mounted) return;
+      final weightTrend = totals.completedSessions > 0
+          ? await WeightTrendService(
+              widget.workoutState.repository,
+            ).compute(now: now)
+          : null;
+
+      if (!mounted || generation != _loadGeneration) return;
 
       setState(() {
         _totalSessions = totals.completedSessions;
-        _totalDurationMs = totals.durationMs;
-        _streakDays = streak;
-        _window = progressData.window;
+        _window = window;
         _instrumentSections = instrumentSections;
         _fuelSummary = fuelSummary;
+        _weightTrend = weightTrend;
         _mixLayer = mixLayer;
         _signalsService = signalsService;
         _signalsCandidates = signalsCandidates;
         _signalsDismissedAtMs = signalsDismissedAtMs;
         _signalsData = signalsData;
+        _signalsWaiting = signalsWaiting;
         _isLoading = false;
+        // A silent reload skips the head reset, so a success clears an earlier
+        // failure itself (plan 108, D-18207).
+        _loadFailed = false;
       });
     } catch (_) {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+      });
     }
   }
 
@@ -278,6 +336,11 @@ class _StatsScreenState extends State<StatsScreen> {
           body: SafeArea(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
+                : _loadFailed
+                ? LoadFailureView(
+                    message: 'Could not load your stats.',
+                    onRetry: _loadData,
+                  )
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                     children: _totalSessions == 0
@@ -291,17 +354,28 @@ class _StatsScreenState extends State<StatsScreen> {
                               ),
                               const SizedBox(height: 24),
                             ],
-                            if (_signalsData != null) ...[
+                            if (_signalsData != null &&
+                                (_signalsData!.cards.isNotEmpty ||
+                                    signalsGateMet(_mixLayer))) ...[
                               SignalsLayerSection(
                                 data: _signalsData!,
                                 themeColors: themeColors,
                                 onDismiss: _dismissSignal,
+                                waiting: _signalsWaiting,
+                                lockedRatedWeeks: signalsGateMet(_mixLayer)
+                                    ? null
+                                    : (_mixLayer?.ratedWeeks ?? 0),
+                              ),
+                              const SizedBox(height: 24),
+                            ] else if (_mixLayer != null &&
+                                !signalsGateMet(_mixLayer)) ...[
+                              SignalsLockedSection(
+                                ratedWeeks: _mixLayer!.ratedWeeks,
+                                themeColors: themeColors,
+                                waiting: _signalsWaiting,
                               ),
                               const SizedBox(height: 24),
                             ],
-                            const OmniCardHeader(title: 'ALL TIME'),
-                            _buildAggregateCard(context, themeColors),
-                            const SizedBox(height: 24),
                             if (window != null &&
                                 _instrumentSections.isNotEmpty) ...[
                               InstrumentList(
@@ -324,6 +398,16 @@ class _StatsScreenState extends State<StatsScreen> {
                                     settingsState: widget.settingsState,
                                   ),
                                 ),
+                              ),
+                            ],
+                            if (_weightTrend != null &&
+                                widget.settingsState.showWeightTrend) ...[
+                              if (_fuelSummary != null)
+                                const SizedBox(height: 24),
+                              WeightTrendRow(
+                                trend: _weightTrend!,
+                                settingsState: widget.settingsState,
+                                themeColors: themeColors,
                               ),
                             ],
                           ],
@@ -354,138 +438,69 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  // ── All-time aggregate ────────────────────────────────────────────────────
-
-  Widget _buildAggregateCard(
-    BuildContext context,
-    OmniThemeColors themeColors,
-  ) {
-    final theme = Theme.of(context);
-
-    return OmniSurface(
-      key: const Key('all_time_card'),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: StatsPill(
-              label: 'Sessions',
-              value: _totalSessions.toString(),
-              themeColors: themeColors,
-              theme: theme,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: StatsPill(
-              label: 'Time',
-              value: _formatDuration(_totalDurationMs),
-              themeColors: themeColors,
-              theme: theme,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: StatsPill(
-              label: 'Streak',
-              value: '$_streakDays d',
-              themeColors: themeColors,
-              theme: theme,
-              trailingIcon: _streakDays >= 3
-                  ? Icon(
-                      Icons.local_fire_department,
-                      size: 18,
-                      color: themeColors.primary,
-                    )
-                  : null,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ── Shared helpers ────────────────────────────────────────────────────────
 
   Widget _buildEmptyState(BuildContext context, OmniThemeColors themeColors) {
-    final theme = Theme.of(context);
-
     return OmniSurface(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 16),
-          Icon(
-            Icons.bar_chart_outlined,
-            size: 48,
-            color: themeColors.textMuted.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No sessions yet',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: OmniTheme.colors.textDominant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Complete your first session to see stats here.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: themeColors.textMuted,
-            ),
-          ),
-          if (widget.showPrimerHelp) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Your training mix, by kind of work.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: themeColors.textMuted,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Your records, and how each exercise changes over time.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: themeColors.textMuted,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'How your eating lines up with your training, once you log '
-              'food.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: themeColors.textMuted,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                key: const Key('stats_primer_empty_cta'),
-                style: ButtonStyle(
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                ),
-                onPressed: _reopenPrimer,
-                child: const Text('How Stats works'),
-              ),
-            ),
-          ],
-          const SizedBox(height: 16),
-        ],
+      child: OmniEmptyState(
+        compact: true,
+        icon: Icons.bar_chart_outlined,
+        title: 'No sessions yet',
+        hint: 'Complete your first session to see stats here.',
+        action: widget.showPrimerHelp
+            ? _buildPrimerNotes(context, themeColors)
+            : null,
       ),
     );
   }
 
-  /// Formats a duration in milliseconds as "Xh Ym" for all-time totals.
-  String _formatDuration(int ms) => OmniDateUtils.formatDurationHoursMins(ms);
+  /// The extra lines the first-use card adds: what the page will show, and the
+  /// `How Stats works` button that reopens the [StatsPrimerSheet] without
+  /// marking it seen (D-2019).
+  Widget _buildPrimerNotes(BuildContext context, OmniThemeColors themeColors) {
+    final theme = Theme.of(context);
+    final lineStyle = theme.textTheme.bodySmall?.copyWith(
+      color: themeColors.textMuted,
+    );
+
+    return Column(
+      children: [
+        Text(
+          'Your training mix, by kind of work.',
+          textAlign: TextAlign.center,
+          style: lineStyle,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Your records, and how each exercise changes over time.',
+          textAlign: TextAlign.center,
+          style: lineStyle,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'How your eating lines up with your training, once you log food.',
+          textAlign: TextAlign.center,
+          style: lineStyle,
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const Key('stats_primer_empty_cta'),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            onPressed: _reopenPrimer,
+            child: const Text('How Stats works'),
+          ),
+        ),
+      ],
+    );
+  }
 }

@@ -45,6 +45,16 @@ class HealthWeightSample {
   });
 }
 
+/// What a Workout Effort write did (plan 90 D-1).
+///
+/// [leftAlone]: the workout already carries an effort another source saved
+/// (the owner's own value in Fitness), which this app never replaces (OQ-2).
+/// [noWorkout]: no own-source workout starts inside the span yet; a watch
+/// workout reaches the phone's store a little after the finish.
+/// [unavailable]: no effort support here (Android, web, iOS before 18, no
+/// permission) or a platform error.
+enum HealthEffortOutcome { written, leftAlone, noWorkout, unavailable }
+
 /// Gateway to the platform health store.
 ///
 /// Implementations never throw: a missing permission, an unavailable
@@ -56,6 +66,24 @@ abstract class HealthPlatformService {
   Future<bool> requestReadPermission();
 
   Future<bool> writeWorkout(HealthWorkoutDraft workout);
+
+  /// Removes this app's own workouts that start inside `[start, end)`
+  /// (plan 89 D-5: the plugin matches by start time and by this app's
+  /// source only). True when the store accepted the request.
+  Future<bool> deleteWorkouts(DateTime start, DateTime end);
+
+  /// Sets the Workout Effort (Apple's 1 to 10 score) of this app's own
+  /// workout that starts inside `[start, end)`, replacing only an effort this
+  /// app wrote before (plan 90 D-1, D-6).
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  );
+
+  /// Removes the effort this app wrote for its workout that starts inside
+  /// `[start, end)`. True when the store accepted the request.
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end);
 
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since);
 }
@@ -73,6 +101,19 @@ class UnavailableHealthPlatformService implements HealthPlatformService {
 
   @override
   Future<bool> writeWorkout(HealthWorkoutDraft workout) async => false;
+
+  @override
+  Future<bool> deleteWorkouts(DateTime start, DateTime end) async => false;
+
+  @override
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  ) async => HealthEffortOutcome.unavailable;
+
+  @override
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end) async => false;
 
   @override
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since) async =>
