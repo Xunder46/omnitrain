@@ -353,6 +353,14 @@ INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
 VALUES (lower(hex(randomblob(16))), 'Heavy Bag', (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
 VALUES (lower(hex(randomblob(16))), 'Body Weight', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
+VALUES (lower(hex(randomblob(16))), 'Cable Machine', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
+VALUES (lower(hex(randomblob(16))), 'Machine', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
+VALUES (lower(hex(randomblob(16))), 'Trap Bar', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
+VALUES (lower(hex(randomblob(16))), 'Sled', (strftime('%s','now') * 1000));
 
 -- Tags
 INSERT OR IGNORE INTO app_tag (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Legs', (strftime('%s','now') * 1000));

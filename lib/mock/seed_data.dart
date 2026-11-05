@@ -4448,6 +4448,305 @@ class SeedData {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
+    Exercise(
+      id: 'exercise-sit-up',
+      name: 'Sit-Up',
+      description:
+          'A floor exercise where the torso lifts from lying to sitting to work the abs.',
+      movementPattern: 'abs',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Lie on your back with your knees bent and your feet flat on the floor.',
+        'Curl your torso up off the floor until your chest comes toward your knees.',
+        'Lower your torso back down under control without letting it drop.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-crunch',
+      name: 'Crunch',
+      description:
+          'A short-range floor exercise that lifts the shoulder blades off the floor to work the abs.',
+      movementPattern: 'abs',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Lie on your back with your knees bent, your feet flat and your hands behind your head.',
+        'Curl your shoulder blades up off the floor by squeezing your abs.',
+        'Lower your shoulder blades back down slowly without pulling on your head.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-reverse-crunch',
+      name: 'Reverse Crunch',
+      description:
+          'A floor exercise that curls the hips up toward the ribs to work the abs.',
+      movementPattern: 'abs',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Lie on your back with your knees bent and your feet lifted off the floor.',
+        'Curl your hips up so your knees move toward your chest.',
+        'Lower your hips back to the floor slowly without swinging your legs.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-bicycle-crunch',
+      name: 'Bicycle Crunch',
+      description:
+          'A floor exercise that turns the torso while alternating elbow and knee to work the abs and obliques.',
+      movementPattern: 'abs',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Lie on your back with your hands behind your head and your knees bent over your hips.',
+        'Bring one elbow toward the opposite knee as the other leg straightens, then switch sides.',
+        'Keep the alternating movement slow and controlled as you breathe.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-russian-twist',
+      name: 'Russian Twist',
+      description:
+          'A seated exercise that turns the torso side to side to work the obliques.',
+      movementPattern: 'loaded_core',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Sit on the floor with your knees bent, leaning back slightly with your feet down.',
+        'Hold your hands together in front of your chest.',
+        'Turn your torso from side to side, keeping the turn at your waist.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-hanging-knee-raise',
+      name: 'Hanging Knee Raise',
+      description:
+          'A hanging exercise that lifts the bent knees toward the chest to work the abs. An easier step before the Hanging Leg Raise.',
+      movementPattern: 'abs',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Hang from a pull-up bar with your shoulders engaged and your knees staying bent.',
+        'Brace your abs and lift your knees toward your chest.',
+        'Lower your legs slowly without letting your body swing.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-dead-bug',
+      name: 'Dead Bug',
+      description:
+          'A lying exercise where the opposite arm and leg reach out and come back on every rep to work the abs.',
+      movementPattern: 'abs',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Lie on your back with your arms up and your knees bent over your hips.',
+        'Lower the opposite arm and leg toward the floor while keeping your lower back down.',
+        'Bring that arm and leg back to the start on every rep, then switch sides.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-bird-dog',
+      name: 'Bird Dog',
+      description:
+          'A kneeling exercise where the opposite arm and leg reach out and come back on every rep to work the lower back and abs.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Kneel on all fours with your hands under your shoulders and your knees under your hips.',
+        'Reach the opposite arm forward and the opposite leg back while keeping your back flat.',
+        'Bring that arm and leg back to the start on every rep, then switch sides.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-cable-side-bend',
+      name: 'Cable Side Bend',
+      description:
+          'A standing cable exercise that bends the torso sideways at the waist to work the obliques.',
+      movementPattern: 'loaded_core',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Stand side-on to a low cable and hold the handle in the hand nearest the stack.',
+        'Bend sideways at the waist away from the stack, letting the cable move with you.',
+        'Pull yourself back up to standing under control, then repeat.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-push-press',
+      name: 'Push Press',
+      description:
+          'A standing barbell press that starts with a short knee dip and leg drive to work the front of the shoulders.',
+      movementPattern: 'vertical_push',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Stand with a barbell across your front shoulders and your feet about hip width apart.',
+        'Dip your knees a few inches, then drive up with your legs to start the press.',
+        'Press the bar overhead until your arms are straight, then lower it back to your shoulders.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-trap-bar-deadlift',
+      name: 'Trap-Bar Deadlift',
+      description:
+          'A standing lift with a bar that has neutral handles to work the glutes, quads and hamstrings.',
+      movementPattern: 'hinge',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Stand inside the bar with your feet about hip width apart and grip the neutral handles at your sides.',
+        'Brace your torso, push the floor away and stand up tall, keeping the bar close to your body.',
+        'Lower the bar back to the floor under control, then repeat.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-rack-pull',
+      name: 'Rack Pull',
+      description:
+          'A partial deadlift that starts with the bar on safety pins or blocks at about knee height to work the lower back, glutes and traps.',
+      movementPattern: 'hinge',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Set the bar on safety pins or blocks at about knee height and stand with your feet under your hips.',
+        'Grip the bar just outside your knees, brace your torso and keep your back flat.',
+        'Drive through your legs and stand up tall, then lower the bar back onto the pins or blocks.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-lateral-lunge',
+      name: 'Lateral Lunge',
+      description:
+          'A lunge to the side that works the quads and glutes.',
+      movementPattern: 'lunge',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Stand tall with your feet together and a dumbbell in each hand if you use them.',
+        'Take a wide step to the side and push your hips back as that knee bends, keeping the other leg straight.',
+        'Push through the bent leg to return to standing, then repeat.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-curtsy-lunge',
+      name: 'Curtsy Lunge',
+      description:
+          'A lunge that steps one leg behind and across the other to work the glutes and quads.',
+      movementPattern: 'lunge',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Stand tall with your feet about hip width apart and a dumbbell in each hand if you use them.',
+        'Step one leg behind and across the other, bending both knees and keeping your torso upright.',
+        'Push through the front leg to return to standing, then repeat on the other side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-single-leg-hip-thrust',
+      name: 'Single-Leg Hip Thrust',
+      description:
+          'A hip thrust on one leg that works the glutes.',
+      movementPattern: 'hinge',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Sit on the floor with your shoulders resting on a bench and one foot flat on the floor.',
+        'Lift the other leg off the floor and brace your abs.',
+        'Drive through the foot on the floor to lift your hips until your body is in line, then lower under control.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-donkey-calf-raise',
+      name: 'Donkey Calf Raise',
+      description:
+          'A calf raise done bent at the hips with the balls of the feet on a raised edge to work the calves.',
+      movementPattern: 'calves',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Place the balls of your feet on a raised edge and bend at the hips, holding a support in front of you.',
+        'Let your heels drop below the edge to stretch the calves.',
+        'Push through the balls of your feet to rise as high as you can, then lower under control.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-leg-press-calf-raise',
+      name: 'Leg Press Calf Raise',
+      description:
+          'A calf raise done on the leg press with the balls of the feet on the platform to work the calves.',
+      movementPattern: 'calves',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Sit in the leg press with the balls of your feet on the lower edge of the platform.',
+        'Press the platform away until your knees are straight but not locked, and keep them there for the whole set.',
+        'Push the platform with the balls of your feet, then lower your heels back under control.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-reverse-hyperextension',
+      name: 'Reverse Hyperextension',
+      description:
+          'A machine exercise that swings the legs up behind the body to work the glutes and lower back.',
+      movementPattern: 'hinge',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Lie face down on the machine pad with your hips at the edge and hold the handles.',
+        'Keep your legs straight and swing them up behind you.',
+        'Lower your legs under control until they hang below the pad, then repeat.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-sled-push',
+      name: 'Sled Push',
+      description:
+          'A push that drives a loaded sled forward with the legs to work the quads and glutes. Time- or distance-based.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Load the sled with the weight you want to push.',
+        'Lean forward with your hands on the uprights.',
+        'Drive with your legs in short, strong steps to move the sled forward.',
+        'Stop, reset and repeat.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-sled-drag',
+      name: 'Sled Drag',
+      description:
+          'A drag that pulls a loaded sled behind you to work the quads and glutes. Time- or distance-based.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Attach the harness or strap to the sled and step into it.',
+        'Walk away from the sled, facing forward or backward.',
+        'Keep the tension on the strap and your back flat as you walk.',
+        'Turn around and drag the sled back, then repeat.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
   ];
 
   static final List<Equipment> sampleEquipment = [
@@ -4499,6 +4798,16 @@ class SeedData {
     Equipment(
       id: 'equipment-machine',
       name: 'Machine',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Equipment(
+      id: 'equipment-trap-bar',
+      name: 'Trap Bar',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Equipment(
+      id: 'equipment-sled',
+      name: 'Sled',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
   ];
@@ -5089,6 +5398,26 @@ class SeedData {
     'exercise-cable-rear-delt-fly': _muscles(primary: ['muscle-rear-delts'], secondary: ['muscle-traps']),
     'exercise-reverse-pec-deck': _muscles(primary: ['muscle-rear-delts'], secondary: ['muscle-traps']),
     'exercise-dumbbell-shrug': _muscles(primary: ['muscle-traps'], secondary: ['muscle-forearms']),
+    'exercise-sit-up': _muscles(primary: ['muscle-abs'], secondary: ['muscle-obliques']),
+    'exercise-crunch': _muscles(primary: ['muscle-abs'], secondary: ['muscle-obliques']),
+    'exercise-reverse-crunch': _muscles(primary: ['muscle-abs'], secondary: ['muscle-obliques']),
+    'exercise-bicycle-crunch': _muscles(primary: ['muscle-abs', 'muscle-obliques']),
+    'exercise-russian-twist': _muscles(primary: ['muscle-obliques'], secondary: ['muscle-abs']),
+    'exercise-hanging-knee-raise': _muscles(primary: ['muscle-abs'], secondary: ['muscle-obliques']),
+    'exercise-dead-bug': _muscles(primary: ['muscle-abs'], secondary: ['muscle-obliques']),
+    'exercise-bird-dog': _muscles(primary: ['muscle-lower-back', 'muscle-abs'], secondary: ['muscle-glutes']),
+    'exercise-cable-side-bend': _muscles(primary: ['muscle-obliques'], secondary: ['muscle-lower-back']),
+    'exercise-push-press': _muscles(primary: ['muscle-front-delts'], secondary: ['muscle-triceps', 'muscle-side-delts', 'muscle-quads']),
+    'exercise-trap-bar-deadlift': _muscles(primary: ['muscle-glutes', 'muscle-quads', 'muscle-hamstrings'], secondary: ['muscle-lower-back', 'muscle-traps', 'muscle-forearms']),
+    'exercise-rack-pull': _muscles(primary: ['muscle-lower-back', 'muscle-glutes', 'muscle-traps'], secondary: ['muscle-hamstrings', 'muscle-forearms']),
+    'exercise-lateral-lunge': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-adductors']),
+    'exercise-curtsy-lunge': _muscles(primary: ['muscle-glutes', 'muscle-quads'], secondary: ['muscle-abductors']),
+    'exercise-single-leg-hip-thrust': _muscles(primary: ['muscle-glutes'], secondary: ['muscle-hamstrings']),
+    'exercise-donkey-calf-raise': _muscles(primary: ['muscle-calves']),
+    'exercise-leg-press-calf-raise': _muscles(primary: ['muscle-calves']),
+    'exercise-reverse-hyperextension': _muscles(primary: ['muscle-glutes', 'muscle-lower-back'], secondary: ['muscle-hamstrings']),
+    'exercise-sled-push': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-hamstrings', 'muscle-calves']),
+    'exercise-sled-drag': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-hamstrings', 'muscle-calves']),
   };
 
   /// Builds a [ExerciseMuscleLink] list: every primary id first, then every
@@ -5333,6 +5662,26 @@ class SeedData {
     'exercise-cable-rear-delt-fly': ['equipment-cable'],
     'exercise-reverse-pec-deck': ['equipment-machine'],
     'exercise-dumbbell-shrug': ['equipment-dumbbell'],
+    'exercise-sit-up': ['equipment-bodyweight'],
+    'exercise-crunch': ['equipment-bodyweight'],
+    'exercise-reverse-crunch': ['equipment-bodyweight'],
+    'exercise-bicycle-crunch': ['equipment-bodyweight'],
+    'exercise-russian-twist': ['equipment-bodyweight'],
+    'exercise-hanging-knee-raise': ['equipment-pullup-bar'],
+    'exercise-dead-bug': ['equipment-bodyweight'],
+    'exercise-bird-dog': ['equipment-bodyweight'],
+    'exercise-cable-side-bend': ['equipment-cable'],
+    'exercise-push-press': ['equipment-barbell'],
+    'exercise-trap-bar-deadlift': ['equipment-trap-bar'],
+    'exercise-rack-pull': ['equipment-barbell'],
+    'exercise-lateral-lunge': ['equipment-dumbbell'],
+    'exercise-curtsy-lunge': ['equipment-dumbbell'],
+    'exercise-single-leg-hip-thrust': ['equipment-bodyweight'],
+    'exercise-donkey-calf-raise': ['equipment-machine'],
+    'exercise-leg-press-calf-raise': ['equipment-machine'],
+    'exercise-reverse-hyperextension': ['equipment-machine'],
+    'exercise-sled-push': ['equipment-sled'],
+    'exercise-sled-drag': ['equipment-sled'],
   };
 
   /// Maps exercise IDs to capability flags
@@ -5720,6 +6069,26 @@ class SeedData {
     'exercise-cable-rear-delt-fly': ['reps', 'sets', 'load', 'time'],
     'exercise-reverse-pec-deck': ['reps', 'sets', 'load', 'time'],
     'exercise-dumbbell-shrug': ['reps', 'sets', 'load', 'time'],
+    'exercise-sit-up': ['reps', 'sets', 'time'],
+    'exercise-crunch': ['reps', 'sets', 'time'],
+    'exercise-reverse-crunch': ['reps', 'sets', 'time'],
+    'exercise-bicycle-crunch': ['reps', 'sets', 'time'],
+    'exercise-russian-twist': ['reps', 'sets', 'load', 'time'],
+    'exercise-hanging-knee-raise': ['reps', 'sets', 'time'],
+    'exercise-dead-bug': ['reps', 'sets', 'time'],
+    'exercise-bird-dog': ['reps', 'sets', 'time'],
+    'exercise-cable-side-bend': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-push-press': ['reps', 'sets', 'load', 'time'],
+    'exercise-trap-bar-deadlift': ['reps', 'sets', 'load', 'time'],
+    'exercise-rack-pull': ['reps', 'sets', 'load', 'time'],
+    'exercise-lateral-lunge': ['reps', 'sets', 'load', 'time'],
+    'exercise-curtsy-lunge': ['reps', 'sets', 'load', 'time'],
+    'exercise-single-leg-hip-thrust': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-donkey-calf-raise': ['reps', 'sets', 'load', 'time'],
+    'exercise-leg-press-calf-raise': ['reps', 'sets', 'load', 'time'],
+    'exercise-reverse-hyperextension': ['reps', 'sets', 'load', 'time'],
+    'exercise-sled-push': ['time', 'distance', 'load'],
+    'exercise-sled-drag': ['time', 'distance', 'load'],
   };
 
   /// Template segments for sample templates

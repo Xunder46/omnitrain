@@ -13,7 +13,7 @@ it is by then.
 | PR | Scope | Depends on | Plan |
 |---|---|---|---|
 | 115a | The three muscles; Cable Hip Abduction, Cable External Rotation and Hammer Curl re-tagged; 28 exercises: the 16 that use the new muscles or train arms, and 12 machine/isolation lifts; catalog version 14 | plan 114 committed | `2026-11-04-115a-strength-catalog-gaps-plan/` |
-| 115b | 20 exercises: core (Sit-Up, Crunch, Reverse Crunch, Bicycle Crunch, Russian Twist, Hanging Knee Raise, Dead Bug, Bird Dog, Cable Side Bend), legs/hips (Trap-Bar Deadlift, Rack Pull, Lateral Lunge, Curtsy Lunge, Single-Leg Hip Thrust, Donkey Calf Raise, Leg Press Calf Raise, Reverse Hyperextension, Sled Push, Sled Drag), Push Press; two equipment rows (Trap Bar, Sled); catalog version 15 | 115a | not planned |
+| 115b | 20 exercises: core (Sit-Up, Crunch, Reverse Crunch, Bicycle Crunch, Russian Twist, Hanging Knee Raise, Dead Bug, Bird Dog, Cable Side Bend), legs/hips (Trap-Bar Deadlift, Rack Pull, Lateral Lunge, Curtsy Lunge, Single-Leg Hip Thrust, Donkey Calf Raise, Leg Press Calf Raise, Reverse Hyperextension, Sled Push, Sled Drag), Push Press; two equipment rows (Trap Bar, Sled); catalog version 15 | 115a | `2026-11-04-115b-strength-catalog-gaps-plan/` (no split; Q1 sled logging open, default applied) |
 
 ## Shared decisions (bind both PRs; full text in the 115a Ledger)
 

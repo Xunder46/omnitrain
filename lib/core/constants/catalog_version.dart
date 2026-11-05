@@ -53,9 +53,13 @@
 ///   Abduction, Cable External Rotation and Hammer Curl were re-tagged and 28
 ///   strength exercises were added, we bumped to `14` so existing installs
 ///   receive them on next launch.
+///   When 20 core, leg/hip and press exercises were added (Sit-Up through
+///   Sled Drag) with the Trap Bar and Sled equipment rows, we bumped to `15`
+///   so existing installs receive the exercises on next launch; the two
+///   equipment rows reach new installs only.
 library;
 
-const int bundledCatalogVersion = 14;
+const int bundledCatalogVersion = 15;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///

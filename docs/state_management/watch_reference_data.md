@@ -19,8 +19,8 @@ other platform's suite too.
 
 `routines_down` says "your routines, and the exercises they use". Its
 `fallbackExercises` is the list that keeps a synced routine loggable offline.
-It is not the whole catalog: a phone with 252 seeded exercises would send about
-28 KB for a list the wrist mostly does not need at start time. The whole list
+It is not the whole catalog: a phone with 300 seeded exercises would send tens
+of kilobytes for a list the wrist mostly does not need at start time. The whole list
 travels as `exercises_down` instead, in batches of at most 100 exercises, each
 batch naming a version, its index, the version's batch count and its total
 exercise count.

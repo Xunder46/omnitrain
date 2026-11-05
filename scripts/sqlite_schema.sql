@@ -1628,8 +1628,9 @@ CREATE INDEX IF NOT EXISTS IX_watch_inbox_unapplied_end
 -- ─────────────────────────────────────────────────────────────────────────────
 -- CATALOG VERSION + SEED-ENTRY TOMBSTONES (July 2026)
 -- ─────────────────────────────────────────────────────────────────────────────
--- The bundled app-authored catalog (exercises + capability / muscle-group /
--- equipment relationships + the food catalog) carries an integer version
+-- The bundled app-authored catalog (exercises + capability / muscle-group
+-- relationships + the food catalog; equipment is written at first install
+-- only) carries an integer version
 -- (see `lib/core/constants/catalog_version.dart`). At app start,
 -- `CatalogRefreshService` compares the device's stored version against
 -- the bundled version and re-applies any new or changed seed entries in

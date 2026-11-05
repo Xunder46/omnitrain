@@ -136,6 +136,13 @@ re-tags Cable Hip Abduction, Cable External Rotation and Hammer Curl, and adds
 exercises (including one with the same name as a new bundled one), are never
 rewritten. Verified by `test/strength_catalog_refresh_test.dart` (`S-18906 a v13
 install refreshes to v14`, `S-18907 a user-edited row keeps its muscles`).
+Catalog version `15` adds 20 core, leg/hip and press exercises (Sit-Up through
+Sled Drag); exercises the user edited or copied, a user's own exercise with a new
+bundled name, and a bundled row the user renamed to a new name are never
+rewritten. Verified by `test/strength_catalog_v15_refresh_test.dart` (`S-19006 a
+v14 install refreshes to v15`, `S-19007 a renamed touched row and near-twins
+keep their own`). The Trap Bar and Sled equipment rows reach new installs only
+(`S-19008 a new install knows the equipment`).
 
 `SeedEntryType` enumerates the tombstone key spaces the refresh understands:
 

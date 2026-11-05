@@ -16,6 +16,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/mock/seed_data.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void _initFfi() {
@@ -481,6 +482,29 @@ void main() {
           reason: '${entry.key} hangs off ${entry.value}',
         );
       }
+
+      await db.close();
+    });
+
+    // Plan 115b, D-19005: the SQL contract names the same equipment rows the
+    // bundled seed defines (S-19003).
+    test('S-19003 app_equipment carries the 12 equipment names the seed '
+        'defines', () async {
+      final db = await _openSchemaDatabase();
+
+      final seedSql = await File(
+        '${Directory.current.path}/scripts/sqlite_seed.sql',
+      ).readAsString();
+      for (final stmt in _executableStatements(seedSql)) {
+        await db.execute(stmt);
+      }
+
+      final rows = await db.query('app_equipment');
+      expect(rows, hasLength(12));
+      expect(
+        rows.map((row) => row['name'] as String).toSet(),
+        equals(SeedData.sampleEquipment.map((e) => e.name).toSet()),
+      );
 
       await db.close();
     });

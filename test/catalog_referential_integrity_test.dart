@@ -202,7 +202,7 @@ void main() {
     });
 
     test('S-3: the map holds one entry per tagged exercise', () {
-      expect(SeedData.exerciseMuscleLinks, hasLength(206));
+      expect(SeedData.exerciseMuscleLinks, hasLength(226));
     });
 
     test('S-3: only the twelve region-tagged exercises carry a region', () {
@@ -267,7 +267,7 @@ void main() {
           role: MuscleRole.primary,
         ),
       ]);
-      expect(SeedData.exerciseMuscleLinks, hasLength(206));
+      expect(SeedData.exerciseMuscleLinks, hasLength(226));
 
       // S-18904 (plan 115a): the three D-18902 re-tags, compared as lists.
       expect(SeedData.exerciseMuscleLinks['exercise-cable-hip-abduction'], [
@@ -328,6 +328,8 @@ void main() {
         'exercise-soleus-stretch',
         'exercise-jump-rope-steady',
         'exercise-jump-rope-intervals',
+        'exercise-donkey-calf-raise',
+        'exercise-leg-press-calf-raise',
       });
 
       final assistingCalves = {
@@ -338,7 +340,12 @@ void main() {
           ).contains('muscle-calves'))
             entry.key,
       };
-      expect(assistingCalves, {'exercise-nordic-curl', 'exercise-wall-sit'});
+      expect(assistingCalves, {
+        'exercise-nordic-curl',
+        'exercise-wall-sit',
+        'exercise-sled-push',
+        'exercise-sled-drag',
+      });
 
       // S-18904 (plan 115a): the exercise sets that the Phase 2A rows complete.
       Set<String> mainIds(String muscleId) => {

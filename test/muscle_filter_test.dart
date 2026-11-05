@@ -502,6 +502,271 @@ void main() {
           );
         });
       });
+
+      // Plan 115b, S-19005 — the 20 new rows list under their main muscle
+      // only, so Obliques and Calves gain rows while Abductors and Adductors
+      // do not; a custom with the same name as a new row keeps its own
+      // tagging, and a secondary-only link never matches.
+      group('S-19005 the new rows and their main muscles', () {
+        Future<void> custom(
+          String id,
+          String name,
+          List<ExerciseMuscleLink> links,
+        ) async {
+          await repo.createExercise(
+            Exercise(
+              id: id,
+              ownerUserId: 'user-1',
+              name: name,
+              createdAtMs: _atMs,
+              updatedAtMs: _atMs,
+            ),
+          );
+          await repo.setExerciseMuscleLinks(id, links);
+        }
+
+        test('S-19005 the new muscles, the near-twin and the re-tags', () async {
+          // U: the user's own "Sit-Up" — the same name as a bundled row,
+          // abs primary.
+          await custom('ex-custom-sit-up', 'Sit-Up', [_link('muscle-abs')]);
+          // O: Obliques as an assist only.
+          await custom('ex-oblique-reach', 'Oblique Reach', [
+            _link('muscle-abs'),
+            _link('muscle-obliques', MuscleRole.secondary),
+          ]);
+          // B: two main links, both inside Core and one inside Back.
+          await custom('ex-side-bend', 'Side Bend', [
+            _link('muscle-obliques'),
+            _link('muscle-lower-back'),
+          ]);
+          // E: tagged with nothing.
+          await custom('ex-hip-flexor-raise', 'Hip Flexor Raise', const []);
+
+          const coreRows = [
+            'exercise-sit-up',
+            'exercise-crunch',
+            'exercise-reverse-crunch',
+            'exercise-bicycle-crunch',
+            'exercise-russian-twist',
+            'exercise-hanging-knee-raise',
+            'exercise-dead-bug',
+            'exercise-bird-dog',
+            'exercise-cable-side-bend',
+          ];
+          const abductorRows = [
+            'exercise-cable-hip-abduction',
+            'exercise-machine-hip-abduction',
+            'exercise-banded-clamshell',
+            'exercise-banded-lateral-walk',
+          ];
+          const calfRows = [
+            'exercise-donkey-calf-raise',
+            'exercise-leg-press-calf-raise',
+          ];
+          const lowerBackRows = [
+            'exercise-bird-dog',
+            'exercise-rack-pull',
+            'exercise-reverse-hyperextension',
+          ];
+          const gluteRows = [
+            'exercise-trap-bar-deadlift',
+            'exercise-rack-pull',
+            'exercise-lateral-lunge',
+            'exercise-curtsy-lunge',
+            'exercise-single-leg-hip-thrust',
+            'exercise-reverse-hyperextension',
+            'exercise-sled-push',
+            'exercise-sled-drag',
+          ];
+
+          final obliques = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-obliques']),
+          );
+          for (final id in [
+            'exercise-bicycle-crunch',
+            'exercise-russian-twist',
+            'exercise-cable-side-bend',
+            'ex-side-bend',
+          ]) {
+            expect(
+              obliques.where((other) => other == id),
+              hasLength(1),
+              reason: id,
+            );
+          }
+          for (final id in [
+            'exercise-sit-up',
+            'exercise-crunch',
+            'exercise-reverse-crunch',
+            'exercise-hanging-knee-raise',
+            'exercise-dead-bug',
+            'ex-oblique-reach',
+          ]) {
+            expect(obliques, isNot(contains(id)), reason: id);
+          }
+
+          final abs = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-abs']),
+          );
+          for (final id in [
+            'exercise-sit-up',
+            'exercise-crunch',
+            'exercise-reverse-crunch',
+            'exercise-bicycle-crunch',
+            'exercise-hanging-knee-raise',
+            'exercise-dead-bug',
+            'exercise-bird-dog',
+            'ex-custom-sit-up',
+            'ex-oblique-reach',
+          ]) {
+            expect(abs, contains(id), reason: id);
+          }
+          expect(
+            abs,
+            isNot(contains('exercise-russian-twist')),
+            reason: 'Russian Twist is tagged Obliques main, Abs assist',
+          );
+          expect(
+            abs,
+            isNot(contains('exercise-cable-side-bend')),
+            reason: 'Cable Side Bend is tagged Obliques main',
+          );
+
+          final core = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-core']),
+          );
+          for (final id in [
+            ...coreRows,
+            'ex-custom-sit-up',
+            'ex-oblique-reach',
+            'ex-side-bend',
+          ]) {
+            expect(core.where((other) => other == id), hasLength(1), reason: id);
+          }
+          expect(core, isNot(contains('ex-hip-flexor-raise')));
+
+          final lowerBack = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-lower-back']),
+          );
+          for (final id in [...lowerBackRows, 'ex-side-bend']) {
+            expect(lowerBack, contains(id), reason: id);
+          }
+          expect(
+            lowerBack,
+            isNot(contains('exercise-cable-side-bend')),
+            reason: 'Lower back is only an assist on Cable Side Bend',
+          );
+          expect(
+            lowerBack,
+            isNot(contains('exercise-trap-bar-deadlift')),
+            reason: 'Lower back is only an assist on Trap-Bar Deadlift',
+          );
+
+          final back = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-back']),
+          );
+          for (final id in ['exercise-rack-pull', 'exercise-bird-dog']) {
+            expect(back.where((other) => other == id), hasLength(1), reason: id);
+          }
+
+          final calves = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-calves']),
+          );
+          for (final id in calfRows) {
+            expect(calves, contains(id), reason: id);
+          }
+          for (final id in ['exercise-sled-push', 'exercise-sled-drag']) {
+            expect(
+              calves,
+              isNot(contains(id)),
+              reason: '$id tags Calves as an assist only',
+            );
+          }
+
+          final abductors = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-abductors']),
+          );
+          expect(
+            abductors.toSet(),
+            equals(abductorRows.toSet()),
+            reason: 'the new rows never list Abductors as a main muscle',
+          );
+          expect(abductors, hasLength(4));
+          expect(abductors, isNot(contains('exercise-curtsy-lunge')));
+
+          final adductors = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-adductors']),
+          );
+          expect(
+            adductors,
+            isNot(contains('exercise-lateral-lunge')),
+            reason: 'Adductors is only an assist on Lateral Lunge',
+          );
+
+          final glutes = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-glutes']),
+          );
+          for (final id in gluteRows) {
+            expect(glutes, contains(id), reason: id);
+          }
+
+          final frontDelts = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-front-delts']),
+          );
+          expect(frontDelts, contains('exercise-push-press'));
+
+          final triceps = _ids(
+            await repo.searchExercises(muscleGroupIds: ['muscle-triceps']),
+          );
+          expect(
+            triceps,
+            isNot(contains('exercise-push-press')),
+            reason: 'Triceps is only an assist on Push Press',
+          );
+
+          final legsAndGlutes = _ids(
+            await repo.searchExercises(
+              muscleGroupIds: ['muscle-legs', 'muscle-glutes'],
+            ),
+          );
+          expect(
+            legsAndGlutes.where((id) => id == 'exercise-sled-push'),
+            hasLength(1),
+            reason: 'two selections of the same lift return it once',
+          );
+
+          final sitUpSearch = _ids(
+            await repo.searchExercises(searchText: 'Sit-Up'),
+          );
+          expect(sitUpSearch, contains('ex-custom-sit-up'));
+          expect(sitUpSearch, contains('exercise-sit-up'));
+
+          final deadBugSearch = _ids(
+            await repo.searchExercises(searchText: 'Dead Bug'),
+          );
+          expect(deadBugSearch, contains('exercise-dead-bug'));
+          expect(deadBugSearch, contains('exercise-dead-bug-hold'));
+
+          final unfiltered = _ids(
+            await repo.getExercisesRankedForModality('resistance_lifting'),
+          );
+          final ranked = _ids(
+            await repo.getExercisesRankedForModality(
+              'resistance_lifting',
+              muscleGroupIds: ['muscle-obliques'],
+            ),
+          );
+          final obliquesSet = obliques.toSet();
+          expect(
+            ranked,
+            equals([
+              for (final id in unfiltered)
+                if (obliquesSet.contains(id)) id,
+            ]),
+            reason: 'the ranked query keeps its order and filters the same way',
+          );
+        });
+      });
     });
   }
 }

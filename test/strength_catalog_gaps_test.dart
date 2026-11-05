@@ -278,54 +278,239 @@ const List<_Row> _rows = [
   ),
 ];
 
+const List<_Row> _rows115b = [
+  _Row(
+    'sit-up',
+    'Sit-Up',
+    'abs',
+    ['reps', 'sets', 'time'],
+    ['abs'],
+    ['obliques'],
+    ['bodyweight'],
+  ),
+  _Row(
+    'crunch',
+    'Crunch',
+    'abs',
+    ['reps', 'sets', 'time'],
+    ['abs'],
+    ['obliques'],
+    ['bodyweight'],
+  ),
+  _Row(
+    'reverse-crunch',
+    'Reverse Crunch',
+    'abs',
+    ['reps', 'sets', 'time'],
+    ['abs'],
+    ['obliques'],
+    ['bodyweight'],
+  ),
+  _Row(
+    'bicycle-crunch',
+    'Bicycle Crunch',
+    'abs',
+    ['reps', 'sets', 'time'],
+    ['abs', 'obliques'],
+    [],
+    ['bodyweight'],
+  ),
+  _Row(
+    'russian-twist',
+    'Russian Twist',
+    'loaded_core',
+    ['reps', 'sets', 'load', 'time'],
+    ['obliques'],
+    ['abs'],
+    ['bodyweight'],
+  ),
+  _Row(
+    'hanging-knee-raise',
+    'Hanging Knee Raise',
+    'abs',
+    ['reps', 'sets', 'time'],
+    ['abs'],
+    ['obliques'],
+    ['pullup-bar'],
+  ),
+  _Row(
+    'dead-bug',
+    'Dead Bug',
+    'abs',
+    ['reps', 'sets', 'time'],
+    ['abs'],
+    ['obliques'],
+    ['bodyweight'],
+  ),
+  _Row(
+    'bird-dog',
+    'Bird Dog',
+    null,
+    ['reps', 'sets', 'time'],
+    ['lower-back', 'abs'],
+    ['glutes'],
+    ['bodyweight'],
+  ),
+  _Row(
+    'cable-side-bend',
+    'Cable Side Bend',
+    'loaded_core',
+    ['reps', 'sets', 'load', 'bilateral', 'time'],
+    ['obliques'],
+    ['lower-back'],
+    ['cable'],
+  ),
+  _Row(
+    'push-press',
+    'Push Press',
+    'vertical_push',
+    ['reps', 'sets', 'load', 'time'],
+    ['front-delts'],
+    ['triceps', 'side-delts', 'quads'],
+    ['barbell'],
+  ),
+  _Row(
+    'trap-bar-deadlift',
+    'Trap-Bar Deadlift',
+    'hinge',
+    ['reps', 'sets', 'load', 'time'],
+    ['glutes', 'quads', 'hamstrings'],
+    ['lower-back', 'traps', 'forearms'],
+    ['trap-bar'],
+  ),
+  _Row(
+    'rack-pull',
+    'Rack Pull',
+    'hinge',
+    ['reps', 'sets', 'load', 'time'],
+    ['lower-back', 'glutes', 'traps'],
+    ['hamstrings', 'forearms'],
+    ['barbell'],
+  ),
+  _Row(
+    'lateral-lunge',
+    'Lateral Lunge',
+    'lunge',
+    ['reps', 'sets', 'load', 'time'],
+    ['quads', 'glutes'],
+    ['adductors'],
+    ['dumbbell'],
+  ),
+  _Row(
+    'curtsy-lunge',
+    'Curtsy Lunge',
+    'lunge',
+    ['reps', 'sets', 'load', 'time'],
+    ['glutes', 'quads'],
+    ['abductors'],
+    ['dumbbell'],
+  ),
+  _Row(
+    'single-leg-hip-thrust',
+    'Single-Leg Hip Thrust',
+    'hinge',
+    ['reps', 'sets', 'load', 'bilateral', 'time'],
+    ['glutes'],
+    ['hamstrings'],
+    ['bodyweight'],
+  ),
+  _Row(
+    'donkey-calf-raise',
+    'Donkey Calf Raise',
+    'calves',
+    ['reps', 'sets', 'load', 'time'],
+    ['calves'],
+    [],
+    ['machine'],
+  ),
+  _Row(
+    'leg-press-calf-raise',
+    'Leg Press Calf Raise',
+    'calves',
+    ['reps', 'sets', 'load', 'time'],
+    ['calves'],
+    [],
+    ['machine'],
+  ),
+  _Row(
+    'reverse-hyperextension',
+    'Reverse Hyperextension',
+    'hinge',
+    ['reps', 'sets', 'load', 'time'],
+    ['glutes', 'lower-back'],
+    ['hamstrings'],
+    ['machine'],
+  ),
+  _Row(
+    'sled-push',
+    'Sled Push',
+    null,
+    ['time', 'distance', 'load'],
+    ['quads', 'glutes'],
+    ['hamstrings', 'calves'],
+    ['sled'],
+  ),
+  _Row(
+    'sled-drag',
+    'Sled Drag',
+    null,
+    ['time', 'distance', 'load'],
+    ['quads', 'glutes'],
+    ['hamstrings', 'calves'],
+    ['sled'],
+  ),
+];
+
 void main() {
   final byId = {for (final e in SeedData.sampleExercises) e.id: e};
+
+  void expectRowMatchesPlan(_Row r) {
+    final id = 'exercise-${r.suffix}';
+    final exercise = byId[id];
+
+    expect(exercise, isNotNull, reason: 'missing $id');
+    expect(exercise!.name, r.name);
+    expect(exercise.disciplineId, 'discipline-bodybuilding');
+    expect(exercise.movementPattern, r.pattern);
+    expect(exercise.ownerUserId, isNull);
+    expect(exercise.description?.trim(), isNotEmpty);
+
+    final steps = exercise.howToSteps;
+    expect(steps, isNotNull);
+    expect(steps!.length, inInclusiveRange(3, 4));
+    for (final step in steps) {
+      expect(step.trim(), isNotEmpty);
+    }
+
+    expect(
+      SeedData.exerciseCapabilityRelationships[id],
+      equals(r.caps),
+    );
+    expect(SeedData.exerciseEquipmentRelationships[id], [
+      for (final name in r.equipment) 'equipment-$name',
+    ]);
+    expect(
+      SeedData.exerciseMuscleLinks[id],
+      MuscleTaxonomy.normalize([
+        for (final name in r.main)
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-$name',
+            role: MuscleRole.primary,
+          ),
+        for (final name in r.assist)
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-$name',
+            role: MuscleRole.secondary,
+          ),
+      ]),
+    );
+  }
 
   group('S-18909 new strength rows', () {
     for (final r in _rows) {
       test(
         '${r.suffix}: row, text, capabilities, muscles and equipment match the plan table',
-        () {
-          final id = 'exercise-${r.suffix}';
-          final exercise = byId[id];
-
-          expect(exercise, isNotNull, reason: 'missing $id');
-          expect(exercise!.name, r.name);
-          expect(exercise.disciplineId, 'discipline-bodybuilding');
-          expect(exercise.movementPattern, r.pattern);
-          expect(exercise.ownerUserId, isNull);
-          expect(exercise.description?.trim(), isNotEmpty);
-
-          final steps = exercise.howToSteps;
-          expect(steps, isNotNull);
-          expect(steps!.length, inInclusiveRange(3, 4));
-          for (final step in steps) {
-            expect(step.trim(), isNotEmpty);
-          }
-
-          expect(
-            SeedData.exerciseCapabilityRelationships[id],
-            equals(r.caps),
-          );
-          expect(SeedData.exerciseEquipmentRelationships[id], [
-            for (final name in r.equipment) 'equipment-$name',
-          ]);
-          expect(
-            SeedData.exerciseMuscleLinks[id],
-            MuscleTaxonomy.normalize([
-              for (final name in r.main)
-                ExerciseMuscleLink(
-                  muscleGroupId: 'muscle-$name',
-                  role: MuscleRole.primary,
-                ),
-              for (final name in r.assist)
-                ExerciseMuscleLink(
-                  muscleGroupId: 'muscle-$name',
-                  role: MuscleRole.secondary,
-                ),
-            ]),
-          );
-        },
+        () => expectRowMatchesPlan(r),
       );
     }
 
@@ -344,7 +529,7 @@ void main() {
     });
 
     test('every new id sorts after exercise-2k-row-test', () {
-      for (final r in _rows) {
+      for (final r in [..._rows, ..._rows115b]) {
         expect(
           'exercise-${r.suffix}'.compareTo('exercise-2k-row-test') > 0,
           isTrue,
@@ -354,16 +539,53 @@ void main() {
     });
 
     test('catalog sizes', () {
-      expect(SeedData.sampleExercises.length, 252 + _rows.length);
-      expect(
-        SeedData.exerciseCapabilityRelationships.length,
-        252 + _rows.length,
+      final added = _rows.length + _rows115b.length;
+      expect(SeedData.sampleExercises.length, 252 + added);
+      expect(SeedData.exerciseCapabilityRelationships.length, 252 + added);
+      expect(SeedData.exerciseEquipmentRelationships.length, 188 + added);
+      expect(SeedData.exerciseMuscleLinks.length, 178 + added);
+    });
+  });
+
+  group('S-19001 new 115b rows', () {
+    for (final r in _rows115b) {
+      test(
+        '${r.suffix}: row, text, capabilities, muscles and equipment match the plan table',
+        () => expectRowMatchesPlan(r),
       );
+    }
+  });
+
+  group('S-19002 the seed equipment rows', () {
+    test('the seed carries 12 equipment rows in the planned order', () {
       expect(
-        SeedData.exerciseEquipmentRelationships.length,
-        188 + _rows.length,
+        SeedData.sampleEquipment.map((e) => e.id).toList(),
+        equals([
+          'equipment-barbell',
+          'equipment-dumbbell',
+          'equipment-kettlebell',
+          'equipment-resistance-band',
+          'equipment-pullup-bar',
+          'equipment-treadmill',
+          'equipment-heavy-bag',
+          'equipment-bodyweight',
+          'equipment-cable',
+          'equipment-machine',
+          'equipment-trap-bar',
+          'equipment-sled',
+        ]),
       );
-      expect(SeedData.exerciseMuscleLinks.length, 178 + _rows.length);
+    });
+
+    test('Trap Bar and Sled carry the planned names', () {
+      final byId = {for (final e in SeedData.sampleEquipment) e.id: e};
+      expect(byId['equipment-trap-bar']?.name, 'Trap Bar');
+      expect(byId['equipment-sled']?.name, 'Sled');
+    });
+
+    test('the 12 equipment names are unique', () {
+      final names = SeedData.sampleEquipment.map((e) => e.name).toSet();
+      expect(names, hasLength(12));
     });
   });
 }
