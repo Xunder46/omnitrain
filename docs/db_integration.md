@@ -107,9 +107,22 @@ Ordering persistence behavior:
 
 The bundled app-authored catalog (exercises + capability / muscle-group
 relationships + the food catalog + seeded demo workout templates) is
-versioned. Equipment links, disciplines and categories are written at first
-install only; the refresh does not deliver them (pinned for equipment by
-`test/strength_catalog_refresh_test.dart`, `S-18906`). At app start, `CatalogRefreshService`
+versioned. From catalog version `16` the refresh also delivers sport categories,
+disciplines, units, metric definitions, metric effort kinds and tags: a stored
+row that differs from the bundled one in a compared field is corrected,
+timestamps are never compared, and rows whose id is not bundled are never
+written (the tags leg lists the stored tags once and ignores ids the bundle
+does not carry). Verified by `test/catalog_reference_refresh_test.dart`
+(`S-19102 a v15 install missing reference rows refreshes to v16`,
+`S-19103 user rows that share a name or key stay byte-identical`,
+`S-19106 Mock: an interrupted refresh keeps version 15 and the next
+launch finishes`). Equipment,
+equipment links and the default food groups are written at first install only
+(equipment pinned by `test/strength_catalog_refresh_test.dart`, `S-18906`;
+food groups because users can delete them and no marker exists). Every public
+`SeedData` member is classified as delivered or excluded with a written reason
+by `test/catalog_delivery_contract_test.dart`, so a new seed list that the
+refresh does not carry fails a test. At app start, `CatalogRefreshService`
 (`lib/core/services/catalog_refresh_service.dart`) compares the device's
 stored catalog version against the bundled constant
 (`bundledCatalogVersion` in `lib/core/constants/catalog_version.dart`); if

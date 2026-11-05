@@ -160,6 +160,32 @@ abstract class WorkoutRepository {
   Future<List<MetricDefinition>> getMetricsForEffortKind(String effortKind);
   Future<MetricDefinition?> getMetricById(String id);
 
+  /// Insert or replace the sport category with [category]'s id. Exists for the
+  /// catalog refresh: categories are app-authored reference data with no user
+  /// editing surface.
+  Future<void> upsertSportCategory(SportCategory category);
+
+  /// Insert or replace the discipline with [discipline]'s id. Exists for the
+  /// catalog refresh (app-authored reference data, no user editing surface).
+  Future<void> upsertDiscipline(Discipline discipline);
+
+  /// Insert or replace the tag with [tag]'s id. Exists for the catalog refresh.
+  Future<void> upsertTag(Tag tag);
+
+  /// Insert or replace the unit with [unit]'s id. Exists for the catalog refresh.
+  Future<void> upsertUnit(UnitModel unit);
+
+  /// Insert or replace the metric definition with [metric]'s id. Exists for the
+  /// catalog refresh.
+  Future<void> upsertMetricDefinition(MetricDefinition metric);
+
+  /// Stored effort kinds of [metricId], in stored order; `[]` when absent.
+  Future<List<String>> getMetricEffortKinds(String metricId);
+
+  /// Replaces the effort kinds of [metricId] with a copy of [effortKinds].
+  /// Exists for the catalog refresh.
+  Future<void> setMetricEffortKinds(String metricId, List<String> effortKinds);
+
   // Templates
   Future<List<WorkoutTemplate>> getTemplates();
   Future<WorkoutTemplate?> getTemplateById(String id);

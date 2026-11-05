@@ -38,4 +38,30 @@ class BundledCatalogSource implements CatalogSource {
   @override
   List<DemoRoutineBundle> get routineTemplates =>
       SeedData.sampleDemoRoutineBundles;
+
+  @override
+  List<SportCategory> get sportCategories => SeedData.sampleSportCategories;
+
+  @override
+  List<Discipline> get disciplines => SeedData.sampleDisciplines;
+
+  @override
+  List<Tag> get tags => SeedData.sampleTags;
+
+  @override
+  List<UnitModel> get units => SeedData.defaultUnits;
+
+  @override
+  List<MetricDefinition> get metricDefinitions => SeedData.defaultMetrics;
+
+  @override
+  Map<String, List<String>> get metricEffortKinds {
+    final kinds = <String, List<String>>{};
+    for (final applicability in SeedData.metricApplicability) {
+      kinds.putIfAbsent(applicability.metricId, () => []).add(
+        applicability.effortKind,
+      );
+    }
+    return kinds;
+  }
 }

@@ -956,6 +956,11 @@ class MockWorkoutRepository implements WorkoutRepository {
         : _sportCategories.values.firstWhere((c) => c.key == key);
   }
 
+  @override
+  Future<void> upsertSportCategory(SportCategory category) async {
+    _sportCategories[category.id] = category;
+  }
+
   // ===== DISCIPLINES =====
 
   @override
@@ -973,6 +978,11 @@ class MockWorkoutRepository implements WorkoutRepository {
     return _disciplines.values
         .where((d) => d.categoryId == categoryId)
         .toList();
+  }
+
+  @override
+  Future<void> upsertDiscipline(Discipline discipline) async {
+    _disciplines[discipline.id] = discipline;
   }
 
   // ===== MUSCLE GROUPS =====
@@ -1015,6 +1025,27 @@ class MockWorkoutRepository implements WorkoutRepository {
     _exerciseMuscleLinks[exerciseId] = List<ExerciseMuscleLink>.from(links);
   }
 
+  /// Removes one reference row; tests only. [boxName] is the Hive box name.
+  @visibleForTesting
+  Future<void> deleteReferenceRowForTest(String boxName, String id) async {
+    switch (boxName) {
+      case 'sport_categories':
+        _sportCategories.remove(id);
+      case 'disciplines':
+        _disciplines.remove(id);
+      case 'tags':
+        _tags.remove(id);
+      case 'units':
+        _units.remove(id);
+      case 'metrics':
+        _metrics.remove(id);
+      case 'metric_effort_kinds':
+        _metricEffortKinds.remove(id);
+      default:
+        throw ArgumentError.value(boxName, 'boxName', 'unknown reference box');
+    }
+  }
+
   // ===== EQUIPMENT =====
 
   @override
@@ -1044,6 +1075,11 @@ class MockWorkoutRepository implements WorkoutRepository {
     return tagIds.map((id) => _tags[id]).whereType<Tag>().toList();
   }
 
+  @override
+  Future<void> upsertTag(Tag tag) async {
+    _tags[tag.id] = tag;
+  }
+
   // ===== UNITS =====
 
   @override
@@ -1054,6 +1090,11 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<UnitModel?> getUnitById(String id) async {
     return _units[id];
+  }
+
+  @override
+  Future<void> upsertUnit(UnitModel unit) async {
+    _units[unit.id] = unit;
   }
 
   // ===== METRICS =====
@@ -1203,6 +1244,24 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<MetricDefinition?> getMetricById(String id) async {
     return _metrics[id];
+  }
+
+  @override
+  Future<void> upsertMetricDefinition(MetricDefinition metric) async {
+    _metrics[metric.id] = metric;
+  }
+
+  @override
+  Future<List<String>> getMetricEffortKinds(String metricId) async {
+    return List<String>.from(_metricEffortKinds[metricId] ?? const <String>[]);
+  }
+
+  @override
+  Future<void> setMetricEffortKinds(
+    String metricId,
+    List<String> effortKinds,
+  ) async {
+    _metricEffortKinds[metricId] = List<String>.from(effortKinds);
   }
 
   // ===== TEMPLATES =====

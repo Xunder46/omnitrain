@@ -1729,6 +1729,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
     return null;
   }
 
+  @override
+  Future<void> upsertSportCategory(SportCategory category) async {
+    await _sportCategoriesBox.put(category.id, category.toMap());
+  }
+
   // ===== DISCIPLINES =====
 
   @override
@@ -1751,6 +1756,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
         .map((raw) => Discipline.fromMap(_asStringMap(raw)))
         .where((d) => d.categoryId == categoryId)
         .toList();
+  }
+
+  @override
+  Future<void> upsertDiscipline(Discipline discipline) async {
+    await _disciplinesBox.put(discipline.id, discipline.toMap());
   }
 
   // ===== MUSCLE GROUPS =====
@@ -1842,6 +1852,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
         .toList();
   }
 
+  @override
+  Future<void> upsertTag(Tag tag) async {
+    await _tagsBox.put(tag.id, tag.toMap());
+  }
+
   // ===== UNITS =====
 
   @override
@@ -1856,6 +1871,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
     final raw = _unitsBox.get(id);
     if (raw == null) return null;
     return UnitModel.fromMap(_asStringMap(raw));
+  }
+
+  @override
+  Future<void> upsertUnit(UnitModel unit) async {
+    await _unitsBox.put(unit.id, unit.toMap());
   }
 
   // ===== METRICS =====
@@ -1891,6 +1911,24 @@ class HiveWorkoutRepository implements WorkoutRepository {
     final raw = _metricsBox.get(id);
     if (raw == null) return null;
     return MetricDefinition.fromMap(_asStringMap(raw));
+  }
+
+  @override
+  Future<void> upsertMetricDefinition(MetricDefinition metric) async {
+    await _metricsBox.put(metric.id, metric.toMap());
+  }
+
+  @override
+  Future<List<String>> getMetricEffortKinds(String metricId) async {
+    return _asStringList(_metricEffortKindsBox.get(metricId));
+  }
+
+  @override
+  Future<void> setMetricEffortKinds(
+    String metricId,
+    List<String> effortKinds,
+  ) async {
+    await _metricEffortKindsBox.put(metricId, List<String>.from(effortKinds));
   }
 
   // ===== EXERCISE CAPABILITIES =====

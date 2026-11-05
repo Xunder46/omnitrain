@@ -28,6 +28,24 @@ abstract class CatalogSource {
   /// at a group the device does not yet have.
   List<MuscleGroup> get muscleGroups;
 
+  /// Bundled sport categories (`SportCategory.id` is the storage key).
+  List<SportCategory> get sportCategories;
+
+  /// Bundled disciplines (`Discipline.id` is the storage key).
+  List<Discipline> get disciplines;
+
+  /// Bundled tags (`Tag.id` is the storage key).
+  List<Tag> get tags;
+
+  /// Bundled units (`UnitModel.id` is the storage key).
+  List<UnitModel> get units;
+
+  /// Bundled metric definitions (`MetricDefinition.id` is the storage key).
+  List<MetricDefinition> get metricDefinitions;
+
+  /// `metricId → effort kinds`, in `SeedData.metricApplicability` order.
+  Map<String, List<String>> get metricEffortKinds;
+
   /// Bundled exercise / muscle-group relationships:
   /// `exerciseId → ordered muscle links`, each carrying the group id and role.
   Map<String, List<ExerciseMuscleLink>> get exerciseMuscleGroups;

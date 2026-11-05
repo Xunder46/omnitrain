@@ -211,7 +211,11 @@ data backing a catalog refresh can be swapped (e.g. for a server-provided
 catalog) without touching the version-check logic. `BundledCatalogSource` is
 the default implementation: pure reads of the compile-time `SeedData` /
 `FoodCatalogSeed` constants plus the seeded demo routines. Its getters have
-no side effects and are safe to call repeatedly.
+no side effects and are safe to call repeatedly. The reference getters
+`sportCategories`, `disciplines`, `tags`, `units`, `metricDefinitions` and
+`metricEffortKinds` back the version-16 reference delivery;
+`test/catalog_delivery_contract_test.dart` pins every public `SeedData`
+member as delivered or excluded with a written reason.
 
 See [DB Integration](../db_integration.md) for the refresh/version flow.
 

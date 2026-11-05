@@ -22,6 +22,10 @@ import 'catalog_source.dart';
 ///   survive).
 /// - **User-edits respected**: rows the user has touched (per the
 ///   per-entry tombstone markers set by the state layer) are skipped.
+/// - Reference data (sport categories, disciplines, units, metric
+///   definitions and their effort kinds, tags) has no user editing
+///   surface, so its legs carry no touched-entry check; they walk
+///   bundled ids only.
 /// - **Interruption-safe**: each entity is read, compared, and written
 ///   individually. On a mid-loop failure the orchestrator re-throws
 ///   without advancing the stored version, so the next launch retries
@@ -56,6 +60,12 @@ class CatalogRefreshService {
       return false;
     }
 
+    await _refreshSportCategories();
+    await _refreshDisciplines();
+    await _refreshUnits();
+    await _refreshMetricDefinitions();
+    await _refreshMetricEffortKinds();
+    await _refreshTags();
     await _refreshExercises();
     await _refreshExerciseCapabilities();
     await _refreshMuscleGroups();
@@ -65,6 +75,72 @@ class CatalogRefreshService {
 
     await _repository.setCatalogVersion(_source.version);
     return true;
+  }
+
+  /// Reference data below (categories ... tags) is app-authored and has no user editing
+  /// surface, so there is no touched-entry check: each leg walks the BUNDLED ids only,
+  /// writes the bundled row when the stored one is absent or differs, and never writes an
+  /// id the bundle does not carry (the tags leg lists the stored tags once to look up
+  /// bundled ids, and ignores the rest).
+  Future<void> _refreshSportCategories() async {
+    for (final bundled in _source.sportCategories) {
+      final stored = await _repository.getSportCategoryById(bundled.id);
+      if (stored == null || _categoryDiffers(stored, bundled)) {
+        await _repository.upsertSportCategory(bundled);
+      }
+    }
+  }
+
+  Future<void> _refreshDisciplines() async {
+    for (final bundled in _source.disciplines) {
+      final stored = await _repository.getDisciplineById(bundled.id);
+      if (stored == null || _disciplineDiffers(stored, bundled)) {
+        await _repository.upsertDiscipline(bundled);
+      }
+    }
+  }
+
+  Future<void> _refreshUnits() async {
+    for (final bundled in _source.units) {
+      final stored = await _repository.getUnitById(bundled.id);
+      if (stored == null || _unitDiffers(stored, bundled)) {
+        await _repository.upsertUnit(bundled);
+      }
+    }
+  }
+
+  Future<void> _refreshMetricDefinitions() async {
+    for (final bundled in _source.metricDefinitions) {
+      final stored = await _repository.getMetricById(bundled.id);
+      if (stored == null || _metricDiffers(stored, bundled)) {
+        await _repository.upsertMetricDefinition(bundled);
+      }
+    }
+  }
+
+  Future<void> _refreshMetricEffortKinds() async {
+    for (final entry in _source.metricEffortKinds.entries) {
+      final stored = await _repository.getMetricEffortKinds(entry.key);
+      if (!_listEqualsIgnoreOrder(stored, entry.value)) {
+        await _repository.setMetricEffortKinds(
+          entry.key,
+          List<String>.from(entry.value),
+        );
+      }
+    }
+  }
+
+  Future<void> _refreshTags() async {
+    final storedById = {
+      for (final tag in await _repository.getTags()) tag.id: tag,
+    };
+
+    for (final bundled in _source.tags) {
+      final stored = storedById[bundled.id];
+      if (stored == null || stored.name != bundled.name) {
+        await _repository.upsertTag(bundled);
+      }
+    }
   }
 
   Future<void> _refreshExercises() async {
@@ -365,6 +441,43 @@ class CatalogRefreshService {
     }
     if (!_listEquals(stored.howToSteps, bundled.howToSteps)) return true;
     if (stored.imageAssetPath != bundled.imageAssetPath) return true;
+    return false;
+  }
+
+  /// `true` when the two sport categories differ in any seed-managed
+  /// field. Timestamps are never compared: seed rows carry
+  /// `DateTime.now()` from class load.
+  bool _categoryDiffers(SportCategory a, SportCategory b) {
+    if (a.key != b.key) return true;
+    if (a.name != b.name) return true;
+    if (a.description != b.description) return true;
+    if (a.iconName != b.iconName) return true;
+    if (a.sortOrder != b.sortOrder) return true;
+    if (a.deletedAtMs != b.deletedAtMs) return true;
+    return false;
+  }
+
+  bool _disciplineDiffers(Discipline a, Discipline b) {
+    if (a.categoryId != b.categoryId) return true;
+    if (a.key != b.key) return true;
+    if (a.name != b.name) return true;
+    return false;
+  }
+
+  bool _unitDiffers(UnitModel a, UnitModel b) {
+    if (a.key != b.key) return true;
+    if (a.name != b.name) return true;
+    if (a.unitType != b.unitType) return true;
+    return false;
+  }
+
+  bool _metricDiffers(MetricDefinition a, MetricDefinition b) {
+    if (a.key != b.key) return true;
+    if (a.name != b.name) return true;
+    if (a.dataType != b.dataType) return true;
+    if (a.defaultUnitId != b.defaultUnitId) return true;
+    if (a.isCore != b.isCore) return true;
+    if (a.appliesToEffortKind != b.appliesToEffortKind) return true;
     return false;
   }
 

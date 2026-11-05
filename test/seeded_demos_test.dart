@@ -44,6 +44,24 @@ class _RoutinesFakeCatalogSource implements CatalogSource {
 
   @override
   final List<DemoRoutineBundle> routineTemplates;
+
+  @override
+  List<SportCategory> get sportCategories => const [];
+
+  @override
+  List<Discipline> get disciplines => const [];
+
+  @override
+  List<Tag> get tags => const [];
+
+  @override
+  List<UnitModel> get units => const [];
+
+  @override
+  List<MetricDefinition> get metricDefinitions => const [];
+
+  @override
+  Map<String, List<String>> get metricEffortKinds => const {};
 }
 
 CatalogSource _bundledSource({int? versionOverride}) {
