@@ -35,6 +35,9 @@ class OmniBackHeader extends StatelessWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 
+  static bool _centersTitle(TargetPlatform platform) =>
+      platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -43,6 +46,11 @@ class OmniBackHeader extends StatelessWidget implements PreferredSizeWidget {
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
+      // Flutter centres an iOS title only when the bar has fewer than two
+      // actions, so a screen with two buttons (Stats) drifted next to the back
+      // arrow. Pin the platform default regardless of the action count;
+      // Android keeps its own left-aligned default.
+      centerTitle: _centersTitle(theme.platform) ? true : null,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
         color: OmniTheme.colors.textDominant,
