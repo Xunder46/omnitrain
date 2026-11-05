@@ -247,7 +247,25 @@ and bump `currentDataVersion` in
 The next launch runs the new step exactly once per device. No new meta-box
 key is required for the step itself.
 
-The most recent step is `muscleLinkRoles` (target version 16): it rewrites
+The most recent step is `retireOrphanTemplateRows` (target version 17): it
+runs once per device and removes the retired first-install template rows —
+4 segments, 6 efforts and 5 targets, ids in
+[`lib/core/constants/retired_template_seed.dart`](../lib/core/constants/retired_template_seed.dart) —
+that belonged to four templates nothing creates (`template-upper-strength`,
+`template-easy-run`, `template-boxing-rounds`, `template-mobility`). A row is
+deleted only if its id is one of the retired ids AND its retired template does
+not exist; a segment or effort that still holds a row the cleanup did not
+delete is kept; deletion is bottom-up, so an interrupted run retries cleanly.
+The logic is `RetiredTemplateRowsCleanup`
+([`lib/core/services/retired_template_rows_cleanup.dart`](../lib/core/services/retired_template_rows_cleanup.dart)),
+shared by both stores. New installs no longer create those rows (the
+`SeedData` lists were removed). This is a data migration, NOT part of the
+catalog refresh, and a deliberate exception to the refresh's never-delete
+rule: it is safe because it deletes only rows whose exact id is in the retired
+list and whose parent template is gone. Nothing a user can see changes.
+Verified by `test/retire_orphan_template_rows_test.dart`.
+
+The previous step is `muscleLinkRoles` (target version 16): it rewrites
 every stored exercise→muscle link row into the role-aware shape — a legacy
 all-primary row keeps its ids as primaries, and a region tag sitting next to
 one of its own muscles is dropped. Verified by `test/data_migration_test.dart`
@@ -676,8 +694,8 @@ for the data model:
 Runtime **data** migrations (the ones that actually execute today) are a
 separate mechanism keyed on `currentDataVersion` — see
 [Constants Reference](constants_reference.md#data_versiondart). Their latest
-step is `muscleLinkRoles` (version 16), which rewrites stored muscle links
-into the role-aware shape; see the data-migration sequence above.
+step is `retireOrphanTemplateRows` (version 17), which removes the retired
+first-install template rows; see the data-migration sequence above.
 
 ---
 

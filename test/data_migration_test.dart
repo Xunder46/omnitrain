@@ -544,27 +544,31 @@ void main() {
   // S-156: a stored inverted session window is repaired once, in both stores
   // ─────────────────────────────────────────────────────────────────────
   test(
-    'S-156: steps 15 and 16 are appended to both migration sequences',
+    'S-156: steps 15, 16 and 17 are appended to both migration sequences',
     () async {
-      expect(currentDataVersion, equals(16));
+      expect(currentDataVersion, equals(17));
 
       final mockSteps = MockWorkoutRepository().dataMigrationStepsForTest();
       final hiveSteps = HiveWorkoutRepository().dataMigrationStepsForTest();
 
-      expect(mockSteps[mockSteps.length - 2].targetVersion, equals(15));
+      expect(mockSteps[mockSteps.length - 3].targetVersion, equals(15));
       expect(
-        mockSteps[mockSteps.length - 2].name,
+        mockSteps[mockSteps.length - 3].name,
         equals('clampInvertedSessionWindows'),
       );
-      expect(hiveSteps[hiveSteps.length - 2].targetVersion, equals(15));
+      expect(hiveSteps[hiveSteps.length - 3].targetVersion, equals(15));
       expect(
-        hiveSteps[hiveSteps.length - 2].name,
+        hiveSteps[hiveSteps.length - 3].name,
         equals('clampInvertedSessionWindows'),
       );
-      expect(mockSteps.last.targetVersion, equals(16));
-      expect(mockSteps.last.name, equals('muscleLinkRoles'));
-      expect(hiveSteps.last.targetVersion, equals(16));
-      expect(hiveSteps.last.name, equals('muscleLinkRoles'));
+      expect(mockSteps[mockSteps.length - 2].targetVersion, equals(16));
+      expect(mockSteps[mockSteps.length - 2].name, equals('muscleLinkRoles'));
+      expect(hiveSteps[hiveSteps.length - 2].targetVersion, equals(16));
+      expect(hiveSteps[hiveSteps.length - 2].name, equals('muscleLinkRoles'));
+      expect(mockSteps.last.targetVersion, equals(17));
+      expect(mockSteps.last.name, equals('retireOrphanTemplateRows'));
+      expect(hiveSteps.last.targetVersion, equals(17));
+      expect(hiveSteps.last.name, equals('retireOrphanTemplateRows'));
       expect(
         mockSteps.map((step) => '${step.targetVersion}:${step.name}').toList(),
         equals(
@@ -616,7 +620,11 @@ void main() {
 
       expect(
         rerun.appliedSteps.map((step) => step.name).toList(),
-        equals(['clampInvertedSessionWindows', 'muscleLinkRoles']),
+        equals([
+          'clampInvertedSessionWindows',
+          'muscleLinkRoles',
+          'retireOrphanTemplateRows',
+        ]),
       );
       expect(await mock.getDataVersion(), equals(currentDataVersion));
       for (final session in _s156Fixture()) {
@@ -686,7 +694,11 @@ void main() {
 
       expect(
         rerun.appliedSteps.map((step) => step.name).toList(),
-        equals(['clampInvertedSessionWindows', 'muscleLinkRoles']),
+        equals([
+          'clampInvertedSessionWindows',
+          'muscleLinkRoles',
+          'retireOrphanTemplateRows',
+        ]),
       );
       expect(await repo.getDataVersion(), equals(currentDataVersion));
       expect(writes, isEmpty, reason: 'a retry of the step writes nothing');
@@ -722,22 +734,30 @@ void main() {
   // an archived custom row. The step is idempotent, and a poisoned row never
   // stops it.
   // ─────────────────────────────────────────────────────────────────────
-  test('S-8: both migration sequences end with 16:muscleLinkRoles', () {
-    final mockSteps = MockWorkoutRepository().dataMigrationStepsForTest();
-    final hiveSteps = HiveWorkoutRepository().dataMigrationStepsForTest();
+  test(
+    'S-8: both migration sequences carry 16:muscleLinkRoles just before '
+    '17:retireOrphanTemplateRows',
+    () {
+      final mockSteps = MockWorkoutRepository().dataMigrationStepsForTest();
+      final hiveSteps = HiveWorkoutRepository().dataMigrationStepsForTest();
 
-    expect(mockSteps.last.targetVersion, equals(16));
-    expect(mockSteps.last.name, equals('muscleLinkRoles'));
-    expect(hiveSteps.last.targetVersion, equals(16));
-    expect(hiveSteps.last.name, equals('muscleLinkRoles'));
-    expect(
-      mockSteps.map((step) => '${step.targetVersion}:${step.name}').toList(),
-      equals(
-        hiveSteps.map((step) => '${step.targetVersion}:${step.name}').toList(),
-      ),
-      reason: 'both stores must walk the same version sequence',
-    );
-  });
+      expect(mockSteps.last.targetVersion, equals(17));
+      expect(mockSteps.last.name, equals('retireOrphanTemplateRows'));
+      expect(hiveSteps.last.targetVersion, equals(17));
+      expect(hiveSteps.last.name, equals('retireOrphanTemplateRows'));
+      expect(mockSteps[mockSteps.length - 2].targetVersion, equals(16));
+      expect(mockSteps[mockSteps.length - 2].name, equals('muscleLinkRoles'));
+      expect(hiveSteps[hiveSteps.length - 2].targetVersion, equals(16));
+      expect(hiveSteps[hiveSteps.length - 2].name, equals('muscleLinkRoles'));
+      expect(
+        mockSteps.map((step) => '${step.targetVersion}:${step.name}').toList(),
+        equals(
+          hiveSteps.map((step) => '${step.targetVersion}:${step.name}').toList(),
+        ),
+        reason: 'both stores must walk the same version sequence',
+      );
+    },
+  );
 
   group('S-8: the muscleLinkRoles step on the Mock', () {
     /// A Mock holding the five fixtures, the touched bundled row and — when

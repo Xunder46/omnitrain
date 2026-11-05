@@ -12,6 +12,7 @@ import '../../core/constants/data_version.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/water_constants.dart';
 import '../../core/services/data_migration_service.dart';
+import '../../core/services/retired_template_rows_cleanup.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../core/utils/entry_rows.dart';
@@ -391,6 +392,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
         'muscleLinkRoles',
         () => repo._migrateMuscleLinkRoles(),
       ),
+      _MethodStep(
+        17,
+        'retireOrphanTemplateRows',
+        () => RetiredTemplateRowsCleanup(repo).run(),
+      ),
     ];
   }
 
@@ -645,21 +651,6 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
     await _metricsBox.putAll({
       for (final metric in SeedData.defaultMetrics) metric.id: metric.toMap(),
-    });
-
-    await _templateSegmentsBox.putAll({
-      for (final segment in SeedData.sampleTemplateSegments)
-        segment.id: segment.toMap(),
-    });
-
-    await _templateEffortsBox.putAll({
-      for (final effort in SeedData.sampleTemplateEfforts)
-        effort.id: effort.toMap(),
-    });
-
-    await _templateTargetsBox.putAll({
-      for (final target in SeedData.sampleTemplateTargets)
-        target.id: target.toMap(),
     });
 
     await _exerciseMuscleGroupsBox.putAll({

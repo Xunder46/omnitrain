@@ -9,6 +9,7 @@ import '../../core/constants/data_version.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/water_constants.dart';
 import '../../core/services/data_migration_service.dart';
+import '../../core/services/retired_template_rows_cleanup.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../core/utils/entry_rows.dart';
@@ -23,7 +24,7 @@ const _mockUuid = Uuid();
 /// no-ops and exist only so the [DataMigrationService] can advance the
 /// device's `data_version` through the sequence in the same order as
 /// the Hive-backed runtime. A step that rewrites already-stored rows
-/// (steps 15 and 16) carries the same bodies the runtime runs, so the two
+/// (steps 15, 16 and 17) carries the same bodies the runtime runs, so the two
 /// stores converge to the same value.
 class _MockMigrationStep extends DataMigrationStep {
   _MockMigrationStep(this.targetVersion, this.name, [this._body]);
@@ -185,21 +186,6 @@ class MockWorkoutRepository implements WorkoutRepository {
       _metrics[metric.id] = metric;
     }
 
-    // Load template segments
-    for (final segment in SeedData.sampleTemplateSegments) {
-      _templateSegments[segment.id] = segment;
-    }
-
-    // Load template efforts
-    for (final effort in SeedData.sampleTemplateEfforts) {
-      _templateEfforts[effort.id] = effort;
-    }
-
-    // Load template targets
-    for (final target in SeedData.sampleTemplateTargets) {
-      _templateTargets[target.id] = target;
-    }
-
     // Load relationships
     for (final entry in SeedData.exerciseMuscleLinks.entries) {
       _exerciseMuscleLinks[entry.key] = List.from(entry.value);
@@ -272,7 +258,7 @@ class MockWorkoutRepository implements WorkoutRepository {
   /// `data_version` sequence used by the Hive runtime. Each step's
   /// `targetVersion` matches the corresponding real migration step; the
   /// early ones are no-ops (the bulk load above already applied them)
-  /// and steps 15 and 16 run the same bodies the Hive runtime does.
+  /// and steps 15, 16 and 17 run the same bodies the Hive runtime does.
   List<DataMigrationStep> _dataMigrationSteps() {
     final repo = this;
     return [
@@ -298,6 +284,11 @@ class MockWorkoutRepository implements WorkoutRepository {
         16,
         'muscleLinkRoles',
         () => repo._migrateMuscleLinkRoles(),
+      ),
+      _MockMigrationStep(
+        17,
+        'retireOrphanTemplateRows',
+        () => RetiredTemplateRowsCleanup(repo).run(),
       ),
     ];
   }

@@ -134,21 +134,6 @@ final Map<String, String> _excluded = {
       'The user can rename, archive and delete food groups and there is no '
       'touched-entry marker for them, so delivering would bring back a group '
       'the user deleted; needs an owner decision.',
-  'sampleTemplateSegments':
-      'Orphan rows of a retired seed: they belong to templates '
-      'template-upper-strength, template-easy-run, template-boxing-rounds and '
-      'template-mobility, which nothing creates; the demo routines come from '
-      'sampleDemoRoutineBundles.',
-  'sampleTemplateEfforts':
-      'Orphan rows of a retired seed: they belong to templates '
-      'template-upper-strength, template-easy-run, template-boxing-rounds and '
-      'template-mobility, which nothing creates; the demo routines come from '
-      'sampleDemoRoutineBundles.',
-  'sampleTemplateTargets':
-      'Orphan rows of a retired seed: they belong to templates '
-      'template-upper-strength, template-easy-run, template-boxing-rounds and '
-      'template-mobility, which nothing creates; the demo routines come from '
-      'sampleDemoRoutineBundles.',
   'samplePlannedSessions': 'User-data types; empty lists, never seeded.',
   'sampleTrainingPeriods': 'User-data types; empty lists, never seeded.',
   'sampleTrainingSessions':
@@ -206,9 +191,9 @@ void main() {
   test('1. every SeedData member and repository reference is classified', () {
     expect(
       _members,
-      hasLength(24),
+      hasLength(21),
       reason:
-          'SeedData has ${_members.length} public static members, not the 24 '
+          'SeedData has ${_members.length} public static members, not the 21 '
           'this table rows; members: ${_sorted(_members)}',
     );
     expect(
@@ -225,9 +210,9 @@ void main() {
     final rows = _rows();
     expect(
       rows,
-      hasLength(24),
+      hasLength(21),
       reason:
-          'the table has ${rows.length} rows; 11 COVERED + 13 EXCLUDED = 24',
+          'the table has ${rows.length} rows; 11 COVERED + 10 EXCLUDED = 21',
     );
 
     for (final member in _members) {
