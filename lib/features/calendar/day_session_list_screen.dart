@@ -554,7 +554,9 @@ class _SessionRow extends StatelessWidget {
 
     // If title is template name, don't repeat it — just show modality + state.
     if (ps?.routineTemplateId != null) {
-      return stateLabel; // Template name is already in title.
+      // Template name is already in the title: show only the Focus (if any) + state.
+      if (entry.modality != null) return '$modalityLabel  ·  $stateLabel';
+      return stateLabel;
     }
 
     return '$modalityLabel  ·  $stateLabel';

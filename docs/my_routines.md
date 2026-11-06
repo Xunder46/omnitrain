@@ -48,6 +48,8 @@ arrow) before the guard engages.
 
 Deleting a routine removes the template and any `PlannedSession` rows that reference it. **Completed sessions, their `routineTemplateId`, all efforts, observations, rest records, and analytics / PRs are preserved by design** — analytics read from `TrainingSession` and its child rows directly and never join through the template.
 
+A routine scheduled on the calendar is coloured by the routine's current Focus Modality (see `calendar_periods.md`, Session Indicators).
+
 Verified by `test/pr6_routine_session_entry_navigation_test.dart` (`S-002 routine delete preserves history`).
 
 ---

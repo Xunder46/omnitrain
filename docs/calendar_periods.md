@@ -24,6 +24,8 @@ Each day renders an indicator per session: filled for completed, outlined for pl
 modality through `ModalityColorUtils`. Indicator count is capped, with the remainder shown as an
 overflow count, so a heavy day never overruns its cell.
 
+A planned routine is coloured by the routine's **current** Focus Modality, resolved on each month load (a routine plan stores no modality itself; changing the routine's Focus changes the planned day's colour the next time the calendar loads). A routine with no Focus, or one that no longer exists, stays Free Training coloured. A finished session is coloured by its own recorded modality, not by this rule. In the day list the card's second line reads `<Focus> · Planned` for a routine with a Focus and just `Planned` otherwise (tests S-12401, S-12405, S-12411 in `test/planned_routine_calendar_modality_test.dart`).
+
 ### Monthly Stats Strip
 
 A strip below the grid reports four figures for the **displayed month**: completed session count,
@@ -217,6 +219,7 @@ Implemented in:
 Responsibilities:
 - Maintains displayed month (`year`, `month`)
 - Loads completed + planned sessions for month range
+- Resolves each planned routine's Focus Modality from its template (one `getTemplates()` read per load, none when no routine is planned)
 - Groups entries by day for month grid
 - Exposes period list for highlights
 - Handles planned session CRUD

@@ -12,7 +12,7 @@ class CalendarEntry {
   /// Epoch-ms of the day this entry belongs to (start-of-day midnight).
   final int dayMs;
 
-  /// Modality key (may be null for Free Training).
+  /// Modality key (may be null for Free Training). For a planned routine it is the routine's current Focus Modality, resolved on each month load.
   final String? modality;
 
   /// True = filled circle (completed / finished session).
@@ -40,9 +40,15 @@ class CalendarEntry {
     session: s,
   );
 
-  factory CalendarEntry.fromPlannedSession(PlannedSession p) => CalendarEntry._(
+  /// [routineFocus] is the Focus Modality of the routine this plan schedules,
+  /// resolved by the caller at display time (a routine plan stores a null
+  /// `modality`). It wins over [PlannedSession.modality] when non-null.
+  factory CalendarEntry.fromPlannedSession(
+    PlannedSession p, {
+    String? routineFocus,
+  }) => CalendarEntry._(
     dayMs: OmniDateUtils.startOfDayMs(OmniDateUtils.fromMs(p.scheduledDateMs)),
-    modality: p.modality,
+    modality: routineFocus ?? p.modality,
     isCompleted: p.isCompleted,
     plannedSession: p,
   );
@@ -158,9 +164,27 @@ class CalendarState extends ChangeNotifier {
           .where((p) => p.linkedSessionId == null)
           .toList();
 
+      // A routine plan stores a null modality; resolve the routine's current
+      // Focus at display time (one read per load, none without a routine plan).
+      // An empty Focus counts as no Focus; a missing routine falls back.
+      final focusByTemplateId = <String, String>{};
+      if (unlinkedPlannedSessions.any((p) => p.routineTemplateId != null)) {
+        for (final t in await _repository.getTemplates()) {
+          final f = t.focusModality;
+          if (f != null && f.isNotEmpty) focusByTemplateId[t.id] = f;
+        }
+      }
+
       final entries = <CalendarEntry>[
         ...completedSessions.map(CalendarEntry.fromSession),
-        ...unlinkedPlannedSessions.map(CalendarEntry.fromPlannedSession),
+        ...unlinkedPlannedSessions.map(
+          (p) => CalendarEntry.fromPlannedSession(
+            p,
+            routineFocus: p.routineTemplateId == null
+                ? null
+                : focusByTemplateId[p.routineTemplateId],
+          ),
+        ),
       ];
 
       // Sort ascending by day.
