@@ -250,7 +250,18 @@ the phone's state at the moment the snapshot is composed and keeps a delivered
 timer only while the phone still runs the same slot at the same start (a rest
 within the rest tolerance) and the wrist has not ended it, so a logged interval
 cannot come back on the wrist through the durable snapshot the OS carries while
-the wrist is out of reach (121a D-1). A wrist clock for an interval the phone
+the wrist is out of reach (121a D-1). The timer a snapshot names is the
+phone's CURRENT state of that kind, not the copy last delivered, so a pause or
+resume the radio refused rides the next snapshot (127 D-1); a start the radio
+refused (an owed one) rides it too, unless the ledger delivered an older timer
+of the same work kind on a different slot or start, which stays withheld so the
+wrist's old phone-written row is stopped by omission and the new one follows
+live (127 D-2); a refused start asks the auto push for a snapshot pass through
+`onOwed` (127 D-5), a delivered frame never does. When a clears-only pass is
+about to send an owed start, it is dropped if the mirror already holds that
+slot and start as stopped, so a start the snapshot delivered and the wrist
+then ended is not sent again; a running or paused copy never drops it, since
+the owed record is the phone's newest state (127 D-4). A wrist clock for an interval the phone
 has already logged — one the wrist started, or any after a phone restart
 emptied the in-memory ledger — is cleared on the next pass that sees it in the
 mirror: the copy must name a slot whose effort kind maps to that timer, match a

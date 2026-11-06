@@ -105,6 +105,11 @@ class WatchSessionEngine {
   final Map<String, Map<String, Object?>> _entryCorrections = {};
   final Set<String> _deletedEntryIds = {};
 
+  /// The newest `sentAt` of a snapshot applied. A snapshot that is older
+  /// arriving later is refused whole, like the watch (Swift, plans 63 D-1 and
+  /// 127 D-8). Equal applies.
+  DateTime? _newestSnapshotAt;
+
   /// The ids whose held row the phone **replaced** rather than corrected: its
   /// snapshot re-stated the id with a different `loggedAt`, which is a
   /// different entry reusing a minted number (D-113.3). A correction merges
@@ -156,6 +161,18 @@ class WatchSessionEngine {
     _deletedEntryIds
       ..clear()
       ..addAll(_session?.deletedEntryIds ?? const []);
+
+    // D-127: the newest snapshot stamp is read back from storage, so the
+    // stale-snapshot guard survives a relaunch. Reset first: restore may be
+    // called twice.
+    _newestSnapshotAt = null;
+    for (final row in contents.sessions) {
+      if (!row.recordId.startsWith(_snapshotPrefix)) continue;
+      if (_newestSnapshotAt == null ||
+          row.recordedAt.isAfter(_newestSnapshotAt!)) {
+        _newestSnapshotAt = row.recordedAt;
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -501,6 +518,12 @@ class WatchSessionEngine {
       for (final entry in payload['entries']! as List) asJsonObject(entry),
     ];
     final sentAt = parseUtcIso(envelope['sentAt']);
+
+    // D-127: a snapshot older than the newest one applied is refused whole,
+    // before any write. Equal applies.
+    final newest = _newestSnapshotAt;
+    if (newest != null && sentAt.isBefore(newest)) return false;
+
     final messageId = envelope['messageId']! as String;
     final existing = _session?.sessionId == sessionId ? _session : null;
 
@@ -542,6 +565,7 @@ class WatchSessionEngine {
       revision: payload['revision']! as int,
     );
     await _appendSessionRow(row, lifecycle: null);
+    if (newest == null || sentAt.isAfter(newest)) _newestSnapshotAt = sentAt;
 
     for (final entry in entryMaps) {
       await _storeSnapshotEntry(sessionId, entry);

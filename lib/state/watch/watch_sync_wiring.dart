@@ -319,7 +319,17 @@ Future<WatchSyncGraph?> createWatchSync({
   );
   // The timers ride the same mirror and transport: a phone that starts, pauses
   // or ends an interval tells the wrist as soon as the window closes (43b3).
-  final timerPush = WatchTimerPush(mirror: mirror, onFailure: onFailure);
+  // A start the radio refused asks the auto push for a snapshot pass, so the
+  // durable path can carry it to a wrist that is away (plan 127 D-5).
+  final timerPush = WatchTimerPush(
+    mirror: mirror,
+    onFailure: onFailure,
+    onOwed: () => unawaited(
+      push.flush().catchError((Object e, StackTrace s) {
+        onFailure?.call(e, s);
+      }),
+    ),
+  );
   timerPushForSnapshots = timerPush;
   // And the other direction: a timer the wrist starts becomes the phone's.
   final timerAdoption = WatchTimerAdoption(

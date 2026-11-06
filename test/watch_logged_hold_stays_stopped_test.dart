@@ -824,8 +824,9 @@ void main() {
     );
     expect(
       keys,
-      isNot(contains('rest')),
-      reason: 'D-1: the rest was never delivered, so it is not named either',
+      contains('rest'),
+      reason: 'plan 127 D-2: the rest the radio refused is owed, so it rides '
+          'the snapshot (it replaces 121a\'s "owed kinds are never named")',
     );
     await engine.applyMessage(snapshot);
     final hold = engine.timerFor(WatchTimerKind.hold);
@@ -888,8 +889,9 @@ void main() {
     );
     expect(
       keys,
-      isNot(contains('hold')),
-      reason: 'the hold was never delivered, so it is not named',
+      contains('hold'),
+      reason: 'plan 127 D-2: the hold the radio refused is owed, so it rides '
+          'the snapshot (it replaces 121a\'s "owed kinds are never named")',
     );
   });
 

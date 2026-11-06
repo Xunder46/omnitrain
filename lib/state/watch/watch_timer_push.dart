@@ -27,6 +27,9 @@
 /// 3. **A snapshot names only the delivered timers the phone still runs (plan
 ///    121a D-1); a wrist clock for an interval the phone has already logged is
 ///    cleared whether or not the phone remembers delivering it (D-4, D-5).**
+///    Plan 127 D-1, D-2: the named value is the phone's CURRENT timer for the
+///    kind, and a start the radio refused (an owed one) rides the snapshot too,
+///    matched against the ledger record first.
 ///
 /// A rest travels on its own rule (plan 50a D-3). It belongs to no slot, and
 /// the phone opens it at the instant the set was logged while the wrist starts
@@ -70,10 +73,12 @@ class WatchTimerPush {
     Duration debounce = const Duration(milliseconds: 250),
     Duration sendTimeout = const Duration(seconds: 10),
     void Function(Object error, StackTrace stack)? onFailure,
+    void Function()? onOwed,
   }) : _mirror = mirror,
        _debounce = debounce,
        _sendTimeout = sendTimeout,
-       _onFailure = onFailure;
+       _onFailure = onFailure,
+       _onOwed = onOwed;
 
   final LiveSessionMirrorState _mirror;
 
@@ -87,6 +92,10 @@ class WatchTimerPush {
 
   /// Where a failure the push can report goes.
   final void Function(Object error, StackTrace stack)? _onFailure;
+
+  /// Called at the end of [_owe] when it recorded at least one entry: asks the
+  /// graph for a snapshot pass (plan 127 D-5).
+  final void Function()? _onOwed;
 
   WorkoutState? _workoutState;
   Timer? _window;
@@ -116,7 +125,9 @@ class WatchTimerPush {
   /// wire kind. The wrist never held them, so a clears-only pass — the trigger
   /// where the wrist talks to the phone, or comes back into reach — may send
   /// them; every other start stays withheld (54 D-1a), because a timer the wrist
-  /// already ended was delivered or adopted, never owed. Cleared per kind when
+  /// already ended was delivered or adopted, never owed. An owed start also
+  /// rides the durable snapshots as the newest offered record for its kind
+  /// (plan 127 D-2). Cleared per kind when
   /// the frame is delivered or the phone no longer wants that kind, and with the
   /// ledger on a session change.
   final Map<String, Map<String, Object?>> _owed = {};
@@ -132,13 +143,17 @@ class WatchTimerPush {
   /// state change — owes.
   bool _fullAgain = false;
 
-  /// The timers this push has delivered to the wrist and still holds on it,
-  /// per wire kind, in the shape a snapshot's `timers` takes.
+  /// The timers this push has delivered or owes to the wrist, per wire kind,
+  /// in the shape a snapshot's `timers` takes — but the value is the phone's
+  /// CURRENT timer for the kind, not the stored copy.
   ///
-  /// A snapshot names only the delivered timers the phone still runs, read
-  /// from the phone's state when the snapshot is composed, so a logged
-  /// interval cannot come back on the wrist through the durable snapshot
-  /// (plan 121a D-1).
+  /// A snapshot names the phone's current timer for a kind the ledger
+  /// delivered or owes (candidates `_delivered ∪ _owed`, matched against the
+  /// owed record first — plan 127 D-1, D-2), read from the phone's state when
+  /// the snapshot is composed, so a logged interval cannot come back on the
+  /// wrist through the durable snapshot. An owed start rides the snapshot;
+  /// for a work kind already delivered with a different slot or start, the
+  /// new start is withheld and omission stops the old one (plan 127 D-2).
   Map<String, Object?> snapshotTimers() {
     final state = _workoutState;
     final session = state?.currentSession;
@@ -150,24 +165,38 @@ class WatchTimerPush {
     }
     final wanted = _composeWanted(state);
     final named = <String, Object?>{};
-    for (final entry in _delivered.entries) {
-      final kind = entry.key;
-      final delivered = entry.value;
+    for (final kind in {..._delivered.keys, ..._owed.keys}) {
       final current = wanted[kind];
-      if (current == null) continue; // (ii)
-      if (kind != 'rest' &&
-          current['sessionExerciseId'] != delivered['sessionExerciseId']) {
-        continue; // (iii)
+      if (current == null) continue; // (ii) the phone no longer runs it
+      final owed = _owed[kind];
+      final delivered = _delivered[kind];
+      // The ledger record the snapshot is matched against: an owed frame (the
+      // newest offered) first, else the delivered one (plan 127 D-2).
+      final record = owed ?? delivered;
+      if (record == null) continue;
+      if (kind != 'rest') {
+        // D-2 replacement rule: while the wrist may still hold an older phone
+        // timer of this kind (a different slot or start was delivered), the new
+        // one is withheld: a snapshot cannot clear, and omitting stops the old
+        // one.
+        if (owed != null &&
+            delivered != null &&
+            (current['sessionExerciseId'] != delivered['sessionExerciseId'] ||
+                !_sameInstant(current['startedAt'], delivered['startedAt']))) {
+          continue;
+        }
+        if (current['sessionExerciseId'] != record['sessionExerciseId']) {
+          continue; // (iii)
+        }
       }
       final sameStart = kind == 'rest'
-          ? _restStartWithinTolerance(
-              current['startedAt'],
-              delivered['startedAt'],
-            )
-          : _sameInstant(current['startedAt'], delivered['startedAt']);
+          ? _restStartWithinTolerance(current['startedAt'], record['startedAt'])
+          : _sameInstant(current['startedAt'], record['startedAt']);
       if (!sameStart) continue; // (iv)
-      if (_wristEnded(session.id, kind, delivered)) continue; // (v)
-      named[kind] = {...delivered};
+      if (_wristEnded(session.id, kind, record)) continue; // (v)
+      // D-1: the value is what the phone runs NOW (a pause the radio refused
+      // still rides), never the stored delivered copy.
+      named[kind] = {...current};
     }
     return named;
   }
@@ -361,7 +390,23 @@ class WatchTimerPush {
       // 54 D-1: the wrist's own frame triggers the debt, not the phone's news.
       // The debt includes a start the radio refused (plan 98 D-2): the wrist
       // never held it, so sending it cannot restart a timer the wrist ended.
-      if (clearsOnly) next.removeWhere((kind, _) => !_owed.containsKey(kind));
+      if (clearsOnly) {
+        next.removeWhere((kind, _) => !_owed.containsKey(kind));
+        // Plan 127 D-4: a snapshot (or a frame whose answer was lost) may have
+        // delivered an owed START, and the wrist may then have ended it. An
+        // owed start (never delivered on a frame) is dropped, and no longer
+        // owed, when the mirror holds that very slot and start as stopped
+        // (54 D-1a). A paused or running copy is NOT a reason to drop: the
+        // owed record is the phone's newest state (a refused pause or resume
+        // included), and sending it is how the wrist learns it (review finding).
+        next.removeWhere((kind, timer) {
+          // An owed pause or resume (a delivered kind) is not a start.
+          if (_delivered.containsKey(kind)) return false;
+          if (!_wristEnded(session.id, kind, timer)) return false;
+          _owed.remove(kind);
+          return true;
+        });
+      }
 
       if (clears.isEmpty && next.isEmpty) return;
 
@@ -450,11 +495,15 @@ class WatchTimerPush {
   /// stopped, so sending it again would restart a clock the wrist finished
   /// (54 D-1a). The review of plan 98 found this path.
   void _owe(String sessionId, Map<String, Map<String, Object?>> next) {
+    var owedAny = false;
     for (final entry in next.entries) {
       if (!_wristEnded(sessionId, entry.key, entry.value)) {
         _owed[entry.key] = entry.value;
+        owedAny = true;
       }
     }
+    // A delivered frame never calls it (plan 127 D-5).
+    if (owedAny) _onOwed?.call();
   }
 
   /// True when the mirror holds [timer] of [kind] as stopped: the same slot and

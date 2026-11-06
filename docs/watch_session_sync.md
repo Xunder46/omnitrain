@@ -397,6 +397,14 @@ in place, resending the structure as a snapshot and no new started lifecycle
 
 ## Invariants
 
+- **A snapshot names a phone timer only with its current state, and an older
+  snapshot never wins.** A timer rides `session_snapshot.timers` only while the
+  phone still runs it, with the state the phone has now (a pause or a start the
+  radio refused still rides; plan 127 D-1, D-2), and the Dart wrist engine
+  refuses a snapshot stamped earlier than one it has applied, like the watch
+  (D-8; an equal stamp applies). Verified by
+  `test/watch_snapshot_timer_accuracy_test.dart` and
+  `test/watch_engine_stale_snapshot_test.dart`.
 - **One session id, one row.** A wrist pass over a session the phone owns writes
   no second `TrainingSession` for that id and does not materialise the wrist's
   entries under derived ids: each staged wrist effort row becomes a row of the
