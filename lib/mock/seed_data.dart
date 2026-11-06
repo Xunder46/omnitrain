@@ -2200,7 +2200,7 @@ class SeedData {
       name: 'Pigeon Pose',
       description:
           'Deep stretch for the glutes, piriformis, and outer hip, with the front leg folded under the torso and the rear leg extended straight back.',
-      disciplineId: 'discipline-stretching',
+      disciplineId: 'discipline-yoga',
       howToSteps: [
         'Front shin angled across the body, rear leg extended straight back with the top of the foot down.',
         'Square the hips as much as possible — use a block under the front-side hip if it floats.',
@@ -2312,7 +2312,7 @@ class SeedData {
       name: 'Child\'s Pose',
       description:
           'Kneeling rest position with hips sitting back onto the heels and arms extended forward. Gentle stretch for the low back, lats, and shoulders.',
-      disciplineId: 'discipline-stretching',
+      disciplineId: 'discipline-yoga',
       howToSteps: [
         'Knees wide, big toes together, hips sinking back to the heels.',
         'Reach the arms long in front, chest heavy toward the floor.',
@@ -4747,6 +4747,327 @@ class SeedData {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
+    // Yoga
+    Exercise(
+      id: 'exercise-mountain-pose',
+      name: 'Mountain Pose',
+      description:
+          'Standing pose that stacks the feet, hips and shoulders in one line, teaching steady balance over the whole foot.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Stand with the feet together or hip-width apart and press all four corners of each foot into the floor.',
+        'Lengthen the legs, tuck the tailbone slightly and stack the ribs over the hips.',
+        'Reach the arms down beside you, lift through the crown of the head and breathe steadily.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-downward-facing-dog',
+      name: 'Downward-Facing Dog',
+      description:
+          'Inverted pose with the hands and feet on the floor and the hips lifted high, stretching the hamstrings, calves and lats while the arms work.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Start on hands and knees with the hands shoulder-width apart, then lift the hips up and back.',
+        'Press the floor away, lengthen the spine and let the heels ease toward the ground.',
+        'Keep a slight bend in the knees if the hamstrings or calves pull, and hold while breathing steadily.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-upward-facing-dog',
+      name: 'Upward-Facing Dog',
+      description:
+          'Backbend from the floor with the hips lifted and the arms straight, strengthening the lower back and opening the chest.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Lie face down with the hands beside the ribs and the tops of the feet on the floor.',
+        'Press the hands down, straighten the arms and lift the chest and hips off the floor.',
+        'Draw the shoulders back and down so the chest leads and the neck stays long.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-cobra-pose',
+      name: 'Cobra Pose',
+      description:
+          'Gentle backbend lying face down, lifting the chest with the hands while the lower back lengthens and the chest opens.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Lie face down with the hands under the shoulders and the elbows tucked in.',
+        'Press lightly into the hands and lift the chest, keeping the hips and legs on the floor.',
+        'Roll the shoulders back, keep the neck long and lower with control.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-warrior-i',
+      name: 'Warrior I',
+      description:
+          'Standing lunge with the front knee bent and both arms overhead, strengthening the quads and glutes and opening the front of the hip.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Step one foot back, turn the back foot out slightly and square the hips forward.',
+        'Bend the front knee over the ankle and reach both arms overhead.',
+        'Sink into the front leg while the back leg stays straight and strong.',
+        'Hold, then repeat on the other side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-warrior-ii',
+      name: 'Warrior II',
+      description:
+          'Wide standing lunge with the arms reaching out to the sides, strengthening the front quads and opening the hips and shoulders.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Step the feet wide, turn the front foot out and the back foot in.',
+        'Bend the front knee over the ankle and reach the arms out at shoulder height.',
+        'Gaze past the front hand and keep the torso upright over the hips.',
+        'Hold, then repeat on the other side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-reverse-warrior',
+      name: 'Reverse Warrior',
+      description:
+          'Side bend from a wide lunge with one arm reaching up and the other sliding down the back leg, stretching the side waist and lats.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Start in a wide lunge with both arms reaching out and the front knee bent.',
+        'Rest the back hand on the back leg and sweep the front arm up and back.',
+        'Lengthen the side waist as you lean back over the front leg.',
+        'Hold, then repeat on the other side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-triangle-pose',
+      name: 'Triangle Pose',
+      description:
+          'Two-legged side bend with the lower hand resting on the shin or floor, stretching the hamstrings and side waist while the chest opens.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Stand with the feet wide, turn the front foot out and the back foot slightly in.',
+        'Reach the front arm forward and hinge over the front leg, lowering the hand to the shin, a block or the floor.',
+        'Stretch the other arm up and open the chest toward the ceiling.',
+        'Hold, then repeat on the other side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-half-moon-pose',
+      name: 'Half Moon Pose',
+      description:
+          'Balance on one leg with the body tipped sideways and the top arm reaching up, strengthening the standing glute and stretching the side waist.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'From a wide lunge, shift the weight onto the front leg and bring the back foot in.',
+        'Tip forward and place the front hand on a block or the floor, lifting the back leg to hip height.',
+        'Open the hips and stack the shoulders, reaching the top arm up.',
+        'Hold, then repeat on the other side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-tree-pose',
+      name: 'Tree Pose',
+      description:
+          'One-legged balance with the other foot on the standing leg, strengthening the standing glute and teaching upright, steady posture.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Stand tall and fix your eyes on a point in front of you.',
+        'Place the sole of one foot on the ankle, shin or inner thigh of the standing leg, never on the knee.',
+        'Press the foot and leg together and lengthen through the crown of the head.',
+        'Hold, then repeat on the other side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-chair-pose',
+      name: 'Chair Pose',
+      description:
+          'Squat held with the heels down and the arms reaching up, strengthening the quads and glutes while the chest stays lifted.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Stand with the feet together or hip-width apart and reach the arms overhead.',
+        'Bend the knees and sit the hips back as if lowering onto a chair behind you.',
+        'Keep the chest lifted and the weight in the heels, and hold while breathing steadily.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-eagle-pose',
+      name: 'Eagle Pose',
+      description:
+          'Standing balance with the legs crossed and the arms wrapped in front of the chest, strengthening the legs and opening the upper back.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Stand tall, bend the knees a little and cross one thigh over the other, hooking the foot behind the calf if you can.',
+        'Reach both arms forward and cross them, bend the elbows and wrap the forearms until the palms face each other.',
+        'Sit back as if into a chair while the chest stays lifted, and hold while breathing steadily.',
+        'Unwrap the arms and legs, then repeat on the other side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-goddess-pose',
+      name: 'Goddess Pose',
+      description:
+          'Wide squat with the knees turned out and the arms bent at the elbows, strengthening the quads and inner thighs while the hips open.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Stand with the feet wide and turn both toes out to about forty-five degrees.',
+        'Bend the knees until they sit over the toes and drop the hips between them.',
+        'Keep the torso upright and the tailbone tucked, and hold while breathing steadily.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-boat-pose',
+      name: 'Boat Pose',
+      description:
+          'Seated balance on the sitting bones with the legs and chest lifted into a V, strengthening the abs and the deeper core.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Sit with the knees bent and the feet on the floor, then lean back until you feel the sitting bones.',
+        'Lift the feet until the shins are level with the floor and reach the arms forward beside the knees.',
+        'Straighten the legs if you can while the chest stays lifted and the back stays long, and hold.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-bridge-pose',
+      name: 'Bridge Pose',
+      description:
+          'Backbend lying on the back with the hips lifted and the chest drawn toward the chin, strengthening the glutes and opening the chest.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Lie on your back with the knees bent and the feet flat and close to the hips.',
+        'Press through the feet to lift the hips, then slide the arms under the body and interlace the fingers.',
+        'Draw the chest toward the chin so the weight rests on the shoulders and upper back, never on the neck, and hold.',
+        'Lower the hips with control when the hold ends.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-low-lunge',
+      name: 'Low Lunge',
+      description:
+          'Kneeling lunge with the back knee down and the arms reaching up, stretching the front of the hip while the quads work.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'From hands and knees, step one foot forward between the hands and lower the back knee to the floor.',
+        'Lift the torso upright and reach both arms overhead.',
+        'Keep the back knee down and press the hips gently forward until you feel the stretch in front of the back hip.',
+        'Hold, then repeat on the other side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-crescent-lunge',
+      name: 'Crescent Lunge',
+      description:
+          'High lunge on the ball of the back foot with the arms overhead, strengthening the quads and glutes of both legs.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Stand tall, step one foot back and lift the back heel so the weight rests on the ball of that foot.',
+        'Bend the front knee over the ankle and stack it so the front thigh comes close to level.',
+        'Reach both arms overhead and keep the torso tall with the back knee lifted.',
+        'Hold, then repeat on the other side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-locust-pose',
+      name: 'Locust Pose',
+      description:
+          'Backbend lying face down with the chest, arms and legs lifted off the floor, strengthening the lower back and the glutes.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Lie face down with the arms alongside the body and the palms facing up.',
+        'Press the pubic bone into the floor and lift the chest, arms and legs at the same time.',
+        'Reach the fingertips back and keep the neck long while you hold.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-camel-pose',
+      name: 'Camel Pose',
+      description:
+          'Kneeling backbend with the hands on the heels, opening the chest and the front of the hips while the lower back works.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Kneel with the knees hip-width apart and the thighs upright.',
+        'Place the hands on the lower back, lift the chest and draw the shoulders back.',
+        'Reach back for the heels if you can, keeping the hips over the knees and the neck relaxed, and hold.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-happy-baby',
+      name: 'Happy Baby',
+      description:
+          'Lying on the back holding the feet with the knees drawn toward the armpits, stretching the inner thighs and the hamstrings.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Lie on your back and draw both knees toward your chest.',
+        'Catch the insides of the feet or the ankles and open the knees toward the armpits.',
+        'Press the lower back gently toward the floor and rock slowly side to side while you hold.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-reclined-spinal-twist',
+      name: 'Reclined Spinal Twist',
+      description:
+          'Lying twist with both knees drawn over to one side, stretching the lower back and the side waist.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Lie on your back with the arms out to the sides and the knees bent.',
+        'Let both knees fall to one side while both shoulders stay flat on the floor.',
+        'Turn the head the other way and hold while breathing steadily.',
+        'Return to the centre slowly, then repeat on the other side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-savasana',
+      name: 'Savasana',
+      description:
+          'Resting pose lying flat on the back with the arms and legs relaxed, letting the breath settle at the end of a practice.',
+      disciplineId: 'discipline-yoga',
+      howToSteps: [
+        'Lie on your back with the legs slightly apart and the arms beside you, palms facing up.',
+        'Let the feet fall open, soften the jaw and close the eyes.',
+        'Stay still and let the breath come and go at its own pace.',
+        'To come out, roll onto one side, pause there, then press up to sitting.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
   ];
 
   static final List<Equipment> sampleEquipment = [
@@ -5418,6 +5739,27 @@ class SeedData {
     'exercise-reverse-hyperextension': _muscles(primary: ['muscle-glutes', 'muscle-lower-back'], secondary: ['muscle-hamstrings']),
     'exercise-sled-push': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-hamstrings', 'muscle-calves']),
     'exercise-sled-drag': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-hamstrings', 'muscle-calves']),
+    'exercise-mountain-pose': _muscles(primary: ['muscle-abs'], secondary: ['muscle-quads', 'muscle-glutes']),
+    'exercise-downward-facing-dog': _muscles(primary: ['muscle-hamstrings'], secondary: ['muscle-front-delts', 'muscle-lats', 'muscle-calves']),
+    'exercise-cobra-pose': _muscles(primary: ['muscle-lower-back'], secondary: ['muscle-chest']),
+    'exercise-upward-facing-dog': _muscles(primary: ['muscle-lower-back'], secondary: ['muscle-chest', 'muscle-triceps']),
+    'exercise-warrior-i': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-front-delts']),
+    'exercise-warrior-ii': _muscles(primary: ['muscle-quads'], secondary: ['muscle-glutes', 'muscle-adductors', 'muscle-side-delts']),
+    'exercise-reverse-warrior': _muscles(primary: ['muscle-quads', 'muscle-obliques'], secondary: ['muscle-lats']),
+    'exercise-triangle-pose': _muscles(primary: ['muscle-hamstrings', 'muscle-obliques'], secondary: ['muscle-adductors']),
+    'exercise-half-moon-pose': _muscles(primary: ['muscle-glutes'], secondary: ['muscle-obliques', 'muscle-hamstrings']),
+    'exercise-tree-pose': _muscles(primary: ['muscle-glutes'], secondary: ['muscle-quads', 'muscle-abs']),
+    'exercise-chair-pose': _muscles(primary: ['muscle-quads'], secondary: ['muscle-glutes', 'muscle-front-delts']),
+    'exercise-eagle-pose': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-rear-delts']),
+    'exercise-goddess-pose': _muscles(primary: ['muscle-quads', 'muscle-adductors'], secondary: ['muscle-glutes']),
+    'exercise-boat-pose': _muscles(primary: ['muscle-abs'], secondary: ['muscle-obliques']),
+    'exercise-bridge-pose': _muscles(primary: ['muscle-glutes'], secondary: ['muscle-hamstrings', 'muscle-lower-back']),
+    'exercise-low-lunge': _muscles(primary: ['muscle-quads'], secondary: ['muscle-glutes']),
+    'exercise-crescent-lunge': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-hamstrings']),
+    'exercise-locust-pose': _muscles(primary: ['muscle-lower-back', 'muscle-glutes'], secondary: ['muscle-hamstrings', 'muscle-rear-delts']),
+    'exercise-camel-pose': _muscles(primary: ['muscle-lower-back'], secondary: ['muscle-quads', 'muscle-chest']),
+    'exercise-happy-baby': _muscles(primary: ['muscle-adductors'], secondary: ['muscle-hamstrings']),
+    'exercise-reclined-spinal-twist': _muscles(primary: ['muscle-lower-back'], secondary: ['muscle-glutes', 'muscle-obliques']),
   };
 
   /// Builds a [ExerciseMuscleLink] list: every primary id first, then every
@@ -5682,6 +6024,28 @@ class SeedData {
     'exercise-reverse-hyperextension': ['equipment-machine'],
     'exercise-sled-push': ['equipment-sled'],
     'exercise-sled-drag': ['equipment-sled'],
+    'exercise-mountain-pose': ['equipment-bodyweight'],
+    'exercise-downward-facing-dog': ['equipment-bodyweight'],
+    'exercise-upward-facing-dog': ['equipment-bodyweight'],
+    'exercise-cobra-pose': ['equipment-bodyweight'],
+    'exercise-warrior-i': ['equipment-bodyweight'],
+    'exercise-warrior-ii': ['equipment-bodyweight'],
+    'exercise-reverse-warrior': ['equipment-bodyweight'],
+    'exercise-triangle-pose': ['equipment-bodyweight'],
+    'exercise-half-moon-pose': ['equipment-bodyweight'],
+    'exercise-tree-pose': ['equipment-bodyweight'],
+    'exercise-chair-pose': ['equipment-bodyweight'],
+    'exercise-eagle-pose': ['equipment-bodyweight'],
+    'exercise-goddess-pose': ['equipment-bodyweight'],
+    'exercise-boat-pose': ['equipment-bodyweight'],
+    'exercise-bridge-pose': ['equipment-bodyweight'],
+    'exercise-low-lunge': ['equipment-bodyweight'],
+    'exercise-crescent-lunge': ['equipment-bodyweight'],
+    'exercise-locust-pose': ['equipment-bodyweight'],
+    'exercise-camel-pose': ['equipment-bodyweight'],
+    'exercise-happy-baby': ['equipment-bodyweight'],
+    'exercise-reclined-spinal-twist': ['equipment-bodyweight'],
+    'exercise-savasana': ['equipment-bodyweight'],
   };
 
   /// Maps exercise IDs to capability flags
@@ -6089,6 +6453,28 @@ class SeedData {
     'exercise-reverse-hyperextension': ['reps', 'sets', 'load', 'time'],
     'exercise-sled-push': ['time', 'distance', 'load'],
     'exercise-sled-drag': ['time', 'distance', 'load'],
+    'exercise-mountain-pose': ['hold', 'time', 'sets'],
+    'exercise-downward-facing-dog': ['hold', 'time', 'sets'],
+    'exercise-upward-facing-dog': ['hold', 'time', 'sets'],
+    'exercise-cobra-pose': ['hold', 'time', 'sets'],
+    'exercise-warrior-i': ['hold', 'time', 'sets'],
+    'exercise-warrior-ii': ['hold', 'time', 'sets'],
+    'exercise-reverse-warrior': ['hold', 'time', 'sets'],
+    'exercise-triangle-pose': ['hold', 'time', 'sets'],
+    'exercise-half-moon-pose': ['hold', 'time', 'sets'],
+    'exercise-tree-pose': ['hold', 'time', 'sets'],
+    'exercise-chair-pose': ['hold', 'time', 'sets'],
+    'exercise-eagle-pose': ['hold', 'time', 'sets'],
+    'exercise-goddess-pose': ['hold', 'time', 'sets'],
+    'exercise-boat-pose': ['hold', 'time', 'sets'],
+    'exercise-bridge-pose': ['hold', 'time', 'sets'],
+    'exercise-low-lunge': ['hold', 'time', 'sets'],
+    'exercise-crescent-lunge': ['hold', 'time', 'sets'],
+    'exercise-locust-pose': ['hold', 'time', 'sets'],
+    'exercise-camel-pose': ['hold', 'time', 'sets'],
+    'exercise-happy-baby': ['hold', 'time', 'sets'],
+    'exercise-reclined-spinal-twist': ['hold', 'time', 'sets'],
+    'exercise-savasana': ['hold', 'time', 'sets'],
   };
 
   // Calendar features intentionally start empty.

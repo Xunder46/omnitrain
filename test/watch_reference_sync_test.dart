@@ -40,6 +40,8 @@ import 'package:omnitrain/watch/start/watch_routine_catalog.dart';
 import 'package:omnitrain/watch/start/watch_session_start_paths.dart';
 import 'package:omnitrain/watch/start/watch_sync_orchestrator.dart';
 
+import 'helpers/yoga_catalog_rows.dart';
+
 const String _protocolRoot = 'watch/sync_protocol';
 
 final DateTime _now = DateTime.utc(2026, 9, 21, 12);
@@ -591,8 +593,8 @@ void main() {
 
       expect(
         batches,
-        hasLength(3),
-        reason: 'S-3858 the seeded catalog is more than two batches',
+        hasLength(4),
+        reason: 'S-3858 the seeded catalog is more than three batches',
       );
       for (var index = 0; index < batches.length; index++) {
         final bytes = utf8.encode(jsonEncode(batches[index])).length;
@@ -605,6 +607,88 @@ void main() {
               'budget',
         );
       }
+    });
+
+    // Plan 2026-11-05-119 (S-19306): the 22 yoga poses and the two rows the
+    // catalog moves to Yoga (Pigeon Pose, Child's Pose) ride the same batches
+    // the wrist already knows — once each, as holds, with no Health kind of
+    // their own, because a hold on the wrist stays a Flexibility workout.
+    test('S-19306 every yoga pose reaches the wrist once, as a hold', () async {
+      final batches = await WatchReferenceSync.buildExercisesDown(
+        repository: repository,
+        generatedAt: _generatedAt,
+      );
+
+      expect(
+        batches,
+        hasLength(4),
+        reason: 'S-19306 the seeded catalog of more than 300 holds is four '
+            'batches of at most 100',
+      );
+
+      final yogaIds = {
+        for (final row in yogaCatalogRows) 'exercise-${row.suffix}',
+        'exercise-pigeon-pose',
+        'exercise-childs-pose',
+      };
+      final seen = <String, int>{};
+
+      for (var index = 0; index < batches.length; index++) {
+        final batch = batches[index];
+        expect(
+          _rejections(batch),
+          isEmpty,
+          reason: 'S-19306 batch $index is one the wrist accepts',
+        );
+
+        for (final exercise
+            in _objects(_asObject(batch['payload'])['exercises'])) {
+          final id = exercise['exerciseId']! as String;
+          if (!yogaIds.contains(id)) continue;
+
+          seen[id] = (seen[id] ?? 0) + 1;
+          expect(
+            exercise['capabilities'],
+            ['hold', 'time', 'sets'],
+            reason: 'S-19306 $id arrives as a hold',
+          );
+          expect(
+            exercise.containsKey('healthActivity'),
+            isFalse,
+            reason: 'S-19306 $id carries no Health kind of its own',
+          );
+        }
+
+        final bytes = utf8.encode(jsonEncode(batch)).length;
+        // ignore: avoid_print
+        print('S-19306 batch $index: $bytes bytes');
+        expect(
+          bytes,
+          lessThan(16000),
+          reason: 'S-19306 batch $index stays under the frame budget',
+        );
+      }
+
+      expect(
+        seen.keys.toSet(),
+        yogaIds,
+        reason: 'S-19306 every yoga row and the two moved rows arrive',
+      );
+      expect(
+        seen,
+        {for (final id in yogaIds) id: 1},
+        reason: 'S-19306 each yoga id appears exactly once across the batches',
+      );
+
+      expect(
+        WatchReferenceSync.healthActivityOf(
+          disciplineId: 'discipline-yoga',
+          exerciseId: 'exercise-tree-pose',
+          capabilities: ['hold', 'time', 'sets'],
+        ),
+        isNull,
+        reason: 'S-19306 the wrist records a hold as it always has',
+      );
     });
   });
 

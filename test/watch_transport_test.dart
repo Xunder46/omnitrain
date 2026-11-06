@@ -680,7 +680,13 @@ void main() {
       );
       expect(
         types.skip(3),
-        ['exercises_down', 'exercises_down', 'exercises_down', 'bests_down'],
+        [
+          'exercises_down',
+          'exercises_down',
+          'exercises_down',
+          'exercises_down',
+          'bests_down',
+        ],
         reason: 'D-3834 the whole exercise list travels, after the routines '
             'and the foods; the bests close every answer (87a, D-4)',
       );

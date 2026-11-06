@@ -65,9 +65,13 @@
 ///   every existing install reconciles them once on next launch; equipment,
 ///   equipment links and the default food groups are still written at first
 ///   install only.
+///   When 22 yoga poses were added under the Yoga discipline (Mountain Pose
+///   through Savasana) and Pigeon Pose and Child's Pose moved into it, we
+///   bumped to `17` so existing installs receive them on next launch; their
+///   equipment links reach new installs only.
 library;
 
-const int bundledCatalogVersion = 16;
+const int bundledCatalogVersion = 17;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///

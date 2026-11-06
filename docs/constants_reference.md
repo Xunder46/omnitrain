@@ -268,7 +268,7 @@ plugin types so the mapping logic is testable everywhere; the native gateway tra
 |--------|---------|
 | `HealthPrefs` | Preference keys for the two toggles and the written-session ledger, plus the ledger cap and read lookback window |
 | `HealthToggleState` | `off` / `on` / `permissionDenied` — the third state is what lets a denied toggle stay visibly denied instead of reading as off |
-| `HealthActivityKind` | App-owned workout vocabulary (`strength`, `cardio`, `flexibility`, `sport`, `conditioning`, `other`) that modality maps onto |
+| `HealthActivityKind` | App-owned workout vocabulary (`strength`, `cardio`, `flexibility`, `sport`, `yoga`, `conditioning`, `other`) that modality maps onto |
 | `parseHealthToggleState` / `healthToggleStateValue` | The single serialization pair for the toggle states; unknown persisted values resolve to `off` |
 
 ---
@@ -572,7 +572,7 @@ so storage, unit, and widget agree.
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `bundledCatalogVersion` | `16` | Content version of the bundled catalog (exercises, capability and muscle-group links, food catalog, demo routines; equipment, equipment links and the default food groups are written at first install only; the refresh also delivers sport categories, disciplines, units, metric definitions and effort kinds, tags) |
+| `bundledCatalogVersion` | `17` | Content version of the bundled catalog (exercises, capability and muscle-group links, food catalog, demo routines; equipment, equipment links and the default food groups are written at first install only; the refresh also delivers sport categories, disciplines, units, metric definitions and effort kinds, tags) |
 
 At app start the device compares its stored version against
 `bundledCatalogVersion`; when the bundled version is newer,

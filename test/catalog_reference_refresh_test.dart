@@ -497,8 +497,11 @@ void main() {
             isTrue,
             reason: 'a v15 device is behind the bundled version',
           );
-          expect(await repo.getCatalogVersion(), equals(16));
-          expect(bundledCatalogVersion, equals(16));
+          expect(
+            await repo.getCatalogVersion(),
+            equals(bundledCatalogVersion),
+          );
+          expect(bundledCatalogVersion, greaterThanOrEqualTo(16));
 
           final category = await repo.getSportCategoryById('category-recovery');
           expect(
@@ -967,7 +970,10 @@ void main() {
             isTrue,
             reason: 'a v15 device is behind the bundled version',
           );
-          expect(await repo.getCatalogVersion(), equals(16));
+          expect(
+            await repo.getCatalogVersion(),
+            equals(bundledCatalogVersion),
+          );
 
           final recorded = await _recordReference(repo);
 
@@ -976,7 +982,10 @@ void main() {
             isFalse,
             reason: 'the device is already at the bundled version',
           );
-          expect(await repo.getCatalogVersion(), equals(16));
+          expect(
+            await repo.getCatalogVersion(),
+            equals(bundledCatalogVersion),
+          );
           expect(
             await _recordReference(repo),
             equals(recorded),
@@ -1000,7 +1009,10 @@ void main() {
           isTrue,
           reason: 'a v15 device is behind the bundled version',
         );
-        expect(await repo.getCatalogVersion(), equals(16));
+        expect(
+          await repo.getCatalogVersion(),
+          equals(bundledCatalogVersion),
+        );
 
         expect(
           await _recordReference(repo),
@@ -1121,7 +1133,10 @@ void main() {
         isTrue,
         reason: 'the stored version is still 15',
       );
-      expect(await repo.getCatalogVersion(), equals(16));
+      expect(
+        await repo.getCatalogVersion(),
+        equals(bundledCatalogVersion),
+      );
       expect(await repo.getSportCategoryById('category-recovery'), isNotNull);
       expect(await repo.getDisciplineById('discipline-golf'), isNotNull);
       expect(await repo.getDisciplineById('discipline-climbing'), isNotNull);

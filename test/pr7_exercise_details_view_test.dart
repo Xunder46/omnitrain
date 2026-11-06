@@ -240,6 +240,7 @@ void main() {
         find.text('Custom Sparse Exercise'),
         find.byType(ListView).first,
         const Offset(0, -200),
+        maxIteration: 200,
       );
       expect(find.text('Custom Sparse Exercise'), findsOneWidget);
 

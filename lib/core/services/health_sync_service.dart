@@ -79,7 +79,7 @@ class HealthSyncService {
 
       final written = await _platform.writeWorkout(
         HealthWorkoutDraft(
-          activityKind: mapModalityToActivityKind(session.modality),
+          activityKind: await _activityKindOf(session),
           start: DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
           end: DateTime.fromMillisecondsSinceEpoch(endedAtMs),
           title: session.title,
@@ -97,6 +97,39 @@ class HealthSyncService {
     } catch (e) {
       debugPrint('Health workout write skipped: $e');
     }
+  }
+
+  /// The discipline id every exercised row of the session must carry for the
+  /// write to pick the yoga kind (D-19313 of plan 119).
+  static const String _yogaDisciplineId = 'discipline-yoga';
+
+  /// The activity kind a completed phone workout records as: Yoga when the
+  /// session's segments look up to exercises ALL under the Yoga discipline
+  /// (and at least one effort names an exercised id), the modality mapping
+  /// otherwise — a mixed session, a deleted custom or an empty one never
+  /// half-labels (S-19311).
+  Future<HealthActivityKind> _activityKindOf(TrainingSession session) async {
+    final effortsBySegment = await _repository.getEffortsBySegment();
+    final segments = (await _repository.getSegmentsBySession())[session.id];
+    if (segments == null || segments.isEmpty) {
+      return mapModalityToActivityKind(session.modality);
+    }
+    final efforts = [
+      for (final segment in segments) ...effortsBySegment[segment.id] ?? [],
+    ];
+    if (efforts.isEmpty) {
+      return mapModalityToActivityKind(session.modality);
+    }
+
+    final rows = await _repository.getExercises();
+    final disciplineById = {for (final row in rows) row.id: row.disciplineId};
+    for (final effort in efforts) {
+      final id = effort.exerciseId;
+      if (id == null || disciplineById[id] != _yogaDisciplineId) {
+        return mapModalityToActivityKind(session.modality);
+      }
+    }
+    return HealthActivityKind.yoga;
   }
 
   /// When a `noWorkout` answer is tried again, counted from the first try

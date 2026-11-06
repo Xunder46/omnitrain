@@ -13,9 +13,11 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/data/models/muscle_taxonomy.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
 
 import 'helpers/repository_harness.dart';
+import 'helpers/yoga_catalog_rows.dart';
 
 /// A fixed timestamp: the fixtures take no clock reading.
 const int _atMs = 1700000000000;
@@ -764,6 +766,307 @@ void main() {
                 if (obliquesSet.contains(id)) id,
             ]),
             reason: 'the ranked query keeps its order and filters the same way',
+          );
+        });
+      });
+
+      // Plan 119, S-19303 — a fresh install: each pose lists under its main
+      // muscle only, the Yoga filter holds the 24 bundled rows, Stretching
+      // loses the two moves, and the poses rank level with the stretches.
+      //
+      // `docs/plans/2026-11-05-119-yoga-catalog-plan/2026-11-05-119-yoga-catalog-plan.md`.
+      group('S-19303 the yoga poses in the filters', () {
+        Future<void> custom(
+          String id,
+          String name,
+          List<ExerciseMuscleLink> links,
+        ) async {
+          await repo.createExercise(
+            Exercise(
+              id: id,
+              ownerUserId: 'user-1',
+              name: name,
+              createdAtMs: _atMs,
+              updatedAtMs: _atMs,
+            ),
+          );
+          await repo.setExerciseMuscleLinks(id, links);
+        }
+
+        final yogaIds = [
+          for (final row in yogaCatalogRows) 'exercise-${row.suffix}',
+        ];
+
+        Future<List<String>> filter(String muscleGroupId) async => _ids(
+          await repo.searchExercises(muscleGroupIds: [muscleGroupId]),
+        );
+
+        void once(List<String> ids, String id) => expect(
+          ids.where((each) => each == id),
+          hasLength(1),
+          reason: '$id matches once',
+        );
+
+        test('S-19303 the poses list under their main muscle only', () async {
+          // U: the user's own "Downward-Facing Dog", carrying no discipline.
+          await custom('ex-custom-downward-facing-dog', 'Downward-Facing Dog', [
+            _link('muscle-hamstrings'),
+          ]);
+          // E: the user's own row, tagged with nothing.
+          await custom(
+            'ex-sun-salutation-flow',
+            'Sun Salutation Flow',
+            const [],
+          );
+
+          final hamstrings = await filter('muscle-hamstrings');
+          for (final id in [
+            'exercise-downward-facing-dog',
+            'exercise-triangle-pose',
+            'ex-custom-downward-facing-dog',
+          ]) {
+            once(hamstrings, id);
+          }
+          for (final id in [
+            'exercise-bridge-pose',
+            'exercise-happy-baby',
+            'exercise-half-moon-pose',
+          ]) {
+            expect(
+              hamstrings,
+              isNot(contains(id)),
+              reason: 'Hamstrings is only an assist on $id',
+            );
+          }
+
+          final calves = await filter('muscle-calves');
+          expect(
+            calves,
+            isNot(contains('exercise-downward-facing-dog')),
+            reason: 'Calves is only an assist on Downward-Facing Dog',
+          );
+
+          final abductors = await filter('muscle-abductors');
+          expect(
+            abductors.toSet(),
+            equals({
+              'exercise-cable-hip-abduction',
+              'exercise-machine-hip-abduction',
+              'exercise-banded-clamshell',
+              'exercise-banded-lateral-walk',
+            }),
+            reason: 'no pose carries an Abductors link',
+          );
+
+          final obliques = await filter('muscle-obliques');
+          expect(obliques, contains('exercise-reverse-warrior'));
+          expect(obliques, contains('exercise-triangle-pose'));
+          for (final id in [
+            'exercise-boat-pose',
+            'exercise-half-moon-pose',
+            'exercise-reclined-spinal-twist',
+          ]) {
+            expect(
+              obliques,
+              isNot(contains(id)),
+              reason: 'Obliques is only an assist on $id',
+            );
+          }
+
+          final abs = await filter('muscle-abs');
+          once(abs, 'exercise-mountain-pose');
+          once(abs, 'exercise-boat-pose');
+          expect(
+            abs,
+            isNot(contains('exercise-tree-pose')),
+            reason: 'Abs is only an assist on Tree Pose',
+          );
+
+          final core = await filter('muscle-core');
+          once(core, 'exercise-triangle-pose');
+          once(core, 'exercise-reverse-warrior');
+
+          final lowerBack = await filter('muscle-lower-back');
+          for (final id in [
+            'exercise-upward-facing-dog',
+            'exercise-cobra-pose',
+            'exercise-locust-pose',
+            'exercise-camel-pose',
+            'exercise-reclined-spinal-twist',
+          ]) {
+            once(lowerBack, id);
+          }
+          expect(
+            lowerBack,
+            isNot(contains('exercise-bridge-pose')),
+            reason: 'Lower back is only an assist on Bridge Pose',
+          );
+
+          final back = await filter('muscle-back');
+          once(back, 'exercise-locust-pose');
+
+          final adductors = await filter('muscle-adductors');
+          expect(adductors, contains('exercise-goddess-pose'));
+          expect(adductors, contains('exercise-happy-baby'));
+          for (final id in ['exercise-warrior-ii', 'exercise-triangle-pose']) {
+            expect(
+              adductors,
+              isNot(contains(id)),
+              reason: 'Adductors is only an assist on $id',
+            );
+          }
+
+          final glutes = await filter('muscle-glutes');
+          for (final id in [
+            'exercise-warrior-i',
+            'exercise-half-moon-pose',
+            'exercise-tree-pose',
+            'exercise-eagle-pose',
+            'exercise-bridge-pose',
+            'exercise-crescent-lunge',
+            'exercise-locust-pose',
+          ]) {
+            expect(glutes, contains(id), reason: id);
+          }
+          for (final id in ['exercise-warrior-ii', 'exercise-chair-pose']) {
+            expect(
+              glutes,
+              isNot(contains(id)),
+              reason: 'Glutes is only an assist on $id',
+            );
+          }
+
+          final quads = await filter('muscle-quads');
+          for (final id in [
+            'exercise-chair-pose',
+            'exercise-warrior-ii',
+            'exercise-low-lunge',
+            'exercise-goddess-pose',
+          ]) {
+            once(quads, id);
+          }
+          expect(
+            quads,
+            isNot(contains('exercise-mountain-pose')),
+            reason: 'Quads is only an assist on Mountain Pose',
+          );
+
+          final legsAndQuads = _ids(
+            await repo.searchExercises(
+              muscleGroupIds: ['muscle-legs', 'muscle-quads'],
+            ),
+          );
+          once(legsAndQuads, 'exercise-crescent-lunge');
+
+          for (final entry in MuscleTaxonomy.entries) {
+            final ids = await filter(entry.id);
+            expect(
+              ids,
+              isNot(contains('exercise-savasana')),
+              reason: '${entry.id} lists an untagged pose',
+            );
+            expect(
+              ids,
+              isNot(contains('ex-sun-salutation-flow')),
+              reason: '${entry.id} lists an untagged custom',
+            );
+          }
+        });
+
+        test('S-19303 the Yoga filter holds the 24 bundled rows', () async {
+          final yoga = _ids(
+            await repo.searchExercises(disciplineId: 'discipline-yoga'),
+          );
+          expect(
+            yoga.toSet(),
+            equals({
+              ...yogaIds,
+              'exercise-pigeon-pose',
+              'exercise-childs-pose',
+            }),
+            reason: 'the 22 poses and the two moves, plus no user row',
+          );
+
+          final stretching = _ids(
+            await repo.searchExercises(disciplineId: 'discipline-stretching'),
+          );
+          for (final id in [
+            'exercise-pigeon-pose',
+            'exercise-childs-pose',
+            ...yogaIds,
+          ]) {
+            expect(
+              stretching,
+              isNot(contains(id)),
+              reason: '$id is not a Stretching row',
+            );
+          }
+        });
+
+        test('S-19303 the poses rank level with the stretches', () async {
+          final isometric = await repo.getExercisesRankedForModality(
+            'isometric_stretching',
+          );
+          final ordered = [for (final exercise in isometric) exercise.id];
+          final byId = {
+            for (final exercise in isometric) exercise.id: exercise,
+          };
+
+          final pigeonScore = byId['exercise-pigeon-pose']!.relevanceScore;
+          for (final id in yogaIds) {
+            expect(byId[id], isNotNull, reason: '$id ranks in the picker');
+            expect(
+              byId[id]!.relevanceScore,
+              equals(pigeonScore),
+              reason: '$id ranks level with Pigeon Pose',
+            );
+          }
+
+          expect(
+            ordered.first,
+            equals('exercise-90-90-hip-hold'),
+            reason: 'the poses do not displace the first stretch',
+          );
+          expect(
+            ordered.indexOf('exercise-boat-pose'),
+            lessThan(ordered.indexOf('exercise-calf-raise-hold')),
+            reason: 'Boat Pose ties with the stretches and sorts first',
+          );
+
+          final lifting = await repo.getExercisesRankedForModality(
+            'resistance_lifting',
+          );
+          final liftingById = {
+            for (final exercise in lifting) exercise.id: exercise,
+          };
+          final pigeonLiftingScore =
+              liftingById['exercise-pigeon-pose']!.relevanceScore;
+          for (final id in yogaIds) {
+            expect(liftingById[id], isNotNull, reason: '$id ranks in the picker');
+            expect(
+              liftingById[id]!.relevanceScore,
+              equals(pigeonLiftingScore),
+              reason: '$id sits in the stretches band in a lifting workout',
+            );
+          }
+
+          // The non-Yoga rows keep the order they hold without the poses.
+          final withoutYoga = [
+            for (final id in ordered)
+              if (!yogaIds.contains(id)) id,
+          ];
+          for (final id in yogaIds) {
+            await repo.deleteExercise(id);
+            await repo.setExerciseCapabilities(id, const []);
+            await repo.setExerciseMuscleLinks(id, const []);
+          }
+          final bare = _ids(
+            await repo.getExercisesRankedForModality('isometric_stretching'),
+          );
+          expect(
+            bare,
+            equals(withoutYoga),
+            reason: 'the poses change no other row\'s place',
           );
         });
       });

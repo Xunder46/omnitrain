@@ -277,7 +277,7 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2],
+        [0, 1, 2, 3],
         reason: 'S-9201 the exercise batches follow the three frames',
       );
       for (final type in _referenceFrames) {
@@ -748,7 +748,7 @@ void main() {
       }
       expect(
         transport.batchIndices,
-        [0, 1, 2],
+        [0, 1, 2, 3],
         reason: 'S-9209 the version differs, so the whole list travels even '
             'though the bundle was skipped',
       );

@@ -613,14 +613,20 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2],
+        [0, 1, 2, 3],
         reason:
-            'S-3851 the seeded catalog fills three batches of at most 100, '
+            'S-3851 the seeded catalog fills four batches of at most 100, '
             'sent one at a time in index order',
       );
       expect(
         transport.types.skip(3),
-        ['exercises_down', 'exercises_down', 'exercises_down', 'bests_down'],
+        [
+          'exercises_down',
+          'exercises_down',
+          'exercises_down',
+          'exercises_down',
+          'bests_down',
+        ],
         reason:
             'S-3851 the exercise batches follow the routines, then exactly '
             'one bests frame closes the answer (87a, D-4)',
@@ -640,7 +646,7 @@ void main() {
 
         expect(
           transport.batchIndices,
-          [0, 1, 2],
+          [0, 1, 2, 3],
           reason:
               'S-3852 the version differs from the list the phone holds, so '
               'the whole list travels again',
@@ -764,14 +770,20 @@ void main() {
       );
       expect(
         transport.types.skip(3),
-        ['exercises_down', 'exercises_down', 'exercises_down', 'bests_down'],
+        [
+          'exercises_down',
+          'exercises_down',
+          'exercises_down',
+          'exercises_down',
+          'bests_down',
+        ],
         reason:
             'S-7101 only the exercise batches follow the food list, and the '
             'bests close the answer (87a, D-4)',
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2],
+        [0, 1, 2, 3],
         reason: 'S-7101 the food list does not displace the exercise batches',
       );
     });
@@ -893,7 +905,7 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2],
+        [0, 1, 2, 3],
         reason: 'S-7104 the exercise batches are untouched',
       );
     });
@@ -921,7 +933,7 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2],
+        [0, 1, 2, 3],
         reason:
             'S-7105 a refused foods frame is not a reason to hold back the '
             'exercise list',
@@ -1035,7 +1047,7 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2],
+        [0, 1, 2, 3],
         reason: 'S-8310 the exercise list still travels',
       );
       expect(
@@ -1178,7 +1190,7 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2],
+        [0, 1, 2, 3],
         reason: 'S-87a-7 a refused bests frame is not a reason to hold back '
             'the exercise list',
       );

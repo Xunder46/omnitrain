@@ -7,6 +7,8 @@ import 'package:omnitrain/data/models/muscle_taxonomy.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/mock/seed_data.dart';
 
+import 'helpers/yoga_catalog_rows.dart';
+
 /// Referential integrity of the bundled catalog.
 ///
 /// These guard the failure mode that let `muscle-arms` and `muscle-legs` sit
@@ -202,7 +204,12 @@ void main() {
     });
 
     test('S-3: the map holds one entry per tagged exercise', () {
-      expect(SeedData.exerciseMuscleLinks, hasLength(226));
+      expect(
+        SeedData.exerciseMuscleLinks,
+        hasLength(
+          226 + yogaCatalogRows.where((r) => r.main.isNotEmpty).length,
+        ),
+      );
     });
 
     test('S-3: only the twelve region-tagged exercises carry a region', () {
@@ -267,7 +274,12 @@ void main() {
           role: MuscleRole.primary,
         ),
       ]);
-      expect(SeedData.exerciseMuscleLinks, hasLength(226));
+      expect(
+        SeedData.exerciseMuscleLinks,
+        hasLength(
+          226 + yogaCatalogRows.where((r) => r.main.isNotEmpty).length,
+        ),
+      );
 
       // S-18904 (plan 115a): the three D-18902 re-tags, compared as lists.
       expect(SeedData.exerciseMuscleLinks['exercise-cable-hip-abduction'], [
@@ -345,6 +357,7 @@ void main() {
         'exercise-wall-sit',
         'exercise-sled-push',
         'exercise-sled-drag',
+        'exercise-downward-facing-dog',
       });
 
       // S-18904 (plan 115a): the exercise sets that the Phase 2A rows complete.

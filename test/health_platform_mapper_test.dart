@@ -106,6 +106,28 @@ void main() {
       }
     });
 
+    // Plan 119 D-19313: a phone workout whose exercises are all Yoga poses
+    // records as Yoga. health 13.3.1 carries YOGA in both platform sets, so
+    // the type is not crossed over.
+    test('yoga is part of the vocabulary (plan 119)', () {
+      expect(
+        HealthActivityKind.values,
+        contains(HealthActivityKind.yoga),
+        reason: 'an all-pose session needs its own kind, not flexibility',
+      );
+    });
+
+    test('yoga resolves to the YOGA type on both platforms (plan 119)', () {
+      expect(
+        pluginActivityTypeFor(HealthActivityKind.yoga, isIOS: true).name,
+        'YOGA',
+      );
+      expect(
+        pluginActivityTypeFor(HealthActivityKind.yoga, isIOS: false).name,
+        'YOGA',
+      );
+    });
+
     test('the generic fallback is the cross-platform OTHER type', () {
       expect(
         pluginActivityTypeFor(HealthActivityKind.other, isIOS: true).name,

@@ -67,6 +67,10 @@ HealthWorkoutActivityType pluginActivityTypeFor(
           : HealthWorkoutActivityType.OTHER;
     case HealthActivityKind.sport:
       return HealthWorkoutActivityType.OTHER;
+    case HealthActivityKind.yoga:
+      // HealthKit's YOGA and Health Connect's YOGA are both in the plugin's
+      // platform sets (health 13.3.1: _isOnIOS/_isOnAndroid carry it).
+      return HealthWorkoutActivityType.YOGA;
     case HealthActivityKind.conditioning:
       return HealthWorkoutActivityType.HIGH_INTENSITY_INTERVAL_TRAINING;
     case HealthActivityKind.other:

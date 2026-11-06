@@ -156,6 +156,13 @@ rewritten. Verified by `test/strength_catalog_v15_refresh_test.dart` (`S-19006 a
 v14 install refreshes to v15`, `S-19007 a renamed touched row and near-twins
 keep their own`). The Trap Bar and Sled equipment rows reach new installs only
 (`S-19008 a new install knows the equipment`).
+Catalog version `17` adds 22 yoga poses under the Yoga discipline and moves
+Pigeon Pose and Child's Pose into it from Stretching; the user's own, copied,
+edited and renamed rows are never rewritten. Verified by
+`test/yoga_catalog_refresh_test.dart` (`S-19304 a version-P install refreshes`,
+`S-19305 a renamed touched row and near-twins keep their own`); the equipment
+links reach new installs only (`S-19307`). A phone workout whose exercised rows
+are all Yoga records as Yoga (`S-19311`, `test/health_yoga_kind_test.dart`).
 
 `SeedEntryType` enumerates the tombstone key spaces the refresh understands:
 
