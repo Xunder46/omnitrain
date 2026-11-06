@@ -278,7 +278,8 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
             .buildSessionFromTemplate(ps.routineTemplateId!);
 
         await widget.workoutState.createNewSession(
-          modality: null,
+          // Routine session carries the routine's Focus as a snapshot.
+          modality: manifest.template.focusModality,
           title: manifest.template.name,
           intent: 'routine',
           routineTemplateId: manifest.template.id,

@@ -13,6 +13,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/constants/water_constants.dart';
 import '../../core/services/data_migration_service.dart';
 import '../../core/services/retired_template_rows_cleanup.dart';
+import '../../core/services/routine_session_modality_backfill.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../core/utils/entry_rows.dart';
@@ -396,6 +397,13 @@ class HiveWorkoutRepository implements WorkoutRepository {
         17,
         'retireOrphanTemplateRows',
         () => RetiredTemplateRowsCleanup(repo).run(),
+      ),
+      // ONE-OFF (plan 122) — retire after launch. See
+      // RoutineSessionModalityBackfill and docs/db_integration.md.
+      _MethodStep(
+        18,
+        'backfillRoutineSessionModality',
+        () => RoutineSessionModalityBackfill(repo).run(),
       ),
     ];
   }

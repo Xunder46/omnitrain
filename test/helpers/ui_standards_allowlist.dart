@@ -125,7 +125,6 @@ const Map<String, int> colorsWhiteRatchet = <String, int>{
 ///   lib/features/session/workout_session_global_timer.dart 1
 ///   lib/features/settings/settings_screen.dart             2
 ///   lib/features/home/maintenance_placeholder_screen.dart  1
-///   lib/features/home/home_screen.dart                     3
 ///   lib/features/profile/widgets/avatar_crop_sheet.dart    1
 ///   lib/features/nutrition/widgets/macro_donut_chart.dart  1
 const Map<String, int> colorsBlackRatchet = <String, int>{
@@ -134,7 +133,6 @@ const Map<String, int> colorsBlackRatchet = <String, int>{
   'lib/features/session/workout_session_global_timer.dart': 1,
   'lib/features/settings/settings_screen.dart': 2,
   'lib/features/home/maintenance_placeholder_screen.dart': 1,
-  'lib/features/home/home_screen.dart': 3,
   'lib/features/profile/widgets/avatar_crop_sheet.dart': 1,
   'lib/features/nutrition/widgets/macro_donut_chart.dart': 1,
 };

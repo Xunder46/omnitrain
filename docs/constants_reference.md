@@ -593,7 +593,7 @@ strings persist across app upgrades; keep them stable.
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `currentDataVersion` | `17` | Version a device reaches once the last consolidated migration step has run; the last step removes the retired seed template rows (`retireOrphanTemplateRows`, ids in `lib/core/constants/retired_template_seed.dart`) |
+| `currentDataVersion` | `18` | Version a device reaches once the last consolidated migration step has run; the last step is a one-off back-fill of past routine sessions' modality (`backfillRoutineSessionModality`, plan 122, retire after launch); step 17 removed the retired seed template rows (`retireOrphanTemplateRows`, ids in `lib/core/constants/retired_template_seed.dart`) |
 
 Replaces the former ~13 independent one-time `bool`-gated steps with a single
 ordered sequence tracked by the device's `data_version` integer. Steps are

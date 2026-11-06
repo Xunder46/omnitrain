@@ -33,7 +33,7 @@ library;
 /// The version a device is at after the LAST consolidated step has run.
 /// All existing installs that completed the legacy one-time steps land at
 /// this version via the back-compat shim in `DataMigrationService`.
-const int currentDataVersion = 17;
+const int currentDataVersion = 18;
 
 /// One consolidated data-migration step.
 ///

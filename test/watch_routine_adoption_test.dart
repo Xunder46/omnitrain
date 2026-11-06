@@ -260,12 +260,13 @@ Future<WorkoutRepository> _openMock({
   bool withTemplate = true,
   List<(int?, int, double)> benchSets = _benchSets,
   bool catalogBench = true,
+  String? focusModality,
 }) async {
   final repository = MockWorkoutRepository();
   await repository.initialize();
   await _seedCatalog(repository, withBench: catalogBench);
   if (withTemplate) {
-    await _seedTemplate(repository, benchSets: benchSets);
+    await _seedTemplate(repository, benchSets: benchSets, focusModality: focusModality);
   }
   return repository;
 }
@@ -277,6 +278,7 @@ Future<WorkoutRepository> _openHive({
   bool withTemplate = true,
   List<(int?, int, double)> benchSets = _benchSets,
   bool catalogBench = true,
+  String? focusModality,
 }) async {
   final dir = await Directory.systemTemp.createTemp('watch_adoption_');
   _hiveDir = dir;
@@ -286,7 +288,7 @@ Future<WorkoutRepository> _openHive({
   await repository.initialize();
   await _seedCatalog(repository, withBench: catalogBench);
   if (withTemplate) {
-    await _seedTemplate(repository, benchSets: benchSets);
+    await _seedTemplate(repository, benchSets: benchSets, focusModality: focusModality);
   }
   return repository;
 }
@@ -353,6 +355,7 @@ Future<void> _seedExercise(
 Future<void> _seedTemplate(
   WorkoutRepository repository, {
   List<(int?, int, double)> benchSets = _benchSets,
+  String? focusModality,
 }) async {
   await repository.createTemplate(
     WorkoutTemplate(
@@ -360,7 +363,7 @@ Future<void> _seedTemplate(
       ownerUserId: null,
       name: 'Push A',
       description: null,
-      focusModality: null,
+      focusModality: focusModality,
       primaryDisciplineId: null,
       note: null,
       isBuiltInDemo: false,
@@ -581,6 +584,7 @@ void _adoptionTests({
     bool withTemplate,
     List<(int?, int, double)> benchSets,
     bool catalogBench,
+    String? focusModality,
   })
   open,
   required Future<void> Function() close,
@@ -609,7 +613,7 @@ void _adoptionTests({
     expect(
       session.modality,
       isNull,
-      reason: 'A1 a routine session carries no modality',
+      reason: 'S-12204 a no-focus routine\'s session carries no modality',
     );
     expect(
       [for (final effort in await _efforts(repository)) effort.id],
@@ -617,6 +621,26 @@ void _adoptionTests({
       reason:
           'A3 the wrist\'s ladder stays the authority: slot ids and order are '
           'what the template matched, not what it would have built',
+    );
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-12204 a focused routine adopts with the routine\'s Focus', () async {
+    final repository = await open(focusModality: 'resistance_lifting');
+    final phone = await _phone(repository);
+
+    await phone.router.receive(_snapshot());
+
+    final session = await repository.getSession(_sessionId);
+    expect(
+      session!.modality,
+      'resistance_lifting',
+      reason: 'D-12201c the adopted routine session carries the Focus',
+    );
+    expect(
+      session.intent,
+      'routine',
+      reason: 'S-12204 the adopted session is still the routine it was',
     );
     expect(phone.failures, isEmpty);
   });

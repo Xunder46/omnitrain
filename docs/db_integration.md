@@ -262,7 +262,7 @@ and bump `currentDataVersion` in
 The next launch runs the new step exactly once per device. No new meta-box
 key is required for the step itself.
 
-The most recent step is `retireOrphanTemplateRows` (target version 17): it
+Step 17 is `retireOrphanTemplateRows` (target version 17): it
 runs once per device and removes the retired first-install template rows —
 4 segments, 6 efforts and 5 targets, ids in
 [`lib/core/constants/retired_template_seed.dart`](../lib/core/constants/retired_template_seed.dart) —
@@ -279,6 +279,8 @@ catalog refresh, and a deliberate exception to the refresh's never-delete
 rule: it is safe because it deletes only rows whose exact id is in the retired
 list and whose parent template is gone. Nothing a user can see changes.
 Verified by `test/retire_orphan_template_rows_test.dart`.
+
+**Step 18 `backfillRoutineSessionModality` — ONE-OFF (plan 122) — retire after launch.** Runs once per device: for every past session with `intent == 'routine'`, no modality, and a `routineTemplateId` whose routine still exists and has a Focus, it writes that Focus into the session's `modality` (only that field; `updated_at_ms` and every other field unchanged). In-progress sessions are included; planned (calendar) entries are never read or written; a routine that was deleted, or has no Focus, leaves its sessions untouched. The Focus used is the routine's value at update time. Rows are written one at a time and a failure leaves `data_version` at 17, so the next launch retries; stamped rows no longer match, so a rerun writes nothing. The logic is `RoutineSessionModalityBackfill` ([`lib/core/services/routine_session_modality_backfill.dart`](../lib/core/services/routine_session_modality_backfill.dart)), shared by both stores. Retirement (not yet done): replace the step's run body in both repositories with a no-op that keeps version 18 and the name, delete the service and `test/routine_session_modality_backfill_test.dart`, update this section; never renumber or remove a version. Verified by tests S-12207, S-12210..S-12216 in `test/routine_session_modality_backfill_test.dart`.
 
 The previous step is `muscleLinkRoles` (target version 16): it rewrites
 every stored exercise→muscle link row into the role-aware shape — a legacy
@@ -708,9 +710,10 @@ for the data model:
 
 Runtime **data** migrations (the ones that actually execute today) are a
 separate mechanism keyed on `currentDataVersion` — see
-[Constants Reference](constants_reference.md#data_versiondart). Their latest
-step is `retireOrphanTemplateRows` (version 17), which removes the retired
-first-install template rows; see the data-migration sequence above.
+[Constants Reference](constants_reference.md#data_versiondart). Their latest step is `backfillRoutineSessionModality` (version 18), a one-off
+back-fill of past routine sessions' modality, preceded by step 17
+`retireOrphanTemplateRows`, which removes the retired first-install template
+rows; see the data-migration sequence above.
 
 ---
 

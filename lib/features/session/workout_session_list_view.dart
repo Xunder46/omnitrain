@@ -998,9 +998,10 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
   /// Identity of the session for the list-view header.
   ///
-  /// Routine-started sessions carry the routine name in `title` (and a null
-  /// modality); every other entry point leaves `title` empty and carries the
-  /// modality, which renders as 'Free Training' when it too is null.
+  /// Routine sessions carry the routine name in `title` and the routine's
+  /// Focus as `modality` (null when the routine has no Focus); every other
+  /// entry point leaves `title` empty and carries the modality, which
+  /// renders as 'Free Training' when it too is null.
   String get _sessionDisplayName {
     final session = widget.workoutState.currentSession;
     final title = session?.title?.trim() ?? '';

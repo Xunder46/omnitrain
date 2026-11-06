@@ -71,21 +71,24 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
   }
 
   Future<void> _addExercise() async {
-    final modality = widget.workoutState.currentSession?.modality;
+    final session = widget.workoutState.currentSession;
+    final modality = session?.modality;
+    // Plan 122 D-12205/D-12213: routine sessions always ask the kind and list unranked.
+    final askKind = modality == null || session?.intent == 'routine';
 
     final selectedExercise = await OmniNavigator.push<Exercise>(
       context,
       (_) => ExercisePickerScreen(
         workoutState: widget.workoutState,
-        sessionModality: modality,
+        sessionModality: askKind ? null : modality,
       ),
     );
 
     if (selectedExercise != null) {
       String? effortKindOverride;
 
-      // If Free Training or Routine session (null modality), ask user to pick a modality
-      if (modality == null) {
+      // Free Training or any routine session (even one carrying the routine's Focus): ask the user to pick a modality
+      if (askKind) {
         final modalityResult = await showDialog<(bool, String?)>(
           context: context,
           builder: (context) => const ModalityPickerDialog(),

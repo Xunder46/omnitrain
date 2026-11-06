@@ -423,7 +423,7 @@ The "My Routines" tile is positioned in the bottom-right of the home screen grid
 | 3 | Free Training | **My Routines** |
 
 ### Active State Detection
-The My Routines tile glows active when the current session's `intent == 'routine'` (regardless of what modality any of the exercises may have been mapped to).
+The My Routines tile glows active when the current session's `intent == 'routine'` (regardless of what modality any of the exercises may have been mapped to). Because a routine session now also carries a modality, only the Routines tile is active for it; a modality tile is active only for a non-routine session whose modality matches (test S-12205).
 
 ### Tap Behavior
 - **No active routine session**: Navigate to `MyRoutinesScreen`
@@ -469,6 +469,8 @@ and `RoutineState.addSegment({String? name, String segmentType = 'main'})`.
 **Decision**: Sessions created from routines carry `intent: 'routine'` to distinguish them from ad-hoc sessions.
 
 **Rationale**: Enables the home screen to correctly highlight the My Routines tile when a routine session is active, rather than highlighting a modality tile.
+
+A routine session's modality is the routine's Focus Modality at the moment it starts (a snapshot: editing the Focus later, or deleting the routine, never changes it); a routine with no Focus starts with no modality, as before (tests S-12201, S-12202, S-12203, S-12204 in `test/routine_session_modality_test.dart` and `test/watch_routine_adoption_test.dart`). The modality is only a label, colour and Health type: each exercise keeps its own tracking kind, and adding an exercise during any routine session still asks "what kind of exercise is this?" and lists the exercises unranked, whatever the Focus (tests S-12206, S-12217, S-12218; the guard S-12219 pins that tile-started sessions with a modality still skip the question).
 
 ### 4. Focus Default with Per-Exercise Override
 **Decision**: Focused routines derive the initial tracking kind without another prompt; Mixed routines ask for a modality. "Change Tracking" can override either result per exercise.

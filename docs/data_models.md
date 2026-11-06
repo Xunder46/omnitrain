@@ -28,6 +28,7 @@ Active session persistence semantics:
 - A session is considered in-progress when `endedAtMs == null`.
 - Cold-start resume flow reads these in-progress rows and surfaces only the most recent session.
 - No model changes were required for resume behavior.
+- A routine session (`intent == 'routine'`) freezes the routine's Focus Modality into `modality` when it is created (or, on past sessions, once by data-migration step 18); a later Focus edit or routine delete never rewrites it. Stats read what was logged, not this label.
 
 Models with no behaviour beyond their fields: SessionSegment, SessionBlock.
 

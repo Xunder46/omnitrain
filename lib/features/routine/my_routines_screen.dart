@@ -194,7 +194,8 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
 
       // Step 2: Create new workout session with routine metadata
       await widget.workoutState!.createNewSession(
-        modality: null, // Mixed modality for routines
+        // Routine session carries the routine's Focus as a snapshot.
+        modality: manifest.template.focusModality,
         title: manifest.template.name,
         intent: 'routine',
         routineTemplateId: manifest.template.id,

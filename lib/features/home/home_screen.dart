@@ -480,7 +480,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   color: OmniTheme.colors.textDominant,
                                   shadows: [
                                     Shadow(
-                                      color: Colors.black.withOpacity(0.5),
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .shadow
+                                          .withOpacity(0.5),
                                       blurRadius: 8,
                                       offset: const Offset(0, 2),
                                     ),
@@ -517,8 +520,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                             : tile.modality == null
                                             ? session?.modality == null &&
                                                   !isRoutineSession
-                                            : session?.modality ==
-                                                  tile.modality);
+                                            : !isRoutineSession &&
+                                                  session?.modality ==
+                                                      tile.modality);
 
                                     return EnergyTile(
                                       title: tile.label,
@@ -811,7 +815,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.35),
+                    color: Theme.of(innerCtx).colorScheme.shadow
+                        .withOpacity(0.35),
                     blurRadius: 30,
                     offset: const Offset(0, -12),
                   ),
@@ -983,7 +988,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.35),
+                      color: Theme.of(context).colorScheme.shadow
+                          .withOpacity(0.35),
                       blurRadius: 30,
                       offset: const Offset(0, -12),
                     ),

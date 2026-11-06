@@ -10,6 +10,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/constants/water_constants.dart';
 import '../../core/services/data_migration_service.dart';
 import '../../core/services/retired_template_rows_cleanup.dart';
+import '../../core/services/routine_session_modality_backfill.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../core/utils/entry_rows.dart';
@@ -24,8 +25,8 @@ const _mockUuid = Uuid();
 /// no-ops and exist only so the [DataMigrationService] can advance the
 /// device's `data_version` through the sequence in the same order as
 /// the Hive-backed runtime. A step that rewrites already-stored rows
-/// (steps 15, 16 and 17) carries the same bodies the runtime runs, so the two
-/// stores converge to the same value.
+/// (steps 15, 16, 17 and 18) carries the same bodies the runtime runs, so
+/// the two stores converge to the same value.
 class _MockMigrationStep extends DataMigrationStep {
   _MockMigrationStep(this.targetVersion, this.name, [this._body]);
 
@@ -258,7 +259,7 @@ class MockWorkoutRepository implements WorkoutRepository {
   /// `data_version` sequence used by the Hive runtime. Each step's
   /// `targetVersion` matches the corresponding real migration step; the
   /// early ones are no-ops (the bulk load above already applied them)
-  /// and steps 15, 16 and 17 run the same bodies the Hive runtime does.
+  /// and steps 15, 16, 17 and 18 run the same bodies the Hive runtime does.
   List<DataMigrationStep> _dataMigrationSteps() {
     final repo = this;
     return [
@@ -289,6 +290,13 @@ class MockWorkoutRepository implements WorkoutRepository {
         17,
         'retireOrphanTemplateRows',
         () => RetiredTemplateRowsCleanup(repo).run(),
+      ),
+      // ONE-OFF (plan 122) — retire after launch. See
+      // RoutineSessionModalityBackfill and docs/db_integration.md.
+      _MockMigrationStep(
+        18,
+        'backfillRoutineSessionModality',
+        () => RoutineSessionModalityBackfill(repo).run(),
       ),
     ];
   }

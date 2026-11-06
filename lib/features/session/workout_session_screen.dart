@@ -1630,7 +1630,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     // Capture before the dialog so we can detect when this is the first exercise.
     final isFirstExercise = _exercises.isEmpty;
     final sessionModality = widget.workoutState.currentSession?.modality;
-    final modality = sessionModality ?? widget.preferredModality;
+    // Plan 122 D-12205/D-12213: a routine session carries the routine's Focus
+    // only as a label; adding an exercise still asks the kind and lists
+    // unranked, exactly as for a null-modality session.
+    final isRoutineSession =
+        widget.workoutState.currentSession?.intent == 'routine';
+    final askKind = sessionModality == null || isRoutineSession;
+    final modality = isRoutineSession
+        ? null
+        : (sessionModality ?? widget.preferredModality);
 
     final selectedExercise = await OmniNavigator.push<Exercise>(
       context,
@@ -1645,8 +1653,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
       // If the session has its own modality, use it as-is (modality config already set in state)
       // If the session has null modality:
-      if (sessionModality == null) {
-        if (widget.preferredModality != null) {
+      if (askKind) {
+        if (!isRoutineSession && widget.preferredModality != null) {
           // Rolling session with a preferred modality hint from the tile
           // Derive effort kind from that modality without showing picker
           effortKindOverride =

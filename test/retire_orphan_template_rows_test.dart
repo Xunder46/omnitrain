@@ -456,14 +456,18 @@ void main() {
         }
       });
 
-      test('S-19207 the version sequence ends at the cleanup step', () async {
-        expect(currentDataVersion, 17);
+      test('S-19207 the version sequence carries the cleanup step at 17',
+          () async {
+        expect(currentDataVersion, 18);
         final steps = _steps(repo);
-        expect(steps.last.targetVersion, 17);
-        expect(steps.last.name, _stepName);
+        expect(
+          steps.firstWhere((s) => s.name == _stepName).targetVersion,
+          17,
+        );
       });
 
-      test('S-19207 an install at version 16 lands at 17', () async {
+      test('S-19207 an install at version 16 lands at currentDataVersion',
+          () async {
         await repo.setDataVersion(16);
         await _stageOrphans(repo);
 
@@ -473,7 +477,7 @@ void main() {
           steps: _steps(repo),
         ).run();
 
-        expect(await repo.getDataVersion(), 17);
+        expect(await repo.getDataVersion(), currentDataVersion);
         expect(await _retiredRowCount(repo), 0);
       });
     });

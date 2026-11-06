@@ -24,7 +24,7 @@ Each day renders an indicator per session: filled for completed, outlined for pl
 modality through `ModalityColorUtils`. Indicator count is capped, with the remainder shown as an
 overflow count, so a heavy day never overruns its cell.
 
-A planned routine is coloured by the routine's **current** Focus Modality, resolved on each month load (a routine plan stores no modality itself; changing the routine's Focus changes the planned day's colour the next time the calendar loads). A routine with no Focus, or one that no longer exists, stays Free Training coloured. A finished session is coloured by its own recorded modality, not by this rule. In the day list the card's second line reads `<Focus> · Planned` for a routine with a Focus and just `Planned` otherwise (tests S-12401, S-12405, S-12411 in `test/planned_routine_calendar_modality_test.dart`).
+A planned routine is coloured by the routine's **current** Focus Modality, resolved on each month load (a routine plan stores no modality itself; changing the routine's Focus changes the planned day's colour the next time the calendar loads). A routine with no Focus, or one that no longer exists, stays Free Training coloured. A finished session is coloured by its own recorded modality, not by this rule; a routine session records the routine's Focus when it starts, and plan 122's one-time back-fill gave past routine sessions the routine's Focus as it was on that update (a routine with no Focus, or one since deleted, stays Free Training) (tests S-12203, S-12207). In the day list the card's second line reads `<Focus> · Planned` for a routine with a Focus and just `Planned` otherwise (tests S-12401, S-12405, S-12411 in `test/planned_routine_calendar_modality_test.dart`).
 
 ### Monthly Stats Strip
 

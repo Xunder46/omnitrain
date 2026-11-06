@@ -970,6 +970,10 @@ class WatchSessionAdoptionBridge {
     int entryIndex,
   ) {
     TemplateTarget? winner;
+        // Plan 122 D-12201(c): like a phone-started routine, the adopted
+        // session carries the routine's Focus as a snapshot (null when no
+        // routine matched or the routine has no Focus).
+        modality: routine?.template.focusModality,
     for (final target in targets) {
       if (target.metricId != metricId) continue;
       if ((target.setIndex ?? 0) != entryIndex) continue;
