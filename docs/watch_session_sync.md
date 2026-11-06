@@ -486,6 +486,14 @@ in place, resending the structure as a snapshot and no new started lifecycle
 - **No state reader knows the storage engine.** Everything here talks to
   `WorkoutRepository` through `WorkoutState`; nothing under `lib/state`,
   `lib/features`, `lib/widgets` or `lib/core` imports a concrete repository.
+- **A phone snapshot never names a timer the phone no longer runs.** The
+  `timers` a snapshot carries come from `WatchTimerPush.snapshotTimers()`,
+  which reads the phone's state when the snapshot is composed, so an interval
+  the phone has logged cannot come back on the wrist through the durable path
+  while the wrist is out of reach or after a watch app reinstall. A wrist clock
+  the phone has already logged is cleared by a live `timer_state` clear.
+  Verified by `test/watch_logged_hold_stays_stopped_test.dart`
+  (`S-12101`, `S-12103`, `S-12107`).
 
 ## What does not sync
 

@@ -261,12 +261,12 @@ Future<WatchSyncGraph?> createWatchSync({
     snapshot: watchSessionPlaceholder,
     // Every ladder this phone asserts — a request answered or a wrist snapshot
     // re-asserted — is composed from the phone's own session, never from the
-    // copy this mirror converged with the wrist (D-11). It also names the work
-    // timers the phone started: a snapshot is authoritative for the wrist's
-    // timer state, so one that named none would stop them on the wrist.
+    // copy this mirror converged with the wrist (D-11). A snapshot is
+    // authoritative for the wrist's timers: it names the work timers and the
+    // rest the phone still runs (and delivered), never one it no longer runs.
     projection: (incoming) async {
       final projected = await adoption.projectSession(incoming);
-      final timers = timerPushForSnapshots?.deliveredTimers();
+      final timers = timerPushForSnapshots?.snapshotTimers();
       if (projected != null && timers != null && timers.isNotEmpty) {
         projected['timers'] = timers;
       }

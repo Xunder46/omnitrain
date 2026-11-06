@@ -244,12 +244,26 @@ and the phone's open rest — read through `WorkoutState.inProgressRest()`
 efforts) — and sends only what the wrist does not already hold, as one
 `timer_state` frame through `LiveSessionMirrorState.sendTimers` — the wrist's
 earlier start wins for the work kinds, a finished interval is cleared once, and
-a replacement clears first. The rest travels as a `rest` timer with no slot and
+a replacement clears first. A snapshot the phone composes names only the
+delivered timers the phone still runs: `WatchTimerPush.snapshotTimers()` reads
+the phone's state at the moment the snapshot is composed and keeps a delivered
+timer only while the phone still runs the same slot at the same start (a rest
+within the rest tolerance) and the wrist has not ended it, so a logged interval
+cannot come back on the wrist through the durable snapshot the OS carries while
+the wrist is out of reach (121a D-1). A wrist clock for an interval the phone
+has already logged — one the wrist started, or any after a phone restart
+emptied the in-memory ledger — is cleared on the next pass that sees it in the
+mirror: the copy must name a slot whose effort kind maps to that timer, match a
+finished interval whose start is at or within `_loggedStartToleranceMs` after the copy's start,
+and match no active or paused one; the cleared copy is remembered so no second
+clear is sent (121a D-4, D-5). The rest travels as a `rest` timer with no slot
+and
 no planned length (a rest is a count-up and belongs to no slot), running or
 paused with its pause bookkeeping, and a rest the phone no longer holds open
-goes out as `{rest: null}`; a wrist rest started within 2000 ms of the phone's
-is the same rest and is not echoed back, while one outside that tolerance is a
-different rest and is sent. Built in
+goes out as `{rest: null}`; a wrist rest started within the push's rest
+tolerance (`_restStartToleranceMs`) of the phone's is the same rest and is not
+echoed back, while one outside that tolerance is a different rest and is sent.
+Built in
 `createWatchSync` and returned as `WatchSyncGraph.timerPush`. Its own trigger
 is a change of the bound `WorkoutState`; the inbound-frame handler that flushes
 the auto push flushes the timer push too, under the same reset gate (54 D-1,
@@ -284,7 +298,11 @@ snapshot answer`, `S-9926 the phone corrects the wrist's later clock`,
 coming back into reach fetches what it missed`, `S-9930 a refused clear and a
 refused start travel in order`, `S-9931 a start carried after a refusal is no
 longer owed`, `S-9932 a start the phone dropped is not owed to its successor`
-and `S-9933 the watch going out of reach runs no pass`).
+and `S-9933 the watch going out of reach runs no pass`). Plan 121a is verified
+by `test/watch_logged_hold_stays_stopped_test.dart` (snapshot timers `S-12101`
+to `S-12105b`, `S-12109`, `S-12112`, `S-12114`, `S-12115`; the reinstalled
+watch `S-12103`; the clears `S-12106` to `S-12108`, `S-12113`; the
+probes `S-12110`, `S-12111`).
 
 `WatchTimerAdoption` (`lib/state/watch/watch_timer_adoption.dart`) is the
 receiving sibling: built in `createWatchSync` as `WatchSyncGraph.timerAdoption`,

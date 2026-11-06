@@ -24,6 +24,10 @@
 ///    `{kind: null}` and then the new timer. A frame the radio did not carry
 ///    leaves the ledger untouched and stops the pass.
 ///
+/// 3. **A snapshot names only the delivered timers the phone still runs (plan
+///    121a D-1); a wrist clock for an interval the phone has already logged is
+///    cleared whether or not the phone remembers delivering it (D-4, D-5).**
+///
 /// A rest travels on its own rule (plan 50a D-3). It belongs to no slot, and
 /// the phone opens it at the instant the set was logged while the wrist starts
 /// its own copy a few milliseconds later: two rests whose starts are within
@@ -39,6 +43,7 @@ import 'dart:convert';
 
 import '../../core/platform/watch_delivery.dart';
 import '../../core/sync_protocol/wire_timestamps.dart';
+import '../../data/models/models.dart';
 import '../workout/workout_state.dart';
 import 'live_session_mirror_state.dart';
 
@@ -100,7 +105,8 @@ class WatchTimerPush {
   /// be cleared.
   final Map<String, _MirrorTimer> _adopted = {};
 
-  /// Mirror copies this push has cleared on the wrist. The mirror holds only
+  /// Mirror copies this push has cleared on the wrist, and the mirror copies
+  /// the reconcile cleared (plan 121a D-5). The mirror holds only
   /// what the WATCH reports and the watch sends nothing back for a clear, so
   /// without this a stale copy would keep blocking every later, newer phone
   /// timer of its kind.
@@ -129,14 +135,42 @@ class WatchTimerPush {
   /// The timers this push has delivered to the wrist and still holds on it,
   /// per wire kind, in the shape a snapshot's `timers` takes.
   ///
-  /// A snapshot speaks for the wrist's timer state as a whole: it stops every
-  /// timer the phone started that the snapshot does not name. A snapshot the
-  /// phone composes therefore carries these, or the first snapshot after the
-  /// phone starts an interval — or a rest — would reset the wrist's clock to
-  /// zero.
-  Map<String, Object?> deliveredTimers() => {
-    for (final entry in _delivered.entries) entry.key: {...entry.value},
-  };
+  /// A snapshot names only the delivered timers the phone still runs, read
+  /// from the phone's state when the snapshot is composed, so a logged
+  /// interval cannot come back on the wrist through the durable snapshot
+  /// (plan 121a D-1).
+  Map<String, Object?> snapshotTimers() {
+    final state = _workoutState;
+    final session = state?.currentSession;
+    if (state == null ||
+        session == null ||
+        !state.hasActiveSession ||
+        _sessionId != session.id) {
+      return const <String, Object?>{};
+    }
+    final wanted = _composeWanted(state);
+    final named = <String, Object?>{};
+    for (final entry in _delivered.entries) {
+      final kind = entry.key;
+      final delivered = entry.value;
+      final current = wanted[kind];
+      if (current == null) continue; // (ii)
+      if (kind != 'rest' &&
+          current['sessionExerciseId'] != delivered['sessionExerciseId']) {
+        continue; // (iii)
+      }
+      final sameStart = kind == 'rest'
+          ? _restStartWithinTolerance(
+              current['startedAt'],
+              delivered['startedAt'],
+            )
+          : _sameInstant(current['startedAt'], delivered['startedAt']);
+      if (!sameStart) continue; // (iv)
+      if (_wristEnded(session.id, kind, delivered)) continue; // (v)
+      named[kind] = {...delivered};
+    }
+    return named;
+  }
 
   /// Binds the state whose changes are pushed. Binding the same state twice
   /// leaves one listener; [dispose] removes it.
@@ -252,49 +286,7 @@ class WatchTimerPush {
         _sessionId = session.id;
       }
 
-      final wanted = <String, Map<String, Object?>>{};
-      for (final timer in state.inProgressWorkTimers()) {
-        wanted[timer.wireKind] = <String, Object?>{
-          'kind': timer.wireKind,
-          'state': timer.paused ? 'paused' : 'running',
-          'startedAt': utcIso(
-            DateTime.fromMillisecondsSinceEpoch(timer.startedAtMs, isUtc: true),
-          ),
-          'accumulatedPauseMs': timer.accumulatedPauseMs,
-          if (timer.paused)
-            'pausedAt': utcIso(
-              DateTime.fromMillisecondsSinceEpoch(
-                timer.pausedAtMs!,
-                isUtc: true,
-              ),
-            ),
-          if (timer.plannedDurationMs != null)
-            'plannedDurationMs': timer.plannedDurationMs,
-          'sessionExerciseId': timer.effortId,
-        };
-      }
-
-      // Plan 50a D-2: a rest belongs to no slot and has no planned length, so
-      // it is composed without either key. The validator refuses a rest that
-      // carries a plan.
-      final rest = state.inProgressRest();
-      if (rest != null) {
-        wanted['rest'] = <String, Object?>{
-          'kind': 'rest',
-          'state': rest.paused ? 'paused' : 'running',
-          'startedAt': utcIso(
-            DateTime.fromMillisecondsSinceEpoch(rest.startedAtMs, isUtc: true),
-          ),
-          'accumulatedPauseMs': rest.accumulatedPauseMs,
-          if (rest.paused)
-            'pausedAt': utcIso(
-              DateTime.fromMillisecondsSinceEpoch(
-                rest.pausedAtMs!,
-                isUtc: true,
-              ),
-            ),
-        };
-      }
+      final wanted = _composeWanted(state);
 
       // Plan 98 D-2: a start the phone no longer wants is not owed any more.
       _owed.removeWhere((kind, _) => !wanted.containsKey(kind));
@@ -356,6 +348,16 @@ class WatchTimerPush {
       for (final kind in retired) {
         clears[kind] = null;
       }
+      // Plan 121a D-4: a wrist clock for an interval the phone has already logged
+      // is over, whoever started it and whatever the phone remembers.
+      final reconciled = <String, _MirrorTimer>{};
+      for (final kind in _workKinds) {
+        if (wanted.containsKey(kind) || clears.containsKey(kind)) continue;
+        final held = _loggedWristTimer(state, session.id, kind);
+        if (held == null) continue;
+        clears[kind] = null;
+        reconciled[kind] = held;
+      }
       // 54 D-1: the wrist's own frame triggers the debt, not the phone's news.
       // The debt includes a start the radio refused (plan 98 D-2): the wrist
       // never held it, so sending it cannot restart a timer the wrist ended.
@@ -371,7 +373,12 @@ class WatchTimerPush {
         for (final kind in clears.keys) {
           _delivered.remove(kind);
           final cleared = _adopted.remove(kind);
-          if (cleared != null) _stale[kind] = cleared;
+          if (cleared != null) {
+            _stale[kind] = cleared;
+          } else {
+            final logged = reconciled[kind];
+            if (logged != null) _stale[kind] = logged;
+          }
         }
       }
       if (next.isEmpty) return;
@@ -386,6 +393,56 @@ class WatchTimerPush {
       // reported rather than swallowed.
       _report(e, s);
     }
+  }
+
+  /// Composes the in-progress work timers of the held session — and its open
+  /// rest, if it has one — as one map by wire kind. Shared by [_pushOnce] and
+  /// [snapshotTimers], so the two never disagree (plan 121a D-1).
+  Map<String, Map<String, Object?>> _composeWanted(WorkoutState state) {
+    final wanted = <String, Map<String, Object?>>{};
+    for (final timer in state.inProgressWorkTimers()) {
+      wanted[timer.wireKind] = <String, Object?>{
+        'kind': timer.wireKind,
+        'state': timer.paused ? 'paused' : 'running',
+        'startedAt': utcIso(
+          DateTime.fromMillisecondsSinceEpoch(timer.startedAtMs, isUtc: true),
+        ),
+        'accumulatedPauseMs': timer.accumulatedPauseMs,
+        if (timer.paused)
+          'pausedAt': utcIso(
+            DateTime.fromMillisecondsSinceEpoch(
+              timer.pausedAtMs!,
+              isUtc: true,
+            ),
+          ),
+        if (timer.plannedDurationMs != null)
+          'plannedDurationMs': timer.plannedDurationMs,
+        'sessionExerciseId': timer.effortId,
+      };
+    }
+
+    // Plan 50a D-2: a rest belongs to no slot and has no planned length, so
+    // it is composed without either key. The validator refuses a rest that
+    // carries a plan.
+    final rest = state.inProgressRest();
+    if (rest != null) {
+      wanted['rest'] = <String, Object?>{
+        'kind': 'rest',
+        'state': rest.paused ? 'paused' : 'running',
+        'startedAt': utcIso(
+          DateTime.fromMillisecondsSinceEpoch(rest.startedAtMs, isUtc: true),
+        ),
+        'accumulatedPauseMs': rest.accumulatedPauseMs,
+        if (rest.paused)
+          'pausedAt': utcIso(
+            DateTime.fromMillisecondsSinceEpoch(
+              rest.pausedAtMs!,
+              isUtc: true,
+            ),
+          ),
+      };
+    }
+    return wanted;
   }
 
   /// Records [next] as the starts the radio refused (plan 98 D-2) — except a
@@ -471,6 +528,91 @@ class WatchTimerPush {
     return theirs != null && ours != null && theirs.isBefore(ours)
         ? _WristHolds.earlier
         : _WristHolds.no;
+  }
+
+  /// The work kinds the reconcile covers (a rest is never reconciled).
+  static const List<String> _workKinds = ['elapsed', 'hold', 'round'];
+
+  /// How far apart the wrist's start and the phone's logged start may be and
+  /// still name one interval; the same tolerance as TimerManager's
+  /// `_sameStartToleranceMs` (plan 121a D-4).
+  static const int _loggedStartToleranceMs = 1000;
+
+  /// The mirror's running [kind] copy when the phone has already logged that very
+  /// interval (plan 121a D-4), else null. Needs all of: the mirror is for
+  /// [sessionId]; the copy is a Map not `stopped` that names a non-empty slot;
+  /// it is not the copy this push already cleared (`_stale`); the phone's effort
+  /// of that slot has the effort kind that maps to [kind] (`timed`→`elapsed`,
+  /// `drill`→`hold`, `round`→`round`); at least one of its intervals is finished
+  /// with a start within [_loggedStartToleranceMs] of the copy's start, and none
+  /// is active or paused with such a start.
+  _MirrorTimer? _loggedWristTimer(
+    WorkoutState state,
+    String sessionId,
+    String kind,
+  ) {
+    if (_mirror.sessionId != sessionId) return null;
+    final timers = _mirror.state['timers'];
+    if (timers is! Map) return null;
+    final held = timers[kind];
+    if (held is! Map || held['state'] == 'stopped') return null;
+    final slot = held['sessionExerciseId'];
+    if (slot is! String || slot.isEmpty) return null;
+    final stale = _stale[kind];
+    if (stale != null &&
+        stale.slotId == slot &&
+        _sameInstant(stale.startedAt, held['startedAt'])) {
+      return null;
+    }
+    final started = _instant(held['startedAt']);
+    if (started == null) return null;
+    final startMs = started.millisecondsSinceEpoch;
+
+    SegmentEffort? effort;
+    for (final segment in state.segments) {
+      for (final candidate in state.getEffortsForSegment(segment.id)) {
+        if (candidate.id == slot) effort = candidate;
+      }
+    }
+    if (effort == null) return null;
+    final mapsTo = switch (effort.effortKind) {
+      'timed' => 'elapsed',
+      'drill' => 'hold',
+      'round' => 'round',
+      _ => null,
+    };
+    if (mapsTo != kind) return null;
+
+    var finished = false;
+    var inProgress = false;
+    // One-sided: the phone's interval started at or after the wrist's copy. A
+    // copy that started LATER than the logged interval is a newer wrist timer
+    // (S-6329), never the one the phone logged.
+    bool near(int ms) {
+      final gap = ms - startMs;
+      return gap >= 0 && gap <= _loggedStartToleranceMs;
+    }
+    if (effort.effortKind == 'round') {
+      for (final round in state.getRoundsForEffort(slot)) {
+        if (!near(round.startedAtMs)) continue;
+        if (round.state == RoundState.finished) finished = true;
+        if (round.state == RoundState.active ||
+            round.state == RoundState.paused) {
+          inProgress = true;
+        }
+      }
+    } else {
+      for (final timed in state.getTimedInstancesForEffort(slot)) {
+        if (!near(timed.startedAtMs)) continue;
+        if (timed.state == TimedState.finished) finished = true;
+        if (timed.state == TimedState.active ||
+            timed.state == TimedState.paused) {
+          inProgress = true;
+        }
+      }
+    }
+    if (!finished || inProgress) return null;
+    return (slotId: slot, startedAt: held['startedAt']);
   }
 
   /// True while the mirror holds exactly [timer] for [kind]: the same slot and
