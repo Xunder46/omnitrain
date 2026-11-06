@@ -5,11 +5,13 @@ import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/services/health_sync_service.dart';
+import '../../core/services/screen_awake_port.dart';
 import '../../core/utils/entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import 'exercise_library.dart';
 import 'session_core.dart';
+import 'session_screen_awake.dart';
 import 'timer_manager.dart';
 import '../watch/watch_session_inbox.dart';
 
@@ -20,6 +22,7 @@ class WorkoutState extends ChangeNotifier {
   late final SessionCore _sessionCore;
   late final TimerManager _timerManager;
   late final ExerciseLibrary _exerciseLibrary;
+  late final SessionScreenAwake _screenAwake;
 
   String? _error;
 
@@ -35,12 +38,15 @@ class WorkoutState extends ChangeNotifier {
   /// [wristRunsSession] answers whether the wrist is running a session, and so
   /// saves its own Fitness workout for it (plan 89c1 D-2). Null without a
   /// watch: the phone's end then writes as it always has.
+  ///
+  /// [screenAwake] is plan 120: null means no-op.
   WorkoutState(
     this._repository, {
     HealthSyncService? healthSync,
     WatchLateEntryRecovery? watchLateEntryRecovery,
     DateTime Function()? clock,
     bool Function(String sessionId)? wristRunsSession,
+    ScreenAwakePort? screenAwake,
   }) {
     _timerManager = TimerManager(
       _repository,
@@ -68,9 +74,15 @@ class WorkoutState extends ChangeNotifier {
       wristRunsSession: wristRunsSession,
     );
     _timerManager.bindObservations(_sessionCore.observationsMap);
+    _screenAwake = SessionScreenAwake(
+      port: screenAwake ?? const ScreenAwakePort.noop(),
+      source: this,
+      hasWorkTimer: () => inProgressWorkTimers().isNotEmpty,
+    );
   }
 
   WorkoutRepository get repository => _repository;
+  SessionScreenAwake get screenAwake => _screenAwake;
   String? get error => _error;
   TrainingSession? get currentSession => _sessionCore.currentSession;
   ModalityConfig? get modalityConfig => _sessionCore.modalityConfig;

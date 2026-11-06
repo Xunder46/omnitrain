@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'app.dart';
 import 'app/startup_root.dart';
 import 'core/models/app_version_info.dart';
+import 'core/platform/screen_awake_channel.dart';
 import 'core/services/bundled_catalog_source.dart';
 import 'core/services/catalog_refresh_service.dart';
 import 'core/services/exercise_library_service.dart';
@@ -375,6 +376,9 @@ Future<Widget> runStartup({
     settingsState: settingsState,
     // A wrist session that lands in history shows in the calendar's month.
     onHistoryChanged: calendarState.refresh,
+    // The plan a wrist started is marked started on the calendar (plan 129,
+    // D-8973).
+    onPlanStarted: calendarState.completePlannedSession,
     // A wrist rating becomes the Fitness workout's effort (plan 90 D-4).
     healthSync: healthSyncService,
     onFailure: (error, stackTrace) {
@@ -393,6 +397,8 @@ Future<Widget> runStartup({
     // Plan 89c1 D-2: a session the wrist is running gets its Fitness workout
     // from the watch, so the phone's own end does not write a second one.
     wristRunsSession: watchSync?.mirror.wristRunsSession,
+    // Plan 120: the phone screen stays awake while a live session runs.
+    screenAwake: createScreenAwakePort(),
   );
 
   // The session the wrist is running becomes this phone's own (D-2): the graph

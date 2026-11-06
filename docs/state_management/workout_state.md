@@ -38,6 +38,11 @@ It also takes an optional `wristRunsSession` predicate, `main.dart` passing the
 watch graph's `LiveSessionMirrorState.wristRunsSession`: `endSession` reads it to
 leave the Health write to the watch (plan 89c1 D-2). Null without a watch.
 
+It also takes an optional `screenAwake` (`ScreenAwakePort`), the keep-awake port
+plan 120 wires from `createScreenAwakePort()`; null falls back to
+`ScreenAwakePort.noop()`. The facade builds the `SessionScreenAwake` on it and
+exposes it as the `screenAwake` getter.
+
 Each sub-holder receives `notify: () => notifyListeners()` so all `notifyListeners()` calls still fire once from the single `ChangeNotifier` that consumers subscribe to. No consumer screen or test changes are required.
 
 **`notify` callback pattern**: Sub-holders are plain Dart objects (not ChangeNotifiers). They call the injected `notify` callback in place of `notifyListeners()`. This preserves the single-listener model and avoids the double-dispatch overhead of chaining multiple ChangeNotifiers.
@@ -53,6 +58,41 @@ Each sub-holder receives `notify: () => notifyListeners()` so all `notifyListene
 | `countSetsForSession(String sessionId)` | Read-only aggregate count of `EffortObservation` rows across all session segments/efforts for resume dialog display |
 
 These methods keep feature screens on the state boundary and avoid direct repository access from `features/`.
+
+---
+
+---
+
+### `SessionScreenAwake`
+
+**File**: `lib/state/workout/session_screen_awake.dart`
+**Depends on**: `ScreenAwakePort`, the owning `WorkoutState` listenable,
+`WidgetsBindingObserver`
+
+A plain `WidgetsBindingObserver` (not a `ChangeNotifier` — it never notifies
+listeners) that holds the keep-awake port while a work timer runs. `WorkoutState`
+constructs it with the injected port, its own listenable as the change source and
+`inProgressWorkTimers().isNotEmpty` as the work-timer predicate. Presence is
+counted: `attach`/`detach` maintain `attachedCount`, the first `attach`
+registers the lifecycle observer and the last `detach` removes it.
+
+Rationale — the phone must not auto-lock while a work timer (timed, hold, round)
+is running or paused on the live session screen. The hold is on exactly when at
+least one live (non-edit) session screen is attached, the app is foreground
+(resumed, inactive, or no lifecycle event yet; paused, hidden and detached are off) and a work timer is
+in progress. Rest, set efforts and the session elapsed clock never count.
+`WorkoutSessionScreen` attaches in `initState` when `!editMode` and detaches
+first in `dispose`, so routes pushed above the screen keep it attached. The port
+is called only when the computed value changes, plus one `false` at construction
+to clear a stale hold; port errors are logged and swallowed.
+
+Verified by `test/session_screen_awake_test.dart` (group `SessionScreenAwake
+(Mock)`: `S-19501 a running timed interval keeps awake`, `S-19507 screen
+disposed while running`, `S-19510 backgrounded and back`, `S-19513 rest and sets
+never count`, `S-19516 dedupe on a hot path, startup reset once`, `S-19517 a
+port that throws does not break state`) and
+`test/session_screen_awake_widget_test.dart` (`S-19520: a live session screen
+attaches on push and releases on pop, and the running timer survives the pop`).
 
 ---
 

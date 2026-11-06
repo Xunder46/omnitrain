@@ -130,6 +130,28 @@ Invariants:
 - Toggle state lives in the normal preference store (`HealthPrefs` keys), so a
   reinstall resets both toggles to off.
 
+### `ScreenAwakePort`
+
+**Files**: `lib/core/services/screen_awake_port.dart`,
+`lib/core/platform/screen_awake_channel.dart`
+
+The narrow port that keeps the phone screen from auto-locking (plan 120):
+`setKeepAwake(bool)` turns the hold on or off, and `ScreenAwakePort.noop()` is
+the do-nothing implementation. `createScreenAwakePort()` returns the
+`MethodChannelScreenAwakePort` on iOS and Android — method channel
+`omnitrain/screen_awake`, native side inline in `ios/Runner/AppDelegate.swift`
+(`isIdleTimerDisabled`) and in `android/.../MainActivity.kt`
+(`FLAG_KEEP_SCREEN_ON`) — and the no-op everywhere else, including web. Only
+`lib/main.dart` imports the channel file. Channel failures are logged and
+swallowed, never thrown to callers.
+
+Verified by `test/screen_awake_channel_test.dart` (group
+`MethodChannelScreenAwakePort (Mock)`: `S-19515a no handler:
+MissingPluginException is swallowed`; group `source scans`: `S-19518 the channel
+file is imported by lib/main.dart alone`, `S-19519 the iOS piece is inline in
+AppDelegate after the registrant`, `S-19519 the Android piece is in
+MainActivity.kt`).
+
 ---
 
 ## Utility Classes

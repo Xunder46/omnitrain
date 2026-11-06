@@ -15,6 +15,19 @@ import UserNotifications
     if let registrar = registrar(forPlugin: "HealthEffortChannel") {
       healthEffortChannel = HealthEffortChannel.register(with: registrar.messenger())
     }
+    // Plan 120: keep the screen awake while a work timer runs on the session screen.
+    if let registrar = registrar(forPlugin: "ScreenAwakeChannel") {
+      let screenAwake = FlutterMethodChannel(
+        name: "omnitrain/screen_awake", binaryMessenger: registrar.messenger())
+      screenAwake.setMethodCallHandler { call, result in
+        if call.method == "setKeepAwake", let on = call.arguments as? Bool {
+          UIApplication.shared.isIdleTimerDisabled = on
+          result(nil)
+        } else {
+          result(FlutterMethodNotImplemented)
+        }
+      }
+    }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

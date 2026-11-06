@@ -77,8 +77,10 @@ State classes follow strict rules:
 | `RestNotificationService` | [Services & Utilities](state_management/services_and_utils.md) |
 | `RoutineSessionService` | [Services & Utilities](state_management/services_and_utils.md) |
 | `RoutineState` | [App State](state_management/app_state.md) |
+| `ScreenAwakePort` | [Services & Utilities](state_management/services_and_utils.md) |
 | `SessionBlockManager` | [Workout Session State](state_management/workout_state.md) |
 | `SessionCore` | [Workout Session State](state_management/workout_state.md) |
+| `SessionScreenAwake` | [Workout Session State](state_management/workout_state.md) |
 | `SyncSessionReconciler` | [The Watch Surface](state_management/watch_surface.md) |
 | `WatchActivityTypes` | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) |
 | `WatchCatalogExercise` | [The Watch's Reference Data](state_management/watch_reference_data.md) |

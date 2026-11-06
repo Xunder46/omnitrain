@@ -239,12 +239,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // The currently-visible coach mark overlay entry; at most one at a time.
   OverlayEntry? _coachMarkEntry;
   bool _isAppForeground = true;
+  bool _screenAwakeAttached = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.settingsState.addListener(_onSettingsChanged);
+    if (!widget.editMode) {
+      widget.workoutState.screenAwake.attach();
+      _screenAwakeAttached = true;
+    }
     if (!widget.editMode) {
       widget.workoutState.addListener(_onWorkoutStateChanged);
     }
@@ -1831,6 +1836,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
   @override
   void dispose() {
+    if (_screenAwakeAttached) {
+      _screenAwakeAttached = false;
+      widget.workoutState.screenAwake.detach();
+    }
     WidgetsBinding.instance.removeObserver(this);
     widget.settingsState.removeListener(_onSettingsChanged);
     widget.workoutState.removeListener(_onWorkoutStateChanged);
