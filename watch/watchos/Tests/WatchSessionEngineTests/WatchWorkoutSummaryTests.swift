@@ -246,6 +246,76 @@ final class WatchWorkoutSummaryTests: XCTestCase {
         XCTAssertEqual(pending.rows[1].label, WatchWorkoutSummaryCopy.sets)
     }
 
+    // MARK: - S-12815 an end the phone made owes no summary
+
+    /// A `session_lifecycle` `completed` envelope as the phone sends one.
+    private func phoneLifecycleCompleted(
+        _ sessionId: String,
+        messageId: String,
+        at: String
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": sessionId,
+            "type": "session_lifecycle",
+            "origin": "phone",
+            "sentAt": at,
+            "payload": ["state": WatchLifecycleState.completed, "at": at],
+        ]
+    }
+
+    func testS12815aAWorkoutThePhoneEndedOwesNoSummary() async throws {
+        let wrist = await SummaryHarness(sessionIds: ["s-12815-a"]).launch()
+        let summary = WatchWorkoutSummaryState(engine: wrist.engine)
+        _ = await wrist.start(at: "2026-11-04T09:05:00Z")
+        summary.note(wrist.engine.session)
+        try await wrist.logSet("e-1", at: "2026-11-04T09:07:00Z")
+        try await wrist.logSet("e-2", at: "2026-11-04T09:09:00Z")
+        _ = try await wrist.engine.applyMessage(
+            phoneLifecycleCompleted(
+                "s-12815-a",
+                messageId: "msg-life-12815-a",
+                at: "2026-11-04T09:15:00Z"
+            )
+        )
+        summary.note(wrist.engine.session)
+        XCTAssertNil(summary.pending, "S-12815 a an end the phone made owes no summary")
+    }
+
+    func testS12815bTheWristsOwnEndStillOwesItsSummary() async throws {
+        let wrist = await SummaryHarness(sessionIds: ["s-12815-b"]).launch()
+        let summary = WatchWorkoutSummaryState(engine: wrist.engine)
+        let live = await wrist.start(at: "2026-11-04T08:05:00Z")
+        summary.note(wrist.engine.session)
+        try await wrist.logSet("e-1", at: "2026-11-04T08:07:00Z")
+        try await wrist.logSet("e-2", at: "2026-11-04T08:09:00Z")
+        _ = await wrist.finish(at: "2026-11-04T08:15:00Z")
+        summary.note(wrist.engine.session)
+
+        let pending = try XCTUnwrap(summary.pending, "S-12815 b the wrist's own End owes its summary")
+        XCTAssertEqual(pending.sessionId, live.sessionId)
+    }
+
+    func testS12815cANewSessionAfterAPhoneEndCarriesNothingStale() async throws {
+        let wrist = await SummaryHarness(sessionIds: ["s-12815-c1", "s-12815-c2"]).launch()
+        let summary = WatchWorkoutSummaryState(engine: wrist.engine)
+        _ = await wrist.start(at: "2026-11-04T10:05:00Z")
+        summary.note(wrist.engine.session)
+        try await wrist.logSet("e-1", at: "2026-11-04T10:07:00Z")
+        _ = try await wrist.engine.applyMessage(
+            phoneLifecycleCompleted(
+                "s-12815-c1",
+                messageId: "msg-life-12815-c",
+                at: "2026-11-04T10:15:00Z"
+            )
+        )
+        summary.note(wrist.engine.session)
+        _ = await wrist.start(at: "2026-11-04T11:05:00Z")
+        summary.note(wrist.engine.session)
+        XCTAssertNil(summary.pending, "S-12815 c the new session owes nothing stale")
+    }
+
     // MARK: - S-9604 the average heart rate
 
     func testS9604TheAverageHeartRateCoversOnlyTheWorkoutWindow() async throws {

@@ -259,6 +259,10 @@ Future<WatchSyncGraph?> createWatchSync({
   final mirror = LiveSessionMirrorState(
     transport: WatchInboxStagingTransport(inner: resolved, inbox: inbox),
     snapshot: watchSessionPlaceholder,
+    // The graph's clock drives the ledger's `since`, repeat window and 24 h
+    // bound only (plan 128 D-1/D-2a); frame stamps keep the mirror's own clock
+    // so a graph clock that stands still cannot defeat plan 127's snapshot order.
+    ledgerClock: clock,
     // Every ladder this phone asserts — a request answered or a wrist snapshot
     // re-asserted — is composed from the phone's own session, never from the
     // copy this mirror converged with the wrist (D-11). A snapshot is
@@ -283,6 +287,12 @@ Future<WatchSyncGraph?> createWatchSync({
       clock: clock,
     ),
     adoption: adoption,
+    // Plan 128 D-3: whether a session's stored row is ended — the ledger
+    // restarts empty, and the row is what answers then. The interface's own
+    // read, like `WatchSessionAutoPush`'s seam below; no session-relevant
+    // storage beyond it.
+    isSessionEnded: (id) async =>
+        (await repository.getSession(id))?.endedAtMs != null,
     // A glass of water tapped on the wrist: applied once to the day it was
     // tapped, acknowledged, answered with the day's count (plan 94 D-13).
     water: WatchWaterLogBridge(
@@ -398,6 +408,15 @@ Future<WatchSyncGraph?> createWatchSync({
       if (!info.reachable) return;
       unawaited(
         timerPush.flushClears().catchError((Object error, StackTrace stack) {
+          onFailure?.call(error, stack);
+        }),
+      );
+      // Plan 128 D-2b: the wrist coming back into reach is also when every
+      // end still unconfirmed is offered again, oldest first — the same
+      // trigger plan 98 D-3 uses for the starts and clears it missed. A
+      // failure is reported, never thrown.
+      unawaited(
+        mirror.offerAllOwedEnds().catchError((Object error, StackTrace stack) {
           onFailure?.call(error, stack);
         }),
       );

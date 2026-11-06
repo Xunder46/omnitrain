@@ -135,6 +135,9 @@ public final class WatchWorkoutSummaryState: ObservableObject {
               pending?.sessionId != session.sessionId
         else { return }
         activeSeenId = nil
+        // Plan 128 D-4: an end the phone made (the engine's lifecycle row) closes the
+        // workout without a summary; only an end the wrist made owes one.
+        guard !session.recordId.hasPrefix(WatchSessionEngine.lifecyclePrefix) else { return }
 
         let efforts = engine.entries.filter { WatchObservationKind.efforts.contains($0.kind) }
         guard !efforts.isEmpty else { return }

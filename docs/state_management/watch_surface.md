@@ -56,6 +56,10 @@ apply it, then `notifyListeners()`. Phone-originated messages are applied
 locally *before* they go to the transport, because the session the user is
 looking at has to be the session the watch is told about.
 
+It also keeps the memory-only ledger of the ends it has announced to the wrist
+and not yet seen confirmed; see **An end the wrist missed is owed until it
+confirms it** in [Watch Session Sync](../watch_session_sync.md).
+
 **A snapshot naming another session is a new workout, not a disagreement.** It
 replaces the held session wholesale, entries included, clears
 `completedRecord`, and is never answered; re-assertion is for a snapshot of the
@@ -607,6 +611,10 @@ interleaving, a relaunch), the wiring hands the frame's `since` to the handler
 reaches the handler`), and the wrist's Sync button is pinned by
 `WatchManualSyncSourceTests` (S-9220).
 
+The answer to a wrist `snapshot` request never carries an ended session; see
+**An end the wrist missed is owed until it confirms it** in
+[Watch Session Sync](../watch_session_sync.md).
+
 ### `createWatchSync` — the phone's watch graph
 
 **File**: `lib/state/watch/watch_sync_wiring.dart`
@@ -687,6 +695,11 @@ session's `completed` lifecycle instead of being adopted back. See
 `test/watch_session_finish_test.dart` (`S-4`, `S-5`, `G1`, and the wrist's set
 merging into the session the phone holds — `a set logged on the watch lands in
 the session the phone holds` — and the lifecycle-naming-another-session case).
+
+Its last step answers a wrist frame that names a session the phone has already
+ended, from the memory ledger or the `isSessionEnded` row seam after a restart;
+see **An end the wrist missed is owed until it confirms it** in
+[Watch Session Sync](../watch_session_sync.md).
 
 The held merge also fills intervals (plan 43a): a wrist `timed`, `hold` or
 `round` entry lands in the first interval of the effort the phone has not

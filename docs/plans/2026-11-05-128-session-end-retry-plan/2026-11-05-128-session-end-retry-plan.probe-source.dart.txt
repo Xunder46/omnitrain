@@ -1,0 +1,199 @@
+// Plan 128 Phase-0 probes: the phone's end of a session vs a wrist that missed it.
+import 'dart:async';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
+import 'package:omnitrain/core/platform/watch_link_info.dart';
+import 'package:omnitrain/core/platform/watch_link_source.dart';
+import 'package:omnitrain/core/platform/watch_transport.dart';
+import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/state/food_library_state.dart';
+import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/settings/settings_state.dart';
+import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
+import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
+import 'package:omnitrain/watch/session/watch_records.dart';
+import 'package:omnitrain/watch/session/watch_session_engine.dart';
+
+import 'helpers/fake_preferences_service.dart';
+import 'helpers/watch_capture_import_harness.dart' show seedExercise;
+
+final DateTime _now = DateTime.utc(2026, 11, 5, 9);
+const String _sid = 's-w-128';
+const String _slotId = 'sx-run';
+
+Map<String, Object?> _slot() => {
+  'sessionExerciseId': _slotId, 'exerciseId': 'ex-run', 'name': 'Run',
+  'effortKind': 'timed', 'capabilities': ['time', 'distance'],
+};
+
+class _QRadio implements WatchTransport, WatchLinkSource {
+  final sent = <Map<String, Object?>>[];
+  final attempted = <Map<String, Object?>>[];
+  final queued = <Map<String, Object?>>[];
+  bool unreachable = false;
+  WatchInboundHandler? _h;
+  final _link = StreamController<WatchLinkInfo>.broadcast();
+  void emitLink({required bool reachable}) => _link.add(WatchLinkInfo(
+      paired: true, appInstalled: true, reachable: reachable));
+  @override bool get isPhoneReachable => true;
+  @override void onIncoming(WatchInboundHandler h) => _h = h;
+  @override Future<void> refreshReachability() async {}
+  @override Future<void> requestRoutines({DateTime? since}) async {}
+  @override Future<void> requestSnapshot() async =>
+      send(WatchTransportRequest.snapshotFrame());
+  @override
+  Future<WatchDelivery> send(Map<String, Object?> e) async {
+    attempted.add(e);
+    if (!unreachable) { sent.add(e); return WatchDelivery.delivered; }
+    if (WatchConnectivityTransport.isDurable(e)) {
+      if (const {'session_snapshot','session_lifecycle','structure_change'}
+          .contains(e['type'])) {
+        queued.removeWhere((q) => q['type'] == e['type']);
+      }
+      queued.add(e);
+      return WatchDelivery.queued;
+    }
+    return WatchDelivery.undelivered;
+  }
+  Future<void> fromWrist(Map<String, Object?> f) async => _h!(f);
+  @override Future<WatchLinkInfo> linkInfo() async => const WatchLinkInfo(
+      paired: true, appInstalled: true, reachable: true);
+  @override Stream<WatchLinkInfo> get linkChanges => _link.stream;
+  @override Stream<DateTime> get heard => const Stream.empty();
+  List<Map<String, Object?>> ofType(String t) =>
+      [for (final e in sent) if (e['type'] == t) e];
+}
+
+void main() {
+  late MockWorkoutRepository repo;
+  late WorkoutState phone;
+  late SettingsState settings;
+  late _QRadio radio;
+  late WatchSyncGraph graph;
+  late WatchSessionEngine engine;
+  late List<Map<String, Object?>> wristFrames;
+
+  Future<WatchSyncGraph> startGraph() async {
+    final g = (await createWatchSync(
+      repository: repo, nutritionState: NutritionState(repo),
+      foodLibraryState: FoodLibraryState(repo), settingsState: settings,
+      transport: radio, clock: () => _now))!;
+    g.adoption.bindWorkoutState(phone);
+    g.autoPush.bindWorkoutState(phone);
+    g.timerPush.bindWorkoutState(phone);
+    return g;
+  }
+
+  Future<void> wristStarts() async {
+    await engine.createSession(modality: null, exercises: [_slot()]);
+    await radio.fromWrist(engine.sessionSnapshot()!);
+    await pumpEventQueue();
+    expect(phone.currentSession?.id, _sid);
+    await graph.autoPush.flush(); // composes + remembers the session
+  }
+
+  /// Phone ends while the wrist is away; the OS queue copy is then LOST.
+  Future<void> phoneEndsWhileAway() async {
+    radio.unreachable = true;
+    await phone.endSession(writeToHealth: false);
+    await graph.autoPush.flush();
+    expect((await repo.getSession(_sid))?.endedAtMs, isNotNull);
+    radio.queued.clear(); // reinstall / queue dropped / app killed
+    radio.unreachable = false;
+  }
+
+  setUp(() async {
+    repo = MockWorkoutRepository();
+    await repo.initialize();
+    await seedExercise(repo, id: 'ex-run', name: 'Run',
+        capabilities: ['time', 'distance']);
+    phone = WorkoutState(repo);
+    settings = SettingsState(repo, fakePreferencesService());
+    await settings.initialize();
+    radio = _QRadio();
+    graph = await startGraph();
+    wristFrames = [];
+    engine = WatchSessionEngine(InMemoryWatchSessionStore(),
+        clock: () => _now, sessionIdFactory: () => _sid, onEmit: wristFrames.add);
+  });
+
+  test('P1 end lost, wrist later sends its snapshot (same app run)', () async {
+    await wristStarts();
+    await phoneEndsWhileAway();
+    radio.sent.clear();
+    await radio.fromWrist(engine.sessionSnapshot()!);
+    await pumpEventQueue();
+    for (final f in radio.sent) { await engine.applyMessage(f); }
+    expect(engine.session?.status, WatchSessionStatus.completed);
+  });
+
+  test('P2 end lost, phone app restarted, wrist sends its snapshot', () async {
+    await wristStarts();
+    await phoneEndsWhileAway();
+    graph = await startGraph(); // fresh memory over the same repo/state
+    radio.sent.clear();
+    await radio.fromWrist(engine.sessionSnapshot()!);
+    await pumpEventQueue();
+    for (final f in radio.sent) { await engine.applyMessage(f); }
+    expect(engine.session?.status, WatchSessionStatus.completed);
+  });
+
+  test('P3 end lost, wrist sends only a timer_state/observation (no snapshot)', () async {
+    await wristStarts();
+    await phoneEndsWhileAway();
+    radio.sent.clear();
+    await radio.fromWrist({
+      'protocolVersion': 1, 'messageId': 'm-t1', 'sessionId': _sid,
+      'type': 'timer_state', 'origin': 'watch', 'sentAt': '2026-11-05T09:00:00.000Z',
+      'payload': {'timers': {}},
+    });
+    await pumpEventQueue();
+    for (final f in radio.sent) { await engine.applyMessage(f); }
+    expect(engine.session?.status, WatchSessionStatus.completed,
+        reason: 'wrist frame other than a snapshot gets no answer');
+  });
+
+  test('P4 end lost, watch comes back into reach, nothing else', () async {
+    await wristStarts();
+    await phoneEndsWhileAway();
+    radio.sent.clear();
+    radio.emitLink(reachable: true);
+    await pumpEventQueue();
+    await graph.autoPush.flush();
+    for (final f in radio.sent) { await engine.applyMessage(f); }
+    expect(engine.session?.status, WatchSessionStatus.completed,
+        reason: 'reachability alone re-offers nothing for an ended session');
+  });
+
+  test('P5 reinstall: empty wrist asks for a snapshot after the phone ended', () async {
+    await wristStarts();
+    await phoneEndsWhileAway();
+    final fresh = WatchSessionEngine(InMemoryWatchSessionStore(),
+        clock: () => _now, sessionIdFactory: () => _sid, onEmit: (_) {});
+    radio.sent.clear();
+    await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+    await pumpEventQueue();
+    for (final f in radio.sent) { await fresh.applyMessage(f); }
+    // ignore: avoid_print
+    print('P5 actual: status=${fresh.session?.status} id=${fresh.session?.sessionId} sent=${radio.sent.map((e)=>e['type']).toList()}');
+    expect(fresh.session, isNull,
+        reason: 'a reinstalled wrist should show nothing, not an old finished session (record actual)');
+  });
+
+  test('P6 queued end delivered late, after phone started session B', () async {
+    await wristStarts();
+    radio.unreachable = true;
+    await phone.endSession(writeToHealth: false);
+    await graph.autoPush.flush();
+    expect(radio.queued.where((q) => q['type'] == 'session_lifecycle'), hasLength(1));
+    // older frame replays onto a wrist that now holds session B
+    final late = radio.queued.firstWhere((q) => q['type'] == 'session_lifecycle');
+    final b = WatchSessionEngine(InMemoryWatchSessionStore(),
+        clock: () => _now, sessionIdFactory: () => 's-w-B', onEmit: (_) {});
+    await b.createSession(modality: null, exercises: [_slot()]);
+    await b.applyMessage(late);
+    expect(b.session?.status, WatchSessionStatus.active,
+        reason: 'end of session A must not end session B');
+  });
+}

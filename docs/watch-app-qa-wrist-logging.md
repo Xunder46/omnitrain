@@ -441,3 +441,15 @@ frame (plan 87b, open question d;
     N glasses". Held off-device by `WatchWaterStateTests`, `WatchWaterSyncTests`
     and `WatchWaterBarSourceTests`; the phone half by
     `test/watch_water_log_test.dart`.
+
+41. **A workout the phone finished reaches the watch — (owner, plan 128).** (a)
+    Start a workout on the watch, keep the watch out of reach or asleep, and
+    finish it on the phone, then raise the wrist: the watch is on Start, with
+    no summary and no question. (b) The same with the watch app kept open in
+    front: within about half a minute, the next time anything is logged on the
+    watch it closes the workout by itself. (c) The same as (a) with Discard on
+    the phone instead of Finish. (d) Finish on the phone, then delete and
+    reinstall the watch app: it shows Start, not the old workout. (e) Force-
+    quit the phone app after the finish, then log a set on the watch: the watch
+    closes the workout. Held off-device by
+    `test/watch_session_end_owed_test.dart` and `WatchWorkoutSummaryTests`.

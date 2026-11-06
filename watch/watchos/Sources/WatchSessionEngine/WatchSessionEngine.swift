@@ -56,7 +56,7 @@ public final class WatchSessionEngine: ObservableObject {
     private static let changePrefix = "chg-"
     private static let snapshotPrefix = "snap-"
     static let timerPrefix = "tms-"
-    private static let lifecyclePrefix = "life-"
+    static let lifecyclePrefix = "life-"
 
     private var sessionRows: [WatchSessionRecord] = []
     private var storedObservations: [WatchObservationRecord] = []

@@ -35,6 +35,7 @@ import '../../core/utils/watch_reference_sync.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../food_library_state.dart';
 import '../settings/settings_state.dart';
+import '../../watch/session/watch_records.dart' show WatchSessionStatus;
 import 'live_session_mirror_state.dart';
 
 /// Handles the frames that are requests rather than protocol messages.
@@ -433,12 +434,26 @@ class WatchSyncRequestHandler {
   /// one: an empty session is not a state, and the snapshot would replace the
   /// ladder the wrist is actually working through (PROTOCOL.md, "Idempotency
   /// and reconciliation").
+  ///
+  /// Plan 128 D-5: a request means the wrist holds nothing, and an ended
+  /// session is not something to join — so when this mirror's held copy is a
+  /// session the phone has ended (its own status is the memory of it), the
+  /// phone answers with nothing session-related instead of handing the old
+  /// finish over as a copy to live in. A wrist that does hold the session
+  /// talks in snapshots, not requests, and is healed there.
   Future<bool> _sendSnapshot() async {
     final projection = await _mirror.projectedSession();
     if (projection != null) {
       await _mirror.sendState(projection);
       return true;
     }
+
+    final held = _mirror.sessionId;
+    final heldIsEndedSession = held != null &&
+        held != watchSessionPlaceholderId &&
+        _mirror.status != null &&
+        _mirror.status != WatchSessionStatus.active;
+    if (heldIsEndedSession) return false;
 
     if (_mirror.exercises.isEmpty) return false;
 

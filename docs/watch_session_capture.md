@@ -317,7 +317,11 @@ time from start to end as `m:ss` or `h:mm:ss`, `Sets N` when every effort is a
 set and `Efforts N` otherwise, and `Avg HR n bpm` only when heart-rate samples
 exist inside the workout window. `WatchWorkoutSummaryView` shows it with a Done
 button (`dismissPending()`); a new active workout takes it away, and a workout
-that ended while the app was closed shows nothing. The root view's order — owed
+that ended while the app was closed shows nothing. A workout the phone ended
+(the engine's lifecycle row) shows no summary, and no effort question is owed for
+it (that question is only ever owed by the wrist's own End;
+`WatchWorkoutSummaryTests`, S-12815 a and b). The root view's
+order — owed
 effort question, workout summary, rest, logging, start screen — is pinned by
 `WatchWorkoutSummaryWiringSourceTests` (S-9620); the state itself by
 `WatchWorkoutSummaryTests` (S-9601..S-9607).

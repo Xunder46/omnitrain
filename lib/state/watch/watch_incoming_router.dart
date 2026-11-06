@@ -78,11 +78,13 @@ class WatchIncomingRouter {
     required WatchNutritionLogBridge nutrition,
     WatchSessionAdoptionBridge? adoption,
     WatchWaterLogBridge? water,
+    Future<bool> Function(String sessionId)? isSessionEnded,
   }) : _inbox = inbox,
        _mirror = mirror,
        _nutrition = nutrition,
        _adoption = adoption,
-       _water = water;
+       _water = water,
+       _isSessionEnded = isSessionEnded;
 
   final WatchSessionInbox _inbox;
   final LiveSessionMirrorState _mirror;
@@ -94,6 +96,12 @@ class WatchIncomingRouter {
 
   /// Optional: a router built without one ignores water taps (plan 94 D-13).
   final WatchWaterLogBridge? _water;
+
+  /// Optional narrow seam the ledger's restart fallback (plan 128, D-3) reads
+  /// the stored row through — whether the session [sessionId] names has a row
+  /// with `endedAtMs != null`. Injected like `WatchSessionAutoPush`'s, never a
+  /// concrete storage class.
+  final Future<bool> Function(String sessionId)? _isSessionEnded;
 
   /// Applies one message from the wrist to each of its owners, the inbox
   /// first.
@@ -175,6 +183,50 @@ class WatchIncomingRouter {
     // to a session: after the food, so a message carrying both is answered
     // with the food's receipt first (plan 94 D-13).
     final water = await _water?.receive(envelope);
+
+    // Plan 128: the ledger of ends the phone announced and the wrist has not
+    // yet confirmed. Only a wrist frame naming a session drives it — the
+    // phone's own announcements are what arm the ledger, never disarm it.
+    if (envelope['origin'] == 'watch' && envelope['sessionId'] is String) {
+      final sessionId = envelope['sessionId'] as String;
+      final type = envelope['type'];
+      final payload = envelope['payload'];
+      // (D-1 i) An ended state the wrist announces for the session it names is
+      // the confirmation: the wrist says it has it, whatever the phone once
+      // owed. The lifecycle carries `state`, a snapshot carries `status`.
+      final endedState = _endedStateOf(
+        type == 'session_snapshot'
+            ? _fieldOf(payload, 'status')
+            : type == 'session_lifecycle'
+                ? _fieldOf(payload, 'state')
+                : null,
+      );
+      if (endedState != null) _mirror.confirmEnd(sessionId);
+      // (D-1 ii) The wrist announces an ended state for [sessionId], so it is
+      // on [sessionId] and has moved off the rest: their owed ends are
+      // confirmed by that. Before the re-offer below, after the confirming
+      // read above (S-12806).
+      if (endedState != null) _mirror.confirmEndsExcept(sessionId);
+      // (D-2a, D-3) Any other wrist frame naming the session (the snapshot and
+      // lifecycle answers are the existing paths above) re-offers the end that
+      // session is still owed — once per window from the ledger, or once from
+      // the stored row when a restart emptied the ledger. A discarded session
+      // has no row (D-7/D-3 Notice 1), so the seam answers nothing for it.
+      if (type != 'session_lifecycle' &&
+          type != 'session_snapshot' &&
+          type != 'receipt') {
+        // A session the mirror holds needs no row read: the ledger already
+        // knows how the phone ended it, and a running one has no ended row.
+        final rowEnded = _isSessionEnded == null ||
+                sessionId == _mirror.sessionId
+            ? false
+            : (await _isSessionEnded(sessionId));
+        if (rowEnded) _mirror.adoptEndedFromRow(sessionId);
+        final owed = _mirror.takeOwedEnd(sessionId);
+        if (owed != null) await _mirror.reportLifecycleFor(sessionId, owed);
+      }
+    }
+
     return WatchIncomingReceipt(
       inbox: staged.outcome,
       session: session,
@@ -182,5 +234,17 @@ class WatchIncomingRouter {
       answeredReset: answeredReset,
       water: water?.outcome ?? WatchWaterLogOutcome.ignored,
     );
+  }
+
+  static Object? _fieldOf(Object? payload, String field) =>
+      (payload as Map?)?[field];
+
+  /// The ended state a frame announces, or null when it announces none.
+  static String? _endedStateOf(Object? value) {
+    if (value == WatchLifecycleState.completed ||
+        value == WatchLifecycleState.abandoned) {
+      return value as String;
+    }
+    return null;
   }
 }

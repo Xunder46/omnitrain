@@ -287,6 +287,45 @@ half — it ends its session on receiving that lifecycle — is
 `WatchSessionEngineTests.testThePhonesLifecycleEndsAWristSessionAtTheMomentItNames`
 in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
 
+**An end the wrist missed is owed until it confirms it (plan 128).** The phone
+remembers, in memory only, each end (finished or discarded) it announced to the
+wrist until the wrist confirms it. The wrist confirms by sending its own ended
+`session_lifecycle` or an ended `session_snapshot` for that session (confirmed),
+by sending an ended state for another session (it has moved on), when 24 h
+pass, or when the end has been re-offered 3 times. A wrist frame of any kind
+except `session_lifecycle`, `session_snapshot` and `receipt` that names the
+session is answered with that session's end, at most once per 30 s per session;
+when the wrist comes back into reach every unconfirmed end is sent again (no
+30 s limit, and that counts toward the 3). After a phone restart the ledger is
+empty, so a wrist frame naming a session whose stored row is ended is answered
+`completed` from the row; a discarded session has no row, so after a restart
+its end cannot be re-told. The answer to a snapshot request never carries an
+ended session, so a reinstalled wrist shows Start, not an old finished session.
+A phone-made end on the wrist (the lifecycle row) shows no workout summary and
+no effort question; only the wrist's own End shows its summary. Verified by
+`test/watch_session_end_owed_test.dart`
+(`S-12801 the wrist sends timer_state after the phone ended: answered
+completed (D-2a)`,
+`S-12802 the wrist sends a logged-set observation frame: answered completed
+(D-2a)`,
+`S-12803 five frames inside 30 s answer once; past 30 s the next frame answers
+again (D-1 iv, D-2a)`,
+`S-12804 the watch comes back into reach: the unconfirmed end is sent (D-2b)`,
+`S-12810 a wrist lifecycle completed confirms the end: afterwards a frame
+sends nothing (D-1 i)`,
+`S-12810 b an ended wrist snapshot confirms the end: afterwards a frame sends
+nothing (D-1 i)`,
+`S-12811 the wrist names a different session: entry removed, nothing sent for
+A or B (D-1 ii)`,
+`S-12812 a frames 31 s apart, four times: exactly three re-offers, the fourth
+sends none (D-1 iv)`,
+`S-12812 b clock advanced 25 h, then a frame: none (D-1 iv)`,
+`S-12805 phone restart, empty ledger, wrist frame: answered from the stored
+row (D-3)`,
+`S-12813 b after a phone restart a discarded end is not answered (D-3)`,
+`S-12814 a reinstalled wrist asks for a snapshot, gets no ended session (D-5)`)
+and watchOS `WatchWorkoutSummaryTests` (S-12815 a, S-12815 b, S-12815 c).
+
 **The wrist's Apple Fitness workout follows the end (plan 89).** Whichever device
 ends the session, the workout the wrist opened is saved to Health only when the
 session ends `completed`. An `abandoned` session (the wrist's Cancel, or a discard
@@ -502,6 +541,14 @@ in place, resending the structure as a snapshot and no new started lifecycle
   the phone has already logged is cleared by a live `timer_state` clear.
   Verified by `test/watch_logged_hold_stays_stopped_test.dart`
   (`S-12101`, `S-12103`, `S-12107`).
+- **An end the phone made is owed to the wrist until it confirms it or the
+  bounds pass.** The end is re-offered at most once per 30 s per session, at
+  most three times, and dropped after 24 h — never for a session the phone is
+  still running, and a snapshot request is never answered with an ended
+  session. Verified by `test/watch_session_end_owed_test.dart`
+  (`S-12809 a running session, frames and link flaps, sends no lifecycle ever
+  (D-1)`, `S-12814 a reinstalled wrist asks for a snapshot, gets no ended
+  session (D-5)`).
 
 ## What does not sync
 
