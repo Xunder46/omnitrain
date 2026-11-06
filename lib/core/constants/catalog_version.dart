@@ -69,9 +69,13 @@
 ///   through Savasana) and Pigeon Pose and Child's Pose moved into it, we
 ///   bumped to `17` so existing installs receive them on next launch; their
 ///   equipment links reach new installs only.
+///   When the Conditioning discipline and 17 conditioning and plyometric
+///   exercises (Burpee through Thruster) were added, we bumped to `18` so
+///   existing installs receive the discipline and the exercises on next
+///   launch; their equipment links reach new installs only.
 library;
 
-const int bundledCatalogVersion = 17;
+const int bundledCatalogVersion = 18;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///

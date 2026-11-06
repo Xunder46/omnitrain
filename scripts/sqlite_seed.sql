@@ -271,6 +271,11 @@ FROM app_sport_category c
 WHERE c.key='resistance_lifting' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='calisthenics');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), c.id, 'conditioning', 'Conditioning', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_sport_category c
+WHERE c.key='resistance_lifting' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='conditioning');
+
+INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'soccer', 'Soccer', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
 WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='soccer');

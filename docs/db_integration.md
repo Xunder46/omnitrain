@@ -163,6 +163,14 @@ edited and renamed rows are never rewritten. Verified by
 `S-19305 a renamed touched row and near-twins keep their own`); the equipment
 links reach new installs only (`S-19307`). A phone workout whose exercised rows
 are all Yoga records as Yoga (`S-19311`, `test/health_yoga_kind_test.dart`).
+Catalog version `18` adds the Conditioning discipline and 17 conditioning and
+plyometric exercises (Burpee through Thruster). A phone missing the discipline
+gets it before the exercises, so they rank with their discipline; the user's
+own, copied, edited and renamed rows are never rewritten. Verified by
+`test/conditioning_catalog_refresh_test.dart` (`S-19206 a v17 install
+refreshes`, `S-19207 an exercise whose discipline is missing`) and, for the SQL
+contract, `S-19203 app_discipline carries Conditioning under resistance_lifting`
+in `test/db_seed_test.dart`. The equipment links reach new installs only.
 
 `SeedEntryType` enumerates the tombstone key spaces the refresh understands:
 

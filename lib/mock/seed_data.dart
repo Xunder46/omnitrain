@@ -129,6 +129,14 @@ class SeedData {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
+    Discipline(
+      id: 'discipline-conditioning',
+      categoryId: 'category-resistance',
+      key: 'conditioning',
+      name: 'Conditioning',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
     // Combat Sports (under Sports)
     Discipline(
       id: 'discipline-boxing',
@@ -5068,6 +5076,290 @@ class SeedData {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
+    // Conditioning
+    Exercise(
+      id: 'exercise-burpee',
+      name: 'Burpee',
+      description:
+          'A full-body move that drops to the floor, touches the chest down '
+          'and finishes with a jump. Works the thighs and chest hardest.',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Stand tall, then squat down and place your hands on the floor in front of you.',
+        'Jump or step your feet back into a plank and lower your chest to the floor.',
+        'Press up, jump your feet back under your hips and stand.',
+        'Finish with a small jump, reaching overhead, then go straight into the next rep.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-squat-thrust',
+      name: 'Squat Thrust',
+      description:
+          'A burpee with no push-up and no jump: hands to the floor, feet '
+          'kick back, feet return, stand up. Works the thighs and core.',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Stand tall, then squat and place your hands on the floor shoulder-width apart.',
+        'Kick both feet back to a straight-arm plank.',
+        'Jump both feet back in beside your hands.',
+        'Stand up and repeat without a push-up or a jump.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-box-jump',
+      name: 'Box Jump',
+      description:
+          'An explosive jump from the floor up onto a sturdy box, landing '
+          'softly on both feet. Works the thighs and glutes.',
+      movementPattern: 'squat',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Stand facing a sturdy box with your feet shoulder-width apart.',
+        'Dip into a quarter squat, swing your arms back and jump up onto the box.',
+        'Land softly with both feet and stand tall on the box.',
+        'Step down one foot at a time rather than jumping down.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-jump-squat',
+      name: 'Jump Squat',
+      description:
+          'A squat that ends in a jump, landing straight into the next '
+          'squat. Works the thighs and glutes.',
+      movementPattern: 'squat',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Stand with your feet shoulder-width apart and squat until your thighs are near parallel.',
+        'Drive through your feet and jump as high as you can, swinging your arms up.',
+        'Land softly on the whole foot and sink straight into the next squat.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-tuck-jump',
+      name: 'Tuck Jump',
+      description:
+          'A vertical jump that pulls the knees up toward the chest in '
+          'mid-air. Works the thighs and glutes, with the abs holding the tuck.',
+      movementPattern: 'squat',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Stand with your feet hip-width apart and dip into a quarter squat.',
+        'Jump straight up and pull both knees toward your chest.',
+        'Release your legs and land softly on both feet with bent knees.',
+        'Reset your stance, then jump again.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-broad-jump',
+      name: 'Broad Jump',
+      description:
+          'A standing jump for distance, swinging the arms and landing on '
+          'both feet. Works the glutes and thighs.',
+      movementPattern: 'squat',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Stand with your feet shoulder-width apart and swing your arms back as you load the hips.',
+        'Swing your arms forward and jump out as far as you can.',
+        'Land softly on both feet with bent knees and hold your balance.',
+        'Walk back to the start and repeat.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-jump-lunge',
+      name: 'Jump Lunge',
+      description:
+          'A lunge in which you jump and switch legs in mid-air. Works the '
+          'thighs and glutes.',
+      movementPattern: 'lunge',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Step into a lunge with your front thigh near parallel to the floor.',
+        'Jump up and switch legs in the air.',
+        'Land softly in a lunge on the other side, then jump again.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-skater-jump',
+      name: 'Skater Jump',
+      description:
+          'A side-to-side leap from one leg to the other, like a speed '
+          'skater. Works the glutes and thighs.',
+      movementPattern: 'lunge',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Stand on one leg with the other foot lifted behind you.',
+        'Push off sideways and land on the opposite leg, sweeping the free foot behind you.',
+        'Let your arms swing across the body and keep your chest slightly forward.',
+        'Pause to balance, then leap back to the first side.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-plyo-push-up',
+      name: 'Plyo Push-Up',
+      description:
+          'An explosive push-up in which the hands leave the floor at the '
+          'top. Works the chest, with help from the triceps and shoulders.',
+      movementPattern: 'horizontal_push',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Start in a push-up position with your body in one straight line.',
+        'Lower your chest to within a fist of the floor.',
+        'Push up hard enough that your hands leave the floor.',
+        'Land softly on bent arms and go straight into the next rep.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-mountain-climber',
+      name: 'Mountain Climber',
+      description:
+          'A fast plank drill that drives the knees toward the chest one '
+          'after the other. Works the abs and keeps the heart rate up. Count '
+          'reps, or log it by time.',
+      movementPattern: 'abs',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Start in a straight-arm plank with your hands under your shoulders.',
+        'Drive one knee toward your chest while keeping the hips low.',
+        'Switch legs quickly, as if running in place on the floor.',
+        'Keep your back flat and your core braced throughout.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-bear-crawl',
+      name: 'Bear Crawl',
+      description:
+          'A crawl on the hands and feet with the knees hovering just off '
+          'the floor. Works the abs and shoulders.',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Start on all fours with your hands under your shoulders and your knees under your hips.',
+        'Lift your knees about two fingers off the floor and keep your back flat.',
+        'Crawl forward by moving the opposite hand and foot together.',
+        'Crawl back the same way, keeping the knees off the floor.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-jumping-jack',
+      name: 'Jumping Jack',
+      description:
+          'A rhythmic full-body jump that swings the arms overhead while the '
+          'feet move wide, then together. Works the calves and warms up the '
+          'whole body. Count reps, or log it by time.',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Stand tall with your feet together and your arms at your sides.',
+        'Jump your feet wide as you swing your arms overhead.',
+        'Jump your feet back together as your arms come down.',
+        'Land softly on the balls of your feet and keep a steady rhythm.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-high-knees',
+      name: 'High Knees',
+      description:
+          'Running in place while driving each knee up toward hip height. '
+          'Works the thighs and lifts the heart rate. Count reps, or log it by '
+          'time.',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Stand tall with your feet hip-width apart.',
+        'Run in place, driving each knee up toward hip height.',
+        'Pump your arms in time with your legs and stay on the balls of your feet.',
+        'Keep your chest up and your core tight.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-battle-ropes',
+      name: 'Battle Ropes',
+      description:
+          'Heavy ropes whipped in alternating waves with the arms. Works the '
+          'shoulders and core. Count reps, or log it by time.',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Hold one rope end in each hand and set your feet shoulder-width apart in a quarter squat.',
+        'Raise and lower your arms in alternation to make waves in the ropes.',
+        'Keep your core braced and your chest up.',
+        'Keep the waves going for the set, then drop the ropes and rest.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-medicine-ball-slam',
+      name: 'Medicine Ball Slam',
+      description:
+          'A powerful overhead throw that slams the ball into the floor. '
+          'Works the lats and abs. Use a ball that does not bounce.',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Stand with your feet shoulder-width apart, holding the ball at your chest.',
+        'Raise the ball overhead and rise onto your toes.',
+        'Slam the ball into the floor in front of you with your whole body.',
+        'Squat to pick it up and bring it back overhead.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-wall-ball',
+      name: 'Wall Ball',
+      description:
+          'A squat that throws a ball to a target high on a wall and catches '
+          'it into the next squat. Works the thighs and glutes.',
+      movementPattern: 'squat',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Stand facing a wall, holding the ball at your chest.',
+        'Squat down until your thighs are near parallel.',
+        'Stand up fast and throw the ball to a target high on the wall.',
+        'Catch the ball and sink straight into the next squat.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-thruster',
+      name: 'Thruster',
+      description:
+          'A front squat that flows into an overhead press in one motion. '
+          'Works the thighs and shoulders.',
+      movementPattern: 'squat',
+      disciplineId: 'discipline-conditioning',
+      howToSteps: [
+        'Hold the bar at your shoulders with your elbows in front of the bar.',
+        'Squat down until your thighs are near parallel.',
+        'Drive up out of the squat and press the bar overhead in one motion.',
+        'Lower the bar back to your shoulders and go into the next squat.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
   ];
 
   static final List<Equipment> sampleEquipment = [
@@ -5760,6 +6052,24 @@ class SeedData {
     'exercise-camel-pose': _muscles(primary: ['muscle-lower-back'], secondary: ['muscle-quads', 'muscle-chest']),
     'exercise-happy-baby': _muscles(primary: ['muscle-adductors'], secondary: ['muscle-hamstrings']),
     'exercise-reclined-spinal-twist': _muscles(primary: ['muscle-lower-back'], secondary: ['muscle-glutes', 'muscle-obliques']),
+    // Conditioning
+    'exercise-burpee': _muscles(primary: ['muscle-quads', 'muscle-chest'], secondary: ['muscle-glutes', 'muscle-triceps', 'muscle-front-delts', 'muscle-abs']),
+    'exercise-squat-thrust': _muscles(primary: ['muscle-quads', 'muscle-abs'], secondary: ['muscle-glutes', 'muscle-front-delts']),
+    'exercise-box-jump': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-hamstrings', 'muscle-calves']),
+    'exercise-jump-squat': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-hamstrings', 'muscle-calves']),
+    'exercise-tuck-jump': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-abs', 'muscle-calves']),
+    'exercise-broad-jump': _muscles(primary: ['muscle-glutes', 'muscle-quads'], secondary: ['muscle-hamstrings', 'muscle-calves']),
+    'exercise-jump-lunge': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-hamstrings', 'muscle-calves']),
+    'exercise-skater-jump': _muscles(primary: ['muscle-glutes', 'muscle-quads'], secondary: ['muscle-hamstrings', 'muscle-calves']),
+    'exercise-plyo-push-up': _muscles(primary: ['muscle-chest'], secondary: ['muscle-triceps', 'muscle-front-delts', 'muscle-abs']),
+    'exercise-mountain-climber': _muscles(primary: ['muscle-abs'], secondary: ['muscle-quads', 'muscle-front-delts']),
+    'exercise-bear-crawl': _muscles(primary: ['muscle-abs', 'muscle-front-delts'], secondary: ['muscle-quads', 'muscle-triceps']),
+    'exercise-jumping-jack': _muscles(primary: ['muscle-calves'], secondary: ['muscle-glutes', 'muscle-side-delts']),
+    'exercise-high-knees': _muscles(primary: ['muscle-quads'], secondary: ['muscle-calves', 'muscle-abs']),
+    'exercise-battle-ropes': _muscles(primary: ['muscle-front-delts'], secondary: ['muscle-side-delts', 'muscle-forearms', 'muscle-abs']),
+    'exercise-medicine-ball-slam': _muscles(primary: ['muscle-lats', 'muscle-abs'], secondary: ['muscle-triceps', 'muscle-glutes']),
+    'exercise-wall-ball': _muscles(primary: ['muscle-quads', 'muscle-glutes'], secondary: ['muscle-front-delts', 'muscle-triceps']),
+    'exercise-thruster': _muscles(primary: ['muscle-quads', 'muscle-front-delts'], secondary: ['muscle-glutes', 'muscle-triceps', 'muscle-abs']),
   };
 
   /// Builds a [ExerciseMuscleLink] list: every primary id first, then every
@@ -6046,6 +6356,24 @@ class SeedData {
     'exercise-happy-baby': ['equipment-bodyweight'],
     'exercise-reclined-spinal-twist': ['equipment-bodyweight'],
     'exercise-savasana': ['equipment-bodyweight'],
+    // Conditioning
+    'exercise-burpee': ['equipment-bodyweight'],
+    'exercise-squat-thrust': ['equipment-bodyweight'],
+    'exercise-box-jump': [],
+    'exercise-jump-squat': ['equipment-bodyweight'],
+    'exercise-tuck-jump': ['equipment-bodyweight'],
+    'exercise-broad-jump': ['equipment-bodyweight'],
+    'exercise-jump-lunge': ['equipment-bodyweight'],
+    'exercise-skater-jump': ['equipment-bodyweight'],
+    'exercise-plyo-push-up': ['equipment-bodyweight'],
+    'exercise-mountain-climber': ['equipment-bodyweight'],
+    'exercise-bear-crawl': ['equipment-bodyweight'],
+    'exercise-jumping-jack': ['equipment-bodyweight'],
+    'exercise-high-knees': ['equipment-bodyweight'],
+    'exercise-battle-ropes': [],
+    'exercise-medicine-ball-slam': [],
+    'exercise-wall-ball': [],
+    'exercise-thruster': ['equipment-barbell'],
   };
 
   /// Maps exercise IDs to capability flags
@@ -6475,6 +6803,24 @@ class SeedData {
     'exercise-happy-baby': ['hold', 'time', 'sets'],
     'exercise-reclined-spinal-twist': ['hold', 'time', 'sets'],
     'exercise-savasana': ['hold', 'time', 'sets'],
+    // Conditioning
+    'exercise-burpee': ['reps', 'sets', 'time'],
+    'exercise-squat-thrust': ['reps', 'sets', 'time'],
+    'exercise-box-jump': ['reps', 'sets', 'time'],
+    'exercise-jump-squat': ['reps', 'sets', 'time'],
+    'exercise-tuck-jump': ['reps', 'sets', 'time'],
+    'exercise-broad-jump': ['reps', 'sets', 'time'],
+    'exercise-jump-lunge': ['reps', 'sets', 'time'],
+    'exercise-skater-jump': ['reps', 'sets', 'time'],
+    'exercise-plyo-push-up': ['reps', 'sets', 'time'],
+    'exercise-mountain-climber': ['reps', 'sets', 'time'],
+    'exercise-bear-crawl': ['reps', 'sets', 'time'],
+    'exercise-jumping-jack': ['reps', 'sets', 'time'],
+    'exercise-high-knees': ['reps', 'sets', 'time'],
+    'exercise-battle-ropes': ['reps', 'sets', 'time'],
+    'exercise-medicine-ball-slam': ['reps', 'sets', 'load', 'time'],
+    'exercise-wall-ball': ['reps', 'sets', 'load', 'time'],
+    'exercise-thruster': ['reps', 'sets', 'load', 'time'],
   };
 
   // Calendar features intentionally start empty.

@@ -7,6 +7,7 @@ import 'package:omnitrain/data/models/muscle_taxonomy.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/mock/seed_data.dart';
 
+import 'helpers/conditioning_catalog_rows.dart';
 import 'helpers/yoga_catalog_rows.dart';
 
 /// Referential integrity of the bundled catalog.
@@ -207,7 +208,9 @@ void main() {
       expect(
         SeedData.exerciseMuscleLinks,
         hasLength(
-          226 + yogaCatalogRows.where((r) => r.main.isNotEmpty).length,
+          226 +
+              yogaCatalogRows.where((r) => r.main.isNotEmpty).length +
+              conditioningCatalogRows.where((r) => r.main.isNotEmpty).length,
         ),
       );
     });
@@ -277,7 +280,9 @@ void main() {
       expect(
         SeedData.exerciseMuscleLinks,
         hasLength(
-          226 + yogaCatalogRows.where((r) => r.main.isNotEmpty).length,
+          226 +
+              yogaCatalogRows.where((r) => r.main.isNotEmpty).length +
+              conditioningCatalogRows.where((r) => r.main.isNotEmpty).length,
         ),
       );
 
@@ -342,6 +347,8 @@ void main() {
         'exercise-jump-rope-intervals',
         'exercise-donkey-calf-raise',
         'exercise-leg-press-calf-raise',
+        // Plan 118 Phase 2B (S-19204): the one new main Calf.
+        'exercise-jumping-jack',
       });
 
       final assistingCalves = {
@@ -358,6 +365,15 @@ void main() {
         'exercise-sled-push',
         'exercise-sled-drag',
         'exercise-downward-facing-dog',
+        // Plan 118 Phase 2A (S-19202): the six jumping rows.
+        'exercise-box-jump',
+        'exercise-jump-squat',
+        'exercise-tuck-jump',
+        'exercise-broad-jump',
+        'exercise-jump-lunge',
+        'exercise-skater-jump',
+        // Plan 118 Phase 2B (S-19204): the row 2A left for this phase.
+        'exercise-high-knees',
       });
 
       // S-18904 (plan 115a): the exercise sets that the Phase 2A rows complete.
@@ -371,6 +387,26 @@ void main() {
           if (rolesIn(entry.key, MuscleRole.secondary).contains(muscleId))
             entry.key,
       };
+
+      // Plan 118 Phase 2B (S-19204): the conditioning rows reach the muscle
+      // filters that list their main muscle only.
+      expect(
+        mainIds('muscle-lats'),
+        contains('exercise-medicine-ball-slam'),
+      );
+      expect(
+        mainIds('muscle-chest'),
+        containsAll(['exercise-burpee', 'exercise-plyo-push-up']),
+      );
+      expect(
+        mainIds('muscle-abs'),
+        containsAll([
+          'exercise-mountain-climber',
+          'exercise-bear-crawl',
+          'exercise-squat-thrust',
+          'exercise-medicine-ball-slam',
+        ]),
+      );
 
       expect(mainIds('muscle-abductors'), {
         'exercise-cable-hip-abduction',

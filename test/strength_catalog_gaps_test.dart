@@ -3,6 +3,7 @@ import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/models/muscle_taxonomy.dart';
 import 'package:omnitrain/mock/seed_data.dart';
 
+import 'helpers/conditioning_catalog_rows.dart';
 import 'helpers/yoga_catalog_rows.dart';
 
 class _Row {
@@ -545,21 +546,24 @@ void main() {
       final yogaLinks = yogaCatalogRows
           .where((r) => r.main.isNotEmpty)
           .length;
+      final conditioningLinks = conditioningCatalogRows
+          .where((r) => r.main.isNotEmpty)
+          .length;
       expect(
         SeedData.sampleExercises.length,
-        252 + added + yogaCatalogRows.length,
+        252 + added + yogaCatalogRows.length + conditioningCatalogRows.length,
       );
       expect(
         SeedData.exerciseCapabilityRelationships.length,
-        252 + added + yogaCatalogRows.length,
+        252 + added + yogaCatalogRows.length + conditioningCatalogRows.length,
       );
       expect(
         SeedData.exerciseEquipmentRelationships.length,
-        188 + added + yogaCatalogRows.length,
+        188 + added + yogaCatalogRows.length + conditioningCatalogRows.length,
       );
       expect(
         SeedData.exerciseMuscleLinks.length,
-        178 + added + yogaLinks,
+        178 + added + yogaLinks + conditioningLinks,
       );
     });
   });

@@ -508,6 +508,41 @@ void main() {
 
       await db.close();
     });
+
+    // Plan 118, D-19208: the SQL contract carries the Conditioning discipline
+    // under Resistance / Lifting, exactly once, and the seed stays idempotent.
+    test(
+      'S-19203 app_discipline carries Conditioning under resistance_lifting',
+      () async {
+        final db = await _openSchemaDatabase();
+
+        final seedSql = await File(
+          '${Directory.current.path}/scripts/sqlite_seed.sql',
+        ).readAsString();
+        for (final stmt in _executableStatements(seedSql)) {
+          await db.execute(stmt);
+        }
+
+        Future<List<Map<String, Object?>>> conditioningRows() => db.rawQuery(
+          'SELECT d.name, c.key FROM app_discipline d '
+          'JOIN app_sport_category c ON d.category_id = c.id '
+          "WHERE d.key = 'conditioning'",
+        );
+
+        final rows = await conditioningRows();
+        expect(rows, hasLength(1));
+        expect(rows.single['name'], 'Conditioning');
+        expect(rows.single['key'], 'resistance_lifting');
+
+        // The NOT EXISTS guard makes a second seed run a no-op.
+        for (final stmt in _executableStatements(seedSql)) {
+          await db.execute(stmt);
+        }
+        expect(await conditioningRows(), hasLength(1));
+
+        await db.close();
+      },
+    );
   });
 
   // Stats PR 2, Phase 2 (D-131 / D-132): the watch-capture tables belong to
