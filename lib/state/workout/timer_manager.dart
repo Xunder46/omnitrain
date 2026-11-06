@@ -276,9 +276,12 @@ class TimerManager {
   /// ignored. The target is the effort's in-progress interval when it has one,
   /// else its first not-finished one; an effort with neither is ignored. A
   /// not-started target takes the remote's start and pause bookkeeping; an
-  /// in-progress target is replaced only when the remote started earlier (the
-  /// earlier start wins). The effort's open rests are closed in memory and
-  /// persisted as [startTimedEntry] does. A remote whose start matches an
+  /// in-progress target is replaced when the remote started earlier (the
+  /// earlier start wins), and takes a newer pause or resume of its own start
+  /// (126; that pause or resume closes no rest); a later or older copy is
+  /// refused. The effort's open rests are closed in memory and persisted as
+  /// [startTimedEntry] does on every other adoption. A remote whose
+  /// start matches an
   /// interval the effort already finished is that logged interval and is
   /// ignored, whatever the other intervals' states. No notification is sent
   /// here: the session core bumps the refresh revision and notifies once.
@@ -394,7 +397,30 @@ class TimerManager {
     final old = list[index];
     if (old.state != TimedState.notStarted &&
         remote.startedAtMs >= old.startedAtMs) {
-      return false;
+      // 126 D-1: a start inside the tolerance is this interval's own update.
+      final sameInterval =
+          (remote.startedAtMs - old.startedAtMs).abs() <= _sameStartToleranceMs;
+      if (!sameInterval ||
+          !_isNewerPauseProgress(
+            oldPaused: old.state == TimedState.paused,
+            oldAccumulatedMs: old.totalPausedDurationMs,
+            remote: remote,
+          )) {
+        return false;
+      }
+      // D-3 / D-4: take the pause bookkeeping only; keep the phone's own
+      // start and length; a pause or resume is not a start, so no rest closes.
+      final progressed = old.copyWith(
+        state: remote.pausedAtMs != null
+            ? TimedState.paused
+            : TimedState.active,
+        pausedAtMs: remote.pausedAtMs,
+        totalPausedDurationMs: remote.accumulatedPauseMs,
+        updatedAtMs: _clock().millisecondsSinceEpoch,
+      );
+      await _repository.updateTimedInstance(progressed);
+      list[index] = progressed;
+      return true;
     }
 
     final closedRests = closeAllOpenRestsInSessionInMemory();
@@ -430,7 +456,31 @@ class TimerManager {
     final old = list[index];
     if (old.state != RoundState.notStarted &&
         remote.startedAtMs >= old.startedAtMs) {
-      return false;
+      // 126 D-1: a start inside the tolerance is this interval's own update.
+      final sameInterval =
+          (remote.startedAtMs - old.startedAtMs).abs() <= _sameStartToleranceMs;
+      if (!sameInterval ||
+          !_isNewerPauseProgress(
+            oldPaused: old.state == RoundState.paused,
+            oldAccumulatedMs: old.totalPausedDurationMs,
+            remote: remote,
+          )) {
+        return false;
+      }
+      // D-3 / D-4: take the pause bookkeeping only; keep the phone's own
+      // start and planned length; a pause or resume is not a start, so no rest
+      // closes.
+      final progressed = old.copyWith(
+        state: remote.pausedAtMs != null
+            ? RoundState.paused
+            : RoundState.active,
+        pausedAtMs: remote.pausedAtMs,
+        totalPausedDurationMs: remote.accumulatedPauseMs,
+        updatedAtMs: _clock().millisecondsSinceEpoch,
+      );
+      await _repository.updateRoundInstance(progressed);
+      list[index] = progressed;
+      return true;
     }
 
     final plannedMs = remote.plannedDurationMs;
@@ -449,6 +499,24 @@ class TimerManager {
     list[index] = updated;
     _persistClosedRests(closedRests);
     return true;
+  }
+
+  /// 126 D-2: whether [remote], an update of the interval the phone already
+  /// runs (same start), carries newer pause progress than the phone's own.
+  /// Each resume ADDS to the accumulated pause, so a larger value is newer
+  /// (a resume, or a whole pause/resume cycle); at an equal value only a
+  /// pause of a running interval is newer. Everything else — the stale
+  /// pre-pause copy of a paused interval, an older, identical or tied copy —
+  /// is refused.
+  static bool _isNewerPauseProgress({
+    required bool oldPaused,
+    required int oldAccumulatedMs,
+    required RemoteWorkTimer remote,
+  }) {
+    if (remote.accumulatedPauseMs > oldAccumulatedMs) return true;
+    return remote.accumulatedPauseMs == oldAccumulatedMs &&
+        !oldPaused &&
+        remote.pausedAtMs != null;
   }
 
   /// D-1: the in-progress instance when the effort has one, else the first

@@ -1459,6 +1459,9 @@ class TimedInstance {
 /// When a planned session is actually executed as a workout, [linkedSessionId]
 /// may be set to point to the resulting [TrainingSession].
 ///
+/// A routine plan stores a null `modality`; its colour is resolved from the
+/// routine's Focus Modality at display time (see `CalendarState`).
+///
 /// Recurrence is NOT yet implemented.
 /// [recurrenceRule] is reserved for future use; always set it to null for now.
 /// Future implementation will likely use an iCalendar-style RRULE string

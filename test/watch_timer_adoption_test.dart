@@ -20,6 +20,8 @@
 //          never starts or rewinds the next interval and nothing else moves;
 //          a genuine next start still adopts → `S-12171 ...`, `S-12172 ...`,
 //     `S-12173 ...`, `S-12174 ...`
+//   S-12631..S-12640 a wrist pause or resume of a timer the phone runs
+//          reaches the phone → group 'S-1263x ...'
 //
 // The phone side is the graph `createWatchSync` builds — the shipping wiring,
 // including the adoption it returns — over a fake radio; the wrist side is the
@@ -1126,6 +1128,645 @@ void main() {
         nextStart.millisecondsSinceEpoch,
         reason: "S-12174 interval 1 runs on the wrist's new start",
       );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-1263x a wrist pause or resume reaches the phone', () {
+    // The phone's clock is real time, the wrist's is `wristClock`: a timer the
+    // phone started carries a real start, so the wrist's pause stamps are
+    // taken from the real clock too.
+    // The Swift wrist stamps whole milliseconds; a microsecond stamp would not
+    // survive the phone's millisecond rows and would read as an echo.
+    DateTime wristStampAfter5s() => DateTime.fromMillisecondsSinceEpoch(
+      DateTime.now().millisecondsSinceEpoch + 5000,
+    );
+
+    TimedInstance phoneInterval() =>
+        phoneState.getTimedInstancesForEffort(_slotId).first;
+
+    WatchTimerRecord wristElapsed() =>
+        engine.timerFor(WatchTimerKind.elapsed)!;
+
+    /// Started on the PHONE: interval 0 runs, the push is flushed and applied
+    /// on the wrist.
+    Future<void> phoneStartsAndWristHolds() async {
+      await fixture();
+      graph.timerPush.bindWorkoutState(phoneState);
+      await phoneState.startTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+      await applyPhoneTimers();
+      expect(wristElapsed().state, WatchTimerState.running,
+          reason: 'the fixture: the wrist holds the phone timer');
+    }
+
+    /// Started on the WRIST: adopted by interval 0.
+    Future<void> wristStartsAndPhoneHolds() async {
+      await fixture();
+      await wristStartsElapsed(_wristStart);
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+      graph.timerPush.bindWorkoutState(phoneState);
+      await graph.timerPush.flush();
+      expect(phoneInterval().state, TimedState.active,
+          reason: 'the fixture: the phone runs the wrist timer');
+    }
+
+    void expectPhoneEqualsWrist(String id, {required bool paused}) {
+      final wrist = wristElapsed();
+      final phone = phoneInterval();
+      expect(phone.state, paused ? TimedState.paused : TimedState.active,
+          reason: '$id the phone follows the wrist');
+      expect(phone.pausedAtMs, wrist.pausedAt?.millisecondsSinceEpoch,
+          reason: '$id same paused-at');
+      expect(phone.totalPausedDurationMs, wrist.accumulatedPauseMs,
+          reason: '$id same accumulated pause');
+    }
+
+    Future<void> wristPauses(DateTime at) async {
+      wristClock = at;
+      await engine.pauseTimer(kind: WatchTimerKind.elapsed);
+      wristClock = _now;
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+    }
+
+    Future<void> wristResumes(DateTime at) async {
+      wristClock = at;
+      await engine.resumeTimer(kind: WatchTimerKind.elapsed);
+      wristClock = _now;
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+    }
+
+    test('S-12631 a timer the phone started: the wrist pauses, the phone '
+        'pauses, nothing is echoed', () async {
+      await phoneStartsAndWristHolds();
+      final sentBefore = sentOfType('timer_state').length;
+
+      await wristPauses(wristStampAfter5s());
+      expectPhoneEqualsWrist('S-12631', paused: true);
+      expect(phoneInterval().pausedAtMs, isNotNull);
+
+      await graph.timerPush.flush();
+      expect(sentOfType('timer_state').length, sentBefore,
+          reason: 'S-12631 the adopted pause is not sent back');
+      expect(failures, isEmpty);
+    });
+
+    test('S-12632 then the wrist resumes after a 12 s pause: the phone runs '
+        'again with the same accumulated pause, no echo', () async {
+      await phoneStartsAndWristHolds();
+      final pausedAt = wristStampAfter5s();
+      await wristPauses(pausedAt);
+      final sentBefore = sentOfType('timer_state').length;
+
+      await wristResumes(pausedAt.add(const Duration(seconds: 12)));
+      expectPhoneEqualsWrist('S-12632', paused: false);
+      expect(phoneInterval().pausedAtMs, isNull);
+      expect(phoneInterval().totalPausedDurationMs, closeTo(12000, 50));
+
+      await graph.timerPush.flush();
+      expect(sentOfType('timer_state').length, sentBefore,
+          reason: 'S-12632 the adopted resume is not sent back');
+      expect(failures, isEmpty);
+    });
+
+    test('S-12633 a timer the wrist started: pause then resume reach the '
+        'phone the same way', () async {
+      await wristStartsAndPhoneHolds();
+      await wristPauses(_now.add(const Duration(seconds: 5)));
+      expectPhoneEqualsWrist('S-12633 pause', paused: true);
+
+      await wristResumes(_now.add(const Duration(seconds: 17)));
+      expectPhoneEqualsWrist('S-12633 resume', paused: false);
+      expect(phoneInterval().totalPausedDurationMs, 12000);
+      expect(failures, isEmpty);
+    });
+
+    test('S-12635 the loop: wrist pause reaches the phone; the phone resumes '
+        'and the wrist follows with an equal accumulated pause', () async {
+      await phoneStartsAndWristHolds();
+      await wristPauses(wristStampAfter5s());
+      expectPhoneEqualsWrist('S-12635 first half', paused: true);
+
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await phoneState.resumeTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+      await applyPhoneTimers();
+      expect(wristElapsed().state, WatchTimerState.running);
+      expect(wristElapsed().accumulatedPauseMs,
+          phoneInterval().totalPausedDurationMs,
+          reason: 'S-12635 both sides equal after the phone resumes');
+      expect(failures, isEmpty);
+    });
+
+    /// The same, for a wrist countdown (round or hold) instead of the elapsed
+    /// timer.
+    Future<void> wristPausesCountdown(String kind, DateTime at) async {
+      wristClock = at;
+      await engine.pauseTimer(kind: kind);
+      wristClock = _now;
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+    }
+
+    Future<void> wristResumesCountdown(String kind, DateTime at) async {
+      wristClock = at;
+      await engine.resumeTimer(kind: kind);
+      wristClock = _now;
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+    }
+
+    /// A drill slot whose hold the phone tracks as a timed instance.
+    const String holdSlotId = 'sx-plank';
+
+    Map<String, Object?> holdSlot() => <String, Object?>{
+      'sessionExerciseId': holdSlotId,
+      'exerciseId': 'ex-plank',
+      'name': 'Plank',
+      'effortKind': 'drill',
+      'capabilities': ['hold'],
+    };
+
+    test('S-12634 a wrist pause and resume of the round reach the phone '
+        'round', () async {
+      await seedExercise(
+        repository,
+        id: 'ex-burpee',
+        name: 'Burpees',
+        capabilities: ['rounds'],
+      );
+      await engine.createSession(modality: null, exercises: [_roundSlot()]);
+      await radio.fromWrist(engine.sessionSnapshot()!);
+      await _settle();
+
+      wristClock = _wristStart;
+      await engine.startTimer(
+        WatchTimerKind.round,
+        plannedDurationMs: 75000,
+        sessionExerciseId: _roundSlotId,
+      );
+      wristClock = _now;
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+      expect(
+        phoneState.getRoundsForEffort(_roundSlotId).single.state,
+        RoundState.active,
+        reason: 'the fixture: the phone runs the wrist round',
+      );
+
+      await wristPausesCountdown(
+        WatchTimerKind.round,
+        _now.add(const Duration(seconds: 5)),
+      );
+      final wristPaused = engine.timerFor(WatchTimerKind.round)!;
+      final paused = phoneState.getRoundsForEffort(_roundSlotId).single;
+      expect(
+        paused.state,
+        RoundState.paused,
+        reason: 'S-12634 the phone round pauses with the wrist',
+      );
+      expect(
+        paused.pausedAtMs,
+        wristPaused.pausedAt!.millisecondsSinceEpoch,
+        reason: "S-12634 with the wrist's pause stamp",
+      );
+      expect(
+        paused.plannedDurationSecs,
+        75,
+        reason: 'S-12634 the pause leaves the planned length alone',
+      );
+
+      await wristResumesCountdown(
+        WatchTimerKind.round,
+        _now.add(const Duration(seconds: 17)),
+      );
+      final resumed = phoneState.getRoundsForEffort(_roundSlotId).single;
+      expect(
+        resumed.state,
+        RoundState.active,
+        reason: 'S-12634 the phone round runs with the wrist',
+      );
+      expect(
+        resumed.pausedAtMs,
+        isNull,
+        reason: 'S-12634 the resume clears the paused-at',
+      );
+      expect(
+        resumed.totalPausedDurationMs,
+        12000,
+        reason: 'S-12634 the resume banks the wrist pause',
+      );
+      expect(
+        resumed.plannedDurationSecs,
+        75,
+        reason: 'S-12634 the resume leaves the planned length alone',
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-12634 a wrist pause and resume of the hold reach the phone '
+        'hold', () async {
+      await seedExercise(
+        repository,
+        id: 'ex-plank',
+        name: 'Plank',
+        capabilities: ['hold'],
+      );
+      await engine.createSession(modality: null, exercises: [holdSlot()]);
+      await radio.fromWrist(engine.sessionSnapshot()!);
+      await _settle();
+
+      wristClock = _wristStart;
+      await engine.startTimer(
+        WatchTimerKind.hold,
+        sessionExerciseId: holdSlotId,
+      );
+      wristClock = _now;
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+      expect(
+        phoneState.getTimedInstancesForEffort(holdSlotId).first.state,
+        TimedState.active,
+        reason: 'the fixture: the phone runs the wrist hold',
+      );
+
+      await wristPausesCountdown(
+        WatchTimerKind.hold,
+        _now.add(const Duration(seconds: 5)),
+      );
+      final wristPaused = engine.timerFor(WatchTimerKind.hold)!;
+      final paused = phoneState
+          .getTimedInstancesForEffort(holdSlotId)
+          .first;
+      expect(
+        paused.state,
+        TimedState.paused,
+        reason: 'S-12634 the phone hold pauses with the wrist',
+      );
+      expect(
+        paused.pausedAtMs,
+        wristPaused.pausedAt!.millisecondsSinceEpoch,
+        reason: "S-12634 with the wrist's pause stamp",
+      );
+
+      await wristResumesCountdown(
+        WatchTimerKind.hold,
+        _now.add(const Duration(seconds: 17)),
+      );
+      final resumed = phoneState
+          .getTimedInstancesForEffort(holdSlotId)
+          .first;
+      expect(
+        resumed.state,
+        TimedState.active,
+        reason: 'S-12634 the phone hold runs with the wrist',
+      );
+      expect(
+        resumed.pausedAtMs,
+        isNull,
+        reason: 'S-12634 the resume clears the paused-at',
+      );
+      expect(
+        resumed.totalPausedDurationMs,
+        12000,
+        reason: 'S-12634 the resume banks the wrist pause',
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-12638 a graph restart adopts the same paused wrist timer without '
+        'writing', () async {
+      await wristStartsAndPhoneHolds();
+      await wristPauses(_now.add(const Duration(seconds: 5)));
+      final before = phoneInterval();
+      expect(
+        before.state,
+        TimedState.paused,
+        reason: 'the fixture: the wrist pause reached the phone',
+      );
+      final startedAtMs = before.startedAtMs;
+      final pausedAtMs = before.pausedAtMs;
+      final totalPausedMs = before.totalPausedDurationMs;
+      final revisionBefore = phoneState.watchRefreshRevision;
+
+      graph.timerAdoption.dispose();
+      graph = await startGraph();
+      graph.timerPush.bindWorkoutState(phoneState);
+      await deliver(snapshot(revision: 9));
+      await graph.timerAdoption.flush();
+
+      final after = phoneInterval();
+      expect(after.state, TimedState.paused, reason: 'S-12638 still paused');
+      expect(after.startedAtMs, startedAtMs, reason: 'S-12638 same start');
+      expect(after.pausedAtMs, pausedAtMs, reason: 'S-12638 same paused-at');
+      expect(
+        after.totalPausedDurationMs,
+        totalPausedMs,
+        reason: 'S-12638 same accumulated pause',
+      );
+      expect(
+        phoneState.watchRefreshRevision,
+        revisionBefore,
+        reason: 'S-12638 no write, so no screen resync',
+      );
+    });
+
+    test('S-12638 a restart does not regress a phone resume onto the wrist '
+        'older paused copy', () async {
+      await wristStartsAndPhoneHolds();
+      await wristPauses(_now.add(const Duration(seconds: 5)));
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await phoneState.resumeTimedEntry(_slotId, 0);
+      final resumed = phoneInterval();
+      expect(
+        resumed.state,
+        TimedState.active,
+        reason: 'the fixture: the phone resumed',
+      );
+      final accumulated = resumed.totalPausedDurationMs;
+      final revisionBefore = phoneState.watchRefreshRevision;
+
+      graph.timerAdoption.dispose();
+      graph = await startGraph();
+      graph.timerPush.bindWorkoutState(phoneState);
+      await deliver(snapshot(revision: 9));
+      await graph.timerAdoption.flush();
+
+      final after = phoneInterval();
+      expect(
+        after.state,
+        TimedState.active,
+        reason: "S-12638 the wrist's older paused copy does not stop it",
+      );
+      expect(
+        after.pausedAtMs,
+        isNull,
+        reason: "S-12638 the phone's resume is not undone",
+      );
+      expect(
+        after.totalPausedDurationMs,
+        accumulated,
+        reason: "S-12638 the phone's larger accumulated pause is kept",
+      );
+      expect(
+        phoneState.watchRefreshRevision,
+        revisionBefore,
+        reason: 'S-12638 nothing written, so no screen resync',
+      );
+    });
+
+    test('S-12639 a wrist pause or resume never rewrites a finished '
+        'interval', () async {
+      await wristStartsAndPhoneHolds();
+      await phoneState.finishTimedEntry(_slotId, 0);
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId).map((i) => i.state),
+        [TimedState.finished, TimedState.notStarted],
+        reason: 'the fixture: interval 0 finished, interval 1 unstarted',
+      );
+
+      await wristPauses(_now.add(const Duration(seconds: 5)));
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId).map((i) => i.state),
+        [TimedState.finished, TimedState.notStarted],
+        reason: 'S-12639 the wrist pause never rewrites a finished interval',
+      );
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId)[1].startedAtMs,
+        0,
+        reason: 'S-12639 the wrist pause never starts the next interval',
+      );
+
+      await wristResumes(_now.add(const Duration(seconds: 17)));
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId).map((i) => i.state),
+        [TimedState.finished, TimedState.notStarted],
+        reason: 'S-12639 the wrist resume never rewrites a finished interval',
+      );
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId)[1].startedAtMs,
+        0,
+        reason: 'S-12639 the wrist resume never starts the next interval',
+      );
+
+      await wristPauses(_now.add(const Duration(seconds: 20)));
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId).map((i) => i.state),
+        [TimedState.finished, TimedState.notStarted],
+        reason: 'S-12639 a second wrist pause never rewrites it either',
+      );
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId)[1].startedAtMs,
+        0,
+        reason: 'S-12639 and never starts the next interval',
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-12640 a repeated wrist frame bumps the refresh revision once, '
+        'not again', () async {
+      await wristStartsAndPhoneHolds();
+      final revisionBefore = phoneState.watchRefreshRevision;
+
+      await wristPauses(_now.add(const Duration(seconds: 5)));
+      final rev1 = phoneState.watchRefreshRevision;
+      expect(
+        rev1,
+        greaterThan(revisionBefore),
+        reason: 'S-12640 the pause writes once',
+      );
+      expect(
+        phoneInterval().state,
+        TimedState.paused,
+        reason: 'S-12640 the pause reached the phone',
+      );
+
+      // The same pause frame again, and an unrelated snapshot change: neither
+      // is a new timer, so neither writes.
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+      await deliver(snapshot(revision: 9));
+      await graph.timerAdoption.flush();
+      expect(
+        phoneState.watchRefreshRevision,
+        rev1,
+        reason: 'S-12640 a repeated frame is not applied twice',
+      );
+
+      await wristResumes(_now.add(const Duration(seconds: 17)));
+      expect(
+        phoneState.watchRefreshRevision,
+        rev1 + 1,
+        reason: 'S-12640 the resume writes once (pausedAtMs → running)',
+      );
+      expect(
+        phoneInterval().state,
+        TimedState.active,
+        reason: 'S-12640 the phone runs the wrist timer again',
+      );
+
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+      expect(
+        phoneState.watchRefreshRevision,
+        rev1 + 1,
+        reason: 'S-12640 the redelivered resume is not applied twice',
+      );
+      expect(
+        phoneInterval().state,
+        TimedState.active,
+        reason: 'the last assertion: still running',
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-12636 both pause at once, the wrist 3 s earlier: the phone keeps '
+        'its own stamp', () async {
+      await phoneStartsAndWristHolds();
+      // The phone pauses first: its frame is SENT but not yet applied on the
+      // wrist, which has not seen it.
+      await phoneState.pauseTimedEntry(_slotId, 0);
+      final tP = phoneInterval().pausedAtMs!;
+      await graph.timerPush.flush();
+
+      // The wrist pauses itself 3 s EARLIER than the phone; its own frame is
+      // delivered to the phone.
+      await wristPauses(
+        DateTime.fromMillisecondsSinceEpoch(tP)
+            .add(const Duration(seconds: -3)),
+      );
+      expect(
+        phoneInterval().state,
+        TimedState.paused,
+        reason: 'S-12636 the phone stays paused',
+      );
+      expect(
+        phoneInterval().pausedAtMs,
+        tP,
+        reason: "S-12636 the phone keeps its own stamp, not the wrist's "
+            'earlier one (D-5)',
+      );
+
+      // The wrist pause is adopted (refused), so nothing new is sent back.
+      final sentBefore = sentOfType('timer_state').length;
+      await graph.timerPush.flush();
+      expect(
+        sentOfType('timer_state').length,
+        sentBefore,
+        reason: 'S-12636 the refused wrist pause is not echoed',
+      );
+
+      // Then the phone's pause frame reaches the wrist: both converge on the
+      // phone's stamp.
+      await applyPhoneTimers();
+      expect(
+        wristElapsed().state,
+        WatchTimerState.paused,
+        reason: 'S-12636 the wrist ends paused with the phone',
+      );
+      expect(
+        wristElapsed().pausedAt!.millisecondsSinceEpoch,
+        tP,
+        reason: "S-12636 the wrist row ends on the phone's stamp (D-5)",
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-12636 both pause at once, the wrist 3 s later: the phone keeps '
+        'its own stamp', () async {
+      await phoneStartsAndWristHolds();
+      // The phone pauses first: its frame is SENT but not yet applied on the
+      // wrist, which has not seen it.
+      await phoneState.pauseTimedEntry(_slotId, 0);
+      final tP = phoneInterval().pausedAtMs!;
+      await graph.timerPush.flush();
+
+      // The wrist pauses itself 3 s LATER than the phone; its own frame is
+      // delivered to the phone.
+      await wristPauses(
+        DateTime.fromMillisecondsSinceEpoch(tP).add(const Duration(seconds: 3)),
+      );
+      expect(
+        phoneInterval().state,
+        TimedState.paused,
+        reason: 'S-12636 the phone stays paused',
+      );
+      expect(
+        phoneInterval().pausedAtMs,
+        tP,
+        reason: "S-12636 the phone keeps its own stamp, not the wrist's "
+            'later one (D-5)',
+      );
+
+      final sentBefore = sentOfType('timer_state').length;
+      await graph.timerPush.flush();
+      expect(
+        sentOfType('timer_state').length,
+        sentBefore,
+        reason: 'S-12636 the refused wrist pause is not echoed',
+      );
+
+      await applyPhoneTimers();
+      expect(
+        wristElapsed().state,
+        WatchTimerState.paused,
+        reason: 'S-12636 the wrist ends paused with the phone',
+      );
+      expect(
+        wristElapsed().pausedAt!.millisecondsSinceEpoch,
+        tP,
+        reason: "S-12636 the wrist row ends on the phone's stamp (D-5)",
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-12637 both resume at once: the phone takes the wrist\u2019s '
+        'larger accumulated pause', () async {
+      await phoneStartsAndWristHolds();
+      // The phone pauses, its frame is flushed AND applied on the wrist, so
+      // the wrist holds the phone's pause.
+      await phoneState.pauseTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+      await applyPhoneTimers();
+      final tP0 = phoneInterval().pausedAtMs!;
+
+      // The phone resumes first: its frame is SENT but not yet applied on
+      // the wrist, which has not seen it.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await phoneState.resumeTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+
+      // The wrist, not having seen the phone's resume, resumes 1 s later —
+      // its frame carries accumulatedPauseMs 1000, larger than the phone's
+      // (about 20). The later resume wins on the phone (D-5 / D-2a).
+      await wristResumes(
+        DateTime.fromMillisecondsSinceEpoch(tP0)
+            .add(const Duration(seconds: 1)),
+      );
+      expect(
+        phoneInterval().state,
+        TimedState.active,
+        reason: 'S-12637 the phone runs with the wrist resume',
+      );
+      expect(
+        phoneInterval().pausedAtMs,
+        isNull,
+        reason: 'S-12637 the resume clears the paused-at',
+      );
+      expect(
+        phoneInterval().totalPausedDurationMs,
+        1000,
+        reason: "S-12637 the wrist's larger accumulated pause wins (D-2a)",
+      );
+
+      // Known gap (plan Q1): after the phone's own resume frame is applied on
+      // the wrist, the wrist shows the phone's earlier resume, so the two
+      // clocks differ by the gap between the two presses (accepted until
+      // either side next pauses). Only the phone side is asserted here.
+      await engine.applyMessage(sentOfType('timer_state').last);
       expect(failures, isEmpty);
     });
   });
