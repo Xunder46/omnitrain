@@ -5,7 +5,8 @@
 // Plan: `docs/plans/2026-11-05-125-wrist-routine-focus-modality-plan/`
 // `2026-11-05-125a-contract-and-phone-plan.md`, D-125-3, D-125-4, D-125-5.
 // Scenario mapping:
-//   S-12514 buildRoutinesDown keeps `focusModality` OFF the wire (D-125-2)
+//   S-12573 buildRoutinesDown carries focusModality for a routine that has one
+//           (125b D-12564)
 //   S-12515 the provider-only run imports as the routine, Focus as modality
 //   S-12516 the wrist's own end.modality wins over the routine's Focus
 //   S-12517 a routine with no Focus imports with modality null
@@ -178,7 +179,8 @@ Future<TrainingSession?> _session(
 void main() {
   group('125a the importer links the routine (D-125-3, D-125-4)', () {
     test(
-      'S-12514 buildRoutinesDown carries NO focusModality key (D-125-2)',
+      'S-12573 buildRoutinesDown carries focusModality for a routine that '
+      'has one (125b D-12564)',
       () async {
         final repository = MockWorkoutRepository();
         await repository.initialize();
@@ -197,9 +199,10 @@ void main() {
         final routines = (message['payload']! as Map)['routines']! as List;
         expect(routines, hasLength(1));
         expect(
-          (routines.single as Map).containsKey('focusModality'),
-          isFalse,
-          reason: 'D-125-2 the phone does not emit focusModality in 125a',
+          (routines.single as Map)['focusModality'],
+          Modality.isometricStretching,
+          reason: 'D-12564 the phone emits focusModality when the routine '
+              'has one',
         );
       },
     );

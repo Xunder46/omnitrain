@@ -289,11 +289,22 @@ public struct WatchRoutine {
 
     public let segments: [WatchRoutineSegment]
 
-    public init(routineId: String, name: String, updatedAt: Date, segments: [WatchRoutineSegment]) {
+    /// The routine's Focus Modality key as the phone sent it, nil when the
+    /// routine has none or the phone sent nothing readable (D-12560).
+    public let focusModality: String?
+
+    public init(
+        routineId: String,
+        name: String,
+        updatedAt: Date,
+        segments: [WatchRoutineSegment],
+        focusModality: String? = nil
+    ) {
         self.routineId = routineId
         self.name = name
         self.updatedAt = updatedAt
         self.segments = segments
+        self.focusModality = focusModality
     }
 
     public init(json: [String: Any]) throws {
@@ -301,8 +312,21 @@ public struct WatchRoutine {
             routineId: try requiredString(json, "routineId"),
             name: try requiredString(json, "name"),
             updatedAt: try parseUtcIso(json["updatedAt"]),
-            segments: try ((json["segments"] as? [[String: Any]]) ?? []).map(WatchRoutineSegment.init(json:))
+            segments: try ((json["segments"] as? [[String: Any]]) ?? []).map(WatchRoutineSegment.init(json:)),
+            focusModality: Self.focusKey(json["focusModality"])
         )
+    }
+
+    /// The Focus only when the wrist knows the modality: this is what the
+    /// session the routine starts carries (D-12560).
+    public var startModality: String? {
+        guard let focusModality, WatchActivityTypes.byModality[focusModality] != nil else { return nil }
+        return focusModality
+    }
+
+    private static func focusKey(_ value: Any?) -> String? {
+        guard let key = value as? String, !key.isEmpty else { return nil }
+        return key
     }
 
     /// Every effort in the routine, in the order the session will run them.
@@ -325,12 +349,14 @@ public struct WatchRoutine {
     }
 
     public func toJson() -> [String: Any] {
-        [
+        var json: [String: Any] = [
             "routineId": routineId,
             "name": name,
             "updatedAt": utcIso(updatedAt),
             "segments": segments.map { $0.toJson() },
         ]
+        if let focusModality { json["focusModality"] = focusModality }
+        return json
     }
 }
 

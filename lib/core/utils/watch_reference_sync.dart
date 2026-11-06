@@ -133,6 +133,11 @@ abstract final class WatchReferenceSync {
       );
       if (segments.isEmpty) continue;
 
+      // D-12564: the Focus travels verbatim when the routine has one — no
+      // enum on the wire, no filtering toward the wrist's table. `''` is
+      // omitted (the schema's minLength:1 would otherwise reject the list)
+      // and a null Focus emits no key at all.
+      final focus = template.focusModality;
       routines.add({
         'routineId': template.id,
         'name': template.name,
@@ -142,6 +147,7 @@ abstract final class WatchReferenceSync {
             isUtc: true,
           ),
         ),
+        if (focus != null && focus.isNotEmpty) 'focusModality': focus,
         'segments': segments,
       });
     }

@@ -554,9 +554,12 @@ public final class WatchSessionStartPaths {
     /// carries the capabilities the phone resolved the exercise from, which is
     /// what makes the logging surface the right one without asking the phone.
     ///
-    /// The session carries no modality: `routines_down` has no field for one, so
-    /// the wrist resolves each exercise from its capabilities instead of guessing
-    /// from the routine. See the plan's open items.
+    /// The modality the session starts with: a routine whose Focus is a modality
+    /// the wrist knows (`startModality`) starts its session with that modality,
+    /// so the Health type, GPS and the round word follow it. A routine with no
+    /// or an unknown Focus starts a session with no modality, as before. A
+    /// routine that fills an empty session already held keeps that session's
+    /// modality (D-12561).
     @discardableResult
     public func startFromRoutine(_ routineId: String) async throws -> WatchSessionRecord {
         guard let routine = storedRoutines.first(where: { $0.routineId == routineId }) else {
@@ -581,7 +584,7 @@ public final class WatchSessionStartPaths {
         // here carry the token of the id the start paths mint for the start
         // (plan 81 D-9).
         return await engine.createSession(
-            modality: nil,
+            modality: routine.startModality,
             exercises: routine.slots(token: sessionToken(from: newId()))
         )
     }

@@ -10,6 +10,7 @@
 /// the wrist's to read (PROTOCOL.md, authority rule 2).
 library;
 
+import '../sensors/watch_platform_workout.dart';
 import '../session/watch_records.dart';
 
 /// The per-session suffix the wrist appends to every slot id it mints (plan 81
@@ -211,6 +212,16 @@ class WatchRoutine {
   /// The routine's Focus Modality key, as the phone sent it, or null when the
   /// phone did not send one (an older phone, or a routine with no Focus).
   final String? focusModality;
+
+  /// The Focus the wrist can start a session with: [focusModality] when the
+  /// wrist knows it as a modality (a key of [WatchActivityTypes.byModality]),
+  /// else null.
+  String? get startModality {
+    final focus = focusModality;
+    return focus != null && WatchActivityTypes.byModality.containsKey(focus)
+        ? focus
+        : null;
+  }
 
   /// When the phone last edited it. The cache is replaced wholesale, so this is
   /// what tells the user which version they are looking at.

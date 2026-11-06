@@ -114,8 +114,10 @@ the HealthKit workout of such a session is registered as outdoor
 (`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
 `WatchSensorSourceSourceTests.testS3312TheStoreTakesTheAdapterAndRegistersOutdoors`).
 The workout is registered once (D-4803 of plan 40): a session with a modality
-registers at its start, and a session with no modality — every Free workout —
-waits until its type is known and registers the moment the first exercise is
+registers at its start, and a session with no modality — every Free workout and
+every Focus-less routine start (`testS12572RoutinesDownWithoutTheFieldKeepsTodaySBehaviour`
+in `WatchRoutineFocusTests.swift`; Dart `S-12572 the default path is untouched`
+in `test/watch_routine_focus_start_test.dart`) — waits until its type is known and registers the moment the first exercise is
 picked; nothing re-registers it mid-session, and a later exercise never
 changes the type Health fixed at open
 (`WatchWorkoutTypeFromExercisesTests.testS8807AFreeWorkoutWaitsForItsFirstExercise`,
@@ -177,10 +179,15 @@ and sends no distance
 lifts and holds never ask and never use location
 (`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
 `WatchGpsByExerciseTests.testS4801ALiftNeverStartsGpsAndNeverAsks`); free
-training and routines ask and use location only once the user is on an
-exercise that carries the `distance` capability
+training and Focus-less routine starts ask and use location only once the user
+is on an exercise that carries the `distance` capability
 (`WatchGpsByExerciseTests.testS4800AWalkInAFreeWorkoutStartsGps`,
-`…testS4802GpsStartsWhenTheUserReachesTheWalk`). No route or map is stored on the wrist's own log; the only route is the one
+`…testS4802GpsStartsWhenTheUserReachesTheWalk`); a routine whose Focus resolves
+to a distance modality (Cardio, Sports) turns GPS on at its start, before any
+exercise is on
+(`testS12560RoutineFocusCarriesTheTableToTheSession` in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchRoutineFocusTests.swift`).
+No route or map is stored on the wrist's own log; the only route is the one
 handed to Health (see "Route in Apple Fitness"). All of this is verified in code
 and builds only:
 nothing here is proven on a wrist.

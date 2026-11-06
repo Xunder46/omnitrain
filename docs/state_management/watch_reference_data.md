@@ -38,7 +38,10 @@ A routine MAY also name its `focusModality` (a non-empty string; fixture
 `invalid/routines_down_empty_focus_modality.json` and
 `invalid/routines_down_numeric_focus_modality.json`); the wrist's `WatchRoutine`
 keeps it (`test/watch_routine_focus_modality_test.dart`,
-`S-12510 toJson round-trips a set focus modality`), and the phone does not send it yet.
+`S-12510 toJson round-trips a set focus modality`), and the phone sends it whenever the routine has one
+(`test/watch_routine_focus_send_test.dart`, group `125b D-12564 the phone
+emits the routine Focus`, test `S-12573 buildRoutinesDown carries
+focusModality for a routine that has one (125b D-12564)`).
 
 ## A batch is stored as it arrives
 

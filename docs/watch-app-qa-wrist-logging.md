@@ -453,3 +453,32 @@ frame (plan 87b, open question d;
     quit the phone app after the finish, then log a set on the watch: the watch
     closes the workout. Held off-device by
     `test/watch_session_end_owed_test.dart` and `WatchWorkoutSummaryTests`.
+
+42. **A routine's Focus reaches the watch — (owner, plan 125b).** (a) Give a
+    routine the Focus Stretching, sync the watch (Sync), start that routine on
+    the watch, log one hold and end it: Apple Health shows the workout as
+    Flexibility, not Other, and the OmniTrain calendar shows the Stretching
+    colour and name with the routine's name
+    (`testS12560RoutineFocusCarriesTheTableToTheSession` in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchRoutineFocusTests.swift`;
+    `test/watch_routine_focus_start_test.dart`, group `S-12561 the focus
+    stamps the started session`). (b) A routine with no Focus: still Other in
+    Health and Free Training on the calendar; a routine of only squats with a
+    Cardio Focus makes the watch ask for location, say "Intervals" and register
+    Running in Health — accepted, the Focus table wins over the exercises
+    (`testS12572RoutinesDownWithoutTheFieldKeepsTodaySBehaviour` and
+    `testS12571CardioFocusOverStrengthExercisesStaysRunning` in
+    `WatchRoutineFocusTests.swift`; `test/watch_routine_focus_start_test.dart`,
+    groups `S-12572 a routines_down with no focus anywhere` and `S-12571 a
+    cardio-focus routine of a strength exercise`). (c) Change a routine's
+    Focus on the phone (or choose Mixed / Not set), sync the watch and start
+    it: the new Focus applies (`test/watch_routine_focus_send_test.dart`,
+    group `125b D-12564 the phone emits the routine Focus`, tests `S-12576
+    (Mock arm) a Focus edit re-sends the routines at the wrist's old since,
+    with the Focus aboard` and `S-12577 a Focus clear re-sends the routines
+    without the key`). (d) Start a routine with a Focus on the PHONE while the
+    watch app is open: the watch still follows the exercises, not the Focus
+    (known gap, plan 125d; no test). (e) The 40 mm watch: every
+    screen looks unchanged (125b adds no visible change). Held off-device by
+    `WatchRoutineFocusTests` and `test/watch_routine_focus_start_test.dart` as
+    cited per sub-check.

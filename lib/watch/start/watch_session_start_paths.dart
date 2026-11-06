@@ -170,9 +170,12 @@ class WatchSessionStartPaths {
   /// carries the capabilities the phone resolved the exercise from, which is
   /// what makes the logging surface the right one without asking the phone.
   ///
-  /// The session carries no modality: `routines_down` has no field for one, so
-  /// the wrist resolves each exercise from its capabilities instead of guessing
-  /// from the routine. See the plan's open items.
+  /// A routine whose Focus is a modality the wrist knows
+  /// ([WatchRoutine.startModality]) starts its session with it, so the Health
+  /// type, GPS and round word follow it. A routine with no or an unknown Focus
+  /// starts a session with no modality, as before. A routine that fills an
+  /// empty session already held keeps that session's modality: the held branch
+  /// below is untouched (D-12561's EDGE was cut).
   Future<WatchSessionRecord> startFromRoutine(String routineId) async {
     final routine = _routine(routineId);
     // A routine picked while an empty session is live is what that session was
@@ -194,7 +197,7 @@ class WatchSessionStartPaths {
     // carry the token of the id the start paths mint for the start (plan 81
     // D-9).
     return _engine.createSession(
-      modality: null,
+      modality: routine.startModality,
       exercises: routine.slotsFor(sessionToken(_newId())),
     );
   }
