@@ -43,6 +43,11 @@
         "routineId": { "type": "string", "minLength": 1 },
         "name": { "type": "string", "minLength": 1 },
         "updatedAt": { "$ref": "envelope.schema.json#/$defs/timestamp" },
+        "focusModality": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The routine's Focus Modality key as the phone stores it. Omitted when the routine has none, never null and never empty. A receiver that predates the field refuses it, so the phone does not send it until the watch reads it."
+        },
         "segments": {
           "type": "array",
           "minItems": 1,

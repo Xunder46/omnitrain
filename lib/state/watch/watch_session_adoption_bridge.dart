@@ -24,6 +24,7 @@ import '../../core/constants/block_types.dart';
 import '../../core/constants/capability.dart';
 import '../../core/constants/metric_ids.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/services/watch_routine_matcher.dart';
 import '../../core/services/watch_session_importer.dart';
 import '../../core/sync_protocol/phone_entries.dart';
 import '../../core/sync_protocol/wire_limits.dart';
@@ -90,10 +91,6 @@ const List<String> _kindPrecedence = [
   ExerciseCapability.time,
   ExerciseCapability.distance,
 ];
-
-/// What a wrist slot id is prefixed with: the phone's own template effort id
-/// follows, so a ladder names the routine it came from (`watch_routine_catalog`).
-const String _slotIdPrefix = 'sx-';
 
 /// The reps a planned row carries when the routine's template has no target for
 /// that set — the phone's own add's default (`session_core_entry`).
@@ -877,45 +874,24 @@ class WatchSessionAdoptionBridge {
   Future<_AdoptedRoutine?> _routineFor(
     List<Map<String, Object?>> slots,
   ) async {
-    if (slots.isEmpty) return null;
-
-    final effortIdBySlot = <String, String>{};
+    final slotIds = <String>[];
     for (final slot in slots) {
       final slotId = slot['sessionExerciseId'];
-      if (slotId is! String || !slotId.startsWith(_slotIdPrefix)) return null;
-      final rest = slotId.substring(_slotIdPrefix.length);
-      // Plan 81 D-4: the wrist suffixes its slot ids with a per-session token
-      // (`sx-<effortId>~<token>`), so the effort id is the text before the
-      // LAST `~`; an id without `~` decodes as before.
-      final effortId = rest.contains('~')
-          ? rest.substring(0, rest.lastIndexOf('~'))
-          : rest;
-      if (effortId.isEmpty) return null;
-      effortIdBySlot[slotId] = effortId;
+      if (slotId is! String) return null;
+      slotIds.add(slotId);
     }
+    final template = await WatchRoutineMatcher(_repository)
+        .templateFor(slotIds);
+    if (template == null) return null;
 
-    for (final template in await _repository.getTemplates()) {
-      final effortIds = <String>{};
-      for (final segment in await _repository.getTemplateSegments(
-        template.id,
-      )) {
-        for (final effort in await _repository.getTemplateEfforts(
-          segment.id,
-        )) {
-          effortIds.add(effort.id);
-        }
-      }
-      if (!effortIdBySlot.values.every(effortIds.contains)) continue;
-
-      final targetsBySlot = <String, List<TemplateTarget>>{};
-      for (final entry in effortIdBySlot.entries) {
-        targetsBySlot[entry.key] = await _repository.getTemplateTargets(
-          entry.value,
-        );
-      }
-      return (template: template, targetsBySlot: targetsBySlot);
+    final targetsBySlot = <String, List<TemplateTarget>>{};
+    for (final slot in slots) {
+      final slotId = slot['sessionExerciseId'] as String;
+      targetsBySlot[slotId] = await _repository.getTemplateTargets(
+        WatchRoutineMatcher.effortIdOf(slotId)!,
+      );
     }
-    return null;
+    return (template: template, targetsBySlot: targetsBySlot);
   }
 
   /// Writes the routine's planned set rows into the effort just created (D-3).

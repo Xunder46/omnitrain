@@ -33,6 +33,12 @@ Both messages are walked against the schemas by
 an empty `fallbackExercises` (`minItems: 0`); the validator's coverage rule is
 unchanged, so a routine whose exercise the fallback list misses is still refused
 (`SyncProtocolValidatorTests.testS3834ARoutinesDownWithAnEmptyFallbackIsStillRefused`).
+A routine MAY also name its `focusModality` (a non-empty string; fixture
+`valid/routines_down_focus_modality.json`, refusals
+`invalid/routines_down_empty_focus_modality.json` and
+`invalid/routines_down_numeric_focus_modality.json`); the wrist's `WatchRoutine`
+keeps it (`test/watch_routine_focus_modality_test.dart`,
+`S-12510 toJson round-trips a set focus modality`), and the phone does not send it yet.
 
 ## A batch is stored as it arrives
 

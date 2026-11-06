@@ -52,6 +52,22 @@ carry no `sx-` prefix, so it stays the free-session guard;
 `S-3641 the adopted effort holds the template's planned sets`,
 `S-3644a no template covers the ladder: a free session as today`).
 
+A wrist run the phone never adopted (phone away) is linked the same way when
+it is imported: `WatchSessionImporter` creates the session as the routine its
+slot ids spell (`WatchRoutineMatcher`) — the routine's name as title, intent
+`routine`, `routineTemplateId`, and the routine's Focus as `modality` when the
+wrist's `session_end` carried none (the wrist's own value wins) — and never
+rewrites a session that already exists
+(`test/watch_routine_link_import_test.dart`,
+`S-12515 a provider-only run imports as the routine, Focus won`,
+`S-12516 the wrist's end.modality wins and the routine still links`,
+`S-12521 an adopted session is never rewritten by the importer (create-only)`,
+`S-12519 a free workout slot ids never link`). A `routines_down` routine MAY
+carry `focusModality` in the schema, but the phone does not send it yet
+(`S-12514 buildRoutinesDown carries NO focusModality key (D-125-2)`): an older
+watch refuses an unknown field, so the sender is switched on together with the
+watch that reads it.
+
 **D-11 — the answer is composed on demand, and a change to the phone's own
 session is pushed (D-75).** The phone asserts its ladder inside the answer to a
 snapshot request, built at that moment from the session it holds, and a change to

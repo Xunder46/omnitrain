@@ -187,6 +187,7 @@ class WatchRoutine {
     required this.name,
     required this.updatedAt,
     required this.segments,
+    this.focusModality,
   });
 
   factory WatchRoutine.fromJson(Map<String, Object?> json) => WatchRoutine(
@@ -197,10 +198,19 @@ class WatchRoutine {
         .map(asJsonObject)
         .map(WatchRoutineSegment.fromJson)
         .toList(growable: false),
+    focusModality:
+        json['focusModality'] is String &&
+            (json['focusModality'] as String).isNotEmpty
+        ? json['focusModality'] as String
+        : null,
   );
 
   final String routineId;
   final String name;
+
+  /// The routine's Focus Modality key, as the phone sent it, or null when the
+  /// phone did not send one (an older phone, or a routine with no Focus).
+  final String? focusModality;
 
   /// When the phone last edited it. The cache is replaced wholesale, so this is
   /// what tells the user which version they are looking at.
@@ -233,6 +243,7 @@ class WatchRoutine {
     'routineId': routineId,
     'name': name,
     'updatedAt': utcIso(updatedAt),
+    if (focusModality != null) 'focusModality': focusModality,
     'segments': [for (final segment in segments) segment.toJson()],
   };
 }

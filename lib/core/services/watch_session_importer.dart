@@ -21,6 +21,7 @@
 /// reach the same rows in any arrival order (S-262).
 library;
 
+import 'watch_routine_matcher.dart';
 import '../constants/block_types.dart';
 import '../constants/metric_ids.dart';
 import '../sync_protocol/wire_limits.dart';
@@ -502,7 +503,13 @@ class _Pass {
     required List<_Entry> live,
   }) async {
     if (existing == null) {
-      await _createSession(rows);
+      await _createSession(
+        rows,
+        slotIds: {
+          for (final entry in materialised) entry.key.sessionExerciseId,
+          for (final entry in live) entry.key.sessionExerciseId,
+        },
+      );
     } else {
       await _topUpRating(existing, unapplied);
       if (end!.row.appliedAtMs == null) await _attachSessionSummary();
@@ -577,17 +584,30 @@ class _Pass {
 
   // --- The session ------------------------------------------------------------
 
-  Future<void> _createSession(List<WatchInboxEntry> rows) async {
+  /// D-125-4: the session's identity comes from the routine its slot ids
+  /// spell (create-only — an existing session is never rewritten here).
+  Future<void> _createSession(
+    List<WatchInboxEntry> rows, {
+    required Set<String> slotIds,
+  }) async {
     final end = this.end!;
     // A session created with its rating applied that rating too (plan 90 D-4).
     final rating = _ratingAtImport(rows);
+    final template = await WatchRoutineMatcher(
+      _repository,
+    ).templateFor(slotIds);
     await _repository.createSession(
       TrainingSession(
         id: sessionId,
         ownerUserId: LoggedEntryRows.ownerUserId,
         startedAtMs: end.startedAtMs,
         endedAtMs: end.endedAtMs,
-        modality: end.modality,
+        modality: template == null
+            ? end.modality
+            : (end.modality ?? template.focusModality),
+        title: template?.name,
+        intent: template == null ? null : 'routine',
+        routineTemplateId: template?.id,
         sessionFeeling: rating,
         createdAtMs: end.startedAtMs,
         updatedAtMs: end.endedAtMs,

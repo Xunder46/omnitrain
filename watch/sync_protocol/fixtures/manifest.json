@@ -192,6 +192,12 @@
       "type": "session_snapshot",
       "scenario": "S-10501",
       "note": "A session slot MAY name the Health kind: `sx-hike` carries `healthActivity: \"hiking\"` with `capabilities` `[\"time\", \"distance\"]`."
+    },
+    {
+      "path": "valid/routines_down_focus_modality.json",
+      "type": "routines_down",
+      "scenario": "S-12510",
+      "note": "A routine MAY carry the phone's Focus Modality: `routine-isometric-a` names `focusModality: \"isometric_stretching\"`, present only when the routine has a Focus and never empty (plan 125a)."
     }
   ],
   "invalid": [
@@ -788,6 +794,22 @@
       "expectedCode": "semantic_violation",
       "expectedReasonContains": "glassChange is carried only by water_glass entries",
       "note": "`glassChange` belongs to a glass tap; on a set it is a sender defect (plan 94 D-10)."
+    },
+    {
+      "path": "invalid/routines_down_empty_focus_modality.json",
+      "type": "routines_down",
+      "scenario": "S-12511",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1 characters, found 0",
+      "note": "A routine's Focus Modality is a key when it is named at all: an empty string is no modality and is refused by `minLength`."
+    },
+    {
+      "path": "invalid/routines_down_numeric_focus_modality.json",
+      "type": "routines_down",
+      "scenario": "S-12512",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected string, found 7",
+      "note": "`focusModality` is a string, never a number: 7 is refused as the wrong type."
     }
   ],
   "scenarios": [
