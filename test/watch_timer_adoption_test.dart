@@ -16,6 +16,10 @@
 //          re-applied onto the interval the phone started next → `S-6113 ...`
 //   S-6114 nothing is echoed back, but the phone's pause travels → `S-6114 ...`
 //   S-6115 the earlier start wins, whichever device made it → `S-6115 ...`
+//   S-12171..S-12174 a stale wrist copy of a timer the phone already logged
+//          never starts or rewinds the next interval and nothing else moves;
+//          a genuine next start still adopts → `S-12171 ...`, `S-12172 ...`,
+//     `S-12173 ...`, `S-12174 ...`
 //
 // The phone side is the graph `createWatchSync` builds — the shipping wiring,
 // including the adoption it returns — over a fake radio; the wrist side is the
@@ -625,8 +629,8 @@ void main() {
 
     test('S-6113 the same timer for a NEW session is applied again', () async {
       // One interval to begin with: an effort id IS the slot id, so every
-      // session's rows pile up under it and the new session's interval must be
-      // the only unfinished one.
+      // session's rows pile up under it; the old session's rows are dropped
+      // below, so the new session's first interval is the adoption target.
       await engine.createSession(modality: null, exercises: [_slot()]);
       await radio.fromWrist(engine.sessionSnapshot()!);
       await _settle();
@@ -648,6 +652,11 @@ void main() {
       // The wrist ends its session and starts another, with the same slot; the
       // phone ends its copy first, so the new snapshot is a fresh adoption.
       await phoneState.endSession();
+      // Production gives every session its own effort ids, so a finished row
+      // of the old session is never visible to the next one (121b A-1): the
+      // fixture shares the id, so it drops the old session's rows here.
+      await repository.deleteTimedInstancesForEffort(_slotId);
+      await phoneState.refreshEfforts([_slotId]);
       await engine.finishSession();
       wristSessionId = 's-w-adopt-2';
       await engine.createSession(modality: null, exercises: [_slot()]);
@@ -662,9 +671,9 @@ void main() {
       await phoneState.addEntry(_slotId);
       expect(
         phoneState.getTimedInstancesForEffort(_slotId).map((i) => i.state),
-        [TimedState.finished, TimedState.notStarted],
-        reason: "the fixture: the old session's interval is history, the new "
-            'one has not started',
+        [TimedState.notStarted, TimedState.notStarted],
+        reason: "the fixture: the old session's rows are gone, the new "
+            'session holds two intervals that have not started',
       );
 
       // The identical timer map, for the new session: the memo that skipped the
@@ -676,11 +685,11 @@ void main() {
       final intervals = phoneState.getTimedInstancesForEffort(_slotId);
       expect(
         intervals.map((i) => i.state),
-        [TimedState.finished, TimedState.active],
+        [TimedState.active, TimedState.notStarted],
         reason: 'S-6113 the memo belongs to a session, not to a timer',
       );
       expect(
-        intervals.last.startedAtMs,
+        intervals.first.startedAtMs,
         _wristStart.millisecondsSinceEpoch,
         reason: 'S-6113 on the same wrist start as the old session',
       );
@@ -974,6 +983,148 @@ void main() {
         phoneState.getTimedInstancesForEffort(_slotId).map((i) => i.state),
         [TimedState.notStarted],
         reason: 'S-6118 the phone has an interval for the wrist to start',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-1217x a stale wrist copy of a logged timer', () {
+    // S-12171's fixture up to the phone's finish: the wrist's timer T is
+    // adopted by interval 0, the phone logs it and opens the rest before
+    // interval 1. `graph.timerPush` is not bound, so the wrist keeps running
+    // T — the phone's clear never reached it.
+    Future<void> loggedFixture() async {
+      await fixture();
+      final wristTimer = await wristStartsElapsed(_wristStart);
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+      final intervals = phoneState.getTimedInstancesForEffort(_slotId);
+      expect(
+        intervals.first.state,
+        TimedState.active,
+        reason: 'the fixture: interval 0 runs on the wrist start',
+      );
+      expect(
+        intervals.first.startedAtMs,
+        wristTimer.startedAt.millisecondsSinceEpoch,
+        reason: "the fixture: interval 0 runs on the wrist's start",
+      );
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await phoneState.recordRestStart(_slotId, 1);
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId).map((i) => i.state),
+        [TimedState.finished, TimedState.notStarted],
+        reason: 'the fixture: the phone logged interval 0, interval 1 has '
+            'not started',
+      );
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId)[1].startedAtMs,
+        0,
+        reason: 'the fixture: interval 1 has no start',
+      );
+      expect(
+        phoneState
+            .getEntryRests(_slotId)
+            .firstWhere((rest) => rest.entryIndex == 1)
+            .restEndMs,
+        isNull,
+        reason: 'the fixture: the rest before interval 1 is open',
+      );
+    }
+
+    void expectStaleCopyIgnored(String id) {
+      final intervals = phoneState.getTimedInstancesForEffort(_slotId);
+      expect(
+        intervals.map((i) => i.state),
+        [TimedState.finished, TimedState.notStarted],
+        reason: '$id the stale copy must not write interval 1',
+      );
+      expect(
+        intervals[1].startedAtMs,
+        0,
+        reason: '$id interval 1 keeps no start',
+      );
+    }
+
+    test('S-12171 the wrist pauses its stale copy', () async {
+      await loggedFixture();
+
+      await engine.pauseTimer(kind: WatchTimerKind.elapsed);
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+      expectStaleCopyIgnored('S-12171');
+
+      expect(
+        phoneState.inProgressWorkTimers(),
+        isEmpty,
+        reason: 'S-12171 no work timer is in progress',
+      );
+      expect(
+        phoneState
+            .getEntryRests(_slotId)
+            .firstWhere((rest) => rest.entryIndex == 1)
+            .restEndMs,
+        isNull,
+        reason: 'S-12171 the rest the phone opened stays open',
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-12172 the phone app restarts while the wrist still runs T',
+        () async {
+      await loggedFixture();
+
+      graph.timerAdoption.dispose();
+      graph = await startGraph();
+
+      await deliver(snapshot());
+      await graph.timerAdoption.flush();
+      expectStaleCopyIgnored('S-12172');
+      expect(failures, isEmpty);
+    });
+
+    test('S-12173 redelivery, snapshot and resume of the stale copy',
+        () async {
+      await loggedFixture();
+
+      await engine.pauseTimer(kind: WatchTimerKind.elapsed);
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+      expectStaleCopyIgnored('S-12173');
+
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+      expectStaleCopyIgnored('S-12173');
+
+      await deliver(snapshot(revision: 9));
+      await graph.timerAdoption.flush();
+      expectStaleCopyIgnored('S-12173');
+
+      await engine.resumeTimer(kind: WatchTimerKind.elapsed);
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+      expectStaleCopyIgnored('S-12173');
+      expect(failures, isEmpty);
+    });
+
+    test('S-12174 the wrist genuinely starts the next interval', () async {
+      await loggedFixture();
+
+      final nextStart = _now.subtract(const Duration(seconds: 5));
+      await wristStartsElapsed(nextStart);
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+
+      final intervals = phoneState.getTimedInstancesForEffort(_slotId);
+      expect(
+        intervals[1].state,
+        TimedState.active,
+        reason: 'S-12174 a start the phone never logged adopts interval 1',
+      );
+      expect(
+        intervals[1].startedAtMs,
+        nextStart.millisecondsSinceEpoch,
+        reason: "S-12174 interval 1 runs on the wrist's new start",
       );
       expect(failures, isEmpty);
     });

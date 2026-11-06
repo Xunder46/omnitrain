@@ -278,8 +278,10 @@ class TimerManager {
   /// not-started target takes the remote's start and pause bookkeeping; an
   /// in-progress target is replaced only when the remote started earlier (the
   /// earlier start wins). The effort's open rests are closed in memory and
-  /// persisted as [startTimedEntry] does. No notification is sent here: the
-  /// session core bumps the refresh revision and notifies once.
+  /// persisted as [startTimedEntry] does. A remote whose start matches an
+  /// interval the effort already finished is that logged interval and is
+  /// ignored, whatever the other intervals' states. No notification is sent
+  /// here: the session core bumps the refresh revision and notifies once.
   Future<bool> adoptRemoteTimer(
     String effortId,
     String effortKind,
@@ -295,6 +297,7 @@ class TimerManager {
         _ => null,
       };
       if (wireKind == null || wireKind != remote.wireKind) return false;
+      if (_remoteIsLoggedInterval(effortId, effortKind, remote)) return false;
 
       return effortKind == 'round'
           ? await _adoptRemoteRound(effortId, remote)
@@ -315,7 +318,9 @@ class TimerManager {
   /// A watch that starts a second interval has no phone interval waiting for
   /// it, so the session core adds one first. A finished interval that started
   /// with the same instant means the phone already logged this timer, so it is
-  /// not news again.
+  /// not news again. The "already logged" decision is shared with
+  /// [adoptRemoteTimer] through [_remoteIsLoggedInterval], so the grow path
+  /// and the write path cannot disagree.
   bool needsIntervalFor(
     String effortId,
     String effortKind,
@@ -330,24 +335,43 @@ class TimerManager {
     if (wireKind == null || wireKind != remote.wireKind) return false;
 
     final bool anyUnfinished;
-    final Iterable<int> finishedStarts;
     if (effortKind == 'round') {
-      final rounds = getRoundsForEffort(effortId);
-      anyUnfinished = rounds.any((r) => r.state != RoundState.finished);
-      finishedStarts = [
-        for (final r in rounds)
-          if (r.state == RoundState.finished) r.startedAtMs,
-      ];
+      anyUnfinished = getRoundsForEffort(
+        effortId,
+      ).any((r) => r.state != RoundState.finished);
     } else {
-      final timed = getTimedInstancesForEffort(effortId);
-      anyUnfinished = timed.any((t) => t.state != TimedState.finished);
-      finishedStarts = [
-        for (final t in timed)
-          if (t.state == TimedState.finished) t.startedAtMs,
-      ];
+      anyUnfinished = getTimedInstancesForEffort(
+        effortId,
+      ).any((t) => t.state != TimedState.finished);
     }
     if (anyUnfinished) return false;
-    return !finishedStarts.any(
+    return !_remoteIsLoggedInterval(effortId, effortKind, remote);
+  }
+
+  /// Whether the effort already holds a FINISHED interval of its kind whose
+  /// start is within [_sameStartToleranceMs] (inclusive) of [remote]'s: the
+  /// phone already logged this timer (121b D-1, D-2). Matching is by start
+  /// only, never by index, and only this effort's own intervals count.
+  bool _remoteIsLoggedInterval(
+    String effortId,
+    String effortKind,
+    RemoteWorkTimer remote,
+  ) {
+    final Iterable<int> finishedStarts;
+    if (effortKind == 'round') {
+      finishedStarts = [
+        for (final r in getRoundsForEffort(effortId))
+          if (r.state == RoundState.finished && r.startedAtMs > 0)
+            r.startedAtMs,
+      ];
+    } else {
+      finishedStarts = [
+        for (final t in getTimedInstancesForEffort(effortId))
+          if (t.state == TimedState.finished && t.startedAtMs > 0)
+            t.startedAtMs,
+      ];
+    }
+    return finishedStarts.any(
       (start) => (start - remote.startedAtMs).abs() <= _sameStartToleranceMs,
     );
   }

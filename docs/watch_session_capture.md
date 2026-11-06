@@ -370,7 +370,10 @@ frame carries a pause stamp — with the wrist's start, pause stamp and
 accumulated pause, a round takes the wrist's planned length when the frame
 carries one, and the effort's open rests are closed and persisted as a phone
 start does. An in-progress target is replaced only when the wrist's start is
-earlier; an equal or later start changes nothing. A stopped timer, one for a
+earlier; an equal or later start changes nothing. A wrist timer whose start matches an interval the phone already logged is
+ignored whatever the other intervals' states (a stale copy the wrist keeps
+showing never starts or rewinds the next interval; `test/watch_timer_adoption_test.dart`
+`S-12171`–`S-12174`). A stopped timer, one for a
 slot the phone does not hold, or the wrong kind for the effort is ignored, and
 a wrist stop is not applied — the wrist's logged entry fills and finishes the
 interval (plan 43a). The write bumps `watchRefreshRevision` once so the open
