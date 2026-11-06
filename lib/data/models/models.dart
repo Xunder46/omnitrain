@@ -720,12 +720,20 @@ class WorkoutTemplate {
   /// Returns a copy with selected fields replaced. `isBuiltInDemo` defaults
   /// to preserving the current value, mirroring the
   /// `Optional<String?>`-style semantics of the other nullable fields.
+  ///
+  /// Passing `null` for `note`, `description`, `primaryDisciplineId` or
+  /// `ownerUserId` keeps the current value rather than clearing it (known
+  /// trap: none of them can be cleared through `copyWith` today). Only
+  /// `focusModality` has a clear flag: `clearFocusModality: true` sets the
+  /// result's Focus to `null`, overriding both `focusModality` and the
+  /// current value.
   WorkoutTemplate copyWith({
     String? id,
     String? ownerUserId,
     String? name,
     String? description,
     String? focusModality,
+    bool clearFocusModality = false,
     String? primaryDisciplineId,
     String? note,
     bool? isBuiltInDemo,
@@ -737,7 +745,9 @@ class WorkoutTemplate {
       ownerUserId: ownerUserId ?? this.ownerUserId,
       name: name ?? this.name,
       description: description ?? this.description,
-      focusModality: focusModality ?? this.focusModality,
+      focusModality: clearFocusModality
+          ? null
+          : (focusModality ?? this.focusModality),
       primaryDisciplineId: primaryDisciplineId ?? this.primaryDisciplineId,
       note: note ?? this.note,
       isBuiltInDemo: isBuiltInDemo ?? this.isBuiltInDemo,

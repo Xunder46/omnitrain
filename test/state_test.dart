@@ -304,7 +304,7 @@ void main() {
     });
 
     test(
-      'updateRoutineFocusModality with null preserves prior value (copyWith limitation)',
+      'updateRoutineFocusModality with null clears the Focus (Mixed / Not set)',
       () async {
         final repo = await _freshRepo();
         final state = RoutineState(repo);
@@ -314,8 +314,8 @@ void main() {
         await state.updateRoutineFocusModality('resistance_lifting');
         await state.updateRoutineFocusModality(null);
 
-        // copyWith uses ?? so null keeps existing value
-        expect(state.currentTemplate!.focusModality, 'resistance_lifting');
+        // null clears the Focus (plan 123)
+        expect(state.currentTemplate!.focusModality, isNull);
       },
     );
 

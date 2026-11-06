@@ -218,6 +218,7 @@ class RoutineState extends ChangeNotifier {
     try {
       _currentTemplate = _currentTemplate!.copyWith(
         focusModality: modality,
+        clearFocusModality: modality == null,
         updatedAtMs: DateTime.now().millisecondsSinceEpoch,
       );
       _scheduleAutosave();

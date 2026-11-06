@@ -406,6 +406,8 @@ Routines have an optional Focus Modality and do not filter the picker library. W
 
 Changing Focus Modality does not rewrite existing efforts; only exercises added afterward inherit the new value.
 
+Choosing Mixed / Not set stores no Focus (`null`) and removes an existing one; save and reopen shows Mixed. `RoutineState.updateRoutineFocusModality(null)` does this through `WorkoutTemplate.copyWith(clearFocusModality: true)`. Routines saved before this fix are left as they are: an old routine that still shows a Focus keeps it until the owner opens it, picks Mixed and saves. Verified by `test/routine_focus_not_set_test.dart` (groups `Routine focus on Mock` and `Routine focus on Hive` · `S-12301: Focus -> Mixed, save, reopen shows Mixed`, `S-12305: Focus -> Mixed with exercises keeps the exercises`, `S-12306: a seeded/imported routine with a Focus can be cleared`, `S-12308: Focus -> Mixed counts as an unsaved change`) and `test/state_test.dart` (group `RoutineState` · `updateRoutineFocusModality with null clears the Focus (Mixed / Not set)`).
+
 ---
 
 ## Home Screen Integration

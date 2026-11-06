@@ -343,6 +343,8 @@ WorkoutTemplate (routine)
 
 Models with no behaviour beyond their fields: WorkoutTemplate, TemplateSegment, TemplateEffort, TemplateTarget.
 
+`WorkoutTemplate.copyWith` keeps the current value when a nullable field is passed as null; only `focusModality` has a clear flag (`clearFocusModality: true` sets it to null). `note`, `description`, `primaryDisciplineId` and `ownerUserId` cannot be cleared through `copyWith`. Verified by `test/models_test.dart` (group `WorkoutTemplate.copyWith focusModality` · `clearFocusModality: true clears the focus`, `default copyWith keeps focusModality`, `focusModality sets a new focus`, `clearFocusModality: true wins over focusModality given`); the cannot-clear rule for the other nullable fields is read from `lib/data/models/models.dart` (`WorkoutTemplate.copyWith`) and has no dedicated test.
+
 ---
 
 ## Session Summary Models
