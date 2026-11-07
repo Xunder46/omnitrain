@@ -127,6 +127,17 @@ workout that began on a lift still records distance
 (`WatchGpsByExerciseTests.testS4803TheFeedStaysOnWhenTheUserMovesBackToALift`),
 and Apple Health keeps the type the workout opened with
 (`WatchGpsByExerciseTests.testS4807TheWorkoutIsRegisteredOutdoorsByTheExerciseTheUserIsOn`).
+
+A phone-started session reaches that table through the snapshot, too:
+a session the phone started registers by the Focus its snapshot carries — the
+wrist stamps the phone's modality on the snapshot that first creates its row for
+the session and never overrides or nulls one it already holds
+(`WatchSnapshotFocusTests` S-12592–S-12596 in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchSnapshotFocusTests.swift`;
+`test/watch_snapshot_focus_wrist_test.dart`, group `S-12595 first hearing only:
+never override, never null`), while a session with no modality still takes the
+exercises' majority (`WatchWorkoutTypeFromExercisesTests.testS8804TheMajorityDecides`).
+
 The type itself: a session with a modality keeps the modality table's type; a
 session with none takes the majority of its exercises' capabilities — `hold`
 → flexibility, else `distance` → the kind the phone named for that exercise

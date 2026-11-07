@@ -477,8 +477,28 @@ frame (plan 87b, open question d;
     (Mock arm) a Focus edit re-sends the routines at the wrist's old since,
     with the Focus aboard` and `S-12577 a Focus clear re-sends the routines
     without the key`). (d) Start a routine with a Focus on the PHONE while the
-    watch app is open: the watch still follows the exercises, not the Focus
-    (known gap, plan 125d; no test). (e) The 40 mm watch: every
+    watch app is open: the watch registers it with the same Focus (plan 125d, step 43). (e) The 40 mm watch: every
     screen looks unchanged (125b adds no visible change). Held off-device by
     `WatchRoutineFocusTests` and `test/watch_routine_focus_start_test.dart` as
     cited per sub-check.
+
+43. **A phone-started workout carries its Focus to the watch — (owner, plan 125d).** (a)
+    Give a routine the Focus Stretching; with the watch app open and no workout
+    running, start it on the phone and finish it: Apple Health shows the
+    workout as Flexibility, not Other. (b) On the watch tap Free workout and
+    leave the empty list open, then start the same routine on the phone: the
+    watch swaps to the routine's exercises; after finishing, Health shows
+    Flexibility. (c) Start the Sports tile on the phone: the watch says
+    "Periods" and asks for location only if you never answered; Health shows
+    Other. Cardio tile: "Intervals", Running. (d) A routine without a Focus
+    started on the phone: the watch behaves as before (Health from the
+    exercises). (e) Start a routine on the watch and let the phone adopt it:
+    nothing on the watch changes mid-workout (the watch keeps the Focus it
+    had). (f) If an older watch app is still installed with the new phone: a
+    phone-started session follows exactly as before. (g) The 40 mm watch:
+    nothing looks different (no layout change). Held off-device by
+    `WatchSnapshotFocusTests` in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchSnapshotFocusTests.swift`
+    (S-12592–S-12598), by `test/watch_snapshot_focus_wrist_test.dart`
+    (S-12592–S-12597) and by `test/watch_snapshot_focus_send_test.dart`
+    (S-12599, S-12598 importer half).

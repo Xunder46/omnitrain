@@ -194,6 +194,18 @@
       "note": "A session slot MAY name the Health kind: `sx-hike` carries `healthActivity: \"hiking\"` with `capabilities` `[\"time\", \"distance\"]`."
     },
     {
+      "path": "valid/session_snapshot_modality.json",
+      "type": "session_snapshot",
+      "scenario": "S-12590",
+      "note": "The phone's session MAY carry its Focus to the wrist: `s-2026-07-13-1` carries `modality: \"isometric_stretching\"`, a non-empty string, phone to watch only (plan 125d)."
+    },
+    {
+      "path": "valid/session_snapshot_modality_cardio.json",
+      "type": "session_snapshot",
+      "scenario": "S-12590",
+      "note": "A cardio session's snapshot names `modality: \"cardio_endurance\"` with one distance exercise and no entries yet: the key is optional and the session's own (plan 125d)."
+    },
+    {
       "path": "valid/routines_down_focus_modality.json",
       "type": "routines_down",
       "scenario": "S-12510",
@@ -642,6 +654,54 @@
       "expectedCode": "unexpected_field",
       "expectedReasonContains": "setNumber",
       "note": "A planned row is a closed object: its position in the array IS the set number, so a `setNumber` key is a field the schema does not define and the snapshot is refused."
+    },
+    {
+      "path": "invalid/session_snapshot_modality_empty.json",
+      "type": "session_snapshot",
+      "scenario": "S-12591",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1 characters, found 0",
+      "note": "The Focus is never empty: `modality: \"\"` trips the key's `minLength`; the wrist applies a modality key only when it has one."
+    },
+    {
+      "path": "invalid/session_snapshot_modality_numeric.json",
+      "type": "session_snapshot",
+      "scenario": "S-12591",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected string, found 7",
+      "note": "The Focus is a string: `modality: 7` is refused whole at `$.payload.modality`."
+    },
+    {
+      "path": "invalid/session_snapshot_modality_null.json",
+      "type": "session_snapshot",
+      "scenario": "S-12591",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected string, found null",
+      "note": "The Focus is never null: a session with none OMITS the key, so `modality: null` is a type refusal, not a none."
+    },
+    {
+      "path": "invalid/session_snapshot_modality_array.json",
+      "type": "session_snapshot",
+      "scenario": "S-12591",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected string, found",
+      "note": "The Focus is one key, not a list: `modality: [\"sports\"]` is refused whole."
+    },
+    {
+      "path": "invalid/session_snapshot_focus_modality_key.json",
+      "type": "session_snapshot",
+      "scenario": "S-12591",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "focusModality",
+      "note": "A snapshot carries the SESSION's key: the routine's `focusModality` name is a field the snapshot schema does not define, so the frame is refused."
+    },
+    {
+      "path": "invalid/session_snapshot_entry_modality_on_set.json",
+      "type": "session_snapshot",
+      "scenario": "S-12591",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "modality",
+      "note": "The session's Focus rides the payload, never an entry: `e-1`, a `set` entry, carrying `modality` is refused by the capture-field gate."
     },
     {
       "path": "invalid/exercises_down_unknown_health_activity.json",

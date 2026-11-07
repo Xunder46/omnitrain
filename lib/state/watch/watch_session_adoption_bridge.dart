@@ -271,9 +271,14 @@ class WatchSessionAdoptionBridge {
 
     _countRevision(incoming, session.id, slots);
 
+    // The session's modality key, verbatim, only when it has one (plan 125d):
+    // the wrist stamps it on the snapshot that first creates its row. Omitted —
+    // never null, never empty — otherwise.
+    final focus = session.modality;
     return <String, Object?>{
       'sessionId': session.id,
       'status': WatchSessionStatus.active,
+      if (focus != null && focus.isNotEmpty) 'modality': focus,
       'revision': _projectedRevision,
       'currentExerciseIndex': _indexFor(incoming, slots.length),
       'exercises': slots,
@@ -1093,7 +1098,7 @@ class WatchSessionAdoptionBridge {
   /// the first capability it carries that decides. That order is the wrist's
   /// (`watch_logging_state.dart`), repeated here rather than imported: this is
   /// the phone reading a wire slot, and that file is the wrist surface's own
-  /// state. A snapshot carries no modality, so a slot nothing decides logs sets
+  /// state. A wrist snapshot carries no modality, so a slot nothing decides logs sets
   /// — the same default a hand-made free session gets.
   String _effortKind(Map<String, Object?> slot) {
     final declared = slot['effortKind'];

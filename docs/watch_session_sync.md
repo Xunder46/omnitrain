@@ -79,7 +79,7 @@ session is pushed (D-75).** The phone asserts its ladder inside the answer to a
 snapshot request, built at that moment from the session it holds, and a change to
 that session is also sent unasked: `WatchSessionAutoPush` binds the same
 `WorkoutState`, coalesces a burst of notifications into one frame, and sends a
-frame only when its composed payload differs from the last one it sent. A phone
+frame only when its composed payload differs from the last one it sent; the snapshot also carries the session's modality when it has one, and the watch reads it only the first time it hears of the session (a session the watch already holds keeps its own; `test/watch_snapshot_focus_send_test.dart` S-12599, `test/watch_snapshot_focus_wrist_test.dart` S-12595). A phone
 with no session of its own has nothing to assert and sends nothing. The revision
 in the answer rises with the ladder and with nothing else, which is what lets the
 wrist's replace-structure rule accept a real edit and stay silent on a replay.

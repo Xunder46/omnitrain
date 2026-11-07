@@ -22,6 +22,7 @@ library;
 import 'package:uuid/uuid.dart';
 
 import '../../core/sync_protocol/message_validator.dart';
+import '../sensors/watch_platform_workout.dart';
 import 'watch_records.dart';
 import 'watch_session_store.dart';
 
@@ -548,13 +549,20 @@ class WatchSessionEngine {
       _unhideTheIdTheSnapshotNames(entry);
     }
 
+    // First hearing only (plan 125d D-12591/D-12592): the phone's session modality is stamped
+    // only on the snapshot that CREATES the wrist row for this session. A held session keeps the
+    // value it has (null stays null) and a snapshot with a different, absent, null or bad key
+    // never overrides or nulls it.
+    final snapshotFocus = existing == null
+        ? WatchActivityTypes.knownModality(payload['modality'])
+        : null;
     final row = WatchSessionRecord(
       recordId: '$_snapshotPrefix$messageId',
       sessionId: sessionId,
       recordedAt: sentAt,
       startedAt:
           existing?.startedAt ?? _startedAtOf(entryMaps, fallback: sentAt),
-      modality: existing?.modality,
+      modality: existing?.modality ?? snapshotFocus,
       source: existing?.source ?? 'phone',
       status: payload['status']! as String,
       currentExerciseIndex: _clampIndex(

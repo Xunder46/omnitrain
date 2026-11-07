@@ -591,6 +591,12 @@ public final class WatchSessionEngine: ObservableObject {
         // end is the moment the phone sent it (D-120).
         await captureSessionEnd(sessionId, status: status, endedAt: sentAt)
 
+        // First hearing only (plan 125d D-12591/D-12592): the phone's session modality is stamped only on the
+        // snapshot that CREATES the wrist row for this session. A held session keeps the value it has
+        // (nil stays nil: no mid-workout location prompt, round-word flip or half-changed workout), and a
+        // snapshot with a different, absent, null or bad key never overrides or nulls it.
+        let snapshotFocus = existing == nil ? WatchActivityTypes.knownModality(payload["modality"]) : nil
+
         await storeSessionRow(
             WatchSessionRecord(
                 recordId: "\(Self.snapshotPrefix)\(messageId)",
@@ -598,7 +604,7 @@ public final class WatchSessionEngine: ObservableObject {
                 recordedAt: sentAt,
                 startedAt: existing?.startedAt
                     ?? Self.startedAtOf(entryMaps, fallback: sentAt),
-                modality: existing?.modality,
+                modality: existing?.modality ?? snapshotFocus,
                 source: existing?.source ?? "phone",
                 status: status,
                 currentExerciseIndex: Self.clampIndex(

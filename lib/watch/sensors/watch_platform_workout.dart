@@ -100,6 +100,13 @@ abstract final class WatchActivityTypes {
 
   static WatchActivityType forModality(String? modality) =>
       byModality[modality] ?? generic;
+
+  /// The modality key when it is one the wrist knows (a non-empty [String] that is a key of
+  /// [byModality]), else null. Never throws: any other value is null.
+  static String? knownModality(Object? value) {
+    if (value is! String || value.isEmpty) return null;
+    return byModality.containsKey(value) ? value : null;
+  }
 }
 
 /// Whether a session's modality calls for GPS.

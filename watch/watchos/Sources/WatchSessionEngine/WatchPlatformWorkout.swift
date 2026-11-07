@@ -98,6 +98,13 @@ public enum WatchActivityTypes {
         return byModality[modality] ?? generic
     }
 
+    /// The modality key when it is one the wrist knows (a non-empty string
+    /// that is a key of `byModality`), else nil. Never throws.
+    public static func knownModality(_ value: Any?) -> String? {
+        guard let key = value as? String, !key.isEmpty, byModality[key] != nil else { return nil }
+        return key
+    }
+
     private static let running = WatchActivityType(
         watchOs: "running",
         wear: "exercise_type_running"
