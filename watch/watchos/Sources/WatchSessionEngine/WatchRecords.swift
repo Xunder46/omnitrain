@@ -702,6 +702,7 @@ public enum StoredWatchRecord {
     public static let sensorSampleType = "sensor_sample"
     public static let confirmationType = "confirmation"
     public static let routineCatalogType = "routine_catalog"
+    public static let plannedCatalogType = "planned_catalog"
     public static let foodCatalogType = "food_catalog"
     public static let preferencesType = "preferences"
     public static let ratingPromptType = "rating_prompt"
@@ -715,6 +716,7 @@ public enum StoredWatchRecord {
     case sensorSample(WatchSensorSampleRecord)
     case confirmation(WatchConfirmationRecord)
     case routineCatalog(WatchRoutineCatalogRecord)
+    case plannedCatalog(WatchPlannedCatalogRecord)
     case foodCatalog(WatchFoodCatalogRecord)
     case preferences(WatchPreferencesRecord)
     case ratingPrompt(WatchRatingPromptRecord)
@@ -730,6 +732,7 @@ public enum StoredWatchRecord {
         case .sensorSample: return Self.sensorSampleType
         case .confirmation: return Self.confirmationType
         case .routineCatalog: return Self.routineCatalogType
+        case .plannedCatalog: return Self.plannedCatalogType
         case .foodCatalog: return Self.foodCatalogType
         case .preferences: return Self.preferencesType
         case .ratingPrompt: return Self.ratingPromptType
@@ -747,6 +750,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.recordId
         case .confirmation(let row): return row.recordId
         case .routineCatalog(let row): return row.recordId
+        case .plannedCatalog(let row): return row.recordId
         case .foodCatalog(let row): return row.recordId
         case .preferences(let row): return row.recordId
         case .ratingPrompt(let row): return row.recordId
@@ -764,6 +768,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.sessionId
         case .confirmation(let row): return row.sessionId
         case .routineCatalog(let row): return row.sessionId
+        case .plannedCatalog(let row): return row.sessionId
         case .foodCatalog(let row): return row.sessionId
         case .preferences(let row): return row.sessionId
         case .ratingPrompt(let row): return row.sessionId
@@ -781,6 +786,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.recordedAt
         case .confirmation(let row): return row.recordedAt
         case .routineCatalog(let row): return row.recordedAt
+        case .plannedCatalog(let row): return row.recordedAt
         case .foodCatalog(let row): return row.recordedAt
         case .preferences(let row): return row.recordedAt
         case .ratingPrompt(let row): return row.recordedAt
@@ -798,6 +804,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.sequence
         case .confirmation(let row): return row.sequence
         case .routineCatalog(let row): return row.sequence
+        case .plannedCatalog(let row): return row.sequence
         case .foodCatalog(let row): return row.sequence
         case .preferences(let row): return row.sequence
         case .ratingPrompt(let row): return row.sequence
@@ -815,6 +822,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return .sensorSample(row.withSequence(sequence))
         case .confirmation(let row): return .confirmation(row.withSequence(sequence))
         case .routineCatalog(let row): return .routineCatalog(row.withSequence(sequence))
+        case .plannedCatalog(let row): return .plannedCatalog(row.withSequence(sequence))
         case .foodCatalog(let row): return .foodCatalog(row.withSequence(sequence))
         case .preferences(let row): return .preferences(row.withSequence(sequence))
         case .ratingPrompt(let row): return .ratingPrompt(row.withSequence(sequence))
@@ -832,6 +840,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.toJson()
         case .confirmation(let row): return row.toJson()
         case .routineCatalog(let row): return row.toJson()
+        case .plannedCatalog(let row): return row.toJson()
         case .foodCatalog(let row): return row.toJson()
         case .preferences(let row): return row.toJson()
         case .ratingPrompt(let row): return row.toJson()
@@ -852,6 +861,7 @@ public enum StoredWatchRecord {
         case sensorSampleType: return .sensorSample(try WatchSensorSampleRecord.fromJson(json))
         case confirmationType: return .confirmation(try WatchConfirmationRecord.fromJson(json))
         case routineCatalogType: return .routineCatalog(try WatchRoutineCatalogRecord.fromJson(json))
+        case plannedCatalogType: return .plannedCatalog(try WatchPlannedCatalogRecord.fromJson(json))
         case foodCatalogType: return .foodCatalog(try WatchFoodCatalogRecord.fromJson(json))
         case preferencesType: return .preferences(try WatchPreferencesRecord.fromJson(json))
         case ratingPromptType: return .ratingPrompt(try WatchRatingPromptRecord.fromJson(json))

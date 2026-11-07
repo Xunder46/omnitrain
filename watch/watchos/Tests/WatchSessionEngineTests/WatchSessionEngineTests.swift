@@ -2328,6 +2328,111 @@ final class WatchSessionEngineTests: XCTestCase {
             ]
         )
     }
+
+    // MARK: - Plan 129: the planned-start report (S-8968)
+
+    /// D-8970's seam, judged by the protocol: the frame the engine builds and
+    /// sends for a planned start conforms, its message id derives from the
+    /// record, and the three ways the report can go wrong are refused.
+    func testS8968TheEmittedStartReportIsConformantAndDerivesItsMessageId() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        try harness.engine.emitSessionStarted(
+            sessionId: harness.sessionId,
+            routineTemplateId: "tpl-push-a",
+            plannedSessionId: "p-1",
+            at: harness.clock.now
+        )
+
+        let reports = harness.emitted("session_started")
+        XCTAssertEqual(reports.count, 1)
+        let report = try XCTUnwrap(reports.first)
+
+        XCTAssertTrue(
+            Harness.validator().validateEnvelope(report).isEmpty,
+            "the report is a frame the phone can read"
+        )
+        XCTAssertEqual(report["messageId"] as? String, "msg-session-started-\(harness.sessionId)")
+        XCTAssertEqual(report["origin"] as? String, "watch")
+        XCTAssertEqual(report["sessionId"] as? String, harness.sessionId)
+        let payload = try XCTUnwrap(report["payload"] as? [String: Any])
+        XCTAssertEqual(payload["sessionId"] as? String, harness.sessionId)
+        XCTAssertEqual(payload["routineTemplateId"] as? String, "tpl-push-a")
+        XCTAssertEqual(payload["plannedSessionId"] as? String, "p-1")
+        XCTAssertEqual(payload["at"] as? String, utcIso(harness.clock.now))
+    }
+
+    /// A report that names nothing yet is still the report's own shape: the ids
+    /// travel only when known.
+    func testS8968AReportMayNameNothingAndStaysConformant() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        try harness.engine.emitSessionStarted(
+            sessionId: harness.sessionId,
+            routineTemplateId: nil,
+            plannedSessionId: nil,
+            at: harness.clock.now
+        )
+
+        let report = try XCTUnwrap(harness.emitted("session_started").last)
+        XCTAssertTrue(Harness.validator().validateEnvelope(report).isEmpty)
+        let payload = try XCTUnwrap(report["payload"] as? [String: Any])
+        XCTAssertNil(payload["routineTemplateId"])
+        XCTAssertNil(payload["plannedSessionId"])
+    }
+
+    func testS8968AReportWithAnExtraFieldIsRefused() throws {
+        var report = try self.sessionStartedReport()
+        var payload = try XCTUnwrap(report["payload"] as? [String: Any])
+        payload["extra"] = "a field nothing reads"
+        report["payload"] = payload
+
+        let rejections = Harness.validator().validateEnvelope(report)
+
+        XCTAssertFalse(rejections.isEmpty, "the validator refuses the extra field")
+    }
+
+    func testS8968AReportWithoutItsSessionIdIsRefused() throws {
+        var report = try self.sessionStartedReport()
+        report["payload"] = ["at": utcIso(testInstant())]
+
+        let rejections = Harness.validator().validateEnvelope(report)
+
+        XCTAssertFalse(rejections.isEmpty, "a report without its session id names nothing")
+    }
+
+    func testS8968AReportFromThePhoneIsRefused() throws {
+        var report = try self.sessionStartedReport()
+        report["origin"] = "phone"
+
+        let rejections = Harness.validator().validateEnvelope(report)
+
+        XCTAssertFalse(rejections.isEmpty, "the report is the wrist's to send")
+    }
+
+    /// The conformant report the engine emits, rebuilt from parts so the
+    /// refusal verdicts come from the validator, not from memory.
+    private func sessionStartedReport() throws -> [String: Any] {
+        let record = [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-session-started-w-1",
+            "sessionId": "w-1",
+            "type": "session_started",
+            "origin": "watch",
+            "sentAt": utcIso(testInstant()),
+            "payload": [
+                "sessionId": "w-1",
+                "routineTemplateId": "tpl-push-a",
+                "plannedSessionId": "p-1",
+                "at": utcIso(testInstant()),
+            ] as [String: Any],
+        ] as [String: Any]
+
+        XCTAssertTrue(Harness.validator().validateEnvelope(record).isEmpty)
+        return record
+    }
 }
 
 /// Every `rest` observation in the frames the harness's engine emitted.

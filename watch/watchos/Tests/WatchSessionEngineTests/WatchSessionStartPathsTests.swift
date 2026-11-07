@@ -2427,4 +2427,208 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertTrue(rows.first?.isInSession == true)
         XCTAssertEqual(rows.filter { !$0.isInSession }.count, listedCatalogNames.count - 1)
     }
+
+    // MARK: - Plan 129: the wrist's planned sessions (S-8965, S-8967)
+
+    /// The wrist clocked inside its own today, the routines the contract sends
+    /// already applied, and the given plans fed through the orchestrator.
+    private func plannedWrist(_ rows: [PlannedRow], generatedAt: Date = plannedHour(7)) async throws
+        -> WatchStartHarness
+    {
+        let harness = WatchStartHarness()
+        harness.clock.now = plannedHour(13)
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+        _ = try await harness.receive(plannedDown(generatedAt: generatedAt, rows))
+        return harness
+    }
+
+    // MARK: - S-8965 what counts as startable today
+
+    func testS8965NoPlansMeansNothingStartable() async throws {
+        let harness = try await plannedWrist([])
+
+        XCTAssertTrue(harness.paths.startablePlannedSessions.isEmpty)
+    }
+
+    func testS8965OneRoutinePlanForAHeldRoutineIsStartable() async throws {
+        let harness = try await plannedWrist(
+            [planRow("p-1", "Push today", on: plannedDay(), templateId: "routine-push-a")]
+        )
+
+        XCTAssertEqual(harness.paths.startablePlannedSessions.map(\.plannedSessionId), ["p-1"])
+        XCTAssertEqual(
+            harness.paths.startablePlannedSessions.map(\.name),
+            ["Push today"],
+            "the button caption is the plan's own name"
+        )
+    }
+
+    func testS8965ARoutineTheWristDoesNotHoldIsNeverStartable() async throws {
+        let harness = try await plannedWrist(
+            [planRow("p-1", "Gone routine", on: plannedDay(), templateId: "tpl-missing")]
+        )
+
+        XCTAssertTrue(
+            harness.paths.startablePlannedSessions.isEmpty,
+            "a plan whose routine is not on the wrist offers itself nowhere (D-8963)"
+        )
+    }
+
+    func testS8965AFreePlanIsStartableWithNoRoutine() async throws {
+        let harness = try await plannedWrist(
+            [planRow("p-1", "Free day", on: plannedDay(), modality: "sports")]
+        )
+
+        XCTAssertEqual(harness.paths.startablePlannedSessions.map(\.plannedSessionId), ["p-1"])
+    }
+
+    func testS8965BoundariesByTheWristTwelveOClockClock() async throws {
+        let harness = try await plannedWrist([
+            planRow("p-yesterday", "Yesterday", on: plannedDay(-1)),
+            planRow("p-midnight", "Exactly today", on: plannedDay(), templateId: "routine-push-a"),
+            planRow("p-latesecond", "Late second", on: plannedDaySkew(86_399)),
+            planRow("p-tomorrow", "Tomorrow", on: plannedDay(1)),
+        ])
+
+        XCTAssertEqual(
+            Set(harness.paths.startablePlannedSessions.map(\.plannedSessionId)),
+            ["p-midnight", "p-latesecond"],
+            "exactly midnight counts, the day's last second counts; yesterday and tomorrow do not"
+        )
+    }
+
+    func testS8965ThePickerOrdersByDateThenNameThenId() async throws {
+        let harness = try await plannedWrist([
+            planRow("p-b-free", "Later free", on: plannedDay()),
+            planRow("p-a-stored", "Same day zeta", on: plannedDay()),
+            planRow("p-same", "Same day alpha", on: plannedDay(), templateId: "routine-push-a"),
+            planRow("p-older", "Morning", on: plannedDay(-1)),
+            planRow("p-2-twin", "Twin", on: plannedDay()),
+            planRow("p-1-twin", "Twin", on: plannedDay()),
+        ])
+
+        XCTAssertEqual(
+            harness.paths.startablePlannedSessions.map(\.plannedSessionId),
+            ["p-b-free", "p-same", "p-a-stored", "p-1-twin", "p-2-twin"],
+            "today's plans by name, and the twins by id; older lands in nobody's list"
+        )
+    }
+
+    /// One planned day's start moved by `seconds` through the calendar, so a
+    /// clock-change day is never an elapsed-millisecond sum.
+    private func plannedDaySkew(_ seconds: Int) -> Date {
+        Calendar.current.date(byAdding: .second, value: seconds, to: plannedDay()) ?? plannedDay()
+    }
+
+    // MARK: - S-8967 what a tap does, and when it reports
+
+    func testS8967StartPlannedStartsTheRoutineAndReportsPlanAndRoutine() async throws {
+        let harness = try await plannedWrist(
+            [planRow("p-1", "Push today", on: plannedDay(), templateId: "routine-push-a")]
+        )
+        let expected = try object(try startContract()["sessionStarted"])
+
+        let session = try await harness.paths.startPlanned("p-1")
+
+        let sent = try WatchRoutinesDown(envelope: try firstMessage())
+        let routine = try XCTUnwrap(sent.routines.first { $0.routineId == "routine-push-a" })
+        XCTAssertEqual(
+            session.exercises.compactMap { $0["exerciseId"] as? String },
+            routine.slots(token: "x").compactMap { $0["exerciseId"] as? String },
+            "the plan starts through the routine's own path, in template order (D-8964)"
+        )
+        XCTAssertTrue(
+            session.exercises.allSatisfy { ($0["sessionExerciseId"] as? String)?.contains("~") == true },
+            "the slots carry a session token, as every routine start does (plan 81)"
+        )
+
+        let reports = harness.emitted("session_started")
+        XCTAssertEqual(reports.count, 1, "one report, the start's own")
+        XCTAssertEqual(reports.first?["sessionId"] as? String, session.sessionId)
+        XCTAssertEqual(reports.first?["origin"] as? String, expected["origin"] as? String)
+        let payload = try object(reports.first?["payload"])
+        XCTAssertEqual(payload["plannedSessionId"] as? String, "p-1")
+        XCTAssertEqual(payload["routineTemplateId"] as? String, "routine-push-a")
+        XCTAssertEqual(payload["at"] as? String, utcIso(harness.clock.now))
+    }
+
+    func testS8967StartPlannedOnAFreePlanStartsThePlainFreeWorkout() async throws {
+        let harness = try await plannedWrist(
+            [planRow("p-2", "Hill sprints", on: plannedDay(), modality: "sports")]
+        )
+        let framesBefore = harness.emitted.count
+
+        let session = try await harness.paths.startPlanned("p-2")
+
+        XCTAssertTrue(session.exercises.isEmpty, "the wrist's plain free workout (D-8964)")
+        XCTAssertEqual(harness.emitted("session_started").count, 1)
+        XCTAssertTrue(Harness.validator().validateEnvelope(harness.emitted("session_started").first ?? [:]).isEmpty)
+        let payload = try object(harness.emitted("session_started").last?["payload"])
+        XCTAssertEqual(payload["plannedSessionId"] as? String, "p-2")
+        XCTAssertNil(
+            payload["routineTemplateId"],
+            "a free plan names no routine"
+        )
+        XCTAssertEqual(harness.emitted.count - framesBefore, 3, "the start's lifecycle + snapshot, then the report")
+    }
+
+    func testS8967ATapWhileASessionIsLiveEmitsNothingAndReturnsTheHeld() async throws {
+        let harness = try await plannedWrist([
+            planRow("p-1", "Push today", on: plannedDay(), templateId: "routine-push-a"),
+            planRow("p-2", "Free day", on: plannedDay(), modality: "sports"),
+        ])
+        let held = try await harness.paths.startFromRoutine("routine-push-a")
+        let framesBefore = harness.emitted
+        let rowsBefore = await harness.store.readAll().sessions
+
+        let routine = try await harness.paths.startPlanned("p-1")
+        let free = try await harness.paths.startPlanned("p-2")
+
+        XCTAssertEqual(routine.recordId, held.recordId, "the held session comes back, changed nothing")
+        XCTAssertEqual(free.recordId, held.recordId)
+        XCTAssertEqual(
+            harness.emitted.map { $0["type"] as? String },
+            framesBefore.map { $0["type"] as? String },
+            "a second start emits nothing (D-8964)"
+        )
+        let rowsAfter = await harness.store.readAll().sessions
+        XCTAssertEqual(rowsBefore.count, rowsAfter.count)
+    }
+
+    func testS8967StartPlannedFillingAnEmptySessionReportsOnce() async throws {
+        let harness = try await plannedWrist(
+            [planRow("p-1", "Push today", on: plannedDay(), templateId: "routine-push-a")]
+        )
+        let empty = await harness.paths.startFreeWorkout()
+        let framesBefore = harness.emitted("session_started").count
+
+        let filled = try await harness.paths.startPlanned("p-1")
+
+        XCTAssertEqual(filled.sessionId, empty.sessionId, "the plan fills the empty session (D-177)")
+        XCTAssertFalse(filled.exercises.isEmpty)
+        XCTAssertEqual(
+            harness.emitted("session_started").count - framesBefore,
+            1,
+            "a start that filled the waiting session in place still reports itself (D-8970)"
+        )
+        let payload = try object(harness.emitted("session_started").last?["payload"])
+        XCTAssertEqual(payload["plannedSessionId"] as? String, "p-1")
+    }
+
+    func testS8967AnUnknownPlanIsThrownOutOfTheStart() async throws {
+        let harness = try await plannedWrist(
+            [planRow("p-1", "Push today", on: plannedDay(), templateId: "routine-push-a")]
+        )
+
+        do {
+            _ = try await harness.paths.startPlanned("p-missing")
+            XCTFail("a plan the wrist does not hold starts nothing")
+        } catch let error as WatchStartPathError {
+            XCTAssertEqual(error.description, WatchStartPathError.unknownRoutine("p-missing").description)
+        }
+
+        XCTAssertNil(harness.engine.session, "nothing was started")
+        XCTAssertTrue(harness.emitted("session_started").isEmpty)
+    }
 }

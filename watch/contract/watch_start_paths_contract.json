@@ -352,11 +352,18 @@
     "routinesExercises": { "request": "routines", "exercisesVersion": "v1-2-004dbda823a1b308" },
     "routinesBests": { "request": "routines", "holdsBests": true },
     "routinesWater": { "request": "routines", "wantsWater": true },
+    "routinesPlans": { "request": "routines", "planned": true },
     "snapshot": { "request": "snapshot" }
   },
   "sessionStarted": {
     "type": "session_lifecycle",
     "origin": "watch",
     "state": "started"
+  },
+  "plannedStart": {
+    "type": "session_started",
+    "origin": "watch",
+    "payload": ["sessionId", "routineTemplateId", "plannedSessionId", "at"],
+    "messageId": "msg-session-started-<sessionId>"
   }
 }

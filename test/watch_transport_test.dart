@@ -681,6 +681,7 @@ void main() {
       expect(
         types.skip(3),
         [
+          'planned_down',
           'exercises_down',
           'exercises_down',
           'exercises_down',
@@ -688,7 +689,8 @@ void main() {
           'bests_down',
         ],
         reason: 'D-3834 the whole exercise list travels, after the routines '
-            'and the foods; the bests close every answer (87a, D-4)',
+            'and the foods; the plans ride the same answer (plan 129, D-8971); '
+            'the bests close every answer (87a, D-4)',
       );
       expect(
         types.skip(2),

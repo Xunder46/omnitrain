@@ -215,13 +215,17 @@ void main() {
 
       expect(
         transport.types,
-        ['bests_down'],
-        reason: 'S-10405 an idle raise sends no reference frame, but the bests '
-            'travel on every request (87a, D-4)',
+        ['planned_down', 'bests_down'],
+        reason: 'S-10405 an idle raise sends no reference frame, but the plans '
+            '(plan 129, D-8971) and the bests travel on every request (87a, '
+            'D-4)',
       );
       expect(repository.foodReads, 0);
       expect(repository.groupReads, 0);
-      expect(repository.templateReads, 0);
+      // One template read, not none: the plans frame names a routine plan by
+      // its template's own name when the plan carries no title (plan 129,
+      // D-8961).
+      expect(repository.templateReads, 1);
       expect(repository.segmentReads, 0);
       expect(repository.exerciseReads, 0);
       expect(repository.capabilityReads, 0);
@@ -270,11 +274,11 @@ void main() {
 
       expect(
         transport.types,
-        isEmpty,
+        ['planned_down'],
         reason:
             'S-87c-17 the wrist holds the bests and the revision stands '
             'still, so no bests_down travels; the bundle and the list are '
-            'held too, so nothing travels at all',
+            'held too, so only the plans travel (plan 129, D-8971)',
       );
       expect(
         repository.sessionReads,

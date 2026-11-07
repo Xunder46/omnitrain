@@ -63,9 +63,9 @@ final class WatchPhoneProblemWiringSourceTests: XCTestCase {
         )
         XCTAssertEqual(
             start.components(separatedBy: "routineNotice = nil").count - 1,
-            2,
-            "S-9004 the user stops seeing a stale vanished-routine line: it clears on a new tap "
-                + "and on any surface re-read"
+            3,
+            "S-9004 the user stops seeing a stale vanished-routine line: it clears on a new tap, "
+                + "on the planned button's tap (plan 129, D-8964) and on any surface re-read"
         )
         XCTAssertTrue(
             start.contains(".onChange(of: revision)"),

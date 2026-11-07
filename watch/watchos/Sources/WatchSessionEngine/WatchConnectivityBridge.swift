@@ -233,12 +233,12 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
     }
 
     /// The frames the wrist may hand the OS to deliver later when the radio refuses them (plan 69 D-2):
-    /// a set it logged, every lifecycle message, and the snapshot of a workout that is still running. A
-    /// timer, a request, a receipt and the snapshot of an ended workout are live state that would arrive
-    /// wrong, so they are reported and dropped.
+    /// a set it logged, every lifecycle message, a session's planned-start report (plan 129 D-8974), and
+    /// the snapshot of a workout that is still running. A timer, a request, a receipt and the snapshot
+    /// of an ended workout are live state that would arrive wrong, so they are reported and dropped.
     public static func isDurable(_ frame: [String: Any]) -> Bool {
         switch frame["type"] as? String {
-        case "observations_up", "session_lifecycle":
+        case "observations_up", "session_lifecycle", "session_started":
             return true
         case "session_snapshot":
             return (frame["payload"] as? [String: Any])?["status"] as? String == "active"

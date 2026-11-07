@@ -82,6 +82,14 @@ public enum WatchStartSurfaceCopy {
     /// this client's own, and no other client reads the sentence from the
     /// contract file.
     public static let linkUnavailableLabel = "Phone link unavailable. Restart the watch app."
+
+    /// The button that opens today's planned workouts, or starts the one of them
+    /// the wrist holds (plan 129, D-8963).
+    public static let plannedLabel = "Planned"
+
+    /// The title of the picker between today's planned workouts (plan 129,
+    /// D-8963).
+    public static let plannedPickerTitle = "Planned workouts"
 }
 
 /// What the wrist knows about the phone's radio: nothing yet, or one of the two
@@ -299,6 +307,10 @@ public final class WatchSessionStartPaths {
     private var catalog: WatchRoutineCatalogRecord?
     private var storedRoutines: [WatchRoutine] = []
 
+    /// The planned sessions `planned_down` brought, newest row wins (plan 129).
+    private var plannedCatalog: WatchPlannedCatalogRecord?
+    private var storedPlans: [WatchPlannedSession] = []
+
     /// The fallback list `routines_down` brought. It follows the active exercise
     /// list in the union the wrist offers (D-3817), and covers every routine.
     private var catalogFallback: [WatchCatalogExercise] = []
@@ -389,9 +401,53 @@ public final class WatchSessionStartPaths {
             catalogFallback = []
         }
 
+        plannedCatalog = contents.plannedCatalogs.max { $0.sequence < $1.sequence }
+        if let plannedCatalog, let synced = try? WatchPlannedDown(catalog: plannedCatalog) {
+            storedPlans = synced.plans
+        } else {
+            storedPlans = []
+        }
+
         restoreActiveExerciseList(contents.exerciseBatches)
 
         recents = Self.recentlyUsed(contents.sessions)
+    }
+
+    /// Applies a `planned_down` message: the plans the phone still counts as
+    /// started nothing, newest row wins like every other catalog (plan 129,
+    /// S-8966).
+    ///
+    /// The message is stored whole and the newest one wins. The plans'
+    /// `generatedAt` is judged only against the stored plans row — never against
+    /// the routine catalog's — so an empty plan list is still a real answer.
+    public func applyPlannedDown(_ envelope: [String: Any]) async -> WatchCatalogSyncResult {
+        let rejections = SyncProtocolValidator.incomingRejections(validator, envelope)
+        if !rejections.isEmpty {
+            return WatchCatalogSyncResult(applied: false, rejections: rejections)
+        }
+
+        guard let sent = try? WatchPlannedDown(envelope: envelope) else {
+            return WatchCatalogSyncResult(applied: false, rejections: [])
+        }
+
+        if let plannedCatalog, sent.generatedAt < plannedCatalog.generatedAt {
+            // Understood and dropped: an older view of the plans is not a
+            // newer truth.
+            return WatchCatalogSyncResult(applied: false, rejections: [])
+        }
+
+        let stored = await store.append(
+            .plannedCatalog(sent.toRecord(recordId: newId(), recordedAt: clock()))
+        )
+        plannedCatalog = stored.plannedCatalogRow
+        // A row the read cannot parse leaves no plans in memory, the same way
+        // a relaunch reads it: the surface never offers a plan the store can no
+        // longer hand back (plan 129 review 1, finding 3).
+        storedPlans = plannedCatalog
+            .flatMap { try? WatchPlannedDown(catalog: $0) }?
+            .plans ?? []
+
+        return WatchCatalogSyncResult(applied: true, rejections: [])
     }
 
     /// Applies a `routines_down` message: the routines, and the fallback list
@@ -423,6 +479,80 @@ public final class WatchSessionStartPaths {
         catalogFallback = sent.fallbackExercises
 
         return WatchCatalogSyncResult(applied: true, rejections: [])
+    }
+
+    /// The plans the wrist may offer for today: scheduled in the wrist's own
+    /// day — never a fixed 24-hour span, so a clock-change day is compared by
+    /// the calendar, not by elapsed milliseconds — and either a free plan or one
+    /// whose routine the wrist actually holds (plan 129, D-8963). Derived on
+    /// every read from the wrist's own clock: no cache, no timer, so the next
+    /// sync is the only thing that can change the answer mid-day (D-8969).
+    public var startablePlannedSessions: [WatchPlannedSession] {
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: clock())
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
+            return []
+        }
+
+        let heldRoutineIds = Set(storedRoutines.map(\.routineId))
+        return storedPlans
+            .filter { plan in
+                let scheduled = Date(timeIntervalSince1970: Double(plan.scheduledDateMs) / 1000.0)
+                return scheduled >= dayStart && scheduled < dayEnd
+                    && (plan.routineTemplateId == nil
+                        || heldRoutineIds.contains(plan.routineTemplateId ?? ""))
+            }
+            .sorted { lhs, rhs in
+                if lhs.scheduledDateMs != rhs.scheduledDateMs {
+                    return lhs.scheduledDateMs < rhs.scheduledDateMs
+                }
+                if lhs.name != rhs.name { return lhs.name < rhs.name }
+                return lhs.plannedSessionId < rhs.plannedSessionId
+            }
+    }
+
+    /// Starts the plan `plannedSessionId` names: a routine plan through the
+    /// routine's own path, a free plan through the wrist's plain free workout
+    /// (plan 129, D-8964). A successful start reports itself with one
+    /// `session_started` naming the plan, and the routine it came from when it
+    /// names one (D-8966) — including a start that filled in the empty session
+    /// the wrist was already holding (D-8970); a start the engine refused
+    /// (a session with exercises is live) emits nothing and returns the held
+    /// session, as it changes nothing. A report the validator refuses is
+    /// swallowed: a start that could not report is still a start (D-8967).
+    @discardableResult
+    public func startPlanned(_ plannedSessionId: String) async throws -> WatchSessionRecord {
+        guard let plan = storedPlans.first(where: { $0.plannedSessionId == plannedSessionId }) else {
+            throw WatchStartPathError.unknownRoutine(plannedSessionId)
+        }
+
+        let before = engine.session
+        let filledInPlace = before?.status == WatchSessionStatus.active
+            && before?.exercises.isEmpty == true
+
+        let session: WatchSessionRecord
+        if let routineTemplateId = plan.routineTemplateId {
+            session = try await startFromRoutine(routineTemplateId)
+        } else {
+            session = await startFreeWorkout()
+        }
+
+        // A second start while a session the user is training is live changes
+        // nothing, so it reports nothing (D-8964): the empty session the start
+        // filled in place, or the session the start created, do.
+        let refused = before?.status == WatchSessionStatus.active
+            && before?.exercises.isEmpty == false
+            && session.recordId == before?.recordId
+        if !refused || filledInPlace {
+            try? engine.emitSessionStarted(
+                sessionId: session.sessionId,
+                routineTemplateId: plan.routineTemplateId,
+                plannedSessionId: plan.plannedSessionId,
+                at: clock()
+            )
+        }
+
+        return session
     }
 
     /// Applies one `exercises_down` batch: stored as it arrives, and used only
@@ -762,6 +892,11 @@ public final class WatchSessionStartPaths {
 extension StoredWatchRecord {
     var routineCatalogRow: WatchRoutineCatalogRecord? {
         if case .routineCatalog(let row) = self { return row }
+        return nil
+    }
+
+    var plannedCatalogRow: WatchPlannedCatalogRecord? {
+        if case .plannedCatalog(let row) = self { return row }
         return nil
     }
 

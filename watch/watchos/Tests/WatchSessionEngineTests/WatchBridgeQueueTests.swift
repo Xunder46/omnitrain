@@ -97,6 +97,40 @@ final class WatchBridgeQueueTests: XCTestCase {
         XCTAssertTrue(harness.failures.isEmpty)
     }
 
+    // MARK: - Plan 129: the planned-start report waits like its peers (S-8970)
+
+    func testS8970ARefusedPlannedStartReportIsQueued() async throws {
+        let harness = WatchBridgeHarness()
+        await harness.launch()
+
+        try harness.engine.emitSessionStarted(
+            sessionId: harness.sessionId,
+            routineTemplateId: "tpl-push-a",
+            plannedSessionId: "p-1",
+            at: harness.clock.now
+        )
+
+        let report = try XCTUnwrap(
+            harness.emitted("session_started").last,
+            "the planned start announces itself"
+        )
+        XCTAssertEqual(
+            (report["payload"] as? [String: Any])?["plannedSessionId"] as? String,
+            "p-1"
+        )
+        let messageId = try XCTUnwrap(report["messageId"] as? String)
+        XCTAssertEqual(messageId, "msg-session-started-\(harness.sessionId)")
+
+        harness.session.sendError = SendFixtureError.refusedByTheRadio
+        await harness.bridge.send(report)
+
+        XCTAssertTrue(harness.session.sent.isEmpty, "the radio took nothing")
+        XCTAssertEqual(harness.session.queued.count, 1, "the OS queue holds it")
+        XCTAssertEqual(harness.session.queued.first?["messageId"] as? String, messageId)
+        XCTAssertEqual(harness.session.queued.first?["type"] as? String, "session_started")
+        XCTAssertTrue(harness.failures.isEmpty)
+    }
+
     // MARK: - S-6703 live-only frames are reported and dropped, one test each
 
     func testS6703ARefusedTimerStateIsReportedAndDropped() async throws {

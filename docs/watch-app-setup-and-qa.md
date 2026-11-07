@@ -402,7 +402,11 @@ fills an active empty session in place
 (`test/watch_session_start_test.dart`,
 `S-177 startFreeWorkout on a live session returns it and emits nothing`,
 `S-170 startFromRoutine on a session with exercises is refused too`,
-`S-178 a routine fills an active empty session in place`).
+`S-178 a routine fills an active empty session in place`). The Planned button's
+tap is these refusals' newest member: a routine plan with exercises shares the
+routine's rule — the tap emits nothing and the held session comes back unchanged
+(`WatchSessionStartPathsTests.testS8967ATapWhileASessionIsLiveEmitsNothingAndReturnsTheHeld`,
+D-8964).
 **(e) Finishing on the phone ends the wrist's session by itself — (owner).**
 Finish the phone's session from the regular session screen. With the watch app
 foregrounded the wrist's session ends on its own, without a Sync

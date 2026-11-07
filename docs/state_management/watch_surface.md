@@ -370,6 +370,16 @@ requires a non-empty `capabilities` array — so it is left out rather than sent
 (`S-3841 the fallback list is the exercises the routines use`): the whole
 catalog travels as `exercises_down` batches instead (23e2), which is where the
 wrist gets the exercises no routine mentions.
+`buildPlannedDown` adds today's planned workout to the same answer's reader: on
+the wrist's start surface it appears first on the home surface as a bordered
+button — captioned with the single startable plan's name, or with "Planned" when
+several are startable and the tap opens the day's picker — and a tap starts it:
+a routine plan takes the same routine path the rows use, a free plan the wrist's
+free start
+(`WatchPlannedSurfaceSourceTests.testS8965ThePlannedButtonComesBeforeTheRoutineList`,
+`…testS8965ThePlannedButtonWearsBorderedAndTheRoutineStaysProminent` for the
+button; the same-path start
+`WatchSessionStartPathsTests.testS8967StartPlannedStartsTheRoutineAndReportsPlanAndRoutine`).
 
 Two mappings in that builder are not mechanical, and both are the phone's
 decision rather than the wire's:
@@ -546,7 +556,20 @@ unchanged phone answers a wrist that holds the current bundle with none of the
 three; a request without a readable `since`, and a phone that relaunched (its
 stamp lives only in memory), gets all three. `routines_down` goes last and is
 withheld when the preferences or the foods frame came back undelivered, so a
-wrist that names a stamp holds the whole bundle. Then the exercise list as
+wrist that names a stamp holds the whole bundle. Outside that gate, and again on
+every routine request, the phone's startable plans travel as their own
+`planned_down` frame: sent after the since-gated bundle and before the exercise
+list, whatever the `since` says and whether or not the bundle moved, and built
+fresh from the plans store each request rather than through the reference stamp —
+so a plan started on the phone reaches the wrist at the next sync even though
+nothing a reference listener watches moved (plan 129, D-8971). Verified by
+`test/watch_sync_request_handler_test.dart`, group `S-8972 the plans ride every
+answer whatever since decided` (`S-8972 a since-current wrist is still sent the
+plans frame, and the frame rides the answer the request built`; the fresh-build
+rule `S-8972 the plans frame is never served from referenceText: a plan started
+between two since-current requests is gone on the second`; and
+`S-8972 a wayside plans frame the radio refused still lets the exercise list
+through`). Then the exercise list as
 `exercises_down` batches — unless the request names the version of the list
 the phone would send, in which case the batches are omitted. Last, the
 `bests_down` frame: every trained exercise's best estimated 1RM and best

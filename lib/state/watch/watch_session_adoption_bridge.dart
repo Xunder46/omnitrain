@@ -26,6 +26,7 @@ import '../../core/constants/metric_ids.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/services/watch_routine_matcher.dart';
 import '../../core/services/watch_session_importer.dart';
+import '../../core/sync_protocol/message_validator.dart';
 import '../../core/sync_protocol/phone_entries.dart';
 import '../../core/sync_protocol/wire_limits.dart';
 import '../../core/utils/entry_rows.dart';
@@ -128,10 +129,15 @@ class WatchSessionAdoptionBridge {
     DateTime Function()? clock,
     void Function(Object error, StackTrace stack)? onFailure,
     void Function(String heldSessionId, String offeredSessionId)? onSkipped,
+    Future<void> Function(String plannedSessionId, String sessionId)?
+        onPlanStarted,
+    SyncProtocolValidator? validator,
   }) : _repository = repository,
        _clock = clock ?? DateTime.now,
        _onFailure = onFailure ?? _report,
-       _onSkipped = onSkipped ?? _reportSkipped;
+       _onSkipped = onSkipped ?? _reportSkipped,
+       _onPlanStarted = onPlanStarted,
+       _validator = validator;
 
   final WorkoutRepository _repository;
   final DateTime Function() _clock;
@@ -140,6 +146,22 @@ class WatchSessionAdoptionBridge {
   /// Where a refused adoption (D-10) is reported — the one observation of a
   /// skip the app has, so tests can see it without reading the debug log.
   final void Function(String heldSessionId, String offeredSessionId) _onSkipped;
+
+  /// Where a plan the wrist just started is marked started, if the graph has
+  /// one to mark it with (plan 129, D-8973). A phone built without one links
+  /// nothing — the report still opens the session row — and the app's own
+  /// `CalendarState.completePlannedSession` is what gets wired here. Defaulted
+  /// to null alongside [WatchSessionAdoptionBridge]'s other hooks so a test
+  /// graph never links by accident (D-8967).
+  final Future<void> Function(
+    String plannedSessionId,
+    String sessionId,
+  )? _onPlanStarted;
+
+  /// The protocol's gate for an arriving frame, or null when this build carries
+  /// no schemas — the same nullable the inbox, the mirror and the nutrition and
+  /// water bridges hold (plan 129, D-8972).
+  final SyncProtocolValidator? _validator;
 
   WorkoutState? _workoutState;
 
@@ -718,15 +740,47 @@ class WatchSessionAdoptionBridge {
     // A row that is already there is an earlier adoption of this same session:
     // adopt it again by loading it. Once the phone holds the session it is the
     // structure authority for it (D-2), so a snapshot never rewrites its rows.
+    // One exception (D-8978): a row a `session_started` report opened holds
+    // its segment and no effort — it is a *placeholder*, opened to receive the
+    // wrist's first snapshot. The radio can land that snapshot behind the
+    // durable report, so the first snapshot, not a second one, must write the
+    // ladder into it exactly as a fresh adoption writes one. A row that holds
+    // any effort (a row an adoption wrote, or one trained on the phone) is not
+    // a placeholder and is untouched.
+    final placeholder = existing != null &&
+        _slots(converged).isNotEmpty &&
+        await _isEffortless(sessionId);
     try {
       if (existing == null) {
         await _adopt(sessionId, converged);
+      } else if (placeholder) {
+        // Read before anything is written, the way `_adopt` does (D-1, I-2).
+        final routine = await _routineFor(_slots(converged));
+        final atMs = _clock().millisecondsSinceEpoch;
+        final segments = await _repository.getSessionSegments(sessionId);
+        final segmentId = segments.isNotEmpty
+            ? segments.first.id
+            : WatchSessionImporter.segmentIdFor(sessionId);
+        if (segments.isEmpty) {
+          // A report whose row opened without its segment gets one now, the
+          // way `_adopt` opens its row's segment.
+          await _repository.createSegment(
+            LoggedEntryRows.defaultSegment(
+              id: segmentId,
+              sessionId: sessionId,
+              atMs: atMs,
+            ),
+          );
+        }
+        await _writeLadder(sessionId, converged, atMs, routine,
+            segmentId: segmentId);
       }
       await target.loadHistoricalSession(sessionId);
-      if (existing == null) {
-        // A fresh adoption: a slot starts with its first entry, as an
-        // exercise the phone adds itself does. A reload of a session the
-        // phone already wrote is left as the user last had it.
+      if (existing == null || placeholder) {
+        // A fresh adoption — or a placeholder the first snapshot just filled
+        // (D-8978): a slot starts with its first entry, as an exercise the
+        // phone adds itself does. A reload of a session the phone already
+        // wrote is left as the user last had it.
         final atMs = _clock().millisecondsSinceEpoch;
         for (final segment in target.segments) {
           for (final effort in target.getEffortsForSegment(segment.id)) {
@@ -743,6 +797,19 @@ class WatchSessionAdoptionBridge {
       rethrow;
     }
     return WatchSessionAdoption.adopted;
+  }
+
+  /// Whether [sessionId]'s row holds no effort in any segment — the shape of
+  /// the row a `session_started` report opens before its first snapshot
+  /// brings the ladder (D-8977, D-8978). A row with no segment at all counts:
+  /// nothing of it is written yet.
+  Future<bool> _isEffortless(String sessionId) async {
+    for (final segment in await _repository.getSessionSegments(sessionId)) {
+      if ((await _repository.getSegmentEfforts(segment.id)).isNotEmpty) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Routes a wrist `session_lifecycle` to the phone's own session (D-5).
@@ -778,6 +845,139 @@ class WatchSessionAdoptionBridge {
     }
   }
 
+  /// Routes a wrist `session_started` report to the phone's own storage
+  /// (plan 129, D-8966/D-8972/D-8977).
+  ///
+  /// The wrist reports a start the moment it happens — long before its first
+  /// snapshot can carry the ladder — so what the phone does here is enough for
+  /// the calendar to speak the truth it already knows: the session row opens
+  /// (when it is not held yet) the way the snapshot path writes it, and the
+  /// report's plan is linked to the row under its phone-owned id.
+  ///
+  /// Nothing structural is written with the row: no effort of the routine's,
+  /// no planned row under the `set` efforts. The wrist is already running the
+  /// ladder, and its first snapshot brings it — a structure the phone wrote
+  /// here too would reach the session twice (D-8977).
+  ///
+  /// Idempotent by gate (D-8972): a report whose plan is unknown, completed or
+  /// already linked writes nothing at all, so a redelivered report answers
+  /// itself and the plan stays as the first link set it. A session the phone
+  /// already holds (an adoption got there first) is written nothing either:
+  /// only the link step of a report with a startable plan still goes through.
+  ///
+  /// A report that starts no plan is still a report: the free session it names
+  /// opens its row and links nothing.
+  ///
+  /// Nothing here throws to the caller: the report is one frame among many,
+  /// and a row it cannot write goes to the graph's failure hook like any
+  /// adoption's.
+  Future<void> onSessionStarted(Map<String, Object?> envelope) async {
+    try {
+      if (envelope['type'] != 'session_started') return;
+      // Judged before anything is written (D-8972), the way the inbox, the
+      // mirror and the water bridge judge theirs: a report this build cannot
+      // read opens no row and links no plan.
+      final decision = SyncProtocolValidator.evaluateOrAccept(
+        _validator,
+        envelope,
+      );
+      if (!decision.accepted) return;
+      // A start the wrist may report back about itself, and only itself: the
+      // origin is what keeps this phone's own frames (or a build's test
+      // doubles) from linking a plan of their own.
+      if (envelope['origin'] != 'watch') return;
+      final sessionId = _namedSession(envelope);
+      if (sessionId == null || sessionId.isEmpty) return;
+
+      final payload = _asObject(envelope['payload']);
+      final routineTemplateId =
+          payload['routineTemplateId'] is String ? payload['routineTemplateId'] as String : null;
+      final plannedSessionId =
+          payload['plannedSessionId'] is String ? payload['plannedSessionId'] as String : null;
+
+      if (plannedSessionId != null) {
+        final plan = await _plannedSession(plannedSessionId);
+        if (plan == null || plan.isCompleted || plan.linkedSessionId != null) {
+          return;
+        }
+      }
+
+      // The snapshot path owns adoption, so the row is written only when there
+      // is none to point the plan at: a row already there is the same session
+      // the phone adopted, and a second one would be two rows for one run.
+      if (await _repository.getSession(sessionId) == null) {
+        await _startSessionRow(
+          sessionId: sessionId,
+          routineTemplateId: routineTemplateId,
+        );
+      }
+
+      if (plannedSessionId == null) return;
+      await _onPlanStarted?.call(plannedSessionId, sessionId);
+    } catch (error, stack) {
+      _onFailure(error, stack);
+    }
+  }
+
+  /// The planned session of [id], or null when the store holds none.
+  Future<PlannedSession?> _plannedSession(String id) async {
+    for (final plan in await _repository.getPlannedSessions()) {
+      if (plan.id == id) return plan;
+    }
+    return null;
+  }
+
+  /// Writes the session row a wrist report opens: the session and its one
+  /// segment, under the protocol's ids (D-3), with no effort and no planned
+  /// row — the wrist's ladder arrives with the first snapshot (D-8977).
+  Future<void> _startSessionRow({
+    required String sessionId,
+    required String? routineTemplateId,
+  }) async {
+    final atMs = _clock().millisecondsSinceEpoch;
+    final template = await _templateOf(routineTemplateId);
+    await _repository.createSession(
+      TrainingSession(
+        id: sessionId,
+        ownerUserId: LoggedEntryRows.ownerUserId,
+        // The report carries no instant the phone trusts for a history row, so
+        // the session starts when the phone hears of it — the same stamp its
+        // row and its segment carry, as the snapshot path stamps its row.
+        startedAtMs: atMs,
+        createdAtMs: atMs,
+        updatedAtMs: atMs,
+        // A routine run opens as the routine it is, exactly as the snapshot
+        // path opens one: the Routines tile reads it, and a free start stays
+        // free.
+        title: template?.name,
+        intent: template == null ? null : 'routine',
+        routineTemplateId: routineTemplateId,
+        // Plan 122 D-12201(c): the routine's Focus opens as a snapshot here
+        // exactly as the snapshot path stamps it on its own row.
+        modality: template?.focusModality,
+      ),
+    );
+
+    await _repository.createSegment(
+      LoggedEntryRows.defaultSegment(
+        id: WatchSessionImporter.segmentIdFor(sessionId),
+        sessionId: sessionId,
+        atMs: atMs,
+      ),
+    );
+  }
+
+  /// The phone's template [routineTemplateId] names, or null — read from the
+  /// current templates, never cached, so a routine edited while the wrist was
+  /// starting opens with what it says now (I-2).
+  Future<WorkoutTemplate?> _templateOf(String? routineTemplateId) async {
+    if (routineTemplateId == null) return null;
+    for (final template in await _repository.getTemplates()) {
+      if (template.id == routineTemplateId) return template;
+    }
+    return null;
+  }
+
   /// Brings the phone's own copy of [sessionId] up to the row before its finish
   /// writes that copy back (D-8).
   ///
@@ -795,8 +995,8 @@ class WatchSessionAdoptionBridge {
     await _workoutState!.updateSessionFeeling(sessionId, rating);
   }
 
-  /// Writes the adopted session: its row, its one segment, and one effort per
-  /// slot — under the protocol's ids (D-3).
+  /// Writes the adopted session: its row and its one segment, under the
+  /// protocol's ids (D-3); the ladder itself goes through [_writeLadder].
   Future<void> _adopt(String sessionId, Map<String, Object?> converged) async {
     final atMs = _clock().millisecondsSinceEpoch;
     final slots = _slots(converged);
@@ -834,10 +1034,29 @@ class WatchSessionAdoptionBridge {
     );
     await _repository.createSegment(segment);
 
+    await _writeLadder(sessionId, converged, atMs, routine,
+        segmentId: segment.id);
+  }
+
+  /// Writes the ladder [converged] carries into [sessionId]'s row under
+  /// [segmentId]: one effort per slot, the routine's planned rows beneath a
+  /// `set` effort (D-3, D-6), and the slot ids into the ever-seen set (D-93).
+  ///
+  /// The part of an adoption a placeholder row needs too: a fresh adoption
+  /// writes it after its own row and segment, and `consider` writes it into a
+  /// report-opened row that its first snapshot reaches before the adoption
+  /// path did (D-8978).
+  Future<void> _writeLadder(
+    String sessionId,
+    Map<String, Object?> converged,
+    int atMs,
+    _AdoptedRoutine? routine, {
+    required String segmentId,
+  }) async {
     var orderIndex = 0;
-    for (final slot in slots) {
+    for (final slot in _slots(converged)) {
       await _repository.createEffort(
-        _effort(slot, segmentId: segment.id, orderIndex: orderIndex, atMs: atMs),
+        _effort(slot, segmentId: segmentId, orderIndex: orderIndex, atMs: atMs),
       );
       // D-3: the routine's `set` efforts start with its own plan, so the
       // wrist's first set fills a planned row instead of joining the exercise

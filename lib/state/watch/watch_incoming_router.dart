@@ -178,6 +178,14 @@ class WatchIncomingRouter {
     if (envelope['type'] == 'session_lifecycle') {
       await _adoption?.onLifecycle(envelope);
     }
+    // The wrist is the one that knows when it *started* a session too: its
+    // `session_started` names the session it is running and the plan of the
+    // phone's calendar it started from, so the adoption bridge links the two
+    // (plan 129, D-8966). Like the lifecycle, after the mirror: the frame is
+    // theirs to answer in that order.
+    if (envelope['type'] == 'session_started') {
+      await _adoption?.onSessionStarted(envelope);
+    }
     final logged = await _nutrition.receive(envelope);
     // A glass of water tapped on the wrist belongs to the day's water, never
     // to a session: after the food, so a message carrying both is answered

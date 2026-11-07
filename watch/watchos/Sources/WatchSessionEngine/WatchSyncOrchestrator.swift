@@ -194,6 +194,8 @@ public final class WatchSyncOrchestrator {
         switch envelope["type"] as? String {
         case "routines_down":
             return await paths.applyRoutinesDown(envelope).applied
+        case "planned_down":
+            return await paths.applyPlannedDown(envelope).applied
         case "exercises_down":
             return await paths.applyExercisesDown(envelope).stored
         case "foods_down":

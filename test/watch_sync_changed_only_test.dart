@@ -4,7 +4,7 @@
 // Scenario mapping:
 //   S-9201 the first request sends the three, stamped alike
 //          → `S-9201 ...`
-//   S-9202 a wrist holding the current bundle is sent only the bests
+//   S-9202 a wrist holding the current bundle is sent only the plans and the bests
 //          → `S-9202 ...`
 //   S-9203 the stamp boundary, one test per arm → `S-9203 ...`
 //   S-9204 one changed input re-sends the three, stamped anew, one test per
@@ -313,11 +313,12 @@ void main() {
 
       expect(
         transport.types,
-        ['bests_down'],
+        ['planned_down', 'bests_down'],
         reason:
             'S-9202 the wrist\'s since is the bundle\'s stamp, so none of the '
-            'three frames and no exercise batch travels — but the bests '
-            'travel on every request (87a, D-4)',
+            'three frames and no exercise batch travels — but the plans '
+            '(D-8971, outside the gate) and the bests travel on every request '
+            '(87a, D-4)',
       );
     });
   });

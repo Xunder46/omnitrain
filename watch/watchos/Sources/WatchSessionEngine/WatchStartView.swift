@@ -100,6 +100,7 @@ public struct WatchStartView: View {
     public static let syncLabel = WatchStartSurfaceCopy.syncLabel
 
     @State private var pickingExercise = false
+    @State private var pickingPlan = false
 
     /// Said when a tapped routine is no longer on the watch (plan 60, D-3).
     @State private var routineNotice: String?
@@ -136,9 +137,29 @@ public struct WatchStartView: View {
         WatchPhoneStatus(reachability: phoneReachability)
     }
 
+    /// Today's plans the wrist may start, in the order the picker shows them
+    /// (plan 129, D-8963). Read from the paths on every body: the surface
+    /// refreshes on the host's `revision` bump, not on a clock tick (D-8969).
+    private var startablePlans: [WatchPlannedSession] {
+        paths.startablePlannedSessions
+    }
+
     public var body: some View {
         ScrollView {
             VStack(spacing: Self.surfaceInset) {
+                // Plan 129, D-8964/D-8965: the first thing on the surface, in the
+                // quiet bordered style so it never competes with the routines.
+                if !startablePlans.isEmpty {
+                    Button(
+                        startablePlans.count > 1
+                            ? WatchStartSurfaceCopy.plannedLabel
+                            : startablePlans[0].name
+                    ) {
+                        startPlanned()
+                    }
+                    .buttonStyle(.bordered)
+                }
+
                 if paths.routines.isEmpty {
                     Text("No routines yet. Sync with your phone to get them.")
                         .font(.footnote)
@@ -224,6 +245,12 @@ public struct WatchStartView: View {
                 onSessionStarted(session)
             }
         }
+        .sheet(isPresented: $pickingPlan) {
+            WatchPlannedPickerView(plans: startablePlans) { plan in
+                pickingPlan = false
+                Task { await start(plan) }
+            }
+        }
     }
 
     /// Path 1: the routine's template becomes the session, and the first
@@ -247,6 +274,32 @@ public struct WatchStartView: View {
         pickingExercise = true
     }
 
+    /// Plan 129, D-8963/D-8964: one plan starts at once, several ask which.
+    /// A tap names the plan the paths start; the routine-missing sentence is the
+    /// start path's only throw, the same story a routine tap tells (plan 60).
+    private func startPlanned() {
+        routineNotice = nil
+        guard startablePlans.count > 1 else {
+            let plan = startablePlans.first
+            Task {
+                if let plan { await start(plan) }
+            }
+            return
+        }
+        pickingPlan = true
+    }
+
+    /// Plan 129: a plan's tap starts it through the paths, which report the
+    /// start to the phone and hand back the session to log against.
+    private func start(_ plan: WatchPlannedSession) async {
+        do {
+            let session = try await paths.startPlanned(plan.plannedSessionId)
+            onSessionStarted(session)
+        } catch {
+            routineNotice = WatchStartSurfaceCopy.routineMissingLabel
+        }
+    }
+
     /// Closing the picker without choosing leaves an empty workout running that
     /// nothing on the wrist can end, so it is cancelled (plan 57). After a pick
     /// the session holds the exercise and the paths leave it alone.
@@ -254,6 +307,34 @@ public struct WatchStartView: View {
         Task {
             if await paths.cancelEmptyFreeWorkout() { onFreeWorkoutCancelled() }
         }
+    }
+}
+
+/// The choice between today's planned workouts (plan 129, D-8963): their names
+/// and nothing else, in the order the rule already sorted them.
+public struct WatchPlannedPickerView: View {
+    private let plans: [WatchPlannedSession]
+    private let onPick: (WatchPlannedSession) -> Void
+
+    public init(
+        plans: [WatchPlannedSession],
+        onPick: @escaping (WatchPlannedSession) -> Void
+    ) {
+        self.plans = plans
+        self.onPick = onPick
+    }
+
+    public var body: some View {
+        ScrollView {
+            VStack(spacing: 4.0) {
+                ForEach(plans, id: \.plannedSessionId) { plan in
+                    Button(plan.name) { onPick(plan) }
+                        .buttonStyle(.bordered)
+                }
+            }
+            .padding(4.0)
+        }
+        .navigationTitle(WatchStartSurfaceCopy.plannedPickerTitle)
     }
 }
 

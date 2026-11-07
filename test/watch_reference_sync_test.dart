@@ -26,9 +26,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/modality.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
+import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
 import 'package:omnitrain/core/utils/foods_i_eat_order.dart';
+import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/core/utils/watch_reference_sync.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -1332,6 +1335,292 @@ void main() {
         );
       },
     );
+  });
+
+  // Plan 129 (P1b, D-8961/D-8962): the phone's plans travel as their own
+  // `planned_down` frame — not a field on `routines_down` (D-8960) — carrying
+  // the name the calendar row shows and nothing a started plan would still
+  // claim. The graphs that send it and link it back are in
+  // `test/watch_session_import_test.dart`.
+  //
+  // Every date here derives at run time from 2026-11-05 local; nothing pins an
+  // epoch to the machine's timezone.
+  group('S-8960…S-8962 the plans the wrist can start', () {
+    final today = DateTime(2026, 11, 5);
+    final todayMs = today.millisecondsSinceEpoch;
+    final generatedAt = DateTime(2026, 11, 5, 12);
+
+    Future<void> addPlan(
+      String id,
+      int scheduledDateMs, {
+      String? title,
+      String? modality,
+      String? routineTemplateId,
+      bool completed = false,
+      String? linkedSessionId,
+    }) => repository.createPlannedSession(
+      PlannedSession(
+        id: id,
+        ownerUserId: LoggedEntryRows.ownerUserId,
+        scheduledDateMs: scheduledDateMs,
+        modality: modality,
+        title: title,
+        note: null,
+        isCompleted: completed,
+        linkedSessionId: linkedSessionId,
+        routineTemplateId: routineTemplateId,
+        createdAtMs: _now.millisecondsSinceEpoch,
+        updatedAtMs: _now.millisecondsSinceEpoch,
+      ),
+    );
+
+    setUp(() async {
+      await _addTemplate(
+        repository,
+        id: 'tpl-push',
+        name: 'Push',
+        segmentIds: ['seg-push'],
+      );
+      await _addTemplate(
+        repository,
+        id: 'tpl-legs',
+        name: 'Legs',
+        segmentIds: ['seg-legs'],
+      );
+    });
+
+    test('S-8960 the window and the sort: three startable plans, in date order',
+        () async {
+      await addPlan('p-today', todayMs, routineTemplateId: 'tpl-push');
+      await addPlan(
+        'p-tomorrow',
+        DateTime(2026, 11, 6).millisecondsSinceEpoch,
+        routineTemplateId: 'tpl-legs',
+      );
+      await addPlan(
+        'p-late',
+        DateTime(2026, 11, 18).millisecondsSinceEpoch,
+        routineTemplateId: 'tpl-legs',
+      );
+      // Not startable, or outside the window:
+      await addPlan(
+        'p-linked',
+        todayMs,
+        routineTemplateId: 'tpl-push',
+        linkedSessionId: 's-x',
+      );
+      await addPlan('p-done', todayMs, routineTemplateId: 'tpl-push',
+          completed: true);
+      await addPlan('p-old', DateTime(2026, 10, 31).millisecondsSinceEpoch,
+          routineTemplateId: 'tpl-push');
+      // Inside the window (yesterday, today + 13) but completed every way a
+      // started plan can be, whatever its date:
+      await addPlan(
+        'p-linked-late',
+        DateTime(2026, 11, 13).millisecondsSinceEpoch,
+        linkedSessionId: 's-x',
+      );
+      await addPlan(
+        'p-done-old',
+        DateTime(2026, 11, 3).millisecondsSinceEpoch,
+        completed: true,
+      );
+
+      final message = await WatchReferenceSync.buildPlannedDown(
+        repository: repository,
+        generatedAt: generatedAt,
+      );
+
+      expect(message['type'], 'planned_down');
+      expect(message['origin'], 'phone');
+      expect(
+        message['messageId'],
+        'msg-planned-${generatedAt.toUtc().millisecondsSinceEpoch}',
+      );
+      expect(message.containsKey('sessionId'), isFalse);
+      expect(
+        _asObject(message['payload']),
+        {
+          'generatedAt': utcIso(generatedAt),
+          'plans': [
+            {
+              'plannedSessionId': 'p-today',
+              'name': 'Push',
+              'scheduledDateMs': todayMs,
+              'routineTemplateId': 'tpl-push',
+              'createdAtMs': _now.millisecondsSinceEpoch,
+              'updatedAtMs': _now.millisecondsSinceEpoch,
+            },
+            {
+              'plannedSessionId': 'p-tomorrow',
+              'name': 'Legs',
+              'scheduledDateMs': DateTime(2026, 11, 6).millisecondsSinceEpoch,
+              'routineTemplateId': 'tpl-legs',
+              'createdAtMs': _now.millisecondsSinceEpoch,
+              'updatedAtMs': _now.millisecondsSinceEpoch,
+            },
+            {
+              'plannedSessionId': 'p-late',
+              'name': 'Legs',
+              'scheduledDateMs': DateTime(2026, 11, 18).millisecondsSinceEpoch,
+              'routineTemplateId': 'tpl-legs',
+              'createdAtMs': _now.millisecondsSinceEpoch,
+              'updatedAtMs': _now.millisecondsSinceEpoch,
+            },
+          ],
+        },
+        reason:
+            'S-8960 only the unstarted plans of today − 1 day … today + 13 '
+            'inclusive travel, started ones never; the payload is the stamp '
+            'and the plans alone, every date read at run time',
+      );
+    });
+
+    test('S-8960 the window edges: yesterday and today + 13 in, the rest out',
+        () async {
+      await addPlan('p-out-before', DateTime(2026, 11, 3).millisecondsSinceEpoch,
+          modality: Modality.sports);
+      await addPlan(
+        'p-edge-before',
+        DateTime(2026, 11, 4).millisecondsSinceEpoch,
+        modality: Modality.sports,
+      );
+      await addPlan(
+        'p-latest-ok',
+        DateTime(2026, 11, 18).millisecondsSinceEpoch,
+        modality: Modality.sports,
+      );
+      await addPlan('p-out-after', DateTime(2026, 11, 19).millisecondsSinceEpoch,
+          modality: Modality.sports);
+
+      final message = await WatchReferenceSync.buildPlannedDown(
+        repository: repository,
+        generatedAt: generatedAt,
+      );
+
+      expect(
+        [
+          for (final p in _objects(_asObject(message['payload'])['plans']))
+            p['plannedSessionId'],
+        ],
+        ['p-edge-before', 'p-latest-ok'],
+        reason: 'S-8960 the half-open window is today − 1 day … today + 14',
+      );
+    });
+
+    test('S-8961 the name cascade in every case the calendar row can be',
+        () async {
+      await addPlan('p-titled', todayMs, title: 'Hill sprints');
+      await addPlan('p-routine', todayMs, routineTemplateId: 'tpl-push');
+      await addPlan('p-free', todayMs, modality: Modality.sports);
+      await addPlan('p-bare', todayMs);
+
+      final message = await WatchReferenceSync.buildPlannedDown(
+        repository: repository,
+        generatedAt: generatedAt,
+      );
+
+      expect(
+        {
+          for (final p
+              in _objects(_asObject(message['payload'])['plans']))
+            p['plannedSessionId']! as String: p['name'],
+        },
+        {
+          'p-titled': 'Hill sprints',
+          'p-routine': 'Push',
+          'p-free': 'Sports',
+          'p-bare': 'Free Training',
+        },
+        reason: 'S-8961 the plan\'s own title, the template\'s name, the '
+            'phone\'s modality label, then "Free Training", ties by id',
+      );
+    });
+
+    test('S-8961 a nullable field is absent, never null', () async {
+      await addPlan('p-bare', todayMs);
+
+      final message = await WatchReferenceSync.buildPlannedDown(
+        repository: repository,
+        generatedAt: generatedAt,
+      );
+
+      expect(
+        _objects(_asObject(message['payload'])['plans']).single.keys.toList(),
+        ['plannedSessionId', 'name', 'scheduledDateMs', 'createdAtMs',
+         'updatedAtMs'],
+        reason: 'S-8961 no nullable key is sent as null',
+      );
+    });
+
+    test('S-8962 a plan on a routine the wrist is not set up for still names '
+        'that routine', () async {
+      await repository.createExercise(
+        Exercise(
+          id: 'exercise-empty',
+          name: 'Its exercise holds no capability',
+          createdAtMs: _now.millisecondsSinceEpoch,
+          updatedAtMs: _now.millisecondsSinceEpoch,
+        ),
+      );
+      await _addTemplate(
+        repository,
+        id: 'tpl-empty',
+        name: 'Empty routine',
+        segmentIds: ['seg-empty'],
+      );
+      await _addEffort(
+        repository,
+        id: 'eff-empty',
+        segmentId: 'seg-empty',
+        orderIndex: 0,
+        effortKind: 'set',
+        exerciseId: 'exercise-empty',
+      );
+      expect(
+        _objects(
+          _asObject(
+            (await WatchReferenceSync.buildRoutinesDown(
+              repository: repository,
+              generatedAt: generatedAt,
+            ))['payload'],
+          )['routines'],
+        ),
+        isEmpty,
+        reason: 'S-8962 guard: the routine really is omitted from '
+            '`routines_down`',
+      );
+      await addPlan('p-empty', todayMs, routineTemplateId: 'tpl-empty');
+
+      final message = await WatchReferenceSync.buildPlannedDown(
+        repository: repository,
+        generatedAt: generatedAt,
+      );
+
+      final plan = _objects(_asObject(message['payload'])['plans']).single;
+      expect(plan['plannedSessionId'], 'p-empty');
+      expect(
+        plan['routineTemplateId'],
+        'tpl-empty',
+        reason: 'S-8962 the plan row carries the routine id; the wrist does '
+            'not need the routine to exist to know the run is one',
+      );
+      expect(plan['name'], 'Empty routine');
+    });
+
+    test('S-8960 a phone with no plans sends the empty frame', () async {
+      final message = await WatchReferenceSync.buildPlannedDown(
+        repository: repository,
+        generatedAt: generatedAt,
+      );
+
+      expect(
+        _asObject(message['payload']),
+        {'generatedAt': utcIso(generatedAt), 'plans': <Object?>[]},
+        reason: 'S-8960 the frame says the list is empty instead of saying '
+            'nothing',
+      );
+    });
   });
 }
 

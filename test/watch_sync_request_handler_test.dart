@@ -123,12 +123,18 @@ class _RecordingTransport implements WatchMirrorTransport {
   /// `queued` answer the real transport never gives it (S-87c-5).
   WatchDelivery? bestsDelivery;
 
+  /// Whether the radio refuses the `planned_down` frame (plan 129, S-8972).
+  bool undeliveredPlanned = false;
+
   /// Whether the radio refuses the `water_down` frame (S-94a-25).
   bool undeliveredWater = false;
 
   @override
   Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     sent.add(envelope);
+    if (envelope['type'] == 'planned_down' && undeliveredPlanned) {
+      return WatchDelivery.undelivered;
+    }
     if (envelope['type'] == 'water_down' && undeliveredWater) {
       return WatchDelivery.undelivered;
     }
@@ -564,12 +570,14 @@ void main() {
 
         expect(
           transport.types,
-          ['preferences_down', 'foods_down', 'routines_down', 'bests_down'],
+          ['preferences_down', 'foods_down', 'routines_down', 'planned_down',
+           'bests_down'],
           reason:
               'S-3850 the wrist holds the list, so the preferences, the '
               'foods and the routines travel and no exercise batch does '
-              '(S-15204: the foods frame is the empty one); the bests close '
-              'every answer (87a, D-4)',
+              '(S-15204: the foods frame is the empty one); the plans frame '
+              'planned_down still rides the answer (plan 129, D-8962/8971) '
+              'and the bests close every answer (87a, D-4)',
         );
       },
     );
@@ -591,7 +599,8 @@ void main() {
 
       expect(
         transport.types,
-        ['preferences_down', 'foods_down', 'routines_down', 'bests_down'],
+        ['preferences_down', 'foods_down', 'routines_down', 'planned_down',
+         'bests_down'],
         reason:
             'S-3857 no exercise the wrist could log is no list to send, so '
             'the wrist keeps the list it holds (D-3831); the empty foods '
@@ -621,6 +630,7 @@ void main() {
       expect(
         transport.types.skip(3),
         [
+          'planned_down',
           'exercises_down',
           'exercises_down',
           'exercises_down',
@@ -629,7 +639,8 @@ void main() {
         ],
         reason:
             'S-3851 the exercise batches follow the routines, then exactly '
-            'one bests frame closes the answer (87a, D-4)',
+            'one bests frame closes the answer (87a, D-4); the plans frame '
+            'rides between the routines and the list (plan 129, D-8971)',
       );
     });
 
@@ -771,6 +782,7 @@ void main() {
       expect(
         transport.types.skip(3),
         [
+          'planned_down',
           'exercises_down',
           'exercises_down',
           'exercises_down',
@@ -870,11 +882,13 @@ void main() {
 
       expect(
         transport.types,
-        ['preferences_down', 'foods_down', 'routines_down', 'bests_down'],
+        ['preferences_down', 'foods_down', 'routines_down', 'planned_down',
+         'bests_down'],
         reason:
             'S-7103 the version early return sits after the foods and the '
             'routines, so the foods still travel and no exercise batch does; '
-            'the bests are sent whatever the wrist holds (87a, D-4)',
+            'the plans frame still rides (plan 129, D-8971) and the bests '
+            'are sent whatever the wrist holds (87a, D-4)',
       );
     });
 
@@ -1170,10 +1184,11 @@ void main() {
       );
       expect(
         transport.types,
-        ['bests_down'],
+        ['planned_down', 'bests_down'],
         reason:
             'S-87a-6 bests change after every completed workout, so they '
-            'travel on every request whatever `since` says (D-4)',
+            'travel on every request whatever `since` says (D-4); the plans '
+            'frame rides the answer whatever since decided (plan 129, D-8971)',
       );
     });
 
@@ -1856,7 +1871,9 @@ void main() {
       expect(
         types.indexOf('water_down'),
         lastBatch + 1,
-        reason: 'S-94a-21 the count comes right after the last exercise batch',
+        reason: 'S-94a-21 the count comes right after the last exercise batch; '
+            'the plans frame rides before the list, between the routines and '
+            'it (plan 129)',
       );
       expect(
         types.last,
@@ -1885,9 +1902,10 @@ void main() {
       );
       expect(
         transport.types,
-        ['water_down'],
+        ['planned_down', 'water_down'],
         reason: 'S-94a-21 no bundle, no batches, no bests — and still the one '
-            'count, whatever since, the version and the bests decided',
+            'count, whatever since, the version and the bests decided (the '
+            'plans frame rides the answer too, plan 129)',
       );
       expect(waterPayload()['day'], dayText);
       expect(waterPayload()['glasses'], 2);
@@ -2044,6 +2062,194 @@ void main() {
         reason: 'S-94a-25 the rest of the answer is the one a wrist that did '
             'not ask gets',
       );
+    });
+  });
+
+  // Plan 129 (P1b, S-8972, D-8971): the phone's startable plans travel as
+  // their own `planned_down` frame, sent on every routines answer after the
+  // bundle and outside its `since` gate — built fresh from the plans store
+  // each request, never part of `referenceText`, so a plan the phone started
+  // reaches the next request even though nothing moved a reference listener.
+  group('S-8972 the plans ride every answer whatever since decided', () {
+    final day = DateTime(2026, 11, 5);
+
+    /// Values unlike any default: the ids, the titles, the link target all
+    /// name plan 129 and nothing a default would spell.
+    Future<void> seedPlan(
+      String id, {
+      int daysAhead = 0,
+      bool started = false,
+    }) => repository.createPlannedSession(
+      PlannedSession(
+        id: id,
+        ownerUserId: 'user-plan-129',
+        scheduledDateMs: DateTime(
+          day.year,
+          day.month,
+          day.day + daysAhead,
+        ).millisecondsSinceEpoch,
+        modality: null,
+        title: 'Hill $id title',
+        note: null,
+        isCompleted: started,
+        linkedSessionId: started ? 'w-129' : null,
+        routineTemplateId: null,
+        createdAtMs: _now.millisecondsSinceEpoch,
+        updatedAtMs: _now.millisecondsSinceEpoch,
+      ),
+    );
+
+    List<Object?> planIdsOf(Map<String, Object?> frame) => [
+      for (final plan
+          in (frame['payload']! as Map)['plans']! as List)
+        (plan as Map)['plannedSessionId'],
+    ];
+
+    setUp(() {
+      current = DateTime(2026, 11, 5, 12).toUtc();
+    });
+
+    test('S-8972 a since-current wrist is still sent the plans frame, and the '
+        'frame rides the answer the request built', () async {
+      await seedPlan('wl-plan-alpha');
+      await seedPlan('wl-plan-beta', daysAhead: 2);
+
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+
+      final types = transport.types;
+      expect(
+        types.indexOf('planned_down'),
+        types.indexOf('routines_down') + 1,
+        reason: 'S-8972 the plans frame is answered after the bundle, before '
+            'the exercise list and the bests',
+      );
+      final frame = transport.ofType('planned_down').single;
+      expect(planIdsOf(frame), ['wl-plan-alpha', 'wl-plan-beta']);
+      expect(
+        frame['messageId'],
+        'msg-planned-${current.millisecondsSinceEpoch}',
+        reason: 'S-8972 the frame is stamped with its own request\'s clock '
+            '(as S-87a-12 stamps the rest)',
+      );
+
+      final stamp =
+          parseUtcIso(
+            (transport.ofType('routines_down').single['payload']!
+                as Map)['generatedAt']! as String,
+          );
+      transport.sent.clear();
+
+      expect(
+        await handler.handle(
+          WatchTransportRequest.routines,
+          since: stamp,
+          exercisesVersion: await currentVersion(),
+          holdsBests: true,
+        ),
+        isTrue,
+      );
+      expect(
+        transport.types,
+        ['planned_down'],
+        reason: 'S-8972 no bundle, no batches, no bests — and still the plans '
+            'frame, whatever since said',
+      );
+    });
+
+    test('S-8972 a plan the phone already started travels no more', () async {
+      await seedPlan('wl-plan-alpha', started: true);
+
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+      expect(
+        planIdsOf(transport.ofType('planned_down').single),
+        isEmpty,
+        reason: 'S-8972 a completed, linked plan is not a calendar start '
+            'any more (D-8962)',
+      );
+    });
+
+    test('S-8972 the plans frame is never served from referenceText: a plan '
+        'started between two since-current requests is gone on the second',
+        () async {
+      await seedPlan('wl-plan-alpha');
+
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+      final referenceStamp = parseUtcIso(
+        (transport.ofType('routines_down').single['payload']! as Map)[
+          'generatedAt']! as String,
+      );
+      transport.sent.clear();
+      expect(
+        await handler.handle(
+          WatchTransportRequest.routines,
+          since: referenceStamp,
+        ),
+        isTrue,
+      );
+      expect(planIdsOf(transport.ofType('planned_down').single),
+          ['wl-plan-alpha']);
+      expect(
+        transport.ofType('routines_down'),
+        isEmpty,
+        reason: 'S-8972 guard: the since-current wrist got no re-sent bundle',
+      );
+
+      // The phone's own start writes the plans store alone: no reference
+      // listener moves, so neither does the stamp the wrist named.
+      final all = await repository.getPlannedSessions();
+      final alpha = all.singleWhere((plan) => plan.id == 'wl-plan-alpha');
+      await repository.updatePlannedSession(
+        PlannedSession(
+          id: alpha.id,
+          ownerUserId: alpha.ownerUserId,
+          scheduledDateMs: alpha.scheduledDateMs,
+          modality: alpha.modality,
+          title: alpha.title,
+          note: alpha.note,
+          isCompleted: true,
+          linkedSessionId: 'w-129',
+          routineTemplateId: alpha.routineTemplateId,
+          createdAtMs: alpha.createdAtMs,
+          updatedAtMs: _now.millisecondsSinceEpoch,
+        ),
+      );
+
+      transport.sent.clear();
+      expect(
+        await handler.handle(
+          WatchTransportRequest.routines,
+          since: referenceStamp,
+        ),
+        isTrue,
+      );
+      expect(
+        transport.ofType('routines_down'),
+        isEmpty,
+        reason: 'S-8972 guard: the since-current wrist got no re-sent bundle',
+      );
+      expect(
+        planIdsOf(transport.ofType('planned_down').single),
+        isEmpty,
+        reason: 'S-8972 the plans frame was rebuilt fresh from the plans '
+            'store, not from the frame the stamp cache holds',
+      );
+    });
+
+    test('S-8972 a wayside plans frame the radio refused still lets the '
+        'exercise list through', () async {
+      transport.undeliveredPlanned = true;
+
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+
+      expect(transport.ofType('planned_down'), hasLength(1),
+          reason: 'S-8972 the frame was offered to the radio');
+      final types = transport.types;
+      expect(
+        types.indexOf('planned_down'),
+        lessThan(types.indexOf('exercises_down')),
+        reason: 'S-8972 the refused plans frame does not stop the answer',
+      );
+      expect(types.last, 'bests_down');
     });
   });
 }

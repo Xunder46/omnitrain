@@ -54,11 +54,13 @@ public final class SyncProtocolValidator {
         "bests_down",
         "water_down",
         "preferences_down",
+        "planned_down",
         "exercise_push",
         "structure_change",
         "observations_up",
         "receipt",
         "session_lifecycle",
+        "session_started",
         "session_snapshot",
         "timer_state",
     ]

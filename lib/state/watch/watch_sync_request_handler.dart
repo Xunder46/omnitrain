@@ -247,6 +247,13 @@ class WatchSyncRequestHandler {
       if (carried) await _transport.send(bundle.routines);
     }
 
+    // The phone's startable plans ride every routines answer, outside the
+    // `since` gate and never part of [referenceText] (plan 129, D-8971): a plan
+    // the phone starts writes the plans store alone, while the stamp cache
+    // moves only with the reference listeners — a plans frame served from the
+    // cache would keep showing a started plan until restart.
+    await _sendPlans();
+
     await _sendExerciseList(
       exercisesVersion: exercisesVersion,
       revision: revision,
@@ -256,6 +263,27 @@ class WatchSyncRequestHandler {
 
     await _sendBests(holdsBests: holdsBests);
     return true;
+  }
+
+  /// The phone's startable plans (`planned_down`), built fresh each request
+  /// (plan 129, D-8971).
+  ///
+  /// Best effort, like the water count: a read that throws sends no frame, and
+  /// a frame the radio did not carry is not retried — the wrist asks again at
+  /// its next sync. Neither changes the answer around it: the exercise list
+  /// still goes out after a refused plans frame.
+  Future<void> _sendPlans() async {
+    final Map<String, Object?> frame;
+    try {
+      frame = await WatchReferenceSync.buildPlannedDown(
+        repository: _repository,
+        generatedAt: _clock(),
+      );
+    } catch (_) {
+      // Deliberately swallowed — a failed read is no reason to withhold the rest.
+      return;
+    }
+    await _transport.send(frame);
   }
 
   /// The water count for the phone's today, read from storage now (plan 94,

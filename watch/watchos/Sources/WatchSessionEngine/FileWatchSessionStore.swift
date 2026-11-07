@@ -126,6 +126,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
         var confirmations: [WatchConfirmationRecord] = []
         var sensorSamples: [WatchSensorSampleRecord] = []
         var routineCatalogs: [WatchRoutineCatalogRecord] = []
+        var plannedCatalogs: [WatchPlannedCatalogRecord] = []
         var foodCatalogs: [WatchFoodCatalogRecord] = []
         var preferences: [WatchPreferencesRecord] = []
         var ratingPrompts: [WatchRatingPromptRecord] = []
@@ -141,6 +142,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
             case .sensorSample(let value): sensorSamples.append(value)
             case .confirmation(let value): confirmations.append(value)
             case .routineCatalog(let value): routineCatalogs.append(value)
+            case .plannedCatalog(let value): plannedCatalogs.append(value)
             case .foodCatalog(let value): foodCatalogs.append(value)
             case .preferences(let value): preferences.append(value)
             case .ratingPrompt(let value): ratingPrompts.append(value)
@@ -157,6 +159,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
             confirmations: confirmations,
             sensorSamples: sensorSamples,
             routineCatalogs: routineCatalogs,
+            plannedCatalogs: plannedCatalogs,
             foodCatalogs: foodCatalogs,
             preferences: preferences,
             ratingPrompts: ratingPrompts,

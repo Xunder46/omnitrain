@@ -40,6 +40,10 @@ public struct WatchStoreContents {
     /// the catalog that applies.
     public let routineCatalogs: [WatchRoutineCatalogRecord]
 
+    /// The planned sessions the phone sent down, oldest first. The newest row
+    /// is the list that applies (plan 129).
+    public let plannedCatalogs: [WatchPlannedCatalogRecord]
+
     /// The food lists the phone sent down, oldest first. The newest row is the
     /// list that applies.
     public let foodCatalogs: [WatchFoodCatalogRecord]
@@ -74,6 +78,7 @@ public struct WatchStoreContents {
         confirmations: [WatchConfirmationRecord] = [],
         sensorSamples: [WatchSensorSampleRecord] = [],
         routineCatalogs: [WatchRoutineCatalogRecord] = [],
+        plannedCatalogs: [WatchPlannedCatalogRecord] = [],
         foodCatalogs: [WatchFoodCatalogRecord] = [],
         preferences: [WatchPreferencesRecord] = [],
         ratingPrompts: [WatchRatingPromptRecord] = [],
@@ -87,6 +92,7 @@ public struct WatchStoreContents {
         self.confirmations = confirmations
         self.sensorSamples = sensorSamples
         self.routineCatalogs = routineCatalogs
+        self.plannedCatalogs = plannedCatalogs
         self.foodCatalogs = foodCatalogs
         self.preferences = preferences
         self.ratingPrompts = ratingPrompts
@@ -98,7 +104,7 @@ public struct WatchStoreContents {
     public var isEmpty: Bool {
         sessions.isEmpty && observations.isEmpty && timers.isEmpty
             && confirmations.isEmpty && sensorSamples.isEmpty
-            && routineCatalogs.isEmpty && foodCatalogs.isEmpty
+            && routineCatalogs.isEmpty && plannedCatalogs.isEmpty && foodCatalogs.isEmpty
             && preferences.isEmpty && ratingPrompts.isEmpty
             && exerciseBatches.isEmpty && bests.isEmpty && water.isEmpty
     }
@@ -243,6 +249,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
         var confirmations: [WatchConfirmationRecord] = []
         var sensorSamples: [WatchSensorSampleRecord] = []
         var routineCatalogs: [WatchRoutineCatalogRecord] = []
+        var plannedCatalogs: [WatchPlannedCatalogRecord] = []
         var foodCatalogs: [WatchFoodCatalogRecord] = []
         var preferences: [WatchPreferencesRecord] = []
         var ratingPrompts: [WatchRatingPromptRecord] = []
@@ -258,6 +265,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             case .sensorSample(let value): sensorSamples.append(value)
             case .confirmation(let value): confirmations.append(value)
             case .routineCatalog(let value): routineCatalogs.append(value)
+            case .plannedCatalog(let value): plannedCatalogs.append(value)
             case .foodCatalog(let value): foodCatalogs.append(value)
             case .preferences(let value): preferences.append(value)
             case .ratingPrompt(let value): ratingPrompts.append(value)
@@ -274,6 +282,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             confirmations: confirmations,
             sensorSamples: sensorSamples,
             routineCatalogs: routineCatalogs,
+            plannedCatalogs: plannedCatalogs,
             foodCatalogs: foodCatalogs,
             preferences: preferences,
             ratingPrompts: ratingPrompts,

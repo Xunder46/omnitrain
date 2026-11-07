@@ -33,6 +33,7 @@ import '../sync_protocol/wire_timestamps.dart';
 import 'date_utils.dart';
 import 'food_helpers.dart';
 import 'foods_i_eat_order.dart';
+import 'modality_color_utils.dart' show ModalityColorUtils;
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 
@@ -162,6 +163,96 @@ abstract final class WatchReferenceSync {
         'fallbackExercises': _fallbackJson(referenced),
       },
     );
+  }
+
+  /// The phone's startable plans, as the `planned_down` message the wrist reads
+  /// (plan 129, D-8960/D-8961/D-8962).
+  ///
+  /// A plan is startable on the wrist only while nothing has happened to it:
+  /// it is sent when it is not completed yet and no session is linked to it
+  /// (`lib/state/calendar/calendar_state.dart` drops a linked plan from the
+  /// calendar for the same reason). The window is the phone's own local
+  /// calendar — from yesterday to thirteen days out, both ends read off
+  /// [generatedAt] at run time — and plans outside it say nothing the wrist
+  /// would act on: the wrist filters the list to its own today.
+  ///
+  /// Unlike `routines_down`, the frame carries no identity stamp: it is built
+  /// fresh on every request (D-8971), because a plan this phone starts writes
+  /// the plans store alone, and a frame the wrist cached from this payload
+  /// would keep showing a started plan.
+  ///
+  /// [generatedAt] stamps the frame; the day window does not depend on it.
+  static Future<Map<String, Object?>> buildPlannedDown({
+    required WorkoutRepository repository,
+    required DateTime generatedAt,
+  }) async {
+    final local = generatedAt.toLocal();
+    final windowStartMs = DateTime(
+      local.year,
+      local.month,
+      local.day - 1,
+    ).millisecondsSinceEpoch;
+    final windowEndMs = DateTime(
+      local.year,
+      local.month,
+      local.day + 14,
+    ).millisecondsSinceEpoch;
+
+    final templates = {
+      for (final template in await repository.getTemplates())
+        template.id: template,
+    };
+    final plans = <PlannedSession>[];
+    for (final plan in await repository.getPlannedSessions()) {
+      if (plan.isCompleted || plan.linkedSessionId != null) continue;
+      if (plan.scheduledDateMs < windowStartMs) continue;
+      if (plan.scheduledDateMs >= windowEndMs) continue;
+      plans.add(plan);
+    }
+    // The order the wrist starts a plan from: scheduled date first, ties by id.
+    plans.sort((a, b) {
+      final byDate = a.scheduledDateMs.compareTo(b.scheduledDateMs);
+      if (byDate != 0) return byDate;
+      return a.id.compareTo(b.id);
+    });
+
+    return phoneEnvelope(
+      type: 'planned_down',
+      messageId: 'msg-planned-${generatedAt.toUtc().millisecondsSinceEpoch}',
+      sentAt: generatedAt,
+      payload: {
+        'generatedAt': utcIso(generatedAt),
+        'plans': [
+          for (final plan in plans) _planJson(plan, templates),
+        ],
+      },
+    );
+  }
+
+  /// One plan as the wire carries it (D-8961). The name is never empty: the
+  /// plan's own title, then its routine template's name, then the phone's
+  /// modality label, then "Free Training". A nullable field is left out
+  /// entirely — the protocol does not send `null` where it can send absence.
+  static Map<String, Object?> _planJson(
+    PlannedSession plan,
+    Map<String, WorkoutTemplate> templates,
+  ) {
+    final name = (plan.title != null && plan.title!.isNotEmpty)
+        ? plan.title!
+        : (plan.routineTemplateId != null
+            ? templates[plan.routineTemplateId]?.name
+            : null) ??
+        ModalityColorUtils.labelForModality(plan.modality);
+    return {
+      'plannedSessionId': plan.id,
+      'name': name,
+      'scheduledDateMs': plan.scheduledDateMs,
+      if (plan.routineTemplateId != null)
+        'routineTemplateId': plan.routineTemplateId,
+      if (plan.modality != null) 'modality': plan.modality,
+      'createdAtMs': plan.createdAtMs,
+      'updatedAtMs': plan.updatedAtMs,
+    };
   }
 
   /// The exercises the routines reference, in the phone's name order.

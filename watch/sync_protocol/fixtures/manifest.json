@@ -210,6 +210,24 @@
       "type": "routines_down",
       "scenario": "S-12510",
       "note": "A routine MAY carry the phone's Focus Modality: `routine-isometric-a` names `focusModality: \"isometric_stretching\"`, present only when the routine has a Focus and never empty (plan 125a)."
+    },
+    {
+      "path": "valid/planned_down.json",
+      "type": "planned_down",
+      "scenario": "S-8968",
+      "note": "The family's shape: a routine plan carrying `routineTemplateId` and a free plan carrying `modality`, both with the phone's own name and epoch-millisecond dates, so the wrist's start surface can caption every row (plan 129 D-8961)."
+    },
+    {
+      "path": "valid/planned_down_empty.json",
+      "type": "planned_down",
+      "scenario": "S-8968",
+      "note": "A day with no plans is a frame like any other: `plans: []` tells the wrist the start surface has no planned button to offer, exactly as it empties the pinned list."
+    },
+    {
+      "path": "valid/session_started.json",
+      "type": "session_started",
+      "scenario": "S-8974",
+      "note": "The durable report: `w-1` names the plan and routine it started from, its own id and instant, and the message id derived from the record `msg-session-started-w-1` (plan 129 D-8966, D-8974)."
     }
   ],
   "invalid": [
@@ -870,6 +888,22 @@
       "expectedCode": "invalid_type",
       "expectedReasonContains": "expected string, found 7",
       "note": "`focusModality` is a string, never a number: 7 is refused as the wrong type."
+    },
+    {
+      "path": "invalid/planned_down_watch_origin.json",
+      "type": "planned_down",
+      "scenario": "S-8968",
+      "expectedCode": "invalid_const_value",
+      "expectedReasonContains": "expected \"phone\", found \"watch\"",
+      "note": "The phone owns the plan list, so its origin is `phone` and a wrist-originated copy is refused."
+    },
+    {
+      "path": "invalid/session_started_missing_session.json",
+      "type": "session_started",
+      "scenario": "S-8968",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "sessionId",
+      "note": "A start report without its own session id names nothing to adopt or link, so the frame is refused."
     }
   ],
   "scenarios": [

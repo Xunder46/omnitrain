@@ -1358,6 +1358,43 @@ public final class WatchSessionEngine: ObservableObject {
         emitLifecycle(row, state: row.status)
     }
 
+    /// Reports to the phone that a session just started on the wrist from a
+    /// planned session (plan 129, D-8966). The report is the start paths', not
+    /// the engine's generic start: a start from a routine button sends nothing
+    /// new. A frame the validator refuses throws — a report that could not be
+    /// sent does not stop the start, which is why the path swallows it.
+    public func emitSessionStarted(
+        sessionId: String,
+        routineTemplateId: String?,
+        plannedSessionId: String?,
+        at: Date
+    ) throws {
+        var payload: [String: Any] = [
+            "sessionId": sessionId,
+            "at": utcIso(at),
+        ]
+        if let routineTemplateId = routineTemplateId {
+            payload["routineTemplateId"] = routineTemplateId
+        }
+        if let plannedSessionId = plannedSessionId {
+            payload["plannedSessionId"] = plannedSessionId
+        }
+
+        // The top-level `sessionId` names the wrist's own session, the way a
+        // lifecycle frame does; the contract pins the payload ids.
+        let envelope: [String: Any] = [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-session-started-\(sessionId)",
+            "sessionId": sessionId,
+            "type": "session_started",
+            "origin": "watch",
+            "sentAt": utcIso(at),
+            "payload": payload,
+        ]
+        try requireConformant(envelope)
+        emit(envelope)
+    }
+
     // MARK: - Observations
 
     /// Persists `event` and emits it as an `observations_up` message.

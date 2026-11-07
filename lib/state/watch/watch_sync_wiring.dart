@@ -28,6 +28,7 @@ import '../../core/platform/watch_delivery.dart';
 import '../../core/platform/watch_link_source.dart';
 import '../../core/platform/watch_transport.dart';
 import '../../core/services/health_sync_service.dart';
+import '../../core/sync_protocol/message_validator.dart';
 import '../../core/utils/platform_watch_transport_factory.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../watch/session/watch_records.dart' show WatchLifecycleState;
@@ -168,6 +169,8 @@ class _WiringAdoptionBridge extends WatchSessionAdoptionBridge {
     super.clock,
     super.onFailure,
     super.onSkipped,
+    super.onPlanStarted,
+    super.validator,
   });
 
   WorkoutState? _boundState;
@@ -215,7 +218,10 @@ Future<WatchSyncGraph?> createWatchSync({
   Future<void> Function()? onHistoryChanged,
   void Function(Object error, StackTrace stack)? onFailure,
   void Function(String heldSessionId, String offeredSessionId)? onSkipped,
+  Future<void> Function(String plannedSessionId, String sessionId)?
+      onPlanStarted,
   HealthSyncService? healthSync,
+  SyncProtocolValidator? validator,
 }) async {
   final resolved =
       transport ??
@@ -230,6 +236,13 @@ Future<WatchSyncGraph?> createWatchSync({
     clock: clock,
     onFailure: onFailure,
     onSkipped: onSkipped,
+    // The plan a wrist start reports is marked started on the app's own
+    // calendar (plan 129, D-8973); a graph built without the callback links
+    // nothing.
+    onPlanStarted: onPlanStarted,
+    // The graph's protocol gate, shared with the inbox, the mirror and the
+    // bridges below; production passes none and the frames are read as before.
+    validator: validator,
   );
   final inbox = WatchSessionInbox(
     repository: repository,
