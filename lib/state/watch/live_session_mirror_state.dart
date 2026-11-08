@@ -802,8 +802,9 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// Due when the entry is younger than 24 h (older is retired, never again
   /// offered: D-1 iii) and has not spent its three re-offers (D-1 iv), and at
   /// least 30 s have passed since the last one — a timer tick must not flood
-  /// (D-2a). Taking it counts it, and the third take retires the entry: the
-  /// offer goes out this once and the ledger stops afterwards.
+  /// (D-2a). Taking it stamps the pacing only; [noteOfferSent] counts it
+  /// (plan 128 D-10): an offer whose send threw did not leave, and must not
+  /// spend a re-offer it never delivered.
   String? takeOwedEnd(String sessionId) {
     final entry = _unconfirmedEnds[sessionId];
     if (entry == null) return null;
@@ -821,10 +822,17 @@ class LiveSessionMirrorState extends ChangeNotifier {
     if (last != null && now.difference(last) < _endLedgerRepeatWindow) {
       return null;
     }
-    entry.offers++;
     entry.lastOfferAt = now;
-    if (entry.offers >= _endLedgerMaxOffers) _retireEnd(sessionId);
     return entry.state;
+  }
+
+  /// The offer [takeOwedEnd] returned was handed to the transport without a throw: it now counts toward D-1 iv, and
+  /// the third retires the entry (plan 128 D-10). An entry confirmed or retired meanwhile is left alone.
+  void noteOfferSent(String sessionId) {
+    final entry = _unconfirmedEnds[sessionId];
+    if (entry == null) return;
+    entry.offers++;
+    if (entry.offers >= _endLedgerMaxOffers) _retireEnd(sessionId);
   }
 
   /// Offers every end still due to the wrist, oldest first (plan 128, D-2b) —
@@ -835,11 +843,15 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// link offer and a wrist frame in the same instant are both owed an answer
   /// (S-12813a).
   ///
-  /// Nothing is caught on purpose: the wiring reports and drops.
+  /// Each end is tried and counted as sent only after its send returned
+  /// (plan 128 D-10); the first error is rethrown after the loop, so the
+  /// wiring still reports it while no end is left unoffered.
   Future<void> offerAllOwedEnds() async {
     final entries = [..._unconfirmedEnds.entries]
       ..sort((a, b) => a.value.since.compareTo(b.value.since));
     final now = _ledgerClock();
+    Object? firstError;
+    StackTrace? firstStack;
     for (final entry in entries) {
       if (_unconfirmedEnds[entry.key] != entry.value) continue;
       if (now.difference(entry.value.since) >= _endLedgerTtl ||
@@ -847,12 +859,15 @@ class LiveSessionMirrorState extends ChangeNotifier {
         _retireEnd(entry.key);
         continue;
       }
-      entry.value.offers++;
-      final state = entry.value.state;
-      final capped = entry.value.offers >= _endLedgerMaxOffers;
-      if (capped) _retireEnd(entry.key);
-      await reportLifecycleFor(entry.key, state);
+      try {
+        await reportLifecycleFor(entry.key, entry.value.state);
+        noteOfferSent(entry.key);
+      } catch (error, stack) {
+        firstError ??= error;
+        firstStack ??= stack;
+      }
     }
+    if (firstError != null) Error.throwWithStackTrace(firstError, firstStack!);
   }
 
   /// Arms a `completed` end for [sessionId] from the stored row — the phone's

@@ -2032,13 +2032,36 @@ void main() {
       expect(await repository.getSegmentEfforts(segments.single.id), isEmpty,
           reason: 'D-8977 the wrist lands the ladder with its first snapshot; '
               'the phone does not write the routine\'s structure twice');
+      // Plan 130 (D-13030/D-13031): the report remembers the plan; the link
+      // happens at the wrist's `completed` lifecycle. This test has a recorder
+      // wired, not the app's calendar, so the plan row only shows that the
+      // report changed nothing.
+      expect(recorder.started, isEmpty,
+          reason: 'the report alone does not link');
+      expect(recorder.failures, isEmpty);
+      var plan = (await repository.getPlannedSessions()).single;
+      expect(plan.isCompleted, isFalse,
+          reason: 'the report alone leaves the plan planned');
+      expect(plan.linkedSessionId, isNull);
+
+      // The wrist finishes the session: the recorded link step runs now.
+      await recorder.bridge.onLifecycle(const {
+        'protocolVersion': SyncProtocolValidator.protocolVersion,
+        'messageId': 'msg-lifecycle-129',
+        'sessionId': 'w-129',
+        'type': 'session_lifecycle',
+        'origin': 'watch',
+        'sentAt': '2026-10-05T11:30:00.000Z',
+        'payload': {'state': 'completed', 'at': '2026-10-05T11:30:00.000Z'},
+      });
+
       expect(recorder.started.single.plan, 'p-today');
       expect(recorder.started.single.session, 'w-129');
       expect(recorder.failures, isEmpty);
-      final plan = (await repository.getPlannedSessions()).single;
+      plan = (await repository.getPlannedSessions()).single;
       expect(plan.isCompleted, isFalse,
-          reason: 'the bridge opens the row; the link callback is what '
-              'completes the plan (this test has none wired)');
+          reason: 'the bridge opens the row and calls the callback; this '
+              'recorder does not write');
       expect(plan.linkedSessionId, isNull);
     });
 

@@ -25,3 +25,17 @@ in `timer_state` / observations, is never answered (O-4). The end is also forgot
 the moment the (possibly queued) frame is handed over: `_announceEnd` removes the pending id when the mirror
 holds the session (`watch_session_auto_push.dart:526-532`, S-217) and, for a non-held session, on
 `delivered` only (a `queued` answer keeps it pending, but it is then re-sent as a fresh frame).
+
+## Follow-up F1 (D-10), 2026-11-07
+
+Run `20261107-153217-crew-builder-app` (8 m 2 s). Lead-observed:
+
+| Check | Observed |
+|---|---|
+| `flutter test test/watch_session_end_owed_test.dart` | `+25: All tests passed!` (S-12890, S-12891, S-12892 from the builder, S-12893 lead-written) |
+| Lead's mutation pass (in place, both files restored `cmp`-identical) | A router never counts: KILLED (S-12812, S-12892). B take counts before the send (old behaviour): KILLED (S-12812, S-12890, S-12892). C link loop rethrows at the first error: KILLED (S-12891). E error swallowed after the loop: KILLED (S-12891). D link offers never counted: SURVIVED the builder's tests, KILLED after S-12893 was added. |
+| `flutter analyze` | 181 issues (unchanged) |
+| Invariant grep | no match |
+| `ui_standards_contract_test` + `docs_indexing_contract_test` | `+54: All tests passed!` |
+| Full `flutter test` | `+7032 ~2: All tests passed!` |
+

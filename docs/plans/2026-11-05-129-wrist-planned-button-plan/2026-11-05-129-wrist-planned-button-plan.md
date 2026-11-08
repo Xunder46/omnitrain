@@ -349,8 +349,9 @@ docs phase reports the marker list against the table above.
 | P4 docs | 6 | done (PROTOCOL.md run + docs keeper) — 9 Docs delta rows applied |
 | F1 first-snapshot ladder | 3 | done (crew-builder-app run 20261107-114637 + lead, 2026-11-07) — D-8978; S-8980 (two tests), S-8981 |
 
-Verification (lead, after the review fixes): `flutter analyze` 181 (baseline); `flutter test` +6784 ~2, all passed;
-`swift test` 1221 tests, 0 failures; watch app target `xcodebuild` BUILD SUCCEEDED; marker lint `after` clean.
+Verification (lead, final, 2026-11-07, after F1): `flutter analyze` 181 (baseline); `flutter test` +7028 ~2, all passed;
+`swift test` 1263 tests, 0 failures (run before F1, which is Dart-only); watch app target `xcodebuild` BUILD SUCCEEDED (before F1; not re-run);
+marker lint `after` clean. The numbers the build reported (+6784, 1221) were earlier counts; the evidence file has the observed ones.
 Review 1 findings: 1 Blocker (the D-8972 conformance gate) fixed with a guard proven by mutation; minors 2 and 3 fixed
 (free-plan wording; corrupt-row recovery with both arms proven).
 

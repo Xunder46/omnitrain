@@ -231,7 +231,10 @@ class WatchIncomingRouter {
             : (await _isSessionEnded(sessionId));
         if (rowEnded) _mirror.adoptEndedFromRow(sessionId);
         final owed = _mirror.takeOwedEnd(sessionId);
-        if (owed != null) await _mirror.reportLifecycleFor(sessionId, owed);
+        if (owed != null) {
+          await _mirror.reportLifecycleFor(sessionId, owed);
+          _mirror.noteOfferSent(sessionId);
+        }
       }
     }
 

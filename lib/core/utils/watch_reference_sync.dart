@@ -777,19 +777,23 @@ abstract final class WatchReferenceSync {
 
   /// One food, in the shape the schema pins. A food whose group the phone no
   /// longer holds has no category to name, which is a valid answer rather than
-  /// a reason to drop the food.
+  /// a reason to drop the food: the key is omitted, never nulled, because iOS's
+  /// WatchConnectivity refuses a message holding a null (`send_failed: Payload
+  /// contains unsupported type`) and the wrist reads an absent `categoryId` as
+  /// Uncategorized (`WatchFoodCatalog.swift`).
   static Map<String, Object?> _foodJson(
     Food food,
     Map<String, String> categoryNames,
   ) {
     final groupId = food.groupId;
+    final categoryId = groupId != null && categoryNames.containsKey(groupId)
+        ? groupId
+        : null;
     final amount = food.lastAmountConsumed;
     return {
       'foodId': food.id,
       'name': food.name,
-      'categoryId': groupId != null && categoryNames.containsKey(groupId)
-          ? groupId
-          : null,
+      'categoryId': ?categoryId,
       'referenceAmount': food.referenceAmount,
       'referenceLabel': food.referenceLabel,
       // One serving is one reference amount, so the energy per serving is the

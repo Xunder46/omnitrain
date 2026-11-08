@@ -58,6 +58,10 @@ const String _slotId = 'sx-run';
 
 String _iso() => utcIso(_clockNow);
 
+/// The wiring's `onFailure` reports here, so S-12891 can assert the error the
+/// link-return offer loop threw (plan 128 D-10).
+final List<Object> _syncFailures = [];
+
 Map<String, Object?> _slot() => {
   'sessionExerciseId': _slotId,
   'exerciseId': 'ex-run',
@@ -96,6 +100,7 @@ class _QRadio implements WatchTransport, WatchLinkSource {
   final attempted = <Map<String, Object?>>[];
   final queued = <Map<String, Object?>>[];
   bool unreachable = false;
+  bool Function(Map<String, Object?>)? throwWhen;
   WatchInboundHandler? _h;
   final _link = StreamController<WatchLinkInfo>.broadcast();
   void emitLink({required bool reachable}) => _link.add(
@@ -114,6 +119,7 @@ class _QRadio implements WatchTransport, WatchLinkSource {
       send(WatchTransportRequest.snapshotFrame());
   @override
   Future<WatchDelivery> send(Map<String, Object?> e) async {
+    if (throwWhen != null && throwWhen!(e)) throw StateError('radio');
     attempted.add(e);
     if (!unreachable) {
       sent.add(e);
@@ -164,6 +170,7 @@ void main() {
       settingsState: settings,
       transport: radio,
       clock: () => _clockNow,
+      onFailure: (error, stack) => _syncFailures.add(error),
     ))!;
     g.adoption.bindWorkoutState(phone);
     g.autoPush.bindWorkoutState(phone);
@@ -257,6 +264,7 @@ void main() {
   setUp(() async {
     _clockNow = _clockBase;
     _wristSid = _sid;
+    _syncFailures.clear();
     repo = MockWorkoutRepository();
     await repo.initialize();
     await seedExercise(
@@ -760,6 +768,108 @@ void main() {
       await pumpEventQueue();
       await applyPhoneAnswersTo(engine);
       expect(engine.session?.status, WatchSessionStatus.completed);
+    },
+  );
+
+  test(
+    'S-12890 three sends that throw never spent the ledger: the fourth frame is answered (D-10)',
+    () async {
+      await wristStarts();
+      await phoneEndsWhileAway();
+      radio.sent.clear();
+      radio.throwWhen = (e) => e['type'] == 'session_lifecycle';
+      for (var i = 0; i < 3; i++) {
+        if (i > 0) _clockNow = _clockNow.add(const Duration(seconds: 31));
+        // A throwing send inside the router's answer propagates out of the
+        // inbound handler; the production error handling is not changed to
+        // swallow it (D-10).
+        await expectLater(
+          radio.fromWrist(_timerFrame('m-throw-$i')),
+          throwsStateError,
+        );
+        await pumpEventQueue();
+      }
+      _clockNow = _clockNow.add(const Duration(seconds: 31));
+      radio.throwWhen = null;
+      await sendWristFrame(_timerFrame('m-healthy'));
+      expectOneEndOffered(_sid, WatchLifecycleState.completed);
+      await applyPhoneAnswersTo(engine);
+      expect(engine.session?.status, WatchSessionStatus.completed);
+    },
+  );
+
+  test(
+    'S-12891 a throwing end does not abandon the rest: B is delivered, the wiring received A\'s error (D-10)',
+    () async {
+      await wristStarts();
+      await phoneEndsWhileAway();
+      // The wrist moves on: it abandons A and starts B (the S-12806 shape), so
+      // two unconfirmed ends sit in the ledger — A armed first, so it is the
+      // oldest and is tried first.
+      await engine.abandonSession();
+      await wristStarts(_sidB);
+      await phoneEndsWhileAway(_sidB);
+      radio.sent.clear();
+      radio.throwWhen =
+          (e) => e['type'] == 'session_lifecycle' && e['sessionId'] == _sid;
+      radio.emitLink(reachable: true);
+      await pumpEventQueue();
+      await pumpEventQueue();
+      await graph.autoPush.flush();
+      await pumpEventQueue();
+      radio.throwWhen = null;
+      final frames = lifecyclesSent();
+      expect(
+        frames,
+        hasLength(1),
+        reason: 'B is offered although A\'s send threw',
+      );
+      expect(frames.single['sessionId'], _sidB);
+      expect(
+        (frames.single['payload'] as Map)['state'],
+        WatchLifecycleState.completed,
+      );
+      expect(
+        _syncFailures,
+        hasLength(1),
+        reason: 'the wiring still reports the one failure',
+      );
+    },
+  );
+
+  test(
+    'S-12893 link offers count toward the three: the fourth time the wrist is in reach, none goes out (D-2b, D-10 guard)',
+    () async {
+      await wristStarts();
+      await phoneEndsWhileAway();
+      radio.sent.clear();
+      for (var i = 0; i < 4; i++) {
+        radio.emitLink(reachable: true);
+        await pumpEventQueue();
+      }
+      expect(
+        lifecyclesSent(),
+        hasLength(3),
+        reason: 'each delivered link offer spends one of the three re-offers',
+      );
+    },
+  );
+
+  test(
+    'S-12892 three delivered offers still cap it, the fourth sends none (D-10 guard)',
+    () async {
+      await wristStarts();
+      await phoneEndsWhileAway();
+      radio.sent.clear();
+      for (var i = 0; i < 4; i++) {
+        if (i > 0) _clockNow = _clockNow.add(const Duration(seconds: 31));
+        await sendWristFrame(_timerFrame('m-cap-$i'));
+      }
+      expect(
+        lifecyclesSent(),
+        hasLength(3),
+        reason: 'counting after the send still caps at three',
+      );
     },
   );
 }

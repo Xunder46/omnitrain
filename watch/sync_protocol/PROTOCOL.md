@@ -76,7 +76,7 @@ counters are never part of a message.
 | `structure_change` | phone → watch | Add, remove, reorder, swap, correct a logged entry, delete a logged entry | `schemas/messages/structure_change.schema.json` | `fixtures/valid/structure_change.json` |
 | `observations_up` | watch → phone | Append-only observations: sets, timed entries, rounds, holds, rests, nutrition quick-logs, glasses of water, the session effort rating, and the session end | `schemas/messages/observations_up.schema.json` | `fixtures/valid/observations_up.json` |
 | `receipt` | phone → watch | The observations the phone has taken responsibility for — what lets the watch drop an observation it sent | `schemas/messages/receipt.schema.json` | `fixtures/valid/receipt.json` |
-| `session_started` | watch → phone | The wrist's report that a start just happened there, emitted by the planned and by the free start path — `sessionId` and `at`, with the optional `routineTemplateId`/`plannedSessionId` the phone links the plan by; durable, like a lifecycle | `schemas/messages/session_started.schema.json` | `fixtures/valid/session_started.json` |
+| `session_started` | watch → phone | The wrist's report that a start just happened there, emitted by the planned and by the free start path — `sessionId` and `at`, with the optional `routineTemplateId`/`plannedSessionId` the phone links the plan by when the wrist finishes that session; durable, like a lifecycle | `schemas/messages/session_started.schema.json` | `fixtures/valid/session_started.json` |
 | `session_lifecycle` | either | Session started, exercise advanced, completed, abandoned | `schemas/messages/session_lifecycle.schema.json` | `fixtures/valid/session_lifecycle.json` |
 | `session_snapshot` | either | The full live-session state, exchanged on connect, on reconnect, and after a rejection | `schemas/messages/session_snapshot.schema.json` | `fixtures/valid/session_snapshot.json` |
 | `timer_state` | either | Rest, round, hold, and elapsed timers as wall-clock timestamps plus pause bookkeeping | `schemas/messages/timer_state.schema.json` | `fixtures/valid/timer_state.json` |
@@ -94,8 +94,9 @@ Notes that follow from the schemas:
   user creates, edits or deletes on the phone reaches the watch only in the next
   `foods_down`, and the watch that quick-logs a food never edits the catalog. A
   food's `categoryId` is the phone's own grouping, already resolved to the
-  categories the message carries; `null` means the phone groups it under
-  Uncategorized.
+  categories the message carries; a food with no `categoryId` is one the phone groups under
+  Uncategorized. The phone omits the key rather than sending `null`: WatchConnectivity refuses a
+  message holding a null, and one such food stopped the whole sync (plan 131, `S-13040`).
 - `bests_down` is reference data about the user's history, and the wrist owns
   none of it: the numbers are the phone's own — the estimated one-rep max at the
   full precision the phone computes it, never rounded — and the wrist compares a
@@ -174,7 +175,7 @@ Notes that follow from the schemas:
 - `session_started` is the wrist's report that a start just happened there, emitted by the planned and by the free start
   path — a start from a routine button reports nothing new, because the phone's own snapshot plays that session. It
   carries `sessionId` (the wrist's own, until the phone adopts the session under its own id) and `at`, and the optional
-  `routineTemplateId`/`plannedSessionId` name the tapped plan, which the phone links; the link is idempotent, so a
+  `routineTemplateId`/`plannedSessionId` name the tapped plan, which the phone links when the wrist finishes that session (a discarded session leaves the plan planned); the link is idempotent, so a
   repeated report, a plan already linked or an unknown `plannedSessionId` changes nothing and throws nothing. Its
   `messageId` is derived from the session row, `msg-session-started-<sessionId>`, and it is durable: a report the radio
   cannot carry is handed to the OS queue and delivered when the devices next meet, like a lifecycle.

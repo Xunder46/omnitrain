@@ -165,6 +165,13 @@ class WatchSessionAdoptionBridge {
 
   WorkoutState? _workoutState;
 
+  /// Plans the wrist reported it started, by the session that started them
+  /// (plan 130, D-13030). A plan is marked done when the wrist finishes that
+  /// session, never at the start: a discarded workout leaves the plan planned,
+  /// as on the phone. Memory only (D-13034): a restart forgets it and the plan
+  /// stays planned.
+  final Map<String, String> _plansAwaitingEnd = <String, String>{};
+
   /// The (held, offered) pair the last skip was reported for, or null while
   /// none has been. A wrist that has not converged repeats the snapshot it
   /// holds, so the same pair arrives frame after frame; the log says it once.
@@ -823,7 +830,15 @@ class WatchSessionAdoptionBridge {
   ///
   /// A session this phone already finished is left alone: its end is the phone's
   /// own, and finishing it twice is not a second end (G1).
+  ///
+  /// Independently of the routing, a wrist-origin `completed` also marks the
+  /// plan the session was reported for (plan 130, D-13031).
   Future<void> onLifecycle(Map<String, Object?> envelope) async {
+    await _routeLifecycleToHeld(envelope);
+    await _linkPlanAtEnd(envelope);
+  }
+
+  Future<void> _routeLifecycleToHeld(Map<String, Object?> envelope) async {
     final target = _workoutState;
     if (target == null) return;
 
@@ -845,14 +860,44 @@ class WatchSessionAdoptionBridge {
     }
   }
 
+  /// Marks the plan a wrist session was reported for, when that session ends
+  /// (plan 130, D-13031..D-13033). Independent of whether the phone holds the
+  /// session: the phone may have ended it first, or never held it. `completed`
+  /// links the remembered plan if it still exists and is unstarted and the
+  /// session row still exists; `abandoned` only forgets it.
+  Future<void> _linkPlanAtEnd(Map<String, Object?> envelope) async {
+    try {
+      if (envelope['origin'] != 'watch') return;
+      final sessionId = _namedSession(envelope);
+      if (sessionId == null || sessionId.isEmpty) return;
+      final state = _asObject(envelope['payload'])['state'];
+      if (state == WatchLifecycleState.abandoned) {
+        _plansAwaitingEnd.remove(sessionId);
+        return;
+      }
+      if (state != WatchLifecycleState.completed) return;
+      final plannedSessionId = _plansAwaitingEnd.remove(sessionId);
+      if (plannedSessionId == null) return;
+      if (await _repository.getSession(sessionId) == null) return;
+      final plan = await _plannedSession(plannedSessionId);
+      if (plan == null || plan.isCompleted || plan.linkedSessionId != null) {
+        return;
+      }
+      await _onPlanStarted?.call(plannedSessionId, sessionId);
+    } catch (error, stack) {
+      _onFailure(error, stack);
+    }
+  }
+
   /// Routes a wrist `session_started` report to the phone's own storage
   /// (plan 129, D-8966/D-8972/D-8977).
   ///
   /// The wrist reports a start the moment it happens — long before its first
-  /// snapshot can carry the ladder — so what the phone does here is enough for
-  /// the calendar to speak the truth it already knows: the session row opens
-  /// (when it is not held yet) the way the snapshot path writes it, and the
-  /// report's plan is linked to the row under its phone-owned id.
+  /// snapshot can carry the ladder — so what the phone does here is opens the
+  /// session row (when it is not held yet) the way the snapshot path writes
+  /// it, and remembers the plan the wrist started for that session. The plan
+  /// is linked at the wrist's `completed` lifecycle, never at the start:
+  /// a discarded workout leaves the plan planned (plan 130, D-13030).
   ///
   /// Nothing structural is written with the row: no effort of the routine's,
   /// no planned row under the `set` efforts. The wrist is already running the
@@ -861,9 +906,9 @@ class WatchSessionAdoptionBridge {
   ///
   /// Idempotent by gate (D-8972): a report whose plan is unknown, completed or
   /// already linked writes nothing at all, so a redelivered report answers
-  /// itself and the plan stays as the first link set it. A session the phone
+  /// itself and the remembered plan is unchanged. A session the phone
   /// already holds (an adoption got there first) is written nothing either:
-  /// only the link step of a report with a startable plan still goes through.
+  /// only the remembering of a report with a startable plan still goes through.
   ///
   /// A report that starts no plan is still a report: the free session it names
   /// opens its row and links nothing.
@@ -913,7 +958,7 @@ class WatchSessionAdoptionBridge {
       }
 
       if (plannedSessionId == null) return;
-      await _onPlanStarted?.call(plannedSessionId, sessionId);
+      _plansAwaitingEnd[sessionId] = plannedSessionId;
     } catch (error, stack) {
       _onFailure(error, stack);
     }

@@ -2823,14 +2823,16 @@ void main() {
     });
   });
 
-  // Plan 129 (P1b, S-8963/S-8964/S-8964b/S-8971): the wrist's
-  // `session_started` report through the whole router, into the phone's own
-  // storage. The report opens a session row when there is none — the routine's
-  // name and intent, one segment, and no efforts the wrist's first snapshot
-  // would arrive with too (D-8977) — and the plan is completed by the callback
-  // the wiring passes: the app's own `CalendarState.completePlannedSession`
-  // (D-8973, S-8971). Anything stored is proven under Mock and Hive, reading
-  // the plan row back after a repository restart (S-8964b).
+  // Plan 129 (P1b, S-8963/S-8964/S-8964b/S-8971) + plan 130 (D-13030):
+  // the wrist's `session_started` report through the whole router, into the
+  // phone's own storage. The report opens a session row when there is none —
+  // the routine's name and intent, one segment, and no efforts the wrist's
+  // first snapshot would arrive with too (D-8977) — and remembers the plan it
+  // names; the plan is completed only when the wrist finishes that session,
+  // by the callback the wiring passes: the app's own
+  // `CalendarState.completePlannedSession` (D-8973, S-8971, D-13031). Anything
+  // stored is proven under Mock and Hive, reading the plan row back after a
+  // repository restart (S-8964b).
   group("S-8963…S-8964b a wrist report that starts a plan", () {
     /// One routine the plan names: a template with one segment the row can
     /// open as a run of. The routine's efforts stay unseeded: the report
@@ -2912,6 +2914,26 @@ void main() {
       },
     };
 
+    /// One `session_lifecycle` from the wrist, the shape the shipping watch
+    /// emits and the finish tests copy (plan 130 D-13031 reads its `state`).
+    Map<String, Object?> lifecycle({
+      String sessionId = 'w-1',
+      String state = 'completed',
+      String origin = 'watch',
+      String messageId = 'msg-lifecycle-130',
+    }) => {
+      'protocolVersion': SyncProtocolValidator.protocolVersion,
+      'messageId': messageId,
+      'sessionId': sessionId,
+      'type': 'session_lifecycle',
+      'origin': origin,
+      'sentAt': '2026-11-05T10:30:00.000Z',
+      'payload': {
+        'state': state,
+        'at': '2026-11-05T10:30:00.000Z',
+      },
+    };
+
     /// The app-wired router; the plan-start callback is the recorder unless
     /// the test hands the real one over (D-8973, S-8971). The bridge gets the
     /// real protocol gate, as every app-wired bridge here does (plan 129
@@ -2986,9 +3008,18 @@ void main() {
           expect(await repository.getSegmentEfforts(segments.single.id), isEmpty,
               reason: '${harness.name}: D-8977 the wrist lands the ladder with '
                   'its first snapshot; the phone writes no effort of its own');
+          expect(started, isEmpty,
+              reason:
+                  '${harness.name}: the report remembers the plan; it does '
+                  'not link it yet (plan 130, D-13030)');
+          expect(failures, isEmpty, reason: '${harness.name}: no failure');
+
+          // Plan 130 (D-13031): the link belongs to the wrist's own end.
+          await router.receive(lifecycle());
           expect(started, [
             (plan: 'p-today', session: 'w-1'),
-          ], reason: '${harness.name}: the plan start travels once');
+          ], reason:
+              '${harness.name}: linked at the wrist\'s completed lifecycle');
           expect(failures, isEmpty, reason: '${harness.name}: no failure');
         } finally {
           await harness.close();
@@ -3033,8 +3064,17 @@ void main() {
             isNull,
             reason: '${harness.name}: a free report opens a free row',
           );
+          expect(started, isEmpty,
+              reason: '${harness.name}: the report remembers the plan; the '
+                  'free report links nothing');
+          // Each session's own end: the free one has no plan to link.
+          await router.receive(lifecycle());
+          await router.receive(
+            lifecycle(sessionId: 'w-2', messageId: 'msg-lifecycle-w2'),
+          );
           expect(started.single, (plan: 'p-today', session: 'w-1'),
-              reason: '${harness.name}: the free report links nothing');
+              reason: '${harness.name}: linked at the wrist\'s completed; the '
+                  'free session\'s end links nothing');
           expect(failures, isEmpty, reason: '${harness.name}: no failure');
         } finally {
           await harness.close();
@@ -3102,8 +3142,12 @@ void main() {
           await router.receive(startReport(sessionId: 'w-ok'));
           expect(await repository.getSession('w-ok'), isNotNull,
               reason: '${harness.name}: the conformant report still lands');
+          expect(started, isEmpty,
+              reason: '${harness.name}: the report alone links nothing yet');
+          await router.receive(lifecycle(sessionId: 'w-ok'));
           expect(started.single, (plan: 'p-today', session: 'w-ok'),
-              reason: '${harness.name}: and links the plan it names');
+              reason: '${harness.name}: and the plan is linked when the '
+                  'wrist finishes that session');
         } finally {
           await harness.close();
         }
@@ -3130,6 +3174,17 @@ void main() {
           );
 
           await router.receive(startReport());
+          final reported = (await repository.getPlannedSessions())
+              .singleWhere((row) => row.id == 'p-today');
+          expect(reported.isCompleted, isFalse,
+              reason: '${harness.name}: the report alone leaves the plan '
+                  'planned (plan 130, D-13030)');
+          expect(reported.linkedSessionId, isNull,
+              reason: '${harness.name}: and unlinked at the report');
+
+          // The wrist finishes the session: the real calendar completes the
+          // plan (plan 130, D-13031).
+          await router.receive(lifecycle());
           final first = (await repository.getPlannedSessions())
               .singleWhere((row) => row.id == 'p-today');
           expect(
@@ -3250,8 +3305,12 @@ void main() {
           expect((await repository.getSessionSegments('w-hold')).length,
               before.length,
               reason: '${harness.name}: no duplicate segment');
+          expect(started, isEmpty,
+              reason: '${harness.name}: no second row is opened');
+          await router.receive(lifecycle(sessionId: 'w-hold'));
           expect(started.single, (plan: 'p-today', session: 'w-hold'),
-              reason: '${harness.name}: links only, no second row is opened');
+              reason: '${harness.name}: linked when the wrist finishes it, '
+                  'still without a second row');
           final held =
               (await repository.getPlannedSessions())
                   .singleWhere((row) => row.id == 'p-today');
@@ -3263,6 +3322,429 @@ void main() {
           await harness.close();
         }
       }
+    });
+
+    // Plan 130 (D-13030..D-13034): the plan a wrist start names is remembered
+    // at the report and linked only when the wrist finishes that session —
+    // its `completed` lifecycle (D-13031); `abandoned` only forgets it
+    // (D-13032); the gates run again at the link (D-13033); the memory is
+    // in-memory only (D-13034).
+    group('S-13030…S-13038 the plan is linked when the wrist finishes the '
+        'session', () {
+      test('S-13030 a start report alone leaves the plan planned, Mock and '
+          'Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+
+            expect(await repository.getSession('w-1'), isNotNull,
+                reason: '${harness.name}: the row w-1 opens');
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.isCompleted, isFalse,
+                reason: '${harness.name}: the plan is not completed');
+            expect(plan.linkedSessionId, isNull,
+                reason: '${harness.name}: no link at the report');
+            expect(started, isEmpty,
+                reason: '${harness.name}: the recorder is never called');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13031 the wrist completed lifecycle links the plan, Mock and '
+          'Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          var repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final calendar = CalendarState(repository);
+            final router = await startRouter(
+              repository,
+              failures: failures,
+              started: started,
+              onPlanStarted: (plan, session) async {
+                await calendar.completePlannedSession(plan, session);
+                started.add((plan: plan, session: session));
+              },
+            );
+
+            await router.receive(startReport());
+            await router.receive(lifecycle());
+
+            expect(started, [
+              (plan: 'p-today', session: 'w-1'),
+            ], reason: '${harness.name}: the link travels once, at the '
+                'completed lifecycle');
+            // D-13031: the plan row reads back from a NEW repository.
+            repository = await harness.restart();
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.isCompleted, isTrue,
+                reason: '${harness.name}: the plan reads completed from the '
+                    'store');
+            expect(plan.linkedSessionId, 'w-1',
+                reason: '${harness.name}: linked to the session the wrist '
+                    'finished');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13032 an abandoned wrist workout leaves the plan planned, Mock '
+          'and Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+            await router.receive(lifecycle(state: 'abandoned'));
+            final afterAbandoned = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(afterAbandoned.isCompleted, isFalse,
+                reason: '${harness.name}: the abandoned run leaves the plan '
+                    'planned');
+            expect(afterAbandoned.linkedSessionId, isNull,
+                reason: '${harness.name}: and unlinked');
+
+            // A late completed for the same session links nothing: the
+            // abandoned lifecycle forgot the plan (D-13032).
+            await router.receive(lifecycle());
+            final afterCompleted = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(afterCompleted.isCompleted, isFalse,
+                reason: '${harness.name}: a completed after an abandoned '
+                    'links nothing');
+            expect(afterCompleted.linkedSessionId, isNull,
+                reason: '${harness.name}: still unlinked');
+            expect(started, isEmpty,
+                reason: '${harness.name}: the recorder is never called');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13033 a completed delivered twice links once, Mock and Hive',
+          () async {
+        // The recorder never writes the plan, so a second `completed` meets
+        // a plan that still reads unstarted: only the bridge's own forgetting
+        // keeps the second delivery from linking again (D-13030).
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+            await router.receive(lifecycle());
+            await router.receive(lifecycle());
+
+            expect(started, [(plan: 'p-today', session: 'w-1')],
+                reason: '${harness.name}: the second completed links nothing');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13034 a free start and an unnamed session link nothing, Mock '
+          'and Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            // A free start report names no plan: its completed links nothing.
+            await router.receive(
+              startReport(sessionId: 'w-2', plannedSessionId: null),
+            );
+            await router.receive(
+              lifecycle(sessionId: 'w-2', messageId: 'msg-lifecycle-w2'),
+            );
+            // A completed for a session no report named links nothing either.
+            await router.receive(
+              lifecycle(sessionId: 'w-9', messageId: 'msg-lifecycle-w9'),
+            );
+
+            expect(started, isEmpty,
+                reason: '${harness.name}: nothing was linked');
+            expect(failures, isEmpty,
+                reason: '${harness.name}: no failure is recorded');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13035 a plan linked elsewhere keeps its first link, Mock and '
+          'Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+            final stored = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            await repository.updatePlannedSession(
+              PlannedSession(
+                id: stored.id,
+                ownerUserId: stored.ownerUserId,
+                scheduledDateMs: stored.scheduledDateMs,
+                modality: stored.modality,
+                title: stored.title,
+                note: stored.note,
+                isCompleted: true,
+                linkedSessionId: 'w-other',
+                routineTemplateId: stored.routineTemplateId,
+                createdAtMs: stored.createdAtMs,
+                updatedAtMs: stored.updatedAtMs,
+              ),
+            );
+
+            await router.receive(lifecycle());
+
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.linkedSessionId, 'w-other',
+                reason: '${harness.name}: the first link stays (D-13033)');
+            expect(started, isEmpty,
+                reason: '${harness.name}: the recorder is not called');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13035 each arm of the link-time plan gate holds on its own, '
+          'Mock and Hive', () async {
+        // A plan that reads completed with no link, and a plan that reads
+        // linked while not completed: each is left as it is, so the
+        // `isCompleted` check and the `linkedSessionId` check each need a
+        // fixture the other would not reject.
+        final arms = <({bool completed, String? link, String name})>[
+          (completed: true, link: null, name: 'completed, no link'),
+          (completed: false, link: 'w-other', name: 'linked, not completed'),
+        ];
+        for (final arm in arms) {
+          for (final factory in harnessFactories) {
+            final harness = factory();
+            final repository = await harness.open();
+            try {
+              await seedRoutine(repository);
+              await seedPlan(repository);
+              final failures = <Object>[];
+              final started = <({String plan, String session})>[];
+              final router = await startRouter(repository,
+                  failures: failures, started: started);
+
+              await router.receive(startReport());
+              final stored = (await repository.getPlannedSessions())
+                  .singleWhere((row) => row.id == 'p-today');
+              await repository.updatePlannedSession(
+                PlannedSession(
+                  id: stored.id,
+                  ownerUserId: stored.ownerUserId,
+                  scheduledDateMs: stored.scheduledDateMs,
+                  modality: stored.modality,
+                  title: stored.title,
+                  note: stored.note,
+                  isCompleted: arm.completed,
+                  linkedSessionId: arm.link,
+                  routineTemplateId: stored.routineTemplateId,
+                  createdAtMs: stored.createdAtMs,
+                  updatedAtMs: stored.updatedAtMs,
+                ),
+              );
+
+              await router.receive(lifecycle());
+
+              expect(started, isEmpty,
+                  reason: '${harness.name} (${arm.name}): the recorder is '
+                      'not called');
+              expect(failures, isEmpty,
+                  reason: '${harness.name} (${arm.name}): no failure');
+            } finally {
+              await harness.close();
+            }
+          }
+        }
+      });
+
+      test('S-13036 a discarded session row is not linked, Mock and Hive',
+          () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+            await repository.deleteSession('w-1');
+            await router.receive(lifecycle());
+
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.isCompleted, isFalse,
+                reason: '${harness.name}: the plan stays planned');
+            expect(plan.linkedSessionId, isNull,
+                reason: '${harness.name}: no link to a row that is gone');
+            expect(started, isEmpty,
+                reason: '${harness.name}: the recorder is never called');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13037 a phone-origin completed links nothing, Mock and Hive',
+          () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          var repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+            await router.receive(
+              lifecycle(origin: 'phone', messageId: 'msg-phone-lifecycle'),
+            );
+
+            expect(started, isEmpty,
+                reason: '${harness.name}: a phone-origin frame links no plan');
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.isCompleted, isFalse,
+                reason: '${harness.name}: the plan stays planned');
+            expect(plan.linkedSessionId, isNull,
+                reason: '${harness.name}: not linked');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13038 a phone-held, phone-ended session links the plan without '
+          'a second end (G1), Mock and Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final calendar = CalendarState(repository);
+            // The bridge directly, so the phone's own WorkoutState can be
+            // bound and seen: the router's own bridge stays unbound here
+            // (Mock-first — no Hive restart read this test needs).
+            final bridge = WatchSessionAdoptionBridge(
+              repository: repository,
+              clock: () => _phoneNow,
+              onFailure: (error, stack) => failures.add(error),
+              onPlanStarted: (plan, session) async {
+                await calendar.completePlannedSession(plan, session);
+                started.add((plan: plan, session: session));
+              },
+            );
+
+            await bridge.onSessionStarted(startReport());
+
+            // The report alone left the plan planned; the phone then holds
+            // the session the report opened and ends it itself (G1).
+            final planBefore = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(planBefore.linkedSessionId, isNull);
+            final state = WorkoutState(repository);
+            bridge.bindWorkoutState(state);
+            await state.loadHistoricalSession('w-1');
+            expect(state.currentSession?.id, 'w-1',
+                reason: '${harness.name}: the phone holds the session');
+            await state.endSession(writeToHealth: false);
+            final endedAtMs = state.currentSession?.endedAtMs;
+            expect(endedAtMs, isNotNull,
+                reason: '${harness.name}: the phone ended it');
+
+            await bridge.onLifecycle(lifecycle());
+
+            expect(started.single, (plan: 'p-today', session: 'w-1'),
+                reason: '${harness.name}: the plan is linked — the session '
+                    'did finish');
+            // The phone's session is not ended a second time (G1): the end is
+            // the phone's own.
+            expect(state.currentSession?.endedAtMs, endedAtMs,
+                reason: '${harness.name}: the phone\'s session keeps its one '
+                    'end');
+            expect((await repository.getSession('w-1'))!.endedAtMs, endedAtMs,
+                reason: '${harness.name}: the row was not ended twice');
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.isCompleted, isTrue,
+                reason: '${harness.name}: linked by the real calendar');
+            expect(plan.linkedSessionId, 'w-1');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
     });
   });
 }

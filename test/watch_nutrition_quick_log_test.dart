@@ -1278,6 +1278,51 @@ void main() {
       );
     });
 
+    test('S-13040 the foods frame holds no null anywhere: iOS refuses a '
+        'message with one, so an uncategorised food omits its categoryId', () {
+      final envelope = WatchReferenceSync.buildFoodsDown(
+        generatedAt: DateTime.utc(2026, 7, 13, 17),
+        groups: _phoneGroups(_payloadOf(_foodsDown())),
+        foods: [
+          _food('food-almonds', 'Almonds', protein: 6, carbs: 6, fat: 15),
+          _food(
+            'food-orphan',
+            'Orphan',
+            groupId: 'foodcat-archived-away',
+            protein: 1,
+            carbs: 1,
+            fat: 1,
+          ),
+        ],
+      );
+
+      Iterable<String> nullsIn(Object? node, String path) sync* {
+        if (node == null) {
+          yield path;
+        } else if (node is Map) {
+          for (final entry in node.entries) {
+            yield* nullsIn(entry.value, '$path.${entry.key}');
+          }
+        } else if (node is List) {
+          for (var i = 0; i < node.length; i++) {
+            yield* nullsIn(node[i], '$path[$i]');
+          }
+        }
+      }
+
+      expect(nullsIn(envelope, r'$').toList(), isEmpty);
+      final rows = (_payloadOf(envelope)['foods']! as List).map(_asObject);
+      expect(
+        rows.firstWhere((row) => row['foodId'] == 'food-orphan'),
+        isNot(contains('categoryId')),
+      );
+      expect(
+        _validator().validateEnvelope(envelope),
+        isEmpty,
+        reason: 'the schema allows the key to be absent',
+      );
+    });
+
     test('the phone builds the list the wrist reads', () {
       final envelope = WatchReferenceSync.buildFoodsDown(
         generatedAt: DateTime.utc(2026, 7, 13, 17),

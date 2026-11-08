@@ -102,28 +102,28 @@ Adversarial set requested by the brief, mapped: end while unreachable (S-12801, 
 ## Iteration 1
 
 ### Phase 0: red tests (crew-builder-app). No production code
-1. [ ] Create `test/watch_session_end_owed_test.dart` per F-A and the table (S-12801 to S-12816), assertions on the Expected column; fixture asserts must pass today.
-2. [ ] Phase 0b (read only, Swift and Dart): what `applyLifecycle` completed does on the wrist and which wrist state follows (summary, effort question, Start). Record the answer in the evidence file; this settles S-12815 and whether Phase 2 exists.
-3. [ ] Run the file; paste counts and each failing line into the evidence file against the Today column. A fixture assert that fails is a harness bug.
+1. [x] Create `test/watch_session_end_owed_test.dart` per F-A and the table (S-12801 to S-12816), assertions on the Expected column; fixture asserts must pass today.
+2. [x] Phase 0b (read only, Swift and Dart): what `applyLifecycle` completed does on the wrist and which wrist state follows (summary, effort question, Start). Record the answer in the evidence file; this settles S-12815 and whether Phase 2 exists.
+3. [x] Run the file; paste counts and each failing line into the evidence file against the Today column. A fixture assert that fails is a harness bug.
 **Done Criteria:** `bash .claude/scripts/macos/with-timeout.sh 300 flutter test test/watch_session_end_owed_test.dart` run, counts pasted (red expected: S-12801 to S-12806, S-12808, S-12810 to S-12814); S-12807, S-12809, S-12816 green.
 **Predicted Files:** the new test file, the evidence file, this plan's Progress.
 
 ### Phase 1: the ledger and its triggers (phone, crew-builder-app)
-1. [ ] `live_session_mirror_state.dart`: `_unconfirmedEnds` and a small method set (add on announce, `confirm(sessionId)`, `dueEnds(now)`), bounds of D-1.
-2. [ ] `watch_incoming_router.dart`: the D-2(a) answer, the D-3 row seam, and the D-1 (i)(ii) removals; rate limit per session.
-3. [ ] `watch_sync_wiring.dart`: the D-2(b) reachable listener. Inject the row seam and a clock into the router from the graph.
-4. [ ] `watch_sync_request_handler.dart` `_sendSnapshot`: D-5.
-5. [ ] Run the new file green. Then the dependents and re-pin only the D-5 tests, recording each.
+1. [x] `live_session_mirror_state.dart`: `_unconfirmedEnds` and a small method set (add on announce, `confirm(sessionId)`, `dueEnds(now)`), bounds of D-1.
+2. [x] `watch_incoming_router.dart`: the D-2(a) answer, the D-3 row seam, and the D-1 (i)(ii) removals; rate limit per session.
+3. [x] `watch_sync_wiring.dart`: the D-2(b) reachable listener. Inject the row seam and a clock into the router from the graph.
+4. [x] `watch_sync_request_handler.dart` `_sendSnapshot`: D-5.
+5. [x] Run the new file green. Then the dependents and re-pin only the D-5 tests, recording each.
 **Done Criteria:** `bash .claude/scripts/macos/with-timeout.sh 900 flutter test test/watch_session_end_owed_test.dart test/watch_session_auto_push_test.dart test/watch_incoming_router_test.dart test/watch_sync_request_handler_test.dart test/watch_session_projection_test.dart test/live_mirroring_test.dart test/watch_timer_push_test.dart test/watch_transport_test.dart` green; `flutter analyze` count equal to baseline; `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` empty.
 **Predicted Files:** the four lib files above (about 70 to 110 production lines), the evidence file, this plan's Progress.
 
 ### Phase 2: the wrist ends silently (only if S-12815 shows a summary or effort question)
-1. [ ] Swift `WatchSessionEngine` / `WatchLoggingState` and the Dart twin: a session ended by a phone `session_lifecycle` returns to Start with no summary or effort question; a wrist-made finish is unchanged. Swift and Dart tests added.
+1. [x] Swift `WatchSessionEngine` / `WatchLoggingState` and the Dart twin: a session ended by a phone `session_lifecycle` returns to Start with no summary or effort question; a wrist-made finish is unchanged. Swift and Dart tests added.
 **Done Criteria:** `swift test --package-path watch/watchos` for the touched test target, plus the Dart wrist tests, green (counts pasted).
 **Predicted Files:** decided by Phase 0b; if Phase 0b needs more than about 40 lines, stop and plan it as 128b.
 
 ### Phase 3: docs (crew-docs-keeper)
-1. [ ] `docs/state_management/watch_surface.md` (check size against the 64 KiB ceiling first): the ledger, its triggers and bounds, the D-5 rule. `docs/watch_session_sync.md` Invariants: one bullet for "an end the phone made is owed until the wrist confirms or the bounds pass". Update the plan 98 Noticed/F-3 pointer only by a note in this plan's Progress (do not edit plan 98).
+1. [x] `docs/state_management/watch_surface.md` (check size against the 64 KiB ceiling first): the ledger, its triggers and bounds, the D-5 rule. `docs/watch_session_sync.md` Invariants: one bullet for "an end the phone made is owed until the wrist confirms or the bounds pass". Update the plan 98 Noticed/F-3 pointer only by a note in this plan's Progress (do not edit plan 98).
 **Done Criteria:** `bash .claude/scripts/macos/with-timeout.sh 300 flutter test test/docs_indexing_contract_test.dart test/ui_standards_contract_test.dart` green.
 
 ## Mutations for the governor (each turns the named test red, then restore)
@@ -165,13 +165,34 @@ Size: about 70 to 110 production lines, about 700 test lines. Tracks: phone, plu
 2. Items P5 and the old probe C1 mean the request answer changed meaning; any watch build in the field that relies on being handed an ended session on request would see Start instead. That is the owner's choice (D-5).
 3. The Dart engine twin has no stale-snapshot guard (121a Noticed 2); not in this plan.
 
+## Follow-up F1 — an offer that never left does not count (2026-11-07, review minors 2 and 3 of the first review)
+
+**D-10 An offer counts when its send returned, not when it was taken.** `takeOwedEnd` and `offerAllOwedEnds`
+(`lib/state/watch/live_session_mirror_state.dart`) counted the offer, and retired the entry on the third, before the
+awaited `reportLifecycleFor` ran. A send that throws (production reports it, never crashes) therefore spent a re-offer it
+never delivered; the third such throw retired the end for good, and in `offerAllOwedEnds` the first throw abandoned the
+remaining owed ends. New shape: `takeOwedEnd` only stamps the 30 s pacing (`lastOfferAt`); a new
+`noteOfferSent(sessionId)` counts it and retires at the third, and callers invoke it after `reportLifecycleFor`
+returned. `offerAllOwedEnds` tries every end, counts the ones that were sent, and rethrows the first error after the loop
+(the wiring still reports it).
+
+| Scenario | Fixture | Expect | Fails without the change because |
+|---|---|---|---|
+| S-12890 | wrist starts, phone ends while away (radio reachable); then a wrist `timer_state` frame names the session three times, 31 s apart, with the radio throwing on every `session_lifecycle` send; then a fourth frame 31 s later with the radio healthy | the fourth frame's answer carries the end (`session_lifecycle` completed delivered) | the third throwing take retired the entry, so the fourth frame is answered with nothing |
+| S-12891 | two ends owed (sessions A older, B newer), radio throws only for A's lifecycle; link flaps to reachable | B's end is delivered and the wiring's `onFailure` received A's error | the first throw left the loop, so B was never offered |
+| S-12893 | one end owed, delivered; the link flaps to reachable four times | exactly three lifecycles, the fourth flap sends none | link offers were counted nowhere in a test: removing the count after the link send left every test green (lead's mutation D) |
+| S-12892 | the existing S-12803/S-12812 shape (three delivered offers, the fourth none) | unchanged: exactly three, then none | guard that counting after the send still caps at three |
+
+Docs delta: `docs/watch_session_sync.md` "re-offered 3 times" sentences gain "an offer whose send threw does not count" (lead edits).
+
 ## Progress
 
-- [ ] P0 red tests and Phase 0b
-- [ ] P1 ledger and triggers
-- [ ] P2 wrist silent end (conditional)
-- [ ] P3 docs
-- [ ] Governor: mutations M1 to M10, review, full suites
+- [x] P0 red tests and Phase 0b
+- [x] P1 ledger and triggers
+- [x] P2 wrist silent end (conditional)
+- [x] P3 docs
+- [ ] Governor: mutations M1 to M10 (no mutation record in the evidence file; review and the full suite ran: see .review.md)
+- [x] F1 (D-10, S-12890 to S-12893): done 2026-11-07 (crew-builder-app run 20261107-153217 + lead's guard test S-12893); review minors 2 and 3 closed; minor 4 was already in code; minor 5 closed by a docs sentence.
 
 ## Assumption Log
 

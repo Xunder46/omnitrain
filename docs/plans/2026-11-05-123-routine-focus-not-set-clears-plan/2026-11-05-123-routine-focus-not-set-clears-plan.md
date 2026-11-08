@@ -1,7 +1,6 @@
 # Feature: 123 — "Mixed / Not set" must remove a routine's Focus Modality
 
-> Status: Phase 0 done (red tests observed failing); Phases 1-2 not started. No open owner question.
-> Next handoff: crew-builder-app (Phase 1: the fix)
+> Status: shipped (commit 072d943b). Phases 0-2 done; no review or evidence file was written for this small fix; `test/routine_focus_not_set_test.dart` passes (observed 2026-11-07, with the full suite green). No open owner question.
 > Binding conventions: `docs/global_conventions.md`; `docs/documentation_standard.md` (Phase 2);
 > `docs/my_routines.md`; `.github/copilot/pr-scope-budget.md`.
 > Track: phone only (`lib/`), small. Lands BEFORE or WITH plan 122's back-fill (see Ordering).
@@ -82,14 +81,14 @@ S-12308 on Mock and on Hive, e.g. `Expected: null  Actual: 'resistance_lifting'`
 errored from a test mistake — reading through the pre-restart repository — and was corrected; it now passes.)
 Final transcript goes in the evidence file when Phase 1 runs.
 
-## Phase 1 — the fix (not started)
+## Phase 1 — the fix (DONE)
 
 - `models.dart` `WorkoutTemplate.copyWith`: add `bool clearFocusModality = false`; `focusModality: clearFocusModality ? null : (focusModality ?? this.focusModality)`.
 - `routine_state.dart:213`: pass `clearFocusModality: modality == null`.
 - Flip `state_test.dart` case; add the model case.
 - Done when: new file 16/16 green, `state_test.dart` green, `flutter test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` green, invariant grep empty; the 4 failing scenarios re-shown failing with the fix stashed.
 
-## Phase 2 — docs (not started)
+## Phase 2 — docs (DONE)
 
 `docs/my_routines.md` Focus section: say Mixed = `null` and that choosing it removes an existing Focus;
 add the "already-saved routines are left as they are" line. `docs/data_models.md`: note the `copyWith` flag.
@@ -103,5 +102,5 @@ add the "already-saved routines are left as they are" line. `docs/data_models.md
 ## Progress
 
 - [x] Phase 0 red tests observed failing
-- [ ] Phase 1 fix
-- [ ] Phase 2 docs
+- [x] Phase 1 fix
+- [x] Phase 2 docs

@@ -441,7 +441,7 @@ Not touched: `scripts/sqlite_schema.sql` / `sqlite_seed.sql` (no schema change),
 ## Assumption Log
 
 - Version 18 was free (HEAD `b51b02ea`, `currentDataVersion` was 17; plan 118 committed).
-- D-12201(c) is applied in `_adopt` only. Plan 129's `_startSessionRow` (wrist `session_started` path, uncommitted, not ours) also opens a routine session without a modality; a wrist-started routine whose row is opened there first is not stamped, and `_adopt` then finds the row held. Left to plan 129 / a follow-up.
+- D-12201(c) is applied in `_adopt` only. Plan 129's `_startSessionRow` (wrist `session_started` path) also opened a routine session without a modality, so a wrist-started routine whose row was opened there first was not stamped. Closed 2026-11-07 by plan 129 D-8978 (`modality: template?.focusModality`, test S-8981).
 - S-12205 was red before Phase 1 (the fixture is already stamped), not green as predicted.
 - The rolling `preferredModality` branch in `workout_session_screen.dart` also gained `!isRoutineSession` (defensive, unreachable for routines).
 - `home_screen.dart` was in `colorsBlackRatchet` (3); fixed in Phase 1 (`colorScheme.shadow`), entry removed from `test/helpers/ui_standards_allowlist.dart`.

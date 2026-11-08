@@ -18,7 +18,7 @@ transport and the sensors are in
 
 | Concern | Owner |
 |---|---|
-| The session the wrist is running becoming the phone's own in-progress session | `WatchSessionAdoptionBridge.consider`, called by `WatchIncomingRouter` after the mirror has applied a snapshot — and now its owner names `WatchSessionAdoptionBridge.onSessionStarted` beside it: a wrist `session_started` report opens the session row (no efforts of its own, D-8977; the first snapshot that reaches that effort-less row writes the wrist's ladder into it and seeds the first entries exactly as a fresh adoption does, so a report that beats its snapshot never leaves the phone showing an empty session, D-8978 — `test/watch_session_adoption_bridge_test.dart`: `S-8980 the first snapshot fills a report-opened row with the ladder`, `S-8980 a row that already holds an effort is loaded as it is, never filled from the snapshot`; the row also carries the routine's Focus as an adopted run does, S-8981) and links the plan it names when that plan is unstarted, idempotently (`test/watch_session_import_test.dart`, group `S-8963…S-8964b a wrist report that starts a plan`: `S-8963 a startable plan opens the row and reports the link, Mock and Hive`, `S-8971 last write wins, and the store reads the link back after a restart, Mock and Hive`, `S-8964 a free start is adopted with nothing linked`, `S-8964 a missing plan, an empty id and a held session behave (Mock and Hive)`) |
+| The session the wrist is running becoming the phone's own in-progress session | `WatchSessionAdoptionBridge.consider`, called by `WatchIncomingRouter` after the mirror has applied a snapshot — and now its owner names `WatchSessionAdoptionBridge.onSessionStarted` beside it: a wrist `session_started` report opens the session row (no efforts of its own, D-8977; the first snapshot that reaches that effort-less row writes the wrist's ladder into it and seeds the first entries exactly as a fresh adoption does, so a report that beats its snapshot never leaves the phone showing an empty session, D-8978 — `test/watch_session_adoption_bridge_test.dart`: `S-8980 the first snapshot fills a report-opened row with the ladder`, `S-8980 a row that already holds an effort is loaded as it is, never filled from the snapshot`; the row also carries the routine's Focus as an adopted run does, S-8981) and remembers the plan it names, linking it only when the wrist finishes that session (`test/watch_session_import_test.dart`, group `S-8963…S-8964b a wrist report that starts a plan`: `S-8963 a startable plan opens the row and reports the link, Mock and Hive`, `S-8971 last write wins, and the store reads the link back after a restart, Mock and Hive`, `S-8964 a free start is adopted with nothing linked`, `S-8964 a missing plan, an empty id and a held session behave (Mock and Hive)`, plus `S-13031 the wrist completed lifecycle links the plan`) |
 | Telling the wrist when its session is already history | `WatchIncomingRouter`'s answer to that snapshot: the mirror's `reportLifecycle` |
 | Ending the phone's copy when the wrist ends its own | `WatchSessionAdoptionBridge.onLifecycle` → the ordinary finish or the ordinary discard |
 | The ladder the phone asserts, and the entries it logged | `WatchSessionAdoptionBridge.projectSession`, composed on demand from the bound session — the ladder, plus the phone's own logged sets (a set is logged exactly when a rest sits at its index + 1), timed, hold and round entries in the answer's `entries` (D-31, D-33, D-130); a `set` slot's planned rows ride the slot itself as `plannedSets`, not as entries (D-2, `S-3621 a set slot carries every planned row, in set order`) |
@@ -314,7 +314,8 @@ remembers, in memory only, each end (finished or discarded) it announced to the
 wrist until the wrist confirms it. The wrist confirms by sending its own ended
 `session_lifecycle` or an ended `session_snapshot` for that session (confirmed),
 by sending an ended state for another session (it has moved on), when 24 h
-pass, or when the end has been re-offered 3 times. A wrist frame of any kind
+pass, or when the end has been re-offered 3 times (an offer whose send threw does
+not count, `S-12890`). A wrist frame of any kind
 except `session_lifecycle`, `session_snapshot` and `receipt` that names the
 session is answered with that session's end, at most once per 30 s per session;
 when the wrist comes back into reach every unconfirmed end is sent again (no
@@ -565,7 +566,9 @@ in place, resending the structure as a snapshot and no new started lifecycle
   (`S-12101`, `S-12103`, `S-12107`).
 - **An end the phone made is owed to the wrist until it confirms it or the
   bounds pass.** The end is re-offered at most once per 30 s per session, at
-  most three times, and dropped after 24 h — never for a session the phone is
+  most three times (an offer counts once its send returned: a send that threw
+  spends none, and one throwing end never stops the others being offered), and
+  dropped after 24 h — never for a session the phone is
   still running, and a snapshot request is never answered with an ended
   session. Verified by `test/watch_session_end_owed_test.dart`
   (`S-12809 a running session, frames and link flaps, sends no lifecycle ever

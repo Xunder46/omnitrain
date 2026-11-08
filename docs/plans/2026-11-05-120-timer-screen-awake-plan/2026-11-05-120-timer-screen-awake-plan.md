@@ -309,19 +309,19 @@ Shared state fixture `F-S` (plain `test()`, `MockWorkoutRepository` initialised,
 ## Iteration 1
 
 ### Phase 1: port, native channel, controller, wiring (@developer)
-1. [ ] Add `ScreenAwakePort` + `noop()` (D-19509) — `lib/core/services/screen_awake_port.dart`
-2. [ ] Add `MethodChannelScreenAwakePort`, `screenAwakeChannelName`, `createScreenAwakePort()`
+1. [x] Add `ScreenAwakePort` + `noop()` (D-19509) — `lib/core/services/screen_awake_port.dart`
+2. [x] Add `MethodChannelScreenAwakePort`, `screenAwakeChannelName`, `createScreenAwakePort()`
    (D-19507, D-19508) — `lib/core/platform/screen_awake_channel.dart`
-3. [ ] iOS channel inline in `ios/Runner/AppDelegate.swift`; Android in `MainActivity.kt`
+3. [x] iOS channel inline in `ios/Runner/AppDelegate.swift`; Android in `MainActivity.kt`
    (D-19508)
-4. [ ] Add `SessionScreenAwake` (`attach`, `detach`, `attachedCount`, `isKeepingAwake`,
+4. [x] Add `SessionScreenAwake` (`attach`, `detach`, `attachedCount`, `isKeepingAwake`,
    lifecycle observer, D-19501/05/06/07) — `lib/state/workout/session_screen_awake.dart`
-5. [ ] `WorkoutState`: optional `screenAwake` param, `screenAwake` getter —
+5. [x] `WorkoutState`: optional `screenAwake` param, `screenAwake` getter —
    `lib/state/workout/workout_state.dart`
-6. [ ] `lib/main.dart`: pass `createScreenAwakePort()` to `WorkoutState(` (:389)
-7. [ ] Tests S-19501–S-19519 — `test/helpers/fake_screen_awake_port.dart`,
+6. [x] `lib/main.dart`: pass `createScreenAwakePort()` to `WorkoutState(` (:389)
+7. [x] Tests S-19501–S-19519 — `test/helpers/fake_screen_awake_port.dart`,
    `test/session_screen_awake_test.dart`, `test/screen_awake_channel_test.dart`
-8. [ ] Evidence (baseline analyze count, suite counts, red→green for S-19501 with item 5's
+8. [x] Evidence (baseline analyze count, suite counts, red→green for S-19501 with item 5's
    wiring stashed) in the evidence file; Progress + Assumption Log here
 
 **Done Criteria** (run until green; wrap with `bash .claude/scripts/macos/with-timeout.sh 900`):
@@ -335,16 +335,16 @@ Shared state fixture `F-S` (plain `test()`, `MockWorkoutRepository` initialised,
 this plan's evidence file. Nothing else (not `pubspec.yaml`, not `project.pbxproj`, not the mixin).
 
 ### Phase 2: screen attach/detach, widget tests, docs (@developer)
-1. [ ] `_WorkoutSessionScreenState.initState`: attach when `!widget.editMode`, remember it;
+1. [x] `_WorkoutSessionScreenState.initState`: attach when `!widget.editMode`, remember it;
    `dispose`: detach first if attached (D-19505) — `lib/features/session/workout_session_screen.dart`
-2. [ ] Widget tests S-19520–S-19522, Mock-only `testWidgets` (persisting taps Mock-only) —
+2. [x] Widget tests S-19520–S-19522, Mock-only `testWidgets` (persisting taps Mock-only) —
    `test/session_screen_awake_widget_test.dart`
-3. [ ] Docs: `SessionScreenAwake` section (structure, D-19501 rule as rationale, pointers to
+3. [x] Docs: `SessionScreenAwake` section (structure, D-19501 rule as rationale, pointers to
    S-19501/S-19507/S-19510/S-19520) — `docs/state_management/workout_state.md` (27.8 KB, band 52 KB)
-4. [ ] Docs: `ScreenAwakePort` + channel paragraph, pointer to S-19515/S-19519 —
+4. [x] Docs: `ScreenAwakePort` + channel paragraph, pointer to S-19515/S-19519 —
    `docs/state_management/services_and_utils.md` (36.4 KB)
-5. [ ] Docs: lookup rows for `ScreenAwakePort`, `SessionScreenAwake` — `docs/state_management.md` (11.2 KB)
-6. [ ] Evidence + Progress + Assumption Log
+5. [x] Docs: lookup rows for `ScreenAwakePort`, `SessionScreenAwake` — `docs/state_management.md` (11.2 KB)
+6. [x] Evidence + Progress + Assumption Log
 
 **Done Criteria**: `flutter analyze` (≤ baseline);
 `flutter test test/session_screen_awake_widget_test.dart --plain-name "Mock"`;
@@ -388,9 +388,9 @@ About 220 predicted production lines.
 
 ## Progress
 
-- [ ] Phase 1
-- [ ] Phase 2
-- [ ] Phase 3 review
+- [x] Phase 1
+- [x] Phase 2
+- [x] Phase 3 review
 
 ## Assumption Log
 
