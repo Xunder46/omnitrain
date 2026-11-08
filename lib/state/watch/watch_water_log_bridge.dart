@@ -169,6 +169,7 @@ class WatchWaterLogBridge {
     try {
       frame = await WatchReferenceSync.readWaterDown(
         repository: _repository,
+        stepMl: _nutrition.waterStepMl,
         generatedAt: _clock(),
       );
     } catch (_) {

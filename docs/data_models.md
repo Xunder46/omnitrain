@@ -543,7 +543,7 @@ fields were added to the model, this section documents state-side caching only.
 
 ### WaterLogEntry
 
-One row per calendar day, keyed by `dateMs` (local midnight). The day's water volume is stored as a real volume in milliliters so the historical record stays unit-clean — the on-screen glass count is derived at the display boundary (`volumeMl ~/ kWaterGlassMl`), not stored.
+One row per calendar day, keyed by `dateMs` (local midnight). The day's water volume is stored as a real volume in milliliters so the historical record stays unit-clean; the on-screen total is shown in the user's volume unit at the display boundary, never stored. Verified by `test/nutrition_test.dart` (group `WaterTrackerControl — total in the volume unit (S-13207, S-13210, S-13214)`: `S-13207 1500 ml in ml reads 1.5 L with step 250 ml`) and `test/state_test.dart` (group `NutritionState volume unit`: `S-13206 a unit switch notifies NutritionState exactly once; another setting is silent; waterTodayMl never rewrites`).
 
 Water has no goal — like macros and sodium, it is tracked and stored for the historical record only. Each new day starts at 0; logging takes effect immediately and survives closing and reopening the app on the same day. Prior days are never modified automatically.
 
@@ -558,16 +558,15 @@ Methods: `fromMap(Map)`, `toMap()`, `copyWith()`, and the static helper `WaterLo
 | Field / method | Type | Description |
 |---|---|---|
 | `waterTodayMl` | `int` | Cached volume in milliliters for the most recently loaded day. `0` until the first explicit load. |
-| `waterTodayGlasses` | `int` | Derived from `waterTodayMl ~/ kWaterGlassMl`. The displayed count is never a volume figure — the icon + `250 ml` annotation carries the unit. |
 | `loadWaterForDate(dateMs)` | `Future<void>` | Reloads the day's stored ml from the repository, updates the cache, and notifies listeners. Idempotent. |
 | `loadWaterForToday()` | `Future<void>` | Convenience wrapper that delegates to `loadWaterForDate(todayMidnightMs)`. Called from `NutritionScreen.initState` alongside the target + consumed loads. |
-| `incrementWaterForDate(dateMs)` | `Future<void>` | Adds `kWaterGlassMl` (250 ml), persists, updates the cache, notifies. |
-| `decrementWaterForDate(dateMs)` | `Future<void>` | Subtracts `kWaterGlassMl` (floors at 0 ml), persists, updates the cache, notifies. A minus at 0 is a no-op (no write, no notification, no spurious row). |
+| `incrementWaterForDate(dateMs)` | `Future<void>` | Adds the water step (250 ml, or 237 ml with the fl oz unit), persists, updates the cache, notifies. Verified by `test/state_test.dart` (group `daily water log`: `incrementWaterForDate stores +250 ml and notifies`; group `NutritionState volume unit`: `S-13205 the fl oz unit steps 237 ml through plus, minus and watch taps; the ml unit still steps 250`). |
+| `decrementWaterForDate(dateMs)` | `Future<void>` | Subtracts the step (`waterStepMl`, floors at 0 ml), persists, updates the cache, notifies. A minus at 0 is a no-op (no write, no notification, no spurious row). Verified by `test/state_test.dart` (group `daily water log`: `decrementWaterForDate stores −250 ml and notifies`, `decrementWaterForDate at 0 is a no-op (no negative ml)`; group `NutritionState volume unit`: `S-13215 a 237 ml step reaches a non-multiple day and floors exactly at 0`). |
 | `applyWatchWaterTap({dateMs, tapId, add})` | `Future<bool>` | Applies one watch tap at most once; updates the cache only for the day it was loaded for. Contract: [Nutrition State](state_management/nutrition_state.md). |
 
 Day rollover (`rolloverToDate(dateMs)`) clears the water cache (`_waterTodayMl = 0`) and reloads it for the new day via `loadWaterForDate(dateMs)`. Prior dates' stored ml are untouched — only the in-memory cache is cleared.
 
-The canonical per-glass amount lives in `kWaterGlassMl` (`lib/core/constants/water_constants.dart`); the model never hard-codes `250` so a future per-glass change propagates to the widget, the state, and the storage layer in lockstep.
+The tap step lives in `waterStepMlFor(unit)` (`lib/core/constants/water_constants.dart`, 250 ml with the ml unit or 237 ml with the fl oz unit); the model never hard-codes the step so a future step change propagates to the widget, the state, and the storage layer in lockstep. Verified by `test/water_tap_ledger_test.dart` (group `water constants (D-11)`: `waterStepMlFor: 250 ml by default, 237 ml for the floz unit (S-13203)`).
 
 ---
 

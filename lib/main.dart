@@ -336,7 +336,7 @@ Future<Widget> runStartup({
   final routineState = RoutineState(repository);
   final calendarState = CalendarState(repository);
   final periodState = PeriodState(repository);
-  final nutritionState = NutritionState(repository);
+  final nutritionState = NutritionState(repository, settings: settingsState);
   await nutritionState.loadNutritionTarget();
   final foodLibraryState = FoodLibraryState(
     repository,

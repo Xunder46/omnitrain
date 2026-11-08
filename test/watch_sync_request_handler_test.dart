@@ -1983,15 +1983,54 @@ void main() {
 
       final nutrition = NutritionState(repository);
       await nutrition.loadWaterForDate(dayMs);
-      expect(nutrition.waterTodayGlasses, 2);
+      expect(nutrition.waterTodayMl, 600);
       expect(
         waterPayload()['glasses'],
-        nutrition.waterTodayGlasses,
+        waterGlassesFor(nutrition.waterTodayMl),
         reason: 'S-94a-24 the wrist is told the number the phone shows',
       );
       expect(
         frame['messageId'],
         'msg-water-${current.millisecondsSinceEpoch}-2-1',
+      );
+    });
+
+    test("S-13221 a pounds phone's count counts taps, a kg phone's counts "
+        'glasses', () async {
+      final validator = loadProtocolValidator();
+      repository.saveWaterVolumeForDate(dayMs, 948);
+
+      // A pounds phone steps 237 ml: the four 8 oz taps of 948 ml read 4,
+      // not the 3 the 250 ml glass gave (D-13229).
+      settings = SettingsState(repository, fakePreferencesService());
+      await settings.setPreferredWeightUnit('lbs');
+      handler = handlerFor(FoodLibraryState(repository));
+      expect(
+        await handler.handle(WatchTransportRequest.routines, wantsWater: true),
+        isTrue,
+      );
+      expect(transport.ofType('water_down'), hasLength(1));
+      expect(waterPayload()['day'], dayText);
+      expect(waterPayload()['glasses'], 4, reason: 'S-13221 948 ~/ 237 = 4');
+      expect(waterPayload()['appliedTapIds'], ['w-1']);
+      expect(
+        validator.validateEnvelope(transport.ofType('water_down').single),
+        isEmpty,
+      );
+
+      // The kg default keeps the 250 ml glass.
+      settings = SettingsState(repository, fakePreferencesService());
+      handler = handlerFor(FoodLibraryState(repository));
+      transport.sent.clear();
+      expect(
+        await handler.handle(WatchTransportRequest.routines, wantsWater: true),
+        isTrue,
+      );
+      expect(transport.ofType('water_down'), hasLength(1));
+      expect(
+        waterPayload()['glasses'],
+        3,
+        reason: 'S-13221 kg keeps the 250 ml glass: 948 ~/ 250 = 3',
       );
     });
 
@@ -2003,7 +2042,14 @@ void main() {
         final codeLines = entity.readAsLinesSync().where(
           (line) => !line.trimLeft().startsWith('//'),
         );
-        if (codeLines.any((line) => line.contains('~/ kWaterGlassMl'))) {
+        // The division by the glass or by a step: only the owner may write it
+        // (plan 132 D-13229 moved it from `~/ kWaterGlassMl` to `~/ stepMl`).
+        if (codeLines.any(
+          (line) =>
+              line.contains('~/ kWaterGlassMl') ||
+              line.contains('~/ waterStepMl') ||
+              line.contains('~/ stepMl'),
+        )) {
           offenders.add(entity.path.replaceAll(r'\', '/'));
         }
       }

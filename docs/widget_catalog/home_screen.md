@@ -137,9 +137,15 @@ An optional `emptyHint` replaces the ring's empty subtext (default `Log a food t
 **File**: `lib/features/nutrition/widgets/water_tracker_control.dart`
 
 Tap-only +/− stepper for the day's water. Water has **no goal** — the widget carries no progress
-bar, target, or percentage. The glass count is derived from stored millilitres at the display
-boundary; the widget never reads or writes ml itself, and the per-glass amount is sourced from
-`kWaterGlassMl` so a future change propagates automatically. Decrement is disabled at zero.
+bar, target, or percentage. The number is the day's total in the user's volume unit (`750 ml`,
+`1.5 L`, `48 oz`) and the caption under the glass icon is the per-tap step (`250 ml` or `8 oz`);
+the widget never reads or writes ml itself, and the step amount is sourced from `waterStepMlFor`
+so a future change propagates automatically. Decrement is disabled at zero. Verified by
+`test/nutrition_test.dart` (group `WaterTrackerControl — total in the volume unit
+(S-13207, S-13210, S-13214)`: `S-13207 1500 ml in ml reads 1.5 L with step 250 ml`,
+`S-13207 each tap calls its own callback exactly once`, `S-13214 an unknown volume unit reads
+as ml`), and the step wording by `test/utils_test.dart` (group `UnitFormatter volume (S-13201,
+S-13202, S-13203)`: `waterStepLabel: the per-tap amount for each unit (S-13203)`).
 
 ### `MacroDonutChart`
 

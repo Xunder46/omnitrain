@@ -558,15 +558,24 @@ See [Design System](design_system.md) for the full token reference. Key categori
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `kWaterGlassMl` | `250` | Milliliters per logged glass |
+| `kWaterGlassMl` | `250` | Milliliters per tap with the ml unit |
 | `kWatchWaterTapsPerDay` | `500` | Most watch water taps the phone records for one day |
-| `waterGlassesFor(volumeMl)` | function | The glass count for a stored volume; the one place it is derived |
+| `kWaterOzStepMl` | `237` | Milliliters per tap with the fl oz unit (8 fl oz rounded) |
+| `waterStepMlFor(unit)` | function | The per-tap step: `kWaterGlassMl` for the ml unit, `kWaterOzStepMl` for the fl oz unit |
+| `waterGlassesFor(volumeMl, [stepMl])` | function | The whole-tap count the watch wire sends for a stored volume: whole taps of the phone's current per-tap step (250 ml with kg, 237 ml with lbs; `kWaterGlassMl` when no step is given), so four 8 oz taps read 4; the one place it is derived. Verified by `test/water_tap_ledger_test.dart` (`waterGlassesFor counts whole taps of the given step (S-13220)`), `test/watch_sync_request_handler_test.dart` (the `S-13221` test) and `test/watch_water_log_test.dart` (the `S-13222` test) |
 
 Water has **no goal** — like macros and sodium it is tracked for the historical
-record only. The day's stored **volume in ml** is the source of truth; the
-on-screen glass count is derived at the display boundary
-(`waterGlassesFor(volumeMl)`). Never hardcode `250` — go through the constant
-so storage, unit, and widget agree.
+record only. The day's stored **volume in ml** is the source of truth and the
+on-screen total is shown in the user's volume unit (`750 ml`, `1.5 L`, `48 oz`).
+Verified by `test/utils_test.dart` (group `UnitFormatter volume (S-13201,
+S-13202, S-13203)`: `formatWaterTotal (ml unit): ml below 1000, litres with at
+most two decimals above` and `formatWaterTotal (fl oz unit): whole rounded
+ounces`). The per-tap step is 250 ml with the ml unit and 237 ml with the fl oz
+unit — verified by `test/water_tap_ledger_test.dart` (group `water constants
+(D-11)`: `waterStepMlFor: 250 ml by default, 237 ml for the floz unit
+(S-13203)`) and `test/utils_test.dart` (`waterStepLabel: the per-tap amount for
+each unit (S-13203)`). Never hardcode a step — go through the constants so
+storage, unit, and widget agree.
 
 ### `catalog_version.dart`
 

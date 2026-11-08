@@ -31,8 +31,30 @@ void main() {
       expect(waterGlassesFor(250), 1);
       expect(waterGlassesFor(350), 1);
       expect(waterGlassesFor(850), 3);
-      expect(kWatchWaterTapsPerDay, 500);
     });
+
+    test('waterGlassesFor counts whole taps of the given step (S-13220)', () {
+      expect(waterGlassesFor(0, 237), 0, reason: 'S-13220 0 ml at 237 ml');
+      expect(waterGlassesFor(236, 237), 0, reason: 'S-13220 below one tap');
+      expect(waterGlassesFor(237, 237), 1, reason: 'S-13220 exactly one tap');
+      expect(waterGlassesFor(948, 237), 4, reason: 'S-13220 four 8 oz taps');
+      expect(waterGlassesFor(1000, 237), 4, reason: 'S-13220 1000 ~/ 237 = 4');
+      expect(waterGlassesFor(948, 250), 3, reason: 'S-13220 the old 250 split');
+      expect(waterGlassesFor(250), 1, reason: 'S-13220 no step keeps 250 ml');
+    });
+
+    test(
+      'waterStepMlFor: 250 ml by default, 237 ml for the floz unit (S-13203)',
+      () {
+        expect(waterStepMlFor('ml'), 250);
+        expect(waterStepMlFor('floz'), 237);
+        expect(waterStepMlFor('fl oz'), 237);
+        expect(waterStepMlFor('oz'), 237);
+        expect(waterStepMlFor(null), 250);
+        expect(waterStepMlFor('stone'), 250);
+        expect(kWatchWaterTapsPerDay, 500);
+      },
+    );
   });
 
   group('WaterLogEntry round trip (D-4)', () {

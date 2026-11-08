@@ -337,15 +337,19 @@ nutrition-target methods:
 |---|---|
 | `getWaterVolumeForDate(int dateMs)` | Returns the stored milliliter value for [dateMs]. Returns `0` when no row exists — the absence of a row is the same as a 0 ml day, callers never see `null`. |
 | `saveWaterVolumeForDate(int dateMs, int volumeMl)` | Upserts the row for [dateMs]. `volumeMl` is clamped to `>= 0` as a last line of defense against bad inputs. Past dates other than [dateMs] are never touched. The day's applied-tap ledger is kept as it is. |
-| `applyWaterTap({dateMs, tapId, deltaMl})` | Applies one watch tap (`deltaMl` = ±`kWaterGlassMl`) at most once: a new `tapId` changes the volume (floored at 0 ml) and is appended to the day's ledger in one write, and returns `true`; a remove at 0 ml still records the id. A known id, or a ledger already holding `kWatchWaterTapsPerDay` ids, changes nothing and returns `false` (plan 94 D-3, D-5). |
+| `applyWaterTap({dateMs, tapId, deltaMl})` | Applies one watch tap (`deltaMl` = ± the current step, `waterStepMlFor`) at most once: a new `tapId` changes the volume (floored at 0 ml) and is appended to the day's ledger in one write, and returns `true`; a remove at 0 ml still records the id. A known id, or a ledger already holding `kWatchWaterTapsPerDay` ids, changes nothing and returns `false` (plan 94 D-3, D-5). |
 | `getAppliedWaterTapIds(int dateMs)` | The day's applied tap ids in append order; `[]` with no row or a row written before the ledger. |
 
 The row id is deterministic (`'water-<dateMs>'`) so the same day always
-maps to the same storage key in both implementations. The per-glass
-amount is canonical at `kWaterGlassMl = 250` (see
-`lib/core/constants/water_constants.dart`); the on-screen glass count
-is derived at the display boundary (`volumeMl ~/ kWaterGlassMl`),
-never stored. Water has no goal — like macros and sodium, it is
+maps to the same storage key in both implementations; the tap step is `waterStepMlFor`, 250 ml or 237 ml with fl oz
+(see `lib/core/constants/water_constants.dart`) — the on-screen total
+is shown in the user's volume unit at the display boundary, never
+stored — verified by `test/state_test.dart` (group `NutritionState
+volume unit`: `S-13205 the fl oz unit steps 237 ml through plus,
+minus and watch taps; the ml unit still steps 250`) and
+`test/nutrition_test.dart` (group `WaterTrackerControl — total in the
+volume unit (S-13207, S-13210, S-13214)`: `S-13208 the card follows a
+weight-unit change with no other call`). Water has no goal — like macros and sodium, it is
 tracked and stored for the historical record only.
 
 Implementation requirements (both `HiveWorkoutRepository` and `MockWorkoutRepository`):

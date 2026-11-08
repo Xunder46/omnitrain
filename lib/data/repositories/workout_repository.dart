@@ -690,7 +690,8 @@ abstract class WorkoutRepository {
 
   /// Applies one watch tap to [dateMs] at most once (plan 94 D-3, D-5).
   ///
-  /// [deltaMl] is `kWaterGlassMl` (add) or `-kWaterGlassMl` (remove). When
+  /// [deltaMl] is one step of the user's volume unit, added or negated (250 ml,
+  /// or 237 ml with the fl oz unit; `waterStepMlFor`). When
   /// [tapId] is not yet in the day's ledger and the ledger holds fewer than
   /// `kWatchWaterTapsPerDay` ids, ONE write sets the volume to
   /// `volume + deltaMl` (floored at 0 ml, the [saveWaterVolumeForDate] clamp)

@@ -1510,6 +1510,33 @@ void main() {
       expect(find.text('3.1 mi'), findsOneWidget);
     });
 
+    testWidgets('S-13219 the Settings screen has no Volume row', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final settingsState = SettingsState(repo, _fakePrefs());
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Volume'), findsNothing);
+      expect(find.text('Used for water'), findsNothing);
+
+      await tester.tap(find.text('lbs').first);
+      await tester.pumpAndSettle();
+
+      expect(settingsState.preferredWeightUnit, 'lbs');
+    });
+
     testWidgets('Start of Week selector persists the selected value', (
       WidgetTester tester,
     ) async {

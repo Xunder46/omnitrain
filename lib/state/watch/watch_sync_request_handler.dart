@@ -28,9 +28,11 @@ library;
 import 'dart:convert';
 
 import '../../core/constants/omni_theme.dart';
+import '../../core/constants/water_constants.dart';
 import '../../core/platform/watch_delivery.dart';
 import '../../core/platform/watch_transport.dart';
 import '../../core/services/stats_progress_service.dart';
+import '../../core/utils/unit_formatter.dart';
 import '../../core/utils/watch_reference_sync.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../food_library_state.dart';
@@ -297,6 +299,9 @@ class WatchSyncRequestHandler {
     try {
       frame = await WatchReferenceSync.readWaterDown(
         repository: _repository,
+        stepMl: waterStepMlFor(
+          UnitFormatter.volumeUnitForWeightUnit(_settings.preferredWeightUnit),
+        ),
         generatedAt: _clock(),
       );
     } catch (_) {

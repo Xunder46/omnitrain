@@ -71,6 +71,17 @@ one.
 It owns no computation: the ring, the macro split and the water control read
 `NutritionState`'s derived totals.
 
+The water control shows the day's total in the unit that follows the Weight
+setting (`ml` with kg, `fl oz` with lbs — no separate volume setting) with the
+per-tap step (`250 ml` or `8 oz`) as the caption under the glass icon, and the
+tooltips and the semantics label speak the amounts. Verified by
+`test/nutrition_test.dart` (group
+`WaterTrackerControl — total in the volume unit (S-13207, S-13210, S-13214)`:
+`S-13207 1500 ml in ml reads 1.5 L with step 250 ml`, `S-13210 tooltips and
+the Semantics label speak the amounts (fl oz)`); the total follows a
+weight-unit change at once (same group: `S-13208 the card follows a
+weight-unit change with no other call`).
+
 The primer is a first-run overlay. Its help affordance reopens the primer
 **without** marking it seen, so a dismissed primer stays dismissed on the next
 visit — reopening is inspection, not a reset.

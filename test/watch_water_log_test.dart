@@ -20,6 +20,7 @@ import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/watch/watch_incoming_router.dart';
 import 'package:omnitrain/state/watch/watch_nutrition_log_bridge.dart';
@@ -27,6 +28,7 @@ import 'package:omnitrain/state/watch/watch_session_inbox.dart';
 import 'package:omnitrain/state/watch/watch_water_log_bridge.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
 
+import 'helpers/fake_preferences_service.dart';
 import 'helpers/live_session_fixtures.dart';
 import 'helpers/sync_protocol_harness.dart';
 
@@ -90,13 +92,21 @@ class _Phone {
   static Future<_Phone> create({
     Map<int, int> volumes = const {},
     DateTime Function()? clock,
+    bool lbsUnit = false,
   }) async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
     for (final entry in volumes.entries) {
       await repository.saveWaterVolumeForDate(entry.key, entry.value);
     }
-    final nutrition = NutritionState(repository);
+    final SettingsState? settings;
+    if (lbsUnit) {
+      settings = SettingsState(repository, fakePreferencesService());
+      await settings.setPreferredWeightUnit('lbs');
+    } else {
+      settings = null;
+    }
+    final nutrition = NutritionState(repository, settings: settings);
     final transport = RecordingMirrorTransport();
     final bridge = WatchWaterLogBridge(
       nutrition: nutrition,
@@ -153,7 +163,6 @@ void main() {
 
       expect(applied, isTrue);
       expect(state.waterTodayMl, 750);
-      expect(state.waterTodayGlasses, 3);
       expect(notifies, 1);
     });
 
@@ -295,7 +304,7 @@ void main() {
       );
 
       expect(await phone.repository.getWaterVolumeForDate(dMs), 1250);
-      expect(phone.nutrition.waterTodayGlasses, 5);
+      expect(phone.nutrition.waterTodayMl, 1250);
       final last = payloadOf(phone.transport.sent.last);
       expect(phone.transport.sent.last['type'], 'water_down');
       expect(last['glasses'], 5);
@@ -391,6 +400,46 @@ void main() {
 
       expect(result.outcome, WatchWaterLogOutcome.ignored);
       expect(phone.transport.sent, isEmpty);
+    });
+
+    test("S-13222 a pounds phone's water_down counts the taps it stores",
+        () async {
+      final lbsPhone = await _Phone.create(lbsUnit: true);
+      await lbsPhone.nutrition.loadWaterForDate(dMs);
+
+      for (var i = 1; i <= 4; i++) {
+        await lbsPhone.bridge.receive(
+          tap('w-lbs-$i', 'add', DateTime(2026, 11, 1, 9, i)),
+        );
+      }
+
+      expect(await lbsPhone.repository.getWaterVolumeForDate(dMs), 948);
+      final lbsWater = payloadOf(lbsPhone.transport.sent.last);
+      expect(lbsPhone.transport.sent.last['type'], 'water_down');
+      expect(
+        lbsWater['glasses'],
+        4,
+        reason: 'S-13222 four 8 oz taps of 948 ml read 4, not the 3 '
+            'the 250 ml glass gave',
+      );
+      expect(lbsWater['appliedTapIds'],
+          ['w-lbs-1', 'w-lbs-2', 'w-lbs-3', 'w-lbs-4']);
+
+      // The kg default keeps both the 250 ml step and its count: four taps
+      // of 250 ml store 1000 ml and the frame says 4.
+      final kgPhone = await _Phone.create();
+      await kgPhone.nutrition.loadWaterForDate(dMs);
+
+      for (var i = 1; i <= 4; i++) {
+        await kgPhone.bridge.receive(
+          tap('w-kg-$i', 'add', DateTime(2026, 11, 1, 9, i)),
+        );
+      }
+
+      expect(await kgPhone.repository.getWaterVolumeForDate(dMs), 1000);
+      final kgWater = payloadOf(kgPhone.transport.sent.last);
+      expect(kgPhone.transport.sent.last['type'], 'water_down');
+      expect(kgWater['glasses'], 4, reason: 'S-13222 1000 ~/ 250 = 4');
     });
   });
 

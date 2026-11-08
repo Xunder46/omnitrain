@@ -725,17 +725,19 @@ abstract final class WatchReferenceSync {
   }
 
   /// The day's water, as the `water_down` message the wrist reads (plan 94
-  /// D-6): the phone's own glass count for [volumeMl] and the wrist taps that
-  /// count already includes, so the wrist can add only the taps it has not
-  /// had counted. [localDay] is the phone's local calendar day the frame
-  /// describes; [generatedAt] stamps it and names it.
+  /// D-6; 132 D-13229): the day's volume as whole taps of [stepMl] — the
+  /// phone's current per-tap step — and the wrist taps that count already
+  /// includes, so the wrist can add only the taps it has not had counted.
+  /// [localDay] is the phone's local calendar day the frame describes;
+  /// [generatedAt] stamps it and names it.
   static Map<String, Object?> buildWaterDown({
     required int volumeMl,
     required List<String> appliedTapIds,
+    required int stepMl,
     required DateTime localDay,
     required DateTime generatedAt,
   }) {
-    final glasses = waterGlassesFor(volumeMl);
+    final glasses = waterGlassesFor(volumeMl, stepMl);
     return phoneEnvelope(
       type: 'water_down',
       messageId:
@@ -752,9 +754,12 @@ abstract final class WatchReferenceSync {
   }
 
   /// [buildWaterDown] for the phone's today at [generatedAt], read from
-  /// storage now — the day's volume and its applied-tap ledger (D-8).
+  /// storage now — the day's volume, its applied-tap ledger (D-8), and the
+  /// step the count is floored to (D-13229: the count is whole taps of the
+  /// phone's current step).
   static Future<Map<String, Object?>> readWaterDown({
     required WorkoutRepository repository,
+    required int stepMl,
     required DateTime generatedAt,
   }) async {
     final today = generatedAt.toLocal();
@@ -764,6 +769,7 @@ abstract final class WatchReferenceSync {
     return buildWaterDown(
       volumeMl: volumeMl,
       appliedTapIds: appliedTapIds,
+      stepMl: stepMl,
       localDay: today,
       generatedAt: generatedAt,
     );

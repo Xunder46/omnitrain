@@ -302,7 +302,8 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
                     else
                       const SizedBox.shrink(),
                     WaterTrackerControl(
-                      glasses: widget.nutritionState.waterTodayGlasses,
+                      volumeMl: widget.nutritionState.waterTodayMl,
+                      volumeUnit: widget.nutritionState.waterVolumeUnit,
                       onIncrement: () =>
                           widget.nutritionState.incrementWaterForDate(
                             OmniDateUtils.todayMidnightMs(),

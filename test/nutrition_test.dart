@@ -28,14 +28,17 @@ import 'package:omnitrain/features/nutrition/widgets/calorie_ring_card.dart';
 import 'package:omnitrain/features/nutrition/widgets/food_form.dart';
 import 'package:omnitrain/features/nutrition/widgets/log_food_row.dart';
 import 'package:omnitrain/features/nutrition/widgets/food_thumbnail.dart';
+import 'package:omnitrain/features/nutrition/widgets/water_tracker_control.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/widgets/buttons/omni_header_add_button.dart';
 import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
 import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
 
+import 'helpers/fake_preferences_service.dart';
 import 'helpers/test_content_column.dart';
 import 'helpers/test_image_storage.dart';
 import 'helpers/test_nutrition_primer_state.dart';
@@ -539,17 +542,28 @@ void main() {
       return nutrition;
     }
 
-    testWidgets('renders glass icon, "250 ml" annotation, minus + count + plus '
+    String totalText(WidgetTester tester) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(const Key('water_tracker_count')),
+            matching: find.byType(Text),
+          ),
+        )
+        .data!;
+    String stepText(WidgetTester tester) =>
+        tester.widget<Text>(find.byKey(const Key('water_tracker_label'))).data!;
+
+    testWidgets('renders glass icon, step caption, minus + total + plus '
         '(S-001 / S-008)', (tester) async {
       await pumpRingWithWater(tester, glasses: 3);
 
       // The control subtree is present.
       expect(find.byKey(const Key('water_tracker_control')), findsOneWidget);
-      // The "250 ml" annotation is on-screen — the user can see the
-      // per-glass amount without interacting.
-      expect(find.text('250 ml'), findsOneWidget);
-      // The count is derived from the stored ml (750 ml → 3).
-      expect(find.text('3'), findsOneWidget);
+      // The day's total is rendered in the volume unit and the step
+      // caption reads the per-tap amount. Both can read `250 ml`, so
+      // `find.text` is never used for these.
+      expect(totalText(tester), '750 ml');
+      expect(stepText(tester), '250 ml');
       // Plus / minus affordances are present.
       expect(find.byKey(const Key('water_tracker_plus')), findsOneWidget);
       expect(find.byKey(const Key('water_tracker_minus')), findsOneWidget);
@@ -559,8 +573,8 @@ void main() {
         '(S-001 / S-010)', (tester) async {
       await pumpRingWithWater(tester, glasses: 0);
 
-      // Count reads 0.
-      expect(find.text('0'), findsOneWidget);
+      // Total reads in the volume unit.
+      expect(totalText(tester), '0 ml');
       // The minus IconButton has `onPressed == null` (disabled).
       final minusButton = tester.widget<IconButton>(
         find.byKey(const Key('water_tracker_minus')),
@@ -581,16 +595,15 @@ void main() {
       'tapping plus increments the count by exactly 1 glass (S-002)',
       (tester) async {
         final nutrition = await pumpRingWithWater(tester, glasses: 2);
-        expect(find.text('2'), findsOneWidget);
+        expect(totalText(tester), '500 ml');
 
         await tester.tap(find.byKey(const Key('water_tracker_plus')));
         await tester.pumpAndSettle();
 
         // The state's cached ml grew by 250 ml.
         expect(nutrition.waterTodayMl, 750);
-        expect(nutrition.waterTodayGlasses, 3);
         // The display follows the cache.
-        expect(find.text('3'), findsOneWidget);
+        expect(totalText(tester), '750 ml');
       },
     );
 
@@ -603,8 +616,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(nutrition.waterTodayMl, 250);
-        expect(nutrition.waterTodayGlasses, 1);
-        expect(find.text('1'), findsOneWidget);
+        expect(totalText(tester), '250 ml');
       },
     );
 
@@ -627,6 +639,195 @@ void main() {
         find.descendant(of: waterFinder, matching: find.byType(EditableText)),
         findsNothing,
       );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // S-13207 / S-13208 / S-13210 / S-13214 — the water control speaks the
+  // volume unit: total, step caption, tooltips, Semantics.
+  // ═══════════════════════════════════════════════════════════════════════
+  group('WaterTrackerControl — total in the volume unit (S-13207, S-13210, S-13214)', () {
+    Future<void> pumpControl(
+      WidgetTester tester, {
+      required int ml,
+      required String unit,
+      VoidCallback? onPlus,
+      VoidCallback? onMinus,
+    }) => tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: WaterTrackerControl(
+              volumeMl: ml,
+              volumeUnit: unit,
+              onIncrement: onPlus ?? () {},
+              onDecrement: onMinus ?? () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    String totalOf(WidgetTester tester) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(const Key('water_tracker_count')),
+            matching: find.byType(Text),
+          ),
+        )
+        .data!;
+    String stepOf(WidgetTester tester) =>
+        tester.widget<Text>(find.byKey(const Key('water_tracker_label'))).data!;
+
+    const cases = <({int ml, String unit, String total, String step})>[
+      (ml: 750, unit: 'ml', total: '750 ml', step: '250 ml'),
+      (ml: 1500, unit: 'ml', total: '1.5 L', step: '250 ml'),
+      (ml: 711, unit: 'floz', total: '24 oz', step: '8 oz'),
+      (ml: 0, unit: 'floz', total: '0 oz', step: '8 oz'),
+    ];
+    for (final c in cases) {
+      testWidgets(
+        'S-13207 ${c.ml} ml in ${c.unit} reads ${c.total} with step ${c.step}',
+        (tester) async {
+          await pumpControl(tester, ml: c.ml, unit: c.unit);
+          expect(totalOf(tester), c.total);
+          expect(stepOf(tester), c.step);
+          final minus = tester.widget<IconButton>(
+            find.byKey(const Key('water_tracker_minus')),
+          );
+          expect(minus.onPressed == null, c.ml == 0);
+        },
+      );
+    }
+
+    testWidgets('S-13207 each tap calls its own callback exactly once', (
+      tester,
+    ) async {
+      var plus = 0;
+      var minus = 0;
+      await pumpControl(
+        tester,
+        ml: 750,
+        unit: 'ml',
+        onPlus: () => plus++,
+        onMinus: () => minus++,
+      );
+      await tester.tap(find.byKey(const Key('water_tracker_plus')));
+      await tester.pump();
+      expect((plus, minus), (1, 0));
+      await tester.tap(find.byKey(const Key('water_tracker_minus')));
+      await tester.pump();
+      expect((plus, minus), (1, 1));
+    });
+
+    testWidgets(
+      'S-13210 tooltips and the Semantics label speak the amounts (ml)',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        await pumpControl(tester, ml: 1500, unit: 'ml');
+        expect(
+          tester
+              .widget<IconButton>(find.byKey(const Key('water_tracker_plus')))
+              .tooltip,
+          'Add 250 milliliters',
+        );
+        expect(
+          tester
+              .widget<IconButton>(find.byKey(const Key('water_tracker_minus')))
+              .tooltip,
+          'Remove 250 milliliters',
+        );
+        // `find.bySemanticsLabel` and `find.semantics.byPredicate` miss
+        // the `container:` semantics node of this SDK even when the node
+        // exists with the exact label (raw `tester.getSemantics` reads
+        // it). Assert the required truth through the working API.
+        // The container node merges its own spoken label with the child
+        // text labels (joined with '\n'); assert the spoken phrase is
+        // one of the node's label segments.
+        expect(
+          tester
+              .getSemantics(find.byKey(const Key('water_tracker_control')))
+              .getSemanticsData()
+              .label
+              .split('\n'),
+          contains('Water today: 1.5 liters'),
+          reason: 'the container Semantics node carries the spoken total',
+        );
+        handle.dispose();
+      },
+    );
+
+    testWidgets(
+      'S-13210 tooltips and the Semantics label speak the amounts (fl oz)',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        await pumpControl(tester, ml: 711, unit: 'floz');
+        expect(
+          tester
+              .widget<IconButton>(find.byKey(const Key('water_tracker_plus')))
+              .tooltip,
+          'Add 8 fluid ounces',
+        );
+        expect(
+          tester
+              .widget<IconButton>(find.byKey(const Key('water_tracker_minus')))
+              .tooltip,
+          'Remove 8 fluid ounces',
+        );
+        expect(
+          tester
+              .getSemantics(find.byKey(const Key('water_tracker_control')))
+              .getSemanticsData()
+              .label
+              .split('\n'),
+          contains('Water today: 24 fluid ounces'),
+          reason: 'the container Semantics node carries the spoken total',
+        );
+        handle.dispose();
+      },
+    );
+
+    testWidgets('S-13214 an unknown volume unit reads as ml', (tester) async {
+      await pumpControl(tester, ml: 1500, unit: 'bogus');
+      expect(totalOf(tester), '1.5 L');
+      expect(stepOf(tester), '250 ml');
+      expect(
+        tester.widget<IconButton>(find.byKey(const Key('water_tracker_plus'))).tooltip,
+        'Add 250 milliliters',
+      );
+    });
+
+    testWidgets('S-13208 the card follows a weight-unit change with no other call', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      final settings = SettingsState(repo, fakePreferencesService());
+      await settings.initialize();
+      final nutrition = NutritionState(repo, settings: settings);
+      await nutrition.loadConsumedToday();
+      await nutrition.loadNutritionTarget();
+      final today = OmniDateUtils.todayMidnightMs();
+      await repo.saveWaterVolumeForDate(today, 1000);
+      await nutrition.loadWaterForDate(today);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CalorieRingCard(nutritionState: nutrition, onEditTap: () {}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(totalOf(tester), '1 L');
+      expect(stepOf(tester), '250 ml');
+
+      await settings.setPreferredWeightUnit('lbs');
+      await tester.pump();
+
+      expect(totalOf(tester), '34 oz');
+      expect(stepOf(tester), '8 oz');
+      expect(nutrition.waterTodayMl, 1000);
     });
   });
 

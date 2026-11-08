@@ -2389,8 +2389,9 @@ class ConsumedFood {
 //
 // One row per calendar day, keyed by `dateMs` (local midnight). The day's
 // water volume is stored as a real volume in milliliters so the historical
-// record stays unit-clean — the on-screen "glass count" is derived at the
-// display boundary (`volumeMl ~/ kWaterGlassMl`), not stored. Editing a day's
+// record stays unit-clean — the on-screen total is converted to the user's
+// volume unit at the display boundary (`UnitFormatter.formatWaterTotal`),
+// never stored. Editing a day's
 // water writes a new `updatedAtMs`; past days are never mutated automatically.
 //
 // Water has no goal — like macros and sodium, it is tracked and stored for the

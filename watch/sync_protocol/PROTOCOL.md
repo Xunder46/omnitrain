@@ -717,8 +717,8 @@ correction carries no distance
   alike — and a refused message applies and acknowledges nothing.
 - `water_down` is the phone's answer: `day` is the phone's local calendar date
   when it built the frame (zero-padded `YYYY-MM-DD`), `glasses` the day's volume
-  divided by one glass and rounded down — the number the phone's own Nutrition
-  screen shows — and `appliedTapIds` the day's recorded tap ids in the order the
+  divided by one tap's step and rounded down (250 ml with kg, 237 ml with lbs:
+  the phone's current per-tap step), and `appliedTapIds` the day's recorded tap ids in the order the
   phone applied them, each once. It is one frame, never batched, and the wrist
   keeps the newest by the `preferences_down` rule (latest `generatedAt` applies,
   a tie goes to the copy received later, an older copy that arrives late replaces

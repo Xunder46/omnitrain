@@ -1,13 +1,50 @@
 import 'package:flutter/foundation.dart';
 import '../core/constants/water_constants.dart';
 import '../core/utils/date_utils.dart';
+import '../core/utils/unit_formatter.dart';
 import '../data/models/models.dart';
 import '../data/repositories/workout_repository.dart';
+import 'settings/settings_state.dart';
 
 class NutritionState extends ChangeNotifier {
   final WorkoutRepository _repository;
+  final SettingsState? _settings;
 
-  NutritionState(this._repository);
+  /// [settings] is optional; a null `SettingsState` means exactly the
+  /// ml-unit behaviour with no listener attached.
+  NutritionState(this._repository, {SettingsState? settings})
+    : _settings = settings {
+    _rememberedWaterVolumeUnit = waterVolumeUnit;
+    _settings?.addListener(_onSettingsChanged);
+  }
+
+  /// The active volume unit, normalised to `'ml'` or `'floz'` — derived
+  /// from the bound settings' weight unit (`lbs` gives floz); a null
+  /// (unbound) settings source reads ml.
+  String get waterVolumeUnit =>
+      UnitFormatter.volumeUnitForWeightUnit(_settings?.preferredWeightUnit);
+
+  /// The per-tap step in milliliters under [waterVolumeUnit]
+  /// (250 ml, or 237 ml with the fl oz unit).
+  int get waterStepMl => waterStepMlFor(waterVolumeUnit);
+
+  /// The normalised unit the listener last saw, so it notifies only when
+  /// the unit actually changed.
+  String? _rememberedWaterVolumeUnit;
+
+  @override
+  void dispose() {
+    _settings?.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
+
+  void _onSettingsChanged() {
+    final normalized = waterVolumeUnit;
+    if (normalized != _rememberedWaterVolumeUnit) {
+      _rememberedWaterVolumeUnit = normalized;
+      notifyListeners();
+    }
+  }
 
   NutritionTarget? _nutritionTarget;
   NutritionTarget? get nutritionTarget => _nutritionTarget;
@@ -50,9 +87,10 @@ class NutritionState extends ChangeNotifier {
   // notifies listeners on every successful load / write so the count
   // rebuilds when the day's volume changes.
   //
-  // The on-screen glass count is derived (`waterGlassesFor(_waterTodayMl)`)
-  // and never stored — the canonical unit is milliliters, so historical
-  // totals stay unit-clean if the per-glass amount ever changes. Water
+  // The on-screen total is formatted at the display boundary from the
+  // stored ml and the volume unit, never stored — the canonical unit is
+  // milliliters, so historical totals stay unit-clean if the per-glass
+  // amount ever changes. Water
   // has no goal (no progress bar, no target); it is tracked and stored
   // for the historical record only.
 
@@ -63,12 +101,6 @@ class NutritionState extends ChangeNotifier {
   /// Stored water volume for the active day in milliliters.
   /// Always `>= 0` — the state layer floors decrement at 0 ml.
   int get waterTodayMl => _waterTodayMl;
-
-  /// Whole glass count derived from the stored ml. Integer division
-  /// (so 250 ml → 1 glass, 750 ml → 3 glasses, 0 ml → 0 glasses).
-  /// The icon + "250 ml" annotation carries the per-glass amount
-  /// so the user can decode the unit at a glance.
-  int get waterTodayGlasses => waterGlassesFor(_waterTodayMl);
 
   /// The day [_waterTodayMl] belongs to: set by [loadWaterForDate], null
   /// before the first load. A wrist tap updates the cache only for this day.
@@ -101,39 +133,44 @@ class NutritionState extends ChangeNotifier {
   Future<void> loadWaterForToday() =>
       loadWaterForDate(OmniDateUtils.todayMidnightMs());
 
-  /// Add one glass (250 ml) to [dateMs] and persist immediately. The
-  /// tap-only control never accepts a typed amount; the per-glass
-  /// amount is fixed by [kWaterGlassMl]. Always succeeds — the
-  /// repository clamps at 0 ml as a final defense and `kWaterGlassMl`
-  /// is always positive, so the resulting volume is always non-negative.
+  /// Add one step (250 ml, or 237 ml with the fl oz unit) to [dateMs]
+  /// and persist immediately. The tap-only control never accepts a typed
+  /// amount; the step is fixed by [waterStepMl] and read once at closure
+  /// start. Always succeeds — the repository clamps at 0 ml as a final
+  /// defense and the step is always positive, so the resulting volume is
+  /// always non-negative.
   Future<void> incrementWaterForDate(int dateMs) => _serialiseWater(() async {
+    final step = waterStepMl;
     final current = await _repository.getWaterVolumeForDate(dateMs);
-    final next = current + kWaterGlassMl;
+    final next = current + step;
     await _repository.saveWaterVolumeForDate(dateMs, next);
     _waterTodayMl = next;
     notifyListeners();
   });
 
-  /// Remove one glass (250 ml) from [dateMs] and persist immediately.
-  /// Floors at `0` ml — a minus at 0 ml is a no-op (no negative
-  /// leak, no spurious row, no notification).
+  /// Remove one step (250 ml, or 237 ml with the fl oz unit) from
+  /// [dateMs] and persist immediately. Floors at `0` ml — a minus at
+  /// 0 ml is a no-op (no negative leak, no spurious row, no
+  /// notification).
   Future<void> decrementWaterForDate(int dateMs) => _serialiseWater(() async {
+    final step = waterStepMl;
     final current = await _repository.getWaterVolumeForDate(dateMs);
     if (current <= 0) {
       // Already at zero — no write, no notification. This is the
       // tap-only no-op the disabled minus button also enforces.
       return;
     }
-    final next = current - kWaterGlassMl < 0 ? 0 : current - kWaterGlassMl;
+    final next = current - step < 0 ? 0 : current - step;
     await _repository.saveWaterVolumeForDate(dateMs, next);
     _waterTodayMl = next;
     notifyListeners();
   });
 
-  /// Applies one glass the wrist tapped on [dateMs] (plan 94 D-12), at most
-  /// once per [tapId]: [add] is a glass more, otherwise a glass less floored
-  /// at 0 ml — the same math as [incrementWaterForDate] /
-  /// [decrementWaterForDate], written with the tap id in one storage write.
+  /// Applies one step (250 ml, or 237 ml with the fl oz unit) the wrist
+  /// tapped on [dateMs] (plan 94 D-12), at most once per [tapId]: [add]
+  /// is one step more, otherwise one step less floored at 0 ml — the
+  /// same math as [incrementWaterForDate] / [decrementWaterForDate],
+  /// written with the tap id in one storage write.
   ///
   /// Returns whether storage changed (false for a tap already applied or a
   /// full day). The cache and its listeners hear of it only when [dateMs] is
@@ -144,10 +181,11 @@ class NutritionState extends ChangeNotifier {
     required String tapId,
     required bool add,
   }) => _serialiseWater(() async {
+    final step = waterStepMl;
     final applied = await _repository.applyWaterTap(
       dateMs: dateMs,
       tapId: tapId,
-      deltaMl: add ? kWaterGlassMl : -kWaterGlassMl,
+      deltaMl: add ? step : -step,
     );
     if (applied && _waterDayMs == dateMs) {
       _waterTodayMl = await _repository.getWaterVolumeForDate(dateMs);

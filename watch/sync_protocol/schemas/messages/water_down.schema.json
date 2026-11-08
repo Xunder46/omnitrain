@@ -25,7 +25,7 @@
             "glasses": {
               "type": "integer",
               "minimum": 0,
-              "description": "Whole glasses: the day's volume divided by one glass, rounded down — the number the phone's own Nutrition screen shows."
+              "description": "Whole taps: the day's volume divided by one tap's step, rounded down — 250 ml per tap with kg, 237 ml per tap with lbs."
             },
             "appliedTapIds": {
               "type": "array",

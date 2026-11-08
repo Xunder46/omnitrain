@@ -807,7 +807,7 @@
       "scenario": "S-94a-2",
       "expectedCode": "invalid_type",
       "expectedReasonContains": "expected integer, found 2.5",
-      "note": "`glasses` is the phone's whole-glass count (volume divided by the glass, rounded down), so a fraction is refused rather than rounded."
+      "note": "`glasses` is the phone's whole-glass count (volume divided by one tap's step, rounded down), so a fraction is refused rather than rounded."
     },
     {
       "path": "invalid/water_down_bad_day.json",
