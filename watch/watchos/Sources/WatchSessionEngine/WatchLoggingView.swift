@@ -50,8 +50,11 @@ public struct WristHaptics: WatchHaptics {
     /// even with the watch muted), but one click is too faint to feel
     /// mid-workout, and two were still easy to miss. A burst of clicks
     /// (`restPingTaps`, spaced `restPingSpacing` apart) reads as one distinct
-    /// buzz on the wrist and stays silent.
-    static let restPingTaps = 7
+    /// buzz on the wrist and stays silent. No haptic API sets a tap's
+    /// strength, so more clicks is the only lever. A closing `.retry` tap was
+    /// tried and removed: it carries a system sound and its vibration came and
+    /// went from one ping to the next.
+    static let restPingTaps = 10
     static let restPingSpacing = 0.1
 
     public func playRestPing() {

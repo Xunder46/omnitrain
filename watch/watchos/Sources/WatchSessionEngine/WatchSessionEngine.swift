@@ -49,6 +49,13 @@ public final class WatchSessionEngine: ObservableObject {
     private let newId: () -> String
     private let newSessionId: () -> String
 
+    /// Countdowns whose end has already been announced to the wrist, by
+    /// `WatchTimerHaptics.countdownKey`. Kept here, not in a screen's model: the
+    /// logging screen is rebuilt whenever the rest screen comes and goes, and a
+    /// rebuilt model forgot what it had announced, so an expired period tapped
+    /// again at Log and again at Next.
+    var announcedCountdownKeys: Set<String> = []
+
     /// Record-id prefixes for the rows a message from the phone writes. The id
     /// is derived from the `changeId` (or `messageId`) that caused the row,
     /// which is what makes re-delivery a store no-op *and* what lets `restore`

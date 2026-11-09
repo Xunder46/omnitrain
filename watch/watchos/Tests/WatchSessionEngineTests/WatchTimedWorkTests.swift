@@ -231,6 +231,42 @@ final class WatchTimedWorkTests: XCTestCase {
         XCTAssertEqual(logged.event["extraLoadKg"] as? Double, -10)
     }
 
+    // MARK: - an expired period is announced once, however many screens poll it
+
+    /// The logging screen's model is rebuilt whenever the screen is (the rest
+    /// screen replaces it and Next brings it back). A period that expired and
+    /// was then logged still reads "reached zero", so a fresh model polling it
+    /// played the period-end tap again: once at Log, once after Next.
+    @MainActor
+    func testAnExpiredPeriodIsAnnouncedOnceAcrossRebuiltModels() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [slot("sx-bjj", capabilities: ["time", "rounds"])]
+        )
+        let surface = surface(harness, engine: engine)
+        await surface.startWork()
+
+        harness.clock.advance(181)
+        let first = RecordingHaptics()
+        let firstModel = WatchLoggingModel(state: surface, haptics: first)
+        firstModel.poll()
+        XCTAssertEqual(first.milestones.map(\.kind), [WatchTimerKind.round], "the period's end taps once")
+
+        try await surface.log()
+
+        let afterLog = RecordingHaptics()
+        WatchLoggingModel(state: surface, haptics: afterLog).poll()
+        XCTAssertTrue(afterLog.milestones.isEmpty, "a rebuilt screen does not repeat the period-end tap")
+
+        harness.clock.advance(30)
+        let afterNext = RecordingHaptics()
+        WatchLoggingModel(state: surface, haptics: afterNext).poll()
+        XCTAssertTrue(afterNext.milestones.isEmpty, "nor does the screen Next brings back")
+    }
+
     // MARK: - S-1303 a period is a countdown and Log is not +round
 
     @MainActor

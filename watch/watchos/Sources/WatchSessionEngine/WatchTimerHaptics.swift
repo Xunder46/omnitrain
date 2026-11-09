@@ -40,10 +40,17 @@ public enum WatchHapticCue: Equatable {
 public final class WatchTimerHaptics {
     private let engine: WatchSessionEngine
 
-    /// Timer rows already announced. Keyed on the record rather than the kind,
-    /// so the next round's countdown — a new row — is owed its own haptic.
-    private var announced: Set<String> = []
-
+    /// Countdowns already announced live on the engine
+    /// (`announcedCountdownKeys`), so a rebuilt screen's fresh
+    /// `WatchTimerHaptics` does not repeat one already given. The next round's
+    /// countdown starts at a new instant, so it is owed its own haptic.
+    ///
+    /// Keyed on the countdown, not on the stored row: stopping or pausing it
+    /// appends a row with a new `recordId` but the same start, and a period
+    /// that expired and was then logged is exactly that row.
+    static func countdownKey(_ timer: WatchTimerRecord) -> String {
+        "\(timer.sessionId)|\(timer.kind)|\(timer.startedAt.timeIntervalSince1970)"
+    }
     public init(_ engine: WatchSessionEngine) {
         self.engine = engine
     }
@@ -62,7 +69,7 @@ public final class WatchTimerHaptics {
             guard kind != WatchTimerKind.rest else { continue }
             guard let timer = engine.timerFor(kind) else { continue }
             guard remainingMs(timer, now: now) == 0 else { continue }
-            guard announced.insert(timer.recordId).inserted else { continue }
+            guard engine.announcedCountdownKeys.insert(Self.countdownKey(timer)).inserted else { continue }
 
             milestones.append(
                 WatchTimerMilestone(
