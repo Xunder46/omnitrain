@@ -116,6 +116,16 @@ class FoodForm extends StatefulWidget {
   /// with the one the stored food started with.
   final ValueChanged<String?>? onImageChanged;
 
+  /// Notified whenever the user changes how the food is measured: the
+  /// "Nutrition facts are per" toggle, a serving-word chip, or typing in
+  /// the serving-name or package-size box.
+  ///
+  /// The toggle and the chips are not text boxes, and the two boxes only
+  /// exist after the toggle moves, so a host's unsaved-work probe (which
+  /// reads the boxes the form rendered when it opened) cannot see any of
+  /// them; this is how it learns about them.
+  final VoidCallback? onServingChanged;
+
   const FoodForm({
     super.key,
     required this.initial,
@@ -126,6 +136,7 @@ class FoodForm extends StatefulWidget {
     this.skipPopOnSave = false,
     this.controller,
     this.onImageChanged,
+    this.onServingChanged,
   });
 
   @override
@@ -599,6 +610,7 @@ class _FoodFormState extends State<FoodForm> {
 
   void _onBasisChanged(Set<_ServingBasis> selection) {
     if (selection.isEmpty) return;
+    if (selection.first != _basis) widget.onServingChanged?.call();
     setState(() {
       switch (selection.first) {
         case _ServingBasis.per100g:
@@ -615,6 +627,7 @@ class _FoodFormState extends State<FoodForm> {
   }
 
   void _fillServingLabel(String word) {
+    widget.onServingChanged?.call();
     setState(() {
       _servingLabelController.value = TextEditingValue(
         text: word,
@@ -764,7 +777,10 @@ class _FoodFormState extends State<FoodForm> {
                           border: const OutlineInputBorder(),
                         ),
                         validator: _validatePositiveDouble,
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (_) {
+                          widget.onServingChanged?.call();
+                          setState(() {});
+                        },
                       ),
                   ],
                 ],
@@ -784,7 +800,10 @@ class _FoodFormState extends State<FoodForm> {
                       }
                       return null;
                     },
-                    onChanged: (_) => setState(() {}),
+                    onChanged: (_) {
+                      widget.onServingChanged?.call();
+                      setState(() {});
+                    },
                   ),
                   const SizedBox(height: 8),
                   Wrap(

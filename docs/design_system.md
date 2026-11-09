@@ -406,8 +406,8 @@ bottom of a screen:
   the scroll position).
 
 **Secondary bottom action (MANDATORY when a screen needs one).** An action
-that belongs with the primary one but must not compete with it (Delete food,
-Reset to original on the food editor) is the `secondaryLabel` /
+that belongs with the primary one but must not compete with it (Delete food
+on the food editor) is the `secondaryLabel` /
 `onSecondaryPressed` pair of `OmniBottomCTA`, never a hand-made button in the
 body or above the footer. It renders an outlined button directly above the
 primary one with the same height (`OmniTheme.buttonPrimaryHeight`), width,

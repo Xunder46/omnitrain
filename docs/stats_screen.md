@@ -446,7 +446,7 @@ file (`S-1101`, `S-1103`).
 ### Weight block
 
 The body weight and its four-week change, only with a completed session and
-the `Weight on Stats` switch on; the rule is in
+when the weigh-in rule is met, with no setting to hide it; the rule is in
 [Profile & Measurements](profile_and_measurements.md#the-weight-line-on-stats).
 Verified by `test/weight_trend_screen_test.dart` (`S-17705`).
 

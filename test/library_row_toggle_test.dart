@@ -3,6 +3,10 @@
 // indicator replaces the trash button, the pencil opens the editor
 // with the library copy, and the in-list row carries the primary
 // outline.
+//
+// Plan 133 (133b2b): the pencil is on every Library row and a
+// bundled food's save asks and then creates a food of the user's own
+// (D-13311..D-13320); Reset to original is gone.
 
 import 'dart:io';
 
@@ -38,6 +42,23 @@ Future<MockWorkoutRepository> _freshRepo() async {
 final Finder _verticalScrollable = find.byWidgetPredicate(
   (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
 );
+
+/// Sets a stored library copy's values directly (the copy the user
+/// edited before plan 133). The old `FoodLibraryState.editLibraryFood`
+/// write path is deleted.
+Future<void> seedEditedCopy(
+  MockWorkoutRepository repo,
+  FoodLibraryState foodLib,
+  String catalogId, {
+  required String name,
+  double? protein,
+}) async {
+  final copy = foodLib.libraryFoodFor(catalogId)!;
+  await repo.updateFood(
+    copy.copyWith(name: name, protein: protein ?? copy.protein),
+  );
+  await foodLib.loadFoods();
+}
 
 void main() {
   group('Library row toggle (plan 77a S-12710..S-12717)', () {
@@ -241,8 +262,8 @@ void main() {
     );
 
     testWidgets(
-      'S-12713: pencil on an in-list bundled food edits the copy; reset '
-      'restores the shipped values',
+      'S-12713: the pencil on an in-list bundled food opens its copy; '
+      'Save asks and makes a food of your own',
       (tester) async {
         final repo = await _freshRepo();
         final states = await pumpCatalogTab(tester, repo: repo);
@@ -251,6 +272,14 @@ void main() {
         await foodLib.loadCatalogFoods();
         final shipped = (await repo.getCatalogFoodById('chicken_breast'))!;
         await foodLib.addCatalogFoodToLibrary('chicken_breast');
+        // An already-edited library copy is an ordinary row (plan 133
+        // D-13317); the seed replaces the old editLibraryFood write.
+        await seedEditedCopy(
+          repo,
+          foodLib,
+          'chicken_breast',
+          name: 'My chicken 77',
+        );
         await tester.pumpAndSettle();
 
         // The list is lazily built; scroll the pencil into view.
@@ -261,7 +290,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // (1) The pencil opens the editor; no Reset before an edit.
+        // (1) The pencil opens the editor; no Reset anywhere.
         await tester.tap(
           find.byKey(const Key('edit_catalog_food_chicken_breast')),
         );
@@ -273,70 +302,28 @@ void main() {
         final edit = tester.widget<EditFoodScreen>(
           find.byType(EditFoodScreen),
         );
-        expect(edit.food.isCatalog, isFalse);
+        expect(edit.food.name, 'My chicken 77');
         expect(edit.food.id, foodLib.libraryFoodFor('chicken_breast')!.id);
-        await tester.pageBack();
-        await tester.pumpAndSettle();
 
-        // (2) Edit the copy through state: only the copy changes.
-        final copy = foodLib.libraryFoodFor('chicken_breast')!;
-        final draft = FoodDraft(
-          name: 'My chicken 77',
-          groupId: copy.groupId,
-          unitType: copy.unitType,
-          referenceAmount: copy.referenceAmount,
-          referenceLabel: copy.referenceLabel,
-          protein: 99,
-          carbs: copy.carbs,
-          fiber: copy.fiber,
-          fat: copy.fat,
-          sodium: copy.sodium,
-          notes: copy.notes,
-          imagePath: copy.imagePath,
+        // (2) Save on the copy asks, then makes a food of the user's own.
+        await tester.enterText(
+          find.byKey(const Key('food_form_protein')),
+          '44.5',
         );
-        await foodLib.editLibraryFood(copy, draft);
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('food_form_save')));
         await tester.pumpAndSettle();
-        expect(find.text('My chicken 77'), findsOneWidget);
+        expect(find.text('Save as your own food?'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('food-copy-confirm')));
+        await tester.pumpAndSettle();
+        expect(find.text('Edit Food'), findsNothing);
+
+        // The shipped catalog row is unchanged.
         final catalogAfterEdit = await repo.getCatalogFoodById(
           'chicken_breast',
         );
         expect(catalogAfterEdit!.name, shipped.name);
-
-        // (3) The Reset button appears after the edit and restores the
-        // shipped values.
-        await tester.scrollUntilVisible(
-          find.byKey(const Key('edit_catalog_food_chicken_breast')),
-          200,
-          scrollable: _verticalScrollable,
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const Key('edit_catalog_food_chicken_breast')),
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('Edit Food'), findsOneWidget);
-        expect(find.byKey(const Key('food_reset_original')), findsOneWidget);
-
-        await tester.tap(find.byKey(const Key('food_reset_original')));
-        await tester.pumpAndSettle();
-        expect(find.text('Reset to original?'), findsOneWidget);
-
-        // Cancel keeps the copy as edited.
-        await tester.tap(find.byKey(const Key('food-reset-cancel')));
-        await tester.pumpAndSettle();
-        expect(find.text('Edit Food'), findsOneWidget);
-        expect(foodLib.libraryFoodFor('chicken_breast')!.name, 'My chicken 77');
-
-        // Confirm restores the shipped values.
-        await tester.tap(find.byKey(const Key('food_reset_original')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('food-reset-confirm')));
-        await tester.pumpAndSettle();
-        expect(find.text('Edit Food'), findsNothing);
-        final restored = foodLib.libraryFoodFor('chicken_breast')!;
-        expect(restored.name, shipped.name);
-        expect(restored.protein, shipped.protein);
-        expect(find.text(shipped.name), findsOneWidget);
       },
     );
 
@@ -384,22 +371,13 @@ void main() {
         await tester.pumpAndSettle();
 
         // Edit the copy: the in-list row shows the copy's values.
-        final copy = states.foodLib.libraryFoodFor(catalogId)!;
-        final draft = FoodDraft(
+        await seedEditedCopy(
+          repo,
+          states.foodLib,
+          catalogId,
           name: 'Edited chicken',
-          groupId: copy.groupId,
-          unitType: copy.unitType,
-          referenceAmount: copy.referenceAmount,
-          referenceLabel: copy.referenceLabel,
           protein: 7,
-          carbs: copy.carbs,
-          fiber: copy.fiber,
-          fat: copy.fat,
-          sodium: copy.sodium,
-          notes: copy.notes,
-          imagePath: copy.imagePath,
         );
-        await states.foodLib.editLibraryFood(copy, draft);
         await tester.pumpAndSettle();
 
         // 7P + 0C + 3F = 28 + 27.
@@ -440,10 +418,11 @@ void main() {
     );
 
     testWidgets(
-      'S-12719: the Edit screen routes a bundled copy\'s save through '
-      'editLibraryFood',
+      'S-12719: the Edit screen routes a default food\'s save through '
+      'the copy flow',
       (tester) async {
         final repo = await _freshRepo();
+        final nutritionState = NutritionState(repo);
         final foodLib = FoodLibraryState(repo);
         await tester.binding.setSurfaceSize(const Size(800, 1800));
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -455,36 +434,42 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
-            home: EditFoodScreen(food: copy, foodLibraryState: foodLib),
+            home: EditFoodScreen(
+              food: copy,
+              foodLibraryState: foodLib,
+              nutritionState: nutritionState,
+            ),
           ),
         );
         await tester.pumpAndSettle();
 
-        // Drive the form's own save callback directly: deterministic,
-        // no typing, no blur.
-        final form = tester.widget<FoodForm>(find.byType(FoodForm));
-        final draft = FoodDraft(
-          name: 'Screen edit 77',
-          groupId: copy.groupId,
-          unitType: copy.unitType,
-          referenceAmount: copy.referenceAmount,
-          referenceLabel: copy.referenceLabel,
-          protein: 88,
-          carbs: copy.carbs,
-          fiber: copy.fiber,
-          fat: copy.fat,
-          sodium: copy.sodium,
-          notes: copy.notes,
-          imagePath: copy.imagePath,
+        // Save on the default food asks, then creates a food of the
+        // user's own.
+        await tester.enterText(
+          find.byKey(const Key('food_form_name')),
+          'Screen edit 77',
         );
-        final ok = await form.onSave(draft);
-        expect(ok, isTrue);
+        await tester.enterText(
+          find.byKey(const Key('food_form_protein')),
+          '88',
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('food_form_save')));
+        await tester.pumpAndSettle();
+        expect(find.text('Save as your own food?'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('food-copy-confirm')));
+        await tester.pumpAndSettle();
 
-        // The library copy has the draft's values...
-        final edited = foodLib.libraryFoodFor('chicken_breast')!;
-        expect(edited.name, 'Screen edit 77');
-        expect(edited.protein, 88);
-        // ...and the shipped catalog row is untouched.
+        expect(find.byType(EditFoodScreen), findsNothing);
+        // The old copy is gone from Foods I Eat and a library row with
+        // the new name exists.
+        expect(foodLib.libraryFoodFor('chicken_breast'), isNull);
+        expect(
+          foodLib.foods.where((f) => f.name == 'Screen edit 77'),
+          isNotEmpty,
+        );
+
+        // The shipped catalog row is untouched.
         final catalogAfterEdit = await repo.getCatalogFoodById(
           'chicken_breast',
         );
@@ -604,6 +589,23 @@ void main() {
       slice,
       isNot(contains('colorScheme.error')),
       reason: 'S-12716: the remove affordance is not red',
+    );
+    // Plan 133 (S-13318): the pencil is on every Library row and a
+    // bundled default routes through the copy flow.
+    expect(
+      slice,
+      contains("'edit_catalog_food_"),
+      reason: 'S-13318: the pencil renders on every catalog row',
+    );
+    expect(
+      slice,
+      isNot(contains('if (inList || isYours)')),
+      reason: 'S-13318: the pencil is no longer gated on in-list/yours',
+    );
+    expect(
+      slice,
+      isNot(contains('if (bundled && copy == null) return;')),
+      reason: 'S-13318: a not-in-list bundled row is no longer skipped',
     );
   });
 }

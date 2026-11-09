@@ -608,7 +608,7 @@ void main() {
       (tester) async {
         final egg = await _seedEditFood(
           _catalogFood(
-            id: 'egg',
+            id: 'egg_of_mine',
             name: 'Egg',
             unitType: FoodUnitType.count,
             referenceAmount: 1.0,
@@ -625,14 +625,14 @@ void main() {
         await tester.pumpAndSettle();
         await _tapEditSave(tester);
         _expectStoredTriple(
-          await egg.repo.getCatalogFoodById('egg'),
+          await egg.repo.getCatalogFoodById('egg_of_mine'),
           FoodUnitType.grams,
           100,
           'g',
         );
 
         final rice = await _seedEditFood(
-          _catalogFood(id: 'rice', name: 'Rice'),
+          _catalogFood(id: 'rice_of_mine', name: 'Rice'),
         );
         await _openEditHost(tester, food: rice.loaded, state: rice.state);
         await tester.tap(find.text('1 serving'));
@@ -646,7 +646,7 @@ void main() {
 
         await _tapEditSave(tester);
         _expectStoredTriple(
-          await rice.repo.getCatalogFoodById('rice'),
+          await rice.repo.getCatalogFoodById('rice_of_mine'),
           FoodUnitType.count,
           1,
           'cup',

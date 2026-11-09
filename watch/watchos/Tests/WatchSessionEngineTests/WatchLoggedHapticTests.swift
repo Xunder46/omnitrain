@@ -167,7 +167,7 @@ final class WatchLoggedHapticTests: XCTestCase {
             .joined(separator: "\n")
     }
 
-    func testTheRestPingIsTwoSilentClicksNotAToneCarryingTap() throws {
+    func testTheRestPingIsASilentClickBurstNotAToneCarryingTap() throws {
         let logging = try engineSource("WatchLoggingView.swift")
         let ping = try XCTUnwrap(logging.range(of: "playRestPing()"), "WristHaptics maps playRestPing")
         let end = try XCTUnwrap(
@@ -175,7 +175,14 @@ final class WatchLoggedHapticTests: XCTestCase {
             "playLogged follows playRestPing"
         )
         let body = String(logging[ping.upperBound..<end.lowerBound])
-        XCTAssertEqual(body.components(separatedBy: "play(.click)").count - 1, 2, "two clicks")
+        XCTAssertEqual(body.components(separatedBy: "play(.click)").count - 1, 1, "the burst loop plays clicks")
+        XCTAssertTrue(body.contains("0..<Self.restPingTaps"), "the loop runs the burst count")
+        let declaration = try XCTUnwrap(logging.range(of: "restPingTaps = "), "the burst count is declared")
+        let burst = try XCTUnwrap(
+            Int(logging[declaration.upperBound...].prefix { $0.isNumber }),
+            "the burst count is a literal"
+        )
+        XCTAssertGreaterThanOrEqual(burst, 4, "two clicks were too easy to miss; a burst needs at least four")
         for toned in [".notification", ".success", ".directionUp", ".directionDown", ".start", ".stop", ".retry", ".failure"] {
             XCTAssertFalse(body.contains("play(\(toned))"), "\(toned) can carry a system tone; the ping must stay silent")
         }

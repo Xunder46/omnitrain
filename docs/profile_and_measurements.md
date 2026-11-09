@@ -104,7 +104,7 @@ the same file, groups `S-17703 WeightTrendService — Mock` and
 
 On the screen the block is drawn by `StatsScreen` directly after the Fuel row
 (keys `weight_trend`, `weight_trend_line`), only with a completed session in
-the history and when the `Weight on Stats` setting is on; with no completed
+the history and when the weigh-in rule is met (there is no setting to hide it); with no completed
 session the empty state is alone. Verified by
 `test/weight_trend_screen_test.dart`, groups `S-17705 the Weight block — Mock`
 and `S-17705 the Weight block — Hive`.

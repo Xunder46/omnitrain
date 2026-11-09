@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import '../core/constants/catalog_version.dart';
 import '../core/models/food_draft.dart';
+import '../core/services/food_photo_service.dart';
 import '../core/services/image_storage_service.dart';
 import '../data/models/models.dart';
 import '../data/repositories/workout_repository.dart';
@@ -775,19 +777,10 @@ class FoodLibraryState extends ChangeNotifier {
     return a.name.toLowerCase() == b.name.toLowerCase();
   }
 
-  /// True when [draft] writes a different serving triple
-  /// (`unitType`, `referenceAmount`, `referenceLabel`) than [food] holds
-  /// (92b D-92b.7): a changed serving makes the remembered log amount
-  /// meaningless, so the caller clears it.
-  static bool _servingChanged(Food food, FoodDraft draft) {
-    return food.unitType != draft.unitType ||
-        food.referenceAmount != draft.referenceAmount ||
-        food.referenceLabel != draft.referenceLabel;
-  }
-
   /// True when [before] and [after] differ in any of the three stored
-  /// serving fields. Same rule as [_servingChanged], for the
-  /// catalog-propagation and reset paths that compare two foods.
+  /// serving fields. Same rule as the draft-vs-food serving check,
+  /// for the catalog-propagation and reset paths that compare two
+  /// foods.
   static bool _servingTripleChanged(Food before, Food after) {
     return before.unitType != after.unitType ||
         before.referenceAmount != after.referenceAmount ||
@@ -1085,160 +1078,6 @@ class FoodLibraryState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Edit the user's own library copy of a catalog food (plan 77a D-1).
-  ///
-  /// Applies [draft] to the library row only: the catalog row, the
-  /// seed-touched marker and the linked-foods propagation are all
-  /// left untouched, so a bundled food's shipped values survive.
-  /// `id`, `catalogId`, `createdAtMs` and — while [draft] keeps the
-  /// same serving triple — `lastAmountConsumed` are kept; only the
-  /// draft's fields and `updatedAtMs` change. A draft that changes
-  /// the serving triple clears `lastAmountConsumed` (92b D-92b.7;
-  /// verified by `test/food_library_copy_edit_test.dart`, group
-  /// 'FoodLibraryState edit own copy (Mock)').
-  ///
-  /// Image handling mirrors [updateCatalogFood]: when the draft
-  /// changes the image and the previous path is a managed file, it
-  /// is deleted — except when the catalog row still holds the same
-  /// path (a shipped/shared file), which is never deleted.
-  ///
-  /// Throws [StateError] if [libraryCopy] is a catalog row and
-  /// [Exception] if the row is not in the library cache.
-  Future<void> editLibraryFood(Food libraryCopy, FoodDraft draft) async {
-    if (libraryCopy.isCatalog) {
-      throw StateError(
-        'editLibraryFood: libraryCopy.isCatalog must be false (got '
-        '${libraryCopy.isCatalog} for id ${libraryCopy.id})',
-      );
-    }
-    if (!_foods.containsKey(libraryCopy.id)) {
-      throw Exception('Library food not found: ${libraryCopy.id}');
-    }
-    // The edit screen holds the snapshot it was opened with, so the base row
-    // (and the image path to clean up) is the cached row, not the argument.
-    final current = _foods[libraryCopy.id]!;
-    final previousPath = current.imagePath;
-    if (previousPath != draft.imagePath) {
-      final catalogPath = _catalogFoods[libraryCopy.catalogId]?.imagePath;
-      final svc = _imageStorage;
-      if (svc != null && previousPath != null && previousPath != catalogPath) {
-        await svc.deleteIfManaged(previousPath);
-      }
-    }
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final updated = current.copyWith(
-      name: draft.name,
-      groupId: draft.groupId,
-      unitType: draft.unitType,
-      referenceAmount: draft.referenceAmount,
-      referenceLabel: draft.referenceLabel,
-      protein: draft.protein,
-      carbs: draft.carbs,
-      fiber: draft.fiber,
-      fat: draft.fat,
-      sodium: draft.sodium,
-      notes: draft.notes,
-      imagePath: draft.imagePath,
-      lastAmountConsumed: _servingChanged(current, draft)
-          ? null
-          : current.lastAmountConsumed,
-      updatedAtMs: now,
-    );
-    await _repository.updateFood(updated);
-    _foods[updated.id] = updated;
-    notifyListeners();
-  }
-
-  /// True when [libraryCopy] is a copy of a bundled catalog food and
-  /// at least one resettable field differs from that catalog row
-  /// (plan 77a D-2). Uses only the durable `catalogId` link — no
-  /// legacy value-match fallback — so a legacy library-only row
-  /// (no `catalogId`) and a copy of a user-created catalog food are
-  /// both never resettable.
-  bool canResetLibraryFood(Food libraryCopy) {
-    final catalogId = libraryCopy.catalogId;
-    if (catalogId == null) return false;
-    final catalog = _catalogFoods[catalogId];
-    if (catalog == null) return false;
-    if (!isBundledCatalogFood(catalogId)) return false;
-    return libraryCopy.name != catalog.name ||
-        libraryCopy.groupId != catalog.groupId ||
-        libraryCopy.unitType != catalog.unitType ||
-        libraryCopy.referenceAmount != catalog.referenceAmount ||
-        libraryCopy.referenceLabel != catalog.referenceLabel ||
-        libraryCopy.protein != catalog.protein ||
-        libraryCopy.carbs != catalog.carbs ||
-        libraryCopy.fiber != catalog.fiber ||
-        libraryCopy.fat != catalog.fat ||
-        libraryCopy.sodium != catalog.sodium ||
-        libraryCopy.notes != catalog.notes ||
-        libraryCopy.imagePath != catalog.imagePath;
-  }
-
-  /// Restore a library copy's editable fields to the shipped values
-  /// of its bundled catalog row (plan 77a D-2). Keeps `id`,
-  /// `catalogId`, `createdAtMs` (and `isArchived`), and
-  /// `lastAmountConsumed` only while the catalog row's serving triple
-  /// equals the copy's; a reset that changes the serving clears it
-  /// (92b D-92b.7). Sets `updatedAtMs` to now.
-  ///
-  /// Image: the same rule as [editLibraryFood] — the previous path
-  /// is deleted only when it is a managed file the catalog row does
-  /// not hold.
-  ///
-  /// Throws [Exception] if [libraryId] is not in the library cache
-  /// and [StateError] when [canResetLibraryFood] is false for the
-  /// row.
-  Future<void> resetLibraryFood(String libraryId) async {
-    final copy = _foods[libraryId];
-    if (copy == null) {
-      throw Exception('Library food not found: $libraryId');
-    }
-    if (!canResetLibraryFood(copy)) {
-      throw StateError(
-        'resetLibraryFood: cannot reset library food $libraryId',
-      );
-    }
-    final catalog = _catalogFoods[copy.catalogId]!;
-    final previousPath = copy.imagePath;
-    if (previousPath != catalog.imagePath) {
-      final svc = _imageStorage;
-      if (svc != null && previousPath != null) {
-        await svc.deleteIfManaged(previousPath);
-      }
-    }
-    // Built explicitly (not via copyWith) because `Food.copyWith`
-    // cannot set `fiber`, `sodium` or `notes` back to null — its
-    // `??` fallback keeps the previous value for those fields.
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final updated = Food(
-      id: copy.id,
-      name: catalog.name,
-      groupId: catalog.groupId,
-      unitType: catalog.unitType,
-      referenceAmount: catalog.referenceAmount,
-      referenceLabel: catalog.referenceLabel,
-      isCatalog: copy.isCatalog,
-      catalogId: copy.catalogId,
-      protein: catalog.protein,
-      carbs: catalog.carbs,
-      fiber: catalog.fiber,
-      fat: catalog.fat,
-      sodium: catalog.sodium,
-      isArchived: copy.isArchived,
-      notes: catalog.notes,
-      imagePath: catalog.imagePath,
-      lastAmountConsumed: _servingTripleChanged(copy, catalog)
-          ? null
-          : copy.lastAmountConsumed,
-      createdAtMs: copy.createdAtMs,
-      updatedAtMs: now,
-    );
-    await _repository.updateFood(updated);
-    _foods[updated.id] = updated;
-    notifyListeners();
-  }
-
   /// The user's library copy for a catalog id (plan 77a D-1b): the
   /// row [libraryIdFor] points at, from the cache, or `null` when
   /// the catalog food is not in the library. An in-list Library row
@@ -1310,6 +1149,132 @@ class FoodLibraryState extends ChangeNotifier {
     }
     notifyListeners();
     return newId;
+  }
+
+  /// Creates a food of the user's own from a **default food** (a
+  /// bundled catalog row or the copy of one) and applies the
+  /// editor's draft to it (plan 133 D-13313..D-13315). The bundled
+  /// catalog row and its seed-touched marker are untouched; the new
+  /// food is a plain user-created catalog food and is never matched
+  /// as the default's copy.
+  ///
+  /// Owns the whole in-list swap so no reader sees an intermediate
+  /// state (INV-133-A):
+  ///
+  ///   1. resolve the photo for the new copy (D-13315) — before any
+  ///      state write, so a photo failure writes nothing;
+  ///   2. `createCatalogFood` with the resolved path;
+  ///   3. when the default IS in the list: remove the replaced copy
+  ///      row FIRST (addCatalogFoodToLibrary reuses the existing row
+  ///      for a catalog id, so the new row must not find the old
+  ///      copy there), delete its managed photograph, then
+  ///      addCatalogFoodToLibrary with the new id.
+  ///
+  /// Returns the new library row id when the new food was added to
+  /// the list, else the new catalog id.
+  Future<String> createOwnCopyOfDefault(
+    Food source,
+    FoodDraft draft, {
+    required bool addToList,
+  }) async {
+    if (!isDefaultFood(source)) {
+      throw StateError(
+        'createOwnCopyOfDefault: source must be a default food '
+        '(got id ${source.id}, catalogId ${source.catalogId})',
+      );
+    }
+    final imagePath = await _copyImagePathFor(source, draft);
+    final String newId;
+    try {
+      newId = await createCatalogFood(
+        FoodDraft(
+          name: draft.name,
+          groupId: draft.groupId,
+          unitType: draft.unitType,
+          referenceAmount: draft.referenceAmount,
+          referenceLabel: draft.referenceLabel,
+          protein: draft.protein,
+          carbs: draft.carbs,
+          fiber: draft.fiber,
+          fat: draft.fat,
+          sodium: draft.sodium,
+          notes: draft.notes,
+          imagePath: imagePath,
+        ),
+      );
+    } catch (_) {
+      await _discardFreshCopyPhoto(imagePath);
+      rethrow;
+    }
+    if (!addToList) return newId;
+
+    // The new food is added BEFORE the replaced copy is removed (review
+    // 133 finding 1): a failure while adding leaves the old copy, and so
+    // today's log, exactly as it was. The new food has its own catalog id,
+    // so adding it never finds the old copy.
+    final oldLibraryId = libraryIdFor(source.catalogId ?? source.id);
+    final replacedPath = oldLibraryId == null
+        ? null
+        : _foods[oldLibraryId]?.imagePath;
+    try {
+      await addCatalogFoodToLibrary(newId);
+    } catch (_) {
+      // Nothing half-made is left behind: drop the new catalog row and
+      // its photo, then report the failure.
+      try {
+        await deleteCatalogFood(newId);
+      } catch (_) {}
+      await _discardFreshCopyPhoto(imagePath);
+      rethrow;
+    }
+    final newLibraryId = libraryIdFor(newId)!;
+    if (oldLibraryId != null) {
+      await removeFood(oldLibraryId);
+      await _imageStorage?.deleteIfManaged(replacedPath);
+    }
+    return newLibraryId;
+  }
+
+  /// Deletes the managed photo [_copyImagePathFor] wrote for a copy that
+  /// then failed to save. Only a fresh file is deleted: without an image
+  /// service [_copyImagePathFor] hands back the caller's own path.
+  Future<void> _discardFreshCopyPhoto(String? imagePath) async {
+    final svc = _imageStorage;
+    if (svc == null || imagePath == null) return;
+    try {
+      await svc.deleteIfManaged(imagePath);
+    } catch (_) {}
+  }
+
+  /// D-13315: the photo for the new copy. A picked photo already
+  /// lives under the managed directory and is copied to a fresh
+  /// basename; an untouched photo re-encodes the default's shipped
+  /// `.webp` asset through the managed directory. No service
+  /// injected (as in tests) or any failure → the new food has no
+  /// photo and the save still succeeds (INV-133-E).
+  Future<String?> _copyImagePathFor(Food source, FoodDraft draft) async {
+    final svc = _imageStorage;
+    final draftPath = draft.imagePath;
+    if (svc == null) return draftPath;
+    if (draftPath != null) {
+      try {
+        return await svc.copyManagedFileToNewBasename(draftPath);
+      } catch (_) {
+        return null;
+      }
+    }
+    final assetPath = FoodPhotoService.bundledPhotoAssetPath(
+      source.catalogId ?? source.id,
+    );
+    try {
+      final data = await rootBundle.load(assetPath);
+      return await svc.persistImageBytes(
+        data.buffer.asUint8List(),
+        extension: '.webp',
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   // ─── Custom Food (S-004) ─────────────────────────────────────────────
@@ -1697,6 +1662,15 @@ class FoodLibraryState extends ChangeNotifier {
   /// cannot be hard-deleted. User-created catalog foods can be deleted.
   bool isBundledCatalogFood(String catalogFoodId) {
     return _bundledCatalogFoodIds.contains(catalogFoodId);
+  }
+
+  /// True when [food] is a **default food** (plan 133 D-13310): a
+  /// bundled catalog row, or the user's library copy of one
+  /// (`catalogId` names a bundled row).
+  bool isDefaultFood(Food food) {
+    if (isBundledCatalogFood(food.id)) return true;
+    final catalogId = food.catalogId;
+    return catalogId != null && isBundledCatalogFood(catalogId);
   }
 
   /// Returns catalog foods that were created by the user (not bundled).

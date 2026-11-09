@@ -4,6 +4,9 @@
 // tag, the tab-aware create action (a header "+" since plan 91),
 // and deleting a created food from
 // its editor.
+//
+// Plan 133 (133b2b): a default food's editor has no Reset (the copy
+// flow replaces the in-place edit).
 
 import 'dart:io';
 
@@ -72,6 +75,23 @@ Future<String> _seedLegacyFood(FoodLibraryState foodLib) async {
 Future<void> _search(WidgetTester tester, String query) async {
   await tester.enterText(find.byKey(const Key('catalog_search_field')), query);
   await tester.pumpAndSettle();
+}
+
+/// Sets a stored library copy's values directly (a copy the user edited
+/// before plan 133). The old `FoodLibraryState.editLibraryFood` write
+/// path is deleted.
+Future<void> seedEditedCopy(
+  MockWorkoutRepository repo,
+  FoodLibraryState foodLib,
+  String catalogId, {
+  required String name,
+  double? protein,
+}) async {
+  final copy = foodLib.libraryFoodFor(catalogId)!;
+  await repo.updateFood(
+    copy.copyWith(name: name, protein: protein ?? copy.protein),
+  );
+  await foodLib.loadFoods();
 }
 
 void main() {
@@ -148,6 +168,43 @@ void main() {
     );
 
     testWidgets(
+      'S-13301: the Yours tag follows the macros, not the name',
+      (tester) async {
+        String createdId = '';
+        await pumpLibraryTab(
+          tester,
+          seed: (lib) async {
+            createdId = await _seedCreatedFood(lib);
+          },
+        );
+        await _search(tester, 'Mine 77');
+
+        final tag = find.byKey(Key('yours_tag_$createdId'));
+        expect(tag, findsOneWidget);
+        // The tag shares a line with the macros and never with the name.
+        final tagRow = find.ancestor(of: tag, matching: find.byType(Row)).first;
+        final macros = find.descendant(
+          of: tagRow,
+          matching: find.textContaining('P · '),
+        );
+        expect(macros, findsOneWidget);
+        expect(
+          find.descendant(of: tagRow, matching: find.text('Mine 77 food')),
+          findsNothing,
+        );
+        expect(
+          tester.getTopLeft(tag).dx,
+          greaterThanOrEqualTo(tester.getTopRight(macros).dx),
+        );
+        // The name sits above the tag.
+        expect(
+          tester.getBottomLeft(find.text('Mine 77 food')).dy,
+          lessThanOrEqualTo(tester.getTopLeft(tag).dy),
+        );
+      },
+    );
+
+    testWidgets(
       'S-12812: a legacy custom renders as a row with delete and Yours '
       'tag; a library copy of a bundled food is not listed twice',
       (tester) async {
@@ -187,28 +244,20 @@ void main() {
       'S-12812b an edited copy of a bundled food is not listed as a '
       'legacy row',
       (tester) async {
+        final repo = await _freshRepo();
         Food? copy;
         await pumpLibraryTab(
           tester,
+          repo: repo,
           seed: (lib) async {
             await lib.addCatalogFoodToLibrary('chicken_breast');
             copy = lib.libraryFoodFor('chicken_breast');
-            await lib.editLibraryFood(
-              copy!,
-              FoodDraft(
-                name: 'Edited chicken 77',
-                groupId: copy!.groupId,
-                unitType: copy!.unitType,
-                referenceAmount: copy!.referenceAmount,
-                referenceLabel: copy!.referenceLabel,
-                protein: 71,
-                carbs: copy!.carbs,
-                fiber: copy!.fiber,
-                fat: copy!.fat,
-                sodium: copy!.sodium,
-                notes: copy!.notes,
-                imagePath: copy!.imagePath,
-              ),
+            await seedEditedCopy(
+              repo,
+              lib,
+              'chicken_breast',
+              name: 'Edited chicken 77',
+              protein: 71,
             );
           },
         );
@@ -350,12 +399,14 @@ void main() {
     );
 
     testWidgets(
-      'S-12816: Delete food is absent for a bundled food; Reset and '
-      'Delete are never both shown',
+      'S-12816: Delete food is absent for a bundled food; a default\'s '
+      'editor has no secondary footer button',
       (tester) async {
+        final repo = await _freshRepo();
         String createdId = '';
         final states = await pumpLibraryTab(
           tester,
+          repo: repo,
           seed: (lib) async {
             createdId = await _seedCreatedFood(lib);
             await lib.addCatalogFoodToLibrary('chicken_breast');
@@ -373,24 +424,14 @@ void main() {
         await tester.pageBack();
         await tester.pumpAndSettle();
 
-        // Edit the copy so Reset shows; still no Delete.
-        final copy = foodLib.libraryFoodFor('chicken_breast')!;
-        await foodLib.editLibraryFood(
-          copy,
-          FoodDraft(
-            name: 'My chicken 77',
-            groupId: copy.groupId,
-            unitType: copy.unitType,
-            referenceAmount: copy.referenceAmount,
-            referenceLabel: copy.referenceLabel,
-            protein: 99,
-            carbs: copy.carbs,
-            fiber: copy.fiber,
-            fat: copy.fat,
-            sodium: copy.sodium,
-            notes: copy.notes,
-            imagePath: copy.imagePath,
-          ),
+        // An edited copy is a default food too: plan 133 removed Reset,
+        // so the secondary footer slot is EMPTY (no footer at all).
+        await seedEditedCopy(
+          repo,
+          foodLib,
+          'chicken_breast',
+          name: 'My chicken 77',
+          protein: 99,
         );
         await tester.pumpAndSettle();
         await _search(tester, 'Chicken breast');
@@ -398,12 +439,12 @@ void main() {
           find.byKey(const Key('edit_catalog_food_chicken_breast')),
         );
         await tester.pumpAndSettle();
-        expect(find.byKey(const Key('food_reset_original')), findsOneWidget);
+        expect(find.byKey(const Key('food_reset_original')), findsNothing);
         expect(find.byKey(const Key('food_delete_created')), findsNothing);
         await tester.pageBack();
         await tester.pumpAndSettle();
 
-        // A created food's editor: Delete food, never Reset.
+        // A created food's editor: Delete food.
         await _search(tester, 'Mine 77');
         await tester.tap(find.byKey(Key('edit_catalog_food_$createdId')));
         await tester.pumpAndSettle();

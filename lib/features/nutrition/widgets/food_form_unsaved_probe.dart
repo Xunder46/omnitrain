@@ -50,9 +50,18 @@ class FoodFormUnsavedProbe {
     _reportedImagePath = path;
   }
 
+  bool _servingChanged = false;
+
+  /// Record a change to how the food is measured (reported by
+  /// `FoodForm.onServingChanged`). The serving toggle and chips are not
+  /// rendered [FormField]s, and the serving-name and package-size boxes
+  /// only appear after the toggle moves, so none of them is reachable
+  /// through [_renderedFields].
+  void markServingChanged() => _servingChanged = true;
+
   /// True when the form carries work the user has not saved.
   bool get isDirty {
-    if (_typed) return true;
+    if (_typed || _servingChanged) return true;
     if (_imageChanged && _reportedImagePath != initialImagePath) return true;
     for (final field in _renderedFields()) {
       if (_firstSeen.containsKey(field.key) &&

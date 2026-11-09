@@ -102,7 +102,10 @@ that sources the categories dropdown (re-reading `activeFoodGroups` on
 every notification), a `saveLabel` for the host's CTA, an optional
 `showNotesField` flag (edit mode), a required `onSave` callback, and an
 optional `onImageChanged` callback (`ValueChanged<String?>` — the
-form-local photo path, `null` after the × overlay clears it). The serving
+form-local photo path, `null` after the × overlay clears it) and an
+optional `onServingChanged` callback (`VoidCallback` — fired when the
+serving toggle or a serving-word chip changes, or the serving-name or
+package-size box is typed in). The serving
 control and the label-like macro block below are stated in full; the
 remaining fields' keys and defaults are the file's own.
 
@@ -156,22 +159,25 @@ control`, `S-92b.18 switching segments keeps the typed label and amount`,
 serving`). A save whose serving differs from the stored one clears the
 library copy's remembered log amount, and one that leaves it equal keeps
 it — see [nutrition_state.md](../state_management/nutrition_state.md)
-and `test/food_library_copy_edit_test.dart` (`S-92b.10 a serving-changing
-edit clears the remembered amount`, `S-92b.10 a name-only edit keeps the
-remembered amount`, `S-92b.10 a reset after a serving-changing edit
-clears the remembered amount`).
+and `test/food_library_edit_test.dart` (`S-92b.10 a serving-changing
+catalog edit clears the linked copy's remembered amount`, `S-92b.10 a
+name-only catalog edit keeps the linked copy's remembered amount`).
 
 The form owns validation, the image picker, and the translation from
 controllers to a typed `FoodDraft`. The caller hands the draft to
 `FoodLibraryState.createCustomFood` (create) or
 `FoodLibraryState.updateCustomFood` / `updateCatalogFood` (edit) —
 never to the repository directly. One more edit host exists: when the
-screen is given a library copy of a bundled catalog food
-(`isCatalog == false`), `EditFoodScreen` hands the draft to
-`FoodLibraryState.editLibraryFood`, which changes only the copy
+screen is given a default food, `EditFoodScreen` asks
+(`confirmSaveAsOwnFood` in
+`lib/features/nutrition/widgets/save_default_as_own_food.dart`) and hands
+the draft to `FoodLibraryState.createOwnCopyOfDefault`, which makes a
+food of the user's own
 (verified by `test/library_row_toggle_test.dart`, group
 `Library row toggle (plan 77a S-12710..S-12717)` · `S-12719: the Edit
-screen routes a bundled copy's save through editLibraryFood`).
+screen routes a default food's save through the copy flow`, and by
+`test/edit_default_food_test.dart`, group `Edit a default food (plan 133)`
+· `S-13312 Confirm makes a food of your own, not added to the list`).
 
 **Label-like macro block.** The five macro boxes run top to bottom in the
 order a package prints them — Fat (g), Carbs (g), Fiber (g), Protein (g),
@@ -253,7 +259,7 @@ unsaved-changes guard below.
 - `onSave` returns `true` to pop, `false` to surface feedback.
 - Nothing about the photo writes until Save: the save draft carries
   `imagePath`, and the state method that applies it (`updateCatalogFood`,
-  `editLibraryFood`, `updateCustomFood`) owns the D-7 delete of the replaced
+  `createOwnCopyOfDefault`, `updateCustomFood`) owns the D-7 delete of the replaced
   managed file — the form never calls the service directly. A pick only
   copies the picked file into the managed directory and moves the form's
   local path; a clear only nulls that path. Verified by
@@ -311,8 +317,12 @@ and report it through `onImageChanged`.
 
 The unsaved-work probe every `FoodForm` host shares: `EditFoodScreen`,
 `_NewFoodFormScreen` and the legacy library edit shim each build one with
-the form's `GlobalKey` and mark it from `FoodForm.onImageChanged`, so the
-three guards cannot drift apart. A plain class, not a widget. It reads the
+the form's `GlobalKey` and mark it from `FoodForm.onImageChanged` and
+`FoodForm.onServingChanged` (the serving toggle and chips are not rendered
+fields, and the serving-name and package-size boxes only exist after the
+toggle moves, so a serving-only edit is otherwise invisible; verified by
+`test/edit_default_food_test.dart` `S-13335`), so the three guards cannot
+drift apart. A plain class, not a widget. It reads the
 form's rendered `FormField`s for its baseline and reports a later difference
 as unsaved work; `initialImagePath` is the stored photo a pick or a clear is
 compared against. The blank-form and edited-form outcomes are verified by
@@ -336,10 +346,13 @@ in the library is removed by tapping the row, which asks
 `Remove <name> from Foods I Eat?` first (keys `food-remove-cancel` /
 `food-remove-confirm`) and unlogs the food for today on confirm. An in-list
 row shows the user's copy with a primary-colour outline (key
-`library_row_outline_<id>`), a pencil `IconButton` (key
-`edit_catalog_food_<id>`, tooltip `Edit food`) that opens `EditFoodScreen`
-with the library copy for a bundled food and with the catalog row itself
-for a user-created food, and a check (key `remove_catalog_food_<id>`)
+`library_row_outline_<id>`) and a pencil `IconButton` (key
+`edit_catalog_food_<id>`, tooltip `Edit food`) — the pencil sits on every
+Library row, a not-in-list bundled row included — that opens
+`EditFoodScreen`: with the library copy for an in-list bundled food, with
+the catalog row itself for a bundled food not in the list and for a
+user-created food. The row also carries a check (key
+`remove_catalog_food_<id>`)
 where the red trash button used to be. The row's text is two lines:
 `<cal> cal per <serving>` and `<P>P · <C>C · <F>F`, the serving built by
 `foodServingLabel` in `lib/core/utils/food_helpers.dart`. Verified by
@@ -347,13 +360,45 @@ where the red trash button used to be. The row's text is two lines:
 S-12710..S-12717)`: `S-12710: row tap adds a not-in-list food to the
 library`, `S-12711: in-list row tap asks before removing; Cancel keeps,
 Confirm removes and unlogs today`, `S-12712: the in-list row carries the
-primary outline; the not-in-list row has none`, `S-12713: pencil on an
-in-list bundled food edits the copy; reset restores the shipped values`,
-`S-12714: the pencil does not toggle the row`, `S-12715: the row macro
-line reads the copy after an edit`, `S-12716` source guard on
-`_CatalogRowState`, `S-12717: a user-created (non-bundled) in-list food
-has no Reset button`) and by `test/screen_widget_test.dart` (`Library row
+primary outline; the not-in-list row has none`, `S-12713: the pencil on an
+in-list bundled food opens its copy; Save asks and makes a food of your
+own`, `S-12714: the pencil does not toggle the row`, `S-12715: the row macro
+line reads the copy after an edit`, `S-12716: source guard on
+_CatalogRowState`, `S-12717: a user-created (non-bundled) in-list food
+has no Reset button`; `test/edit_default_food_test.dart`, group
+`Edit a default food (plan 133)`: `S-13310 the pencil shows on a
+not-in-list default row and opens the editor on it`) and by
+`test/screen_widget_test.dart` (`Library row
 tap adds the food; its pencil opens EditFoodScreen (S-001)`).
+
+---
+
+### `save_default_as_own_food.dart` (screen-level helper)
+
+**File**: `lib/features/nutrition/widgets/save_default_as_own_food.dart`
+
+The copy flow's pair of helpers under an `EditFoodScreen` save of a default
+food (`FoodLibraryState.isDefaultFood`). `confirmSaveAsOwnFood(context, food: …)`
+presents the non-destructive `Save as your own food?` `ConfirmationDialog`
+(body naming the default's own name; keys `food-copy-cancel` /
+`food-copy-confirm`), and Cancel returns to the form with nothing written
+and no error message. `saveDefaultAsOwnFood` carries the save itself: it
+calls `FoodLibraryState.createOwnCopyOfDefault`, and when the default was
+in the list and logged today it unlogs the old row, swaps it for the new
+food and logs the same amount again — putting the amount back on the row
+that is in the list when a step fails, with the editor left open and the
+`Could not save food` message shown once. Verified by
+`test/edit_default_food_test.dart` (group `Edit a default food (plan 133)`:
+`S-13311 Save on an edited default asks first; Cancel writes nothing; an
+untouched form pops with no dialog`, `S-13328 Cancel shows no error
+snackbar`, `S-13313 Confirm on an in-list logged default replaces it and
+carries today's amount`, `S-13319 Cancel on the dialog leaves the log
+alone`, `S-13327 a failed swap keeps today's log`; top level: `S-13318
+source guards pin the copy flow`, which asserts the helper source carries
+`food-copy-confirm`) and by `test/food_library_own_copy_test.dart`
+(groups `FoodLibraryState create own copy (Mock)` / `(Hive)`:
+`createOwnCopyOfDefault not in list adds nothing (S-13317)`,
+`createOwnCopyOfDefault in list swaps the row (S-13317)`).
 
 ---
 
@@ -366,8 +411,10 @@ first food. Shown only while the search box is empty. Covered by
 
 ### `_YoursTag` and `_UserFoodRow` (private to `AddFoodScreen`)
 
-`_YoursTag` is the small primary-colour `Yours` label after a food's name. A
-`_CatalogRow` shows it (key `yours_tag_<foodId>`) when the food is not bundled;
+`_YoursTag` is the small primary-colour `Yours` label at the end of a food's
+macros line (the private `_MacroLine` places it, so the name keeps the full
+width). A `_CatalogRow` shows it (key `yours_tag_<foodId>`) when the food is not
+bundled;
 `_UserFoodRow`, now used only for older library-only custom foods, always shows
 it and keeps its red delete button (`delete_user_food_<id>`). Both rows appear in
 the one Library list. Covered by `test/library_merge_test.dart` (`S-12811`,

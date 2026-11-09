@@ -400,8 +400,7 @@ class _StatsScreenState extends State<StatsScreen> {
                                 ),
                               ),
                             ],
-                            if (_weightTrend != null &&
-                                widget.settingsState.showWeightTrend) ...[
+                            if (_weightTrend != null) ...[
                               if (_fuelSummary != null)
                                 const SizedBox(height: 24),
                               WeightTrendRow(

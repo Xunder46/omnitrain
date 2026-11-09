@@ -1,5 +1,6 @@
-// The Weight block on Stats and its Settings switch (plan 104), scenarios
-// S-17705 and S-17706 of `docs/plans/2026-11-03-104-weight-line-plan/`.
+// The Weight block on Stats (plan 104), scenario S-17705 of
+// `docs/plans/2026-11-03-104-weight-line-plan/`. The Settings switch that once
+// hid it (S-17706) was removed: the block shows whenever the data supports it.
 //
 // The Stats screen reads the device clock, so every fixture counts back from
 // today. Seeds and settings writes happen in `setUp`: a Hive write started
@@ -8,19 +9,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
-import 'package:omnitrain/core/models/app_version_info.dart';
 import 'package:omnitrain/core/models/signals.dart';
 import 'package:omnitrain/core/services/signals/signal.dart';
 import 'package:omnitrain/data/models/models.dart';
-import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
-import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
 import 'helpers/fake_preferences_service.dart';
-import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/repository_harness.dart';
 
 /// Tall enough that every block is laid out.
@@ -232,21 +229,6 @@ void main() {
         });
       });
 
-      group('the switch is off', () {
-        setUp(() async {
-          await _seedSession(repo);
-          await _seedWeight(repo, 'w1', 80.8, 27);
-          await _seedWeight(repo, 'w2', 80.2, 0);
-          await settingsState.setShowWeightTrend(false);
-        });
-
-        testWidgets('no Weight block shows', (tester) async {
-          await pumpStats(tester);
-
-          expect(find.byKey(const Key('weight_trend')), findsNothing);
-        });
-      });
-
       group('one weigh-in', () {
         setUp(() async {
           await _seedSession(repo);
@@ -364,55 +346,4 @@ void main() {
       },
     );
   }
-
-  // Mock-only: the tap writes a preference, and a Hive write started inside a
-  // widget test's fake-async zone never settles.
-  group('S-17706 the Weight on Stats switch — Mock', () {
-    late MockWorkoutRepository repo;
-    late SettingsState settingsState;
-
-    setUp(() async {
-      repo = MockWorkoutRepository();
-      await repo.initialize();
-      settingsState = SettingsState(repo, fakePreferencesService());
-      await settingsState.initialize();
-    });
-
-    testWidgets('the row sits after Effort Rating and flips only its own setting', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: SettingsScreen(
-            settingsState: settingsState,
-            timerAlertService: FakeTimerAlertService(),
-            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.scrollUntilVisible(
-        find.text('Weight on Stats'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('STATS'), findsOneWidget);
-      expect(
-        find.text('Show your weight change over the last 4 weeks'),
-        findsOneWidget,
-      );
-      expect(settingsState.showWeightTrend, isTrue);
-
-      // Effort Rating's Switch is still the first one on the screen; the
-      // Weight on Stats Switch is the second.
-      await tester.tap(find.byType(Switch).at(1));
-      await tester.pumpAndSettle();
-
-      expect(settingsState.showWeightTrend, isFalse);
-      expect(settingsState.showFeelingSurvey, isTrue);
-    });
-  });
 }

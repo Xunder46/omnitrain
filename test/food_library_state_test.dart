@@ -1,5 +1,10 @@
+import 'dart:io';
+
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/data/repositories/hive_workout_repository.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/mock/seed_data.dart';
 import 'package:omnitrain/state/food_library_state.dart';
@@ -1796,4 +1801,75 @@ void main() {
       );
     });
   });
+
+  // Ported from `test/food_library_copy_edit_test.dart` (plan 133 b1:
+  // that file is retired; `libraryFoodFor` is read here on a real Hive
+  // repository). The `editLibraryFood` leg of the original S-12718 test
+  // is gone with plan 133 D-13317 — the method it exercised is deleted.
+  group('FoodLibraryState libraryFoodFor (Hive)', () {
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('food_lib_state_');
+      _PathProviderChannel.install(tempDir);
+      Hive.init(tempDir.path);
+    });
+
+    tearDown(() async {
+      await Hive.close();
+      await Hive.deleteFromDisk();
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('libraryFoodFor returns the copy, null before add (S-12718)',
+        () async {
+      final repo = HiveWorkoutRepository();
+      await repo.initialize();
+      final state = FoodLibraryState(repo);
+      await state.loadCatalogFoods();
+
+      expect(state.libraryFoodFor('almond_butter'), isNull);
+
+      final libId = await state.addCatalogFoodToLibrary('almond_butter');
+      final copy = state.libraryFoodFor('almond_butter');
+      expect(copy, isNotNull);
+      expect(copy!.id, libId);
+      expect(copy.isCatalog, isFalse);
+      expect(copy.catalogId, 'almond_butter');
+    });
+  });
+}
+
+/// Stand-in for the path_provider platform channel used during tests.
+/// Copied from `test/food_library_copy_edit_test.dart` (plan 133 b1
+/// brief): `HiveWorkoutRepository.initialize()` calls `Hive.initFlutter()`,
+/// which delegates to `path_provider` — that channel has no implementation
+/// under `flutter_test`, so we route it to a temp directory we control.
+class _PathProviderChannel {
+  static const MethodChannel _channel = MethodChannel(
+    'plugins.flutter.io/path_provider',
+  );
+  static late Directory _root;
+
+  static void install(Directory root) {
+    _root = root;
+    TestWidgetsFlutterBinding.ensureInitialized();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, _handle);
+  }
+
+  static Future<dynamic> _handle(MethodCall call) async {
+    switch (call.method) {
+      case 'getApplicationDocumentsDirectory':
+        return _root.path;
+      case 'getApplicationSupportDirectory':
+        return _root.path;
+      case 'getTemporaryDirectory':
+        return _root.path;
+      default:
+        return null;
+    }
+  }
 }

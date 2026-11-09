@@ -48,12 +48,17 @@ public struct WristHaptics: WatchHaptics {
     /// A rest ping is not a countdown ending (D-251). `.click` is the only
     /// built-in tap that never carries a system tone (`.notification` does,
     /// even with the watch muted), but one click is too faint to feel
-    /// mid-workout. Two quick clicks are a gentle, silent tap that is easier
-    /// to feel.
+    /// mid-workout, and two were still easy to miss. A burst of clicks
+    /// (`restPingTaps`, spaced `restPingSpacing` apart) reads as one distinct
+    /// buzz on the wrist and stays silent.
+    static let restPingTaps = 7
+    static let restPingSpacing = 0.1
+
     public func playRestPing() {
-        WKInterfaceDevice.current().play(.click)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            WKInterfaceDevice.current().play(.click)
+        for tap in 0..<Self.restPingTaps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.restPingSpacing * Double(tap)) {
+                WKInterfaceDevice.current().play(.click)
+            }
         }
     }
 

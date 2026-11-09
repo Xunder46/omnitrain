@@ -8,6 +8,10 @@
 // form's text fields used to save on blur, so typing a name and leaving the
 // field wrote the food without any confirmation.
 //
+// Plan 133 (133b2b): a default food's Save asks and then makes a food of
+// the user's own (S-92a.7 built on the copy flow); S-92a.15 (Reset) is
+// deleted with the Reset feature.
+//
 // Mock-only: the screen writes through `FoodLibraryState` on a
 // `MockWorkoutRepository`; no Hive, no real file I/O.
 
@@ -78,21 +82,6 @@ const Food _orphanSnack = Food(
   updatedAtMs: 1000,
 );
 
-FoodDraft _draftOf(Food food, String name) => FoodDraft(
-  name: name,
-  groupId: food.groupId,
-  unitType: food.unitType,
-  referenceAmount: food.referenceAmount,
-  referenceLabel: food.referenceLabel,
-  protein: food.protein,
-  carbs: food.carbs,
-  fiber: food.fiber,
-  fat: food.fat,
-  sodium: food.sodium,
-  notes: food.notes,
-  imagePath: food.imagePath,
-);
-
 Future<_Fixture> _seedCatalog(Food seed) async {
   final repo = MockWorkoutRepository();
   await repo.initialize();
@@ -105,6 +94,24 @@ Future<_Fixture> _seedCatalog(Food seed) async {
 
 Future<_Fixture> _seedTrailMix() => _seedCatalog(_trailMix);
 
+/// Sets the stored library copy's values directly (the copy the user
+/// edited before plan 133). The old `FoodLibraryState.editLibraryFood`
+/// write path is deleted; plan 133 made a default food's Save create a
+/// food of the user's own instead.
+Future<void> seedEditedCopy(
+  MockWorkoutRepository repo,
+  FoodLibraryState foodLib,
+  String catalogId, {
+  required String name,
+  double? protein,
+}) async {
+  final copy = foodLib.libraryFoodFor(catalogId)!;
+  await repo.updateFood(
+    copy.copyWith(name: name, protein: protein ?? copy.protein),
+  );
+  await foodLib.loadFoods();
+}
+
 Future<_CopyFixture> _seedEditedLibraryCopy() async {
   final repo = MockWorkoutRepository();
   await repo.initialize();
@@ -112,10 +119,11 @@ Future<_CopyFixture> _seedEditedLibraryCopy() async {
   await foodLib.loadCatalogFoods();
   final shipped = (await repo.getCatalogFoodById(_bundledId))!;
   await foodLib.addCatalogFoodToLibrary(_bundledId);
-  final pristine = foodLib.libraryFoodFor(_bundledId)!;
-  await foodLib.editLibraryFood(
-    pristine,
-    _draftOf(pristine, 'My ${shipped.name}'),
+  await seedEditedCopy(
+    repo,
+    foodLib,
+    _bundledId,
+    name: 'My ${shipped.name}',
   );
   return (
     repo: repo,
@@ -378,63 +386,88 @@ void main() {
   });
 
   testWidgets(
-    'S-92a.7: a bundled food\'s library copy saves through editLibraryFood',
+    'S-92a.7: a default food\'s Save asks and makes a food of your own',
     (tester) async {
       final repo = MockWorkoutRepository();
       await repo.initialize();
+      final nutritionState = NutritionState(repo);
       final foodLib = FoodLibraryState(repo);
       await foodLib.loadCatalogFoods();
       await foodLib.addCatalogFoodToLibrary(_bundledId);
       final copy = foodLib.libraryFoodFor(_bundledId)!;
       final shipped = (await repo.getCatalogFoodById(_bundledId))!;
 
-      await _openEditorFor(tester, food: copy, foodLib: foodLib);
-      await _typeName(tester, 'Chicken breast, mine');
-      await _tapSave(tester);
-
-      final edited = foodLib.libraryFoodFor(_bundledId)!;
-      expect(
-        edited.name,
-        'Chicken breast, mine',
-        reason: 'Save must apply the draft to the library copy',
+      await _openEditorFor(
+        tester,
+        food: copy,
+        foodLib: foodLib,
+        nutritionState: nutritionState,
       );
-      expect(edited.isCatalog, isFalse);
+      await _typeName(tester, 'Chicken breast, mine');
+      await tester.tap(find.byKey(const Key('food_form_save')));
+      await tester.pumpAndSettle();
+      expect(find.byType(EditFoodScreen), findsOneWidget);
+
+      // Save on a default food asks first; Confirm makes a food of
+      // the user's own (the library flow, plan 133).
+      expect(find.text('Save as your own food?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('food-copy-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(
+        foodLib.libraryFoodFor(_bundledId),
+        isNull,
+        reason: 'the Confirm swap removes the replaced library copy',
+      );
+      final ownRow = foodLib.catalogFoods.firstWhere(
+        (f) => f.name == 'Chicken breast, mine',
+      );
+      expect(ownRow.isCatalog, isTrue);
+      expect(
+        foodLib.foods.where((f) => f.name == 'Chicken breast, mine'),
+        isNotEmpty,
+        reason: 'the old copy was in the list, so the new food replaces it',
+      );
 
       final shippedAfter = (await repo.getCatalogFoodById(_bundledId))!;
       expect(
         shippedAfter.name,
         shipped.name,
-        reason: 'the shipped catalog row must never be altered by a copy edit',
+        reason:
+            'the shipped catalog row must never be altered by the copy flow',
       );
       expect(shippedAfter.protein, shipped.protein);
       expect(
         await repo.isSeedEntryTouched(SeedEntryType.foodCatalog, _bundledId),
         isFalse,
-        reason: 'a copy edit must not mark the shipped entry user-touched',
+        reason: 'the copy flow must not mark the shipped entry user-touched',
       );
       expect(find.byType(EditFoodScreen), findsNothing);
     },
   );
 
-  testWidgets('S-92a.9: Reset and Delete remain above Save', (tester) async {
-    final copyFixture = await _seedEditedLibraryCopy();
-    await _openEditorFor(
-      tester,
-      food: copyFixture.copy,
-      foodLib: copyFixture.foodLib,
-    );
-    expect(
-      find.byKey(const Key('food_reset_original')),
-      findsOneWidget,
-      reason: 'a copy that differs from its original offers Reset',
-    );
-    expect(
-      tester.getTopLeft(find.byKey(const Key('food_reset_original'))).dy,
-      lessThan(
-        tester.getTopLeft(find.byKey(const Key('food_form_save'))).dy,
-      ),
-      reason: 'Reset sits in the footer, directly above Save',
-    );
+  testWidgets(
+    'S-92a.9: a default food\'s editor has no secondary button, Delete '
+    'stays above Save',
+    (tester) async {
+      // A library copy of a bundled food is a default food: no Reset
+      // (plan 133 D-13317) and no Delete (not the user's own).
+      final copyFixture = await _seedEditedLibraryCopy();
+      await _openEditorFor(
+        tester,
+        food: copyFixture.copy,
+        foodLib: copyFixture.foodLib,
+      );
+      expect(
+        find.byKey(const Key('food_reset_original')),
+        findsNothing,
+        reason: 'plan 133 removed Reset to original',
+      );
+      expect(
+        find.byKey(const Key('food_delete_created')),
+        findsNothing,
+        reason: 'a default food is not the user\'s own',
+      );
 
     final createdFixture = await _seedTrailMix();
     await _openEditorFor(
@@ -587,47 +620,8 @@ void main() {
     );
   });
 
-  testWidgets('S-92a.15: Reset pops through unsaved edits with no dialog', (
-    tester,
-  ) async {
-    final fixture = await _seedEditedLibraryCopy();
-    await _openEditorFor(
-      tester,
-      food: fixture.copy,
-      foodLib: fixture.foodLib,
-    );
-    expect(find.byKey(const Key('food_reset_original')), findsOneWidget);
-
-    await _typeName(tester, 'Unsaved name');
-    await tester.tap(find.byKey(const Key('food_reset_original')));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('Unsaved changes'),
-      findsNothing,
-      reason: 'Reset confirms its own destructive action (D-92a.14)',
-    );
-    expect(find.text('Reset to original?'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('food-reset-confirm')));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('Unsaved changes'),
-      findsNothing,
-      reason: 'Reset must pop directly, not through the exit guard',
-    );
-    expect(find.byType(EditFoodScreen), findsNothing);
-
-    final restored = fixture.foodLib.libraryFoodFor(_bundledId)!;
-    expect(
-      restored.name,
-      fixture.shipped.name,
-      reason: 'Reset restores the shipped values',
-    );
-    expect(restored.protein, fixture.shipped.protein);
-    expect(restored.carbs, fixture.shipped.carbs);
-  });
+  // S-92a.15 (Reset pops through unsaved edits) is deleted with the
+  // Reset feature in plan 133 (D-13317).
 
   testWidgets('S-92a.16: Delete pops through unsaved edits with no dialog', (
     tester,

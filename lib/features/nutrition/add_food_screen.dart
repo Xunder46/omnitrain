@@ -354,6 +354,7 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
               }
             },
             onImageChanged: _probe.markImageChanged,
+            onServingChanged: _probe.markServingChanged,
           ),
         ),
         bottomNavigationBar: OmniBottomCTA(
@@ -813,6 +814,7 @@ class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
             // Create mode never persists the photo until Save, so the
             // probe learns about a pick (or a clear) from the form.
             onImageChanged: _probe.markImageChanged,
+            onServingChanged: _probe.markServingChanged,
             onSave: (draft) async {
               final messenger = ScaffoldMessenger.of(context);
               final theme = Theme.of(context);
@@ -898,28 +900,17 @@ class _UserFoodRowState extends State<_UserFoodRow> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          widget.food.name,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: OmniTheme.colors.textDominant,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      _YoursTag(key: Key('yours_tag_${widget.food.id}')),
-                    ],
-                  ),
                   Text(
-                    macroText,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: OmniTheme.colors.textSecondary,
-                      fontFeatures: const [FontFeature.tabularFigures()],
+                    widget.food.name,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: OmniTheme.colors.textDominant,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  _MacroLine(
+                    text: macroText,
+                    tagKey: Key('yours_tag_${widget.food.id}'),
                   ),
                 ],
               ),
@@ -974,6 +965,7 @@ class _UserFoodRowState extends State<_UserFoodRow> {
         context,
         food: widget.food,
         foodLibraryState: widget.foodLibraryState,
+        nutritionState: widget.nutritionState,
       );
     } else {
       // Legacy library-only custom: route through OmniNavigator.push
@@ -1098,7 +1090,41 @@ class _UserFoodRowState extends State<_UserFoodRow> {
   }
 }
 
-/// The small "Yours" tag after the name of a food the user created.
+/// The macros line of a Library row. When [tagKey] is given (a food the
+/// user created) the **Yours** tag follows the macros on the same line, so
+/// the name above keeps the whole row width; the macros shorten first.
+class _MacroLine extends StatelessWidget {
+  final String text;
+  final Key? tagKey;
+
+  const _MacroLine({required this.text, this.tagKey});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: OmniTheme.colors.textSecondary,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+        if (tagKey != null) ...[
+          const SizedBox(width: 6),
+          _YoursTag(key: tagKey),
+        ],
+      ],
+    );
+  }
+}
+
+/// The small "Yours" tag after the macros of a food the user created.
 class _YoursTag extends StatelessWidget {
   const _YoursTag({super.key});
 
@@ -1210,23 +1236,13 @@ class _CatalogRowState extends State<_CatalogRow> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          shown.name,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: OmniTheme.colors.textDominant,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (isYours) ...[
-                        const SizedBox(width: 6),
-                        _YoursTag(key: Key('yours_tag_${widget.food.id}')),
-                      ],
-                    ],
+                  Text(
+                    shown.name,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: OmniTheme.colors.textDominant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   Text(
                     servingText,
@@ -1237,29 +1253,25 @@ class _CatalogRowState extends State<_CatalogRow> {
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
-                  Text(
-                    macroText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: OmniTheme.colors.textSecondary,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+                  _MacroLine(
+                    text: macroText,
+                    tagKey: isYours ? Key('yours_tag_${widget.food.id}') : null,
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            // A food the user created can be edited (and deleted, from the
-            // edit screen) whether or not it is in their list.
-            if (inList || isYours)
-              IconButton(
-                key: Key('edit_catalog_food_${widget.food.id}'),
-                icon: const Icon(Icons.edit_outlined, size: 20),
-                color: theme.colorScheme.primary,
-                tooltip: 'Edit food',
-                onPressed: _busy ? null : () => _openEdit(context),
-              ),
+            // The pencil on every Library row (D-13311): a bundled food
+            // opens the Edit Food screen on the user's copy when it is in
+            // the list, else on the bundled catalog row itself; a food the
+            // user created opens its catalog row.
+            IconButton(
+              key: Key('edit_catalog_food_${widget.food.id}'),
+              icon: const Icon(Icons.edit_outlined, size: 20),
+              color: theme.colorScheme.primary,
+              tooltip: 'Edit food',
+              onPressed: _busy ? null : () => _openEdit(context),
+            ),
             if (inList)
               _buildInListIndicator(context)
             else
@@ -1292,17 +1304,23 @@ class _CatalogRowState extends State<_CatalogRow> {
     return inList ? _onRemove(context) : _onAdd(context);
   }
 
-  /// Open the Edit Food screen. A bundled food edits the user's own copy
-  /// (the shipped entry is never altered; only reachable once it is in the
-  /// list); a food the user created has no shipped original, so its
-  /// catalog row is the thing edited, in the list or not.
+  /// Open the Edit Food screen. A bundled food opens on the user's copy
+  /// when one exists in the list (so earlier edits are visible) and on
+  /// the bundled catalog row itself when it is not; saving a default
+  /// food asks and then creates a food of the user's own (D-13311,
+  /// D-13312). A food the user created edits its catalog row, in the
+  /// list or not.
   void _openEdit(BuildContext context) {
     final copy = widget.foodLibraryState.libraryFoodFor(widget.food.id);
     final bundled = widget.foodLibraryState.isBundledCatalogFood(
       widget.food.id,
     );
-    if (bundled && copy == null) return;
-    final edited = bundled ? copy! : widget.food;
+    // A copy without a durable `catalogId` is an older value-matched row: it
+    // is not a default food, so the editor opens on the bundled row and a
+    // Save still asks and makes a food of the user's own.
+    final edited = bundled && copy != null && copy.catalogId != null
+        ? copy
+        : widget.food;
     EditFoodScreen.push(
       context,
       food: edited,

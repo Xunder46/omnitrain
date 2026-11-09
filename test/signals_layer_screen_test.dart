@@ -997,7 +997,7 @@ void main() {
           );
 
           testWidgets(
-            'S-18202 Weight on Stats and a repeated Start of Week do not '
+            'S-18202 an unrelated setting and a repeated Start of Week do not '
             'reload',
             (tester) async {
               final stub = _StubSignal(
@@ -1010,7 +1010,7 @@ void main() {
               await pumpStats(tester, signals: [stub]);
 
               await tester.runAsync(
-                () => settingsState.setShowWeightTrend(false),
+                () => settingsState.setShowFeelingSurvey(false),
               );
               await tester.pumpAndSettle();
               await tester.runAsync(

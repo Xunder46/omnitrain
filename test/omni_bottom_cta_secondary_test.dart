@@ -2,7 +2,7 @@
 //
 // S-93.1..3 — the optional secondary action of `OmniBottomCTA`: same height,
 // width, radius and margins as the primary button, stacked directly above it.
-// Used by the food editor for Delete food / Reset to original.
+// Used by the food editor for Delete food.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -28,8 +28,8 @@ import '../../core/constants/omni_theme.dart';
 /// * **Secondary action (optional)** — a quieter outlined button of the
 ///   same height, width, radius and margins stacked directly above the
 ///   primary one, for an action that belongs with the primary but must
-///   not compete with it (e.g. **Delete food** / **Reset to original**
-///   on the food editor). Give it `secondaryLabel` + `onSecondaryPressed`;
+///   not compete with it (e.g. **Delete food** on the food
+///   editor). Give it `secondaryLabel` + `onSecondaryPressed`;
 ///   `isSecondaryDestructive` swaps primary for error colours. Never
 ///   build a hand-made button above the CTA instead.
 ///

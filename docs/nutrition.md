@@ -139,7 +139,9 @@ keeps its own) and `test/nutrition_test.dart` (group `AddFoodScreen — header +
 
 The Library list holds every food, grouped under category headings while the search box is empty (headings alphabetical, `Uncategorized` last, foods alphabetical inside each, the same order as Foods I Eat via `foodsIEatSections`; a typed query shows the flat filtered list instead). Verified by `test/library_grouping_test.dart` (`S-12820`, `S-12821`, `S-12822`, `S-12823`, `S-12825`). The list is: bundled catalog foods,
 foods the user created, and older custom foods that exist only in the library.
-A food the user created carries a small **Yours** tag (key `yours_tag_<foodId>`);
+A food the user created carries a small **Yours** tag (key `yours_tag_<foodId>`)
+at the end of its macros line, so the name above keeps the full row width
+(`test/library_merge_test.dart` `S-13301: the Yours tag follows the macros, not the name`);
 bundled foods never do. An older library-only custom food keeps its old row, with
 its red delete button, and the same tag. A library copy of a bundled food is never
 listed as a second row, even after the copy was edited. Verified by
@@ -161,14 +163,22 @@ logs nothing (`S-13118`).
 
 **Created foods and deleting them.** A food the user created is edited from its
 pencil like any other, and its editor ends with a **Delete food** button (key
-`food_delete_created`) in the footer slot where a bundled copy shows
-**Reset to original**; the two never appear together and bundled foods can never
-be deleted. Tapping it asks `Delete <name>?`; Cancel keeps the food, Confirm
+`food_delete_created`) in the footer slot; a default food's editor has no
+footer button at all. Editing a default food instead asks `Save as your own
+food?` and creates a food of your own (see `Editing a default food` under
+`EditFoodScreen` below). Tapping Delete food asks `Delete <name>?`; Cancel
+keeps the food, Confirm
 unlogs today's entry if there is one, removes the library copy and deletes the
 catalog row. Past logs stay unchanged (the log holds frozen snapshots). The
 sequence lives in `confirmAndDeleteCreatedFood`
 (`lib/features/nutrition/widgets/delete_created_food.dart`). Verified by
-`test/library_merge_test.dart` (`S-12815`, `S-12816`, `S-12816b`, `S-12817`).
+`test/library_merge_test.dart` (`S-12815: deleting a created food from its
+editor removes the catalog row, the library copy and today's log`,
+`S-12816: Delete food is absent for a bundled food; a default's editor has no
+secondary footer button`, `S-12816b no Delete food on a bundled catalog row`,
+`S-12817: confirmAndDeleteCreatedFood returns false on Cancel and true on
+Confirm`) and by `test/edit_food_save_test.dart` (`S-92a.9: a default food's
+editor has no secondary button, Delete stays above Save`).
 
 The catalog is read-only. Adding a catalog row **copies** it into the library; it
 does not log it. Removing a library food that is already logged today removes
@@ -239,8 +249,10 @@ user taps the bottom **Save** (key `food_form_save`), which runs the shared
 the screen. Leaving with edits — typed values or a changed photo — asks
 `Unsaved changes` first (keys `edit-food-unsaved-keep` /
 `edit-food-unsaved-discard`), while an untouched form closes with no dialog.
-**Reset to original** and **Delete food** keep their own confirmation and pop
-directly, so they never raise the unsaved-changes dialog.
+**Delete food** keeps its own confirmation and pops directly, so it never
+raises the unsaved-changes dialog; a default food's Save instead asks
+`Save as your own food?` first — only when the form was edited; Confirm saves
+and pops, Cancel keeps the editor open with nothing written.
 
 The serving is asked once, as `Nutrition facts are per`: a segmented control
 (key `food_form_basis`) offers `100 g`, `100 ml` and `1 serving`, plus
@@ -297,19 +309,21 @@ Verified by
 `test/edit_food_save_test.dart` (`S-92a.1: Save writes the edited food and
 closes the screen`, `S-92a.3: back with edits asks; Discard drops them and Keep
 editing stays`, `S-92a.4: back on an untouched form closes with no dialog`,
-`S-92a.15: Reset pops through unsaved edits with no dialog`, `S-92a.16: Delete
-pops through unsaved edits with no dialog`, `S-92a.18: Save pops without the
-guard`).
+`S-92a.7: a default food's Save asks and makes a food of your own`, `S-92a.16:
+Delete pops through unsaved edits with no dialog`, `S-92a.18: Save pops without
+the guard`).
 
-Which save path runs depends on the food the screen is given. A library copy of a bundled catalog food
-(`isCatalog == false`) saves through `FoodLibraryState.editLibraryFood` and
-changes only the copy — the shipped catalog row and its seed-touched marker
-are untouched. A user-created catalog food (`isCatalog == true`) saves through
+Which save path runs depends on the food the screen is given. A default food
+(`FoodLibraryState.isDefaultFood`: a bundled catalog row or the user's copy of
+one) saves, after the `Save as your own food?` confirmation, through
+`FoodLibraryState.createOwnCopyOfDefault` — a new catalog food of the user's
+own; the shipped catalog row and its seed-touched marker are untouched. A
+user-created catalog food (`isCatalog == true`) saves through
 `updateCatalogFood` as before, and that edit still propagates to the personal
 library rows linked to it through the durable `catalogId` linkage — including
 the remembered log amount, which is cleared when the propagation changes the
 serving and kept otherwise. Neither path touches already-logged snapshots —
-history stays frozen. The two propagation legs are verified by
+history stays frozen. The propagation leg is verified by
 `test/food_library_edit_test.dart` (`S-92b.10 a serving-changing catalog edit
 clears the linked copy's remembered amount`, `S-92b.10 a name-only catalog
 edit keeps the linked copy's remembered amount`, `S-92b.17 the legacy-upgrade
@@ -322,32 +336,56 @@ and a Discard leaves both the stored path and its file untouched. Verified by
 `test/food_photo_clear_legacy_edit_test.dart` (`clearing a legacy library
 food's photo waits for the Save tap`).
 
-**Editing your copy and Reset.** When the screen holds a library copy that
-differs from its bundled original, a `Reset to original` button (key
-`food_reset_original`) shows under the form; tapping it asks `Reset to
-original?` (keys `food-reset-cancel` / `food-reset-confirm`), and confirming
-calls `resetLibraryFood` — which restores the shipped name, group, unit,
-reference amount, macros, notes and photograph while keeping the copy's id,
-`catalogId` and creation time; the remembered last amount survives only while
-the reset leaves the serving unchanged, and is cleared when the serving
-changes — and pops. The reset's keep leg is verified by
-`test/food_library_copy_edit_test.dart` (`resetLibraryFood restores the
-shipped values (S-12704)`) and its clearing leg by `S-92b.10 a reset after a
-serving-changing edit clears the remembered amount`. The button is built
-when the screen opens, so it appears the next time the editor is opened after
-an edit. Verified by `test/library_row_toggle_test.dart` (group `Library row
-toggle (plan 77a S-12710..S-12717)`: `S-12713: pencil on an in-list bundled
-food edits the copy; reset restores the shipped values`, `S-12717: a
-user-created (non-bundled) in-list food has no Reset button`, `S-12719: the
-Edit screen routes a bundled copy's save through editLibraryFood`,
-`S-12720: the Edit screen routes a user-created catalog food's
-save through updateCatalogFood (propagates to the library copy)`) and by
-`test/food_library_copy_edit_test.dart` (groups `FoodLibraryState edit own
-copy (Mock)` / `FoodLibraryState edit own copy (Hive)`:
-`editLibraryFood changes only the library copy (S-12701)`,
-`canResetLibraryFood lifecycle (S-12703)`, `resetLibraryFood restores the
-shipped values (S-12704)`, `updateCatalogFood still propagates to the copy
-(S-12705)`).
+**Editing a default food.** The pencil `edit_catalog_food_<id>` sits on every
+Library row (`lib/features/nutrition/add_food_screen.dart`): a bundled food
+not in Foods I Eat opens `EditFoodScreen` on the catalog row itself, a bundled
+food in the list opens the user's copy, and a food the user created opens its
+catalog row. A default food (`FoodLibraryState.isDefaultFood`) saves only
+through the copy flow: the screen helper `saveDefaultAsOwnFood`
+(`lib/features/nutrition/widgets/save_default_as_own_food.dart`, with
+`confirmSaveAsOwnFood`) asks the confirmation above and calls
+`FoodLibraryState.createOwnCopyOfDefault`, which creates a new catalog food of
+the user's own — a new id, no `catalogId`, no seed-touched marker, the bundled
+row untouched — with the photo copied on the same terms (a picked photo's file
+goes to a fresh managed basename through
+`ImageStorageService.copyManagedFileToNewBasename`, an untouched shipped photo
+is re-written from its `.webp` asset, and any failure leaves no photo while
+the save still succeeds). When the default is in the list the new food is
+added to the list first and then the replaced copy row is removed (its own
+managed photo deleted), so a failed add leaves the old copy, and today's log,
+as they were (`S-13329`, `S-13334`); when it is not, the new food is created in the Library only. When
+the default was logged today the same amount is logged again on the new
+library row (unlog, swap, re-log); if a step fails the amount is put back on
+the row that is in the list and the editor stays open. **Reset to original**
+is gone: the editor's footer secondary slot shows only **Delete food**, for a
+food of your own, and a library copy edited before this change stays an
+ordinary row whose editor offers the same Save-as-your-own flow. Verified by
+`test/edit_default_food_test.dart` (group `Edit a default food (plan 133)`:
+`S-13310 the pencil shows on a not-in-list default row and opens the editor
+on it`, `S-13311 Save on an edited default asks first; Cancel writes nothing;
+an untouched form pops with no dialog`, `S-13311 (untouched form) Save pops
+with no dialog`, `S-13328 Cancel shows no error snackbar`, `S-13312 Confirm
+makes a food of your own, not added to the list`, `S-13313 Confirm on an
+in-list logged default replaces it and carries today's amount`, `S-13319
+Cancel on the dialog leaves the log alone`, `S-13327 a failed swap keeps
+today's log`, `S-13315 a food of your own saves with no dialog`, `S-13316 no
+Reset button; Delete food only for a food of your own`, `S-13320 after the
+swap the default and the new food are both listed`; top level: `S-13318
+source guards pin the copy flow`) and by `test/food_library_own_copy_test.dart`
+(groups `FoodLibraryState create own copy (Mock)` / `FoodLibraryState create
+own copy (Hive)`: `createOwnCopyOfDefault not in list adds nothing (S-13317)`,
+`createOwnCopyOfDefault in list swaps the row (S-13317)`,
+`createOwnCopyOfDefault (source not a default) throws (D-13310)`,
+`isDefaultFood: bundled row and copy true, user food false (D-13310)`; group
+`FoodLibraryState create own copy (Mock) — photo (S-13314)`:
+`S-13314 (a) null draft + shipped asset: new managed basename, bytes equal the
+asset bytes`, `S-13314 (b) draft carries a managed file: fresh basename, bytes
+equal, the replaced copy file is deleted after the swap`, `S-13314 (c)
+photo-resolution failure: save succeeds, no photo, no throw`) and by
+`test/library_row_toggle_test.dart` (group `Library row toggle (plan 77a
+S-12710..S-12717)`: `S-12713: the pencil on an in-list bundled food opens its
+copy; Save asks and makes a food of your own`, `S-12714: the pencil does not
+toggle the row`).
 
 Verified by `test/food_library_edit_test.dart`, `test/food_form_shipped_photo_test.dart`,
 `test/food_form_pick_saves_test.dart`, `test/food_photo_clear_legacy_edit_test.dart`.
@@ -469,12 +507,13 @@ photograph it has replaced.
 
 It is also the feature's guard rail: `deleteFoodGroupReassigningFoods` is the only
 group-deletion path, and it refuses the bundled-food case described above rather
-than reassigning. Editing a bundled food's library copy — and resetting that copy
-to the shipped values — are state methods too (`editLibraryFood`,
-`canResetLibraryFood`, `resetLibraryFood`, `libraryFoodFor`; their contracts are
-in [Nutrition State](state_management/nutrition_state.md)). Verified by
-`test/food_library_copy_edit_test.dart` (group `FoodLibraryState edit own copy
-(Mock)`).
+than reassigning. `createOwnCopyOfDefault` is a state method; the copy flow's log
+carry is the screen helper `saveDefaultAsOwnFood`
+(`lib/features/nutrition/widgets/save_default_as_own_food.dart`), and
+`libraryFoodFor` resolves the in-list row (their contracts are in
+[Nutrition State](state_management/nutrition_state.md)). Verified by
+`test/food_library_own_copy_test.dart` (groups `FoodLibraryState create own copy
+(Mock)` / `FoodLibraryState create own copy (Hive)`).
 
 Verified by `test/food_library_state_test.dart`, `test/food_library_state_delete_guard_test.dart`,
 `test/food_library_persistence_test.dart`, `test/food_orphan_category_integration_test.dart`.
@@ -692,7 +731,7 @@ contract, not a live persistence path.
 | Catalog rows load identically on every platform | `test/food_catalog_load_test.dart`, `test/bundled_food_asset_contract_test.dart` |
 | A library copy shows the shipped photograph | `test/food_photo_service_test.dart`, `test/bundled_food_photographs_test.dart` |
 | A Library row tap toggles the food in the library (add, or remove after asking) | `test/library_row_toggle_test.dart`, `test/screen_widget_test.dart` |
-| Editing a bundled food changes only the library copy; Reset restores the shipped values | `test/food_library_copy_edit_test.dart`, `test/library_row_toggle_test.dart` |
+| A default food's edit saves as a new food of the user's own (`Save as your own food?`); the bundled row stays untouched | `test/edit_default_food_test.dart`, `test/food_library_own_copy_test.dart`, `test/library_row_toggle_test.dart` |
 | Trend days are summed and rounded once per day, gaps skipped | `test/stats_progress_test.dart` |
 | The target line steps at each saved target change | `test/stats_progress_test.dart`, `test/nutrition_trend_screen_test.dart` |
 | The Fuel summary averages over logged days only | `test/fuel_row_screen_test.dart` |

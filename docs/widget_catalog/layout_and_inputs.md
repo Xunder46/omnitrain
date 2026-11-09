@@ -119,7 +119,7 @@ unaffected.
 | `isSecondaryDestructive` | `bool` | `false` | Error colours instead of the primary accent |
 | `secondaryButtonKey` | `Key?` | `null` | Forwarded to the secondary `OutlinedButton` |
 
-The food editor uses it for **Delete food** and **Reset to original**. Verified by
+The food editor uses it for **Delete food**. Verified by
 `test/omni_bottom_cta_secondary_test.dart` (group `S-93.1..3`).
 
 ### `OmniHeaderAddButton`

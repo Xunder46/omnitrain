@@ -27,7 +27,6 @@ class SettingsState extends ChangeNotifier {
   static const String _preferredHeightUnitKey = 'preferred_height_unit';
   static const String _preferredStartOfWeekKey = 'preferred_start_of_week';
   static const String _showFeelingSurveyKey = 'show_feeling_survey';
-  static const String _showWeightTrendKey = 'show_weight_trend';
   static const String _effortTimerSoundKey = 'effort_timer_sound';
   static const String _restPingIntervalKey = 'rest_ping_interval';
   static const String _restPingSoundKey = 'rest_ping_sound';
@@ -83,7 +82,6 @@ class SettingsState extends ChangeNotifier {
   String _preferredHeightUnit = 'cm';
   String _startOfWeek = 'monday';
   bool _showFeelingSurvey = true;
-  bool _showWeightTrend = true;
   String _effortTimerSound = 'boxing_bell';
   int _restPingInterval = 0;
   String _restPingSound = 'soft_chime';
@@ -98,7 +96,6 @@ class SettingsState extends ChangeNotifier {
   String get preferredHeightUnit => _preferredHeightUnit;
   String get startOfWeek => _startOfWeek;
   bool get showFeelingSurvey => _showFeelingSurvey;
-  bool get showWeightTrend => _showWeightTrend;
   String get effortTimerSound => _effortTimerSound;
   int get restPingInterval => _restPingInterval;
   String get restPingSound => _restPingSound;
@@ -201,12 +198,6 @@ class SettingsState extends ChangeNotifier {
       _showFeelingSurveyKey,
       value.toString(),
     );
-    notifyListeners();
-  }
-
-  Future<void> setShowWeightTrend(bool value) async {
-    _showWeightTrend = value;
-    await _repository.setPreferenceString(_showWeightTrendKey, value.toString());
     notifyListeners();
   }
 
@@ -356,12 +347,6 @@ class SettingsState extends ChangeNotifier {
       defaultValue: 'true',
     );
     _showFeelingSurvey = savedShowFeelingSurvey != 'false';
-
-    final savedShowWeightTrend = await _repository.getPreferenceString(
-      _showWeightTrendKey,
-      defaultValue: 'true',
-    );
-    _showWeightTrend = savedShowWeightTrend != 'false';
 
     final savedEffortSound = await _repository.getPreferenceString(
       _effortTimerSoundKey,

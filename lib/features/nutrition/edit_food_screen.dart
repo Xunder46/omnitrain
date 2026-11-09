@@ -11,21 +11,23 @@ import '../../widgets/layout/omni_bottom_cta.dart';
 import 'widgets/delete_created_food.dart';
 import 'widgets/food_form.dart';
 import 'widgets/food_form_unsaved_probe.dart';
+import 'widgets/save_default_as_own_food.dart';
 
-/// Edit Food screen — opened from the pencil on an in-list row of the
-/// **Library** tab of [AddFoodScreen]. Pre-fills the shared [FoodForm] with
-/// the given [Food] and carries the same bottom **Save** CTA and
+/// Edit Food screen — opened from the pencil on a **Library** row
+/// (every row offers the pencil, D-13311). Pre-fills the shared [FoodForm]
+/// with the given [Food] and carries the same bottom **Save** CTA and
 /// unsaved-changes guard as the New Food screen: nothing is written until
 /// Save, and leaving with edits asks first.
 ///
-/// Which food is edited decides where the edit lands:
-///   * a **library row** (`isCatalog == false`, the user's own copy of a
-///     bundled food) saves through [FoodLibraryState.editLibraryFood]; the
-///     shipped catalog entry is never altered. When the copy differs from
-///     its shipped original a **Reset to original** button is shown.
-///   * a **catalog row the user created** (`isCatalog == true`) has no
-///     shipped original, so it saves through
-///     [FoodLibraryState.updateCatalogFood] as before (no Reset).
+/// What Save does depends on the food:
+///   * a **default food** (a bundled catalog row or the user's copy of
+///     one, D-13310) — an untouched form pops with nothing written;
+///     anything else asks `Save as your own food?`
+///     ([confirmSaveAsOwnFood]) and, on confirm, saves a food of the
+///     user's own through [saveDefaultAsOwnFood] (D-13313..D-13315); the
+///     default itself is never written.
+///   * a **catalog row the user created** saves through
+///     [FoodLibraryState.updateCatalogFood] as before.
 ///
 /// Past [ConsumedFood] snapshots stay frozen.
 ///
@@ -124,34 +126,58 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
     Navigator.of(context).pop();
   }
 
+  /// Asks first when the food is a default food and the form was edited
+  /// (D-13312, D-13320); the question comes from the Save button, so a
+  /// Cancel never reaches the form's save and never shows its error.
+  Future<void> _onSavePressed() async {
+    if (widget.foodLibraryState.isDefaultFood(widget.food) &&
+        _probe.isDirty) {
+      final create = await confirmSaveAsOwnFood(context, food: widget.food);
+      if (!create || !mounted) return;
+    }
+    _formController.submit();
+  }
+
   Future<bool> _save(FoodDraft draft) async {
+    final nutrition = widget.nutritionState;
     try {
+      // A default food is never written in place (D-13313): an untouched
+      // form just closes, anything else was confirmed on the Save button
+      // and becomes a food of the user's own.
+      if (widget.foodLibraryState.isDefaultFood(widget.food)) {
+        if (!_probe.isDirty) return true;
+        if (nutrition == null) return false;
+        return await saveDefaultAsOwnFood(
+          food: widget.food,
+          draft: draft,
+          foodLibraryState: widget.foodLibraryState,
+          nutritionState: nutrition,
+        );
+      }
       if (widget.food.isCatalog) {
         await widget.foodLibraryState.updateCatalogFood(widget.food, draft);
       } else {
-        await widget.foodLibraryState.editLibraryFood(widget.food, draft);
+        // A non-catalog row here is a legacy library-only custom row.
+        await widget.foodLibraryState.updateCustomFood(
+          id: widget.food.id,
+          name: draft.name,
+          groupId: draft.groupId,
+          unitType: draft.unitType,
+          referenceAmount: draft.referenceAmount,
+          referenceLabel: draft.referenceLabel,
+          protein: draft.protein,
+          carbs: draft.carbs,
+          fiber: draft.fiber,
+          fat: draft.fat,
+          sodium: draft.sodium,
+          notes: draft.notes,
+          imagePath: draft.imagePath,
+        );
       }
       return true;
     } catch (_) {
       return false;
     }
-  }
-
-  Future<void> _onReset() async {
-    final confirmed = await ConfirmationDialog.showTwoChoice(
-      context: context,
-      title: 'Reset to original?',
-      body: Text('${widget.food.name} goes back to the values it came with.'),
-      dismissLabel: 'Cancel',
-      confirmLabel: 'Reset',
-      dismissKey: const Key('food-reset-cancel'),
-      confirmKey: const Key('food-reset-confirm'),
-      isDestructive: true,
-    );
-    if (!confirmed || !mounted) return;
-    await widget.foodLibraryState.resetLibraryFood(widget.food.id);
-    if (!mounted) return;
-    Navigator.of(context).pop();
   }
 
   Future<void> _onDeleteCreated() async {
@@ -169,9 +195,6 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canReset =
-        !widget.food.isCatalog &&
-        widget.foodLibraryState.canResetLibraryFood(widget.food);
     final canDelete =
         widget.food.isCatalog &&
         widget.nutritionState != null &&
@@ -206,6 +229,7 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
                   // Nothing persists the photo before Save, so the probe
                   // learns about a pick (or a clear) from the form itself.
                   onImageChanged: _probe.markImageChanged,
+                  onServingChanged: _probe.markServingChanged,
                   onSave: _save,
                 ),
               ),
@@ -215,19 +239,13 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
         bottomNavigationBar: OmniBottomCTA(
           label: 'Save',
           buttonKey: const Key('food_form_save'),
-          onPressed: _formController.submit,
-          // Reset / Delete sit above Save in the shared footer, so they
-          // share its height, margins and radius.
-          secondaryLabel: canReset
-              ? 'Reset to original'
-              : canDelete
-              ? 'Delete food'
-              : null,
-          secondaryButtonKey: Key(
-            canReset ? 'food_reset_original' : 'food_delete_created',
-          ),
-          onSecondaryPressed: canReset ? _onReset : _onDeleteCreated,
-          isSecondaryDestructive: !canReset,
+          onPressed: _onSavePressed,
+          // Only Delete sits above Save in the shared footer, so it
+          // shares its height, margins and radius.
+          secondaryLabel: canDelete ? 'Delete food' : null,
+          secondaryButtonKey: const Key('food_delete_created'),
+          onSecondaryPressed: _onDeleteCreated,
+          isSecondaryDestructive: true,
         ),
       ),
     );
