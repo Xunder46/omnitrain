@@ -54,7 +54,7 @@ public struct WristHaptics: WatchHaptics {
     /// strength, so more clicks is the only lever. A closing `.retry` tap was
     /// tried and removed: it carries a system sound and its vibration came and
     /// went from one ping to the next.
-    static let restPingTaps = 10
+    static let restPingTaps = 7
     static let restPingSpacing = 0.1
 
     public func playRestPing() {
