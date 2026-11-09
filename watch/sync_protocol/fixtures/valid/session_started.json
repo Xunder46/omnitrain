@@ -1,0 +1,13 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-session-started-w-1",
+  "type": "session_started",
+  "origin": "watch",
+  "sentAt": "2026-11-05T09:15:00Z",
+  "payload": {
+    "sessionId": "w-1",
+    "at": "2026-11-05T09:14:59Z",
+    "routineTemplateId": "tpl-push-a",
+    "plannedSessionId": "p-today-routine"
+  }
+}

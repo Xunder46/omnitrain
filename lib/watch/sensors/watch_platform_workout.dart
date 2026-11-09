@@ -100,6 +100,13 @@ abstract final class WatchActivityTypes {
 
   static WatchActivityType forModality(String? modality) =>
       byModality[modality] ?? generic;
+
+  /// The modality key when it is one the wrist knows (a non-empty [String] that is a key of
+  /// [byModality]), else null. Never throws: any other value is null.
+  static String? knownModality(Object? value) {
+    if (value is! String || value.isEmpty) return null;
+    return byModality.containsKey(value) ? value : null;
+  }
 }
 
 /// Whether a session's modality calls for GPS.
@@ -122,6 +129,12 @@ abstract final class WatchGpsPolicy {
     return config.primaryCapabilities.contains(distanceCapability) ||
         config.secondaryCapabilities.contains(distanceCapability);
   }
+
+  /// True when an exercise's capabilities include distance — the exercise, not
+  /// its name. The wrist decides GPS by the exercise the user is on as well as
+  /// by the session's modality (the Swift client's `WatchGpsPolicy.coversDistance`).
+  static bool coversDistance(Iterable<String> capabilities) =>
+      capabilities.contains(distanceCapability);
 }
 
 /// The health service's own view of workouts: the OS-level surface, which is the

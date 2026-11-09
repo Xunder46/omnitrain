@@ -97,6 +97,14 @@ class StatsProgressService {
   /// method; caching keeps repeated passes off the repository entirely.
   final Map<String, Exercise?> _exerciseCache = <String, Exercise?>{};
 
+  /// The Instruments sections already built by this instance, per window
+  /// (plan 107, D-18103): the Stats screen builds them for the list, and the
+  /// Hold Progress signal asks for the same window, so the second ask is free.
+  /// Same freshness rule as [_historyIndex]: a caller that needs fresh data
+  /// after a write constructs a new service.
+  final Map<String, Future<List<InstrumentSectionData>>>
+  _instrumentSectionsByWindow = <String, Future<List<InstrumentSectionData>>>{};
+
   Future<_HistoryIndex> _loadHistory() async {
     final cached = _historyIndex;
     if (cached != null) return cached;
@@ -135,6 +143,25 @@ class StatsProgressService {
     final exercise = await _repository.getExerciseById(id);
     _exerciseCache[id] = exercise;
     return exercise;
+  }
+
+  /// The start of every completed session at or before [now], oldest first
+  /// (plan 107, D-18102).
+  ///
+  /// Served from the cached history snapshot, so the Consistency and Training
+  /// Gap signals cost no repository read of their own. A session still in
+  /// progress has no end and is not a session yet; one dated after [now] has
+  /// not happened yet.
+  Future<List<DateTime>> completedSessionStarts({required DateTime now}) async {
+    final nowMs = now.millisecondsSinceEpoch;
+    final startsMs = <int>[
+      for (final session in (await _loadHistory()).sessions)
+        if (session.endedAtMs != null &&
+            session.startedAtMs >= 0 &&
+            session.startedAtMs <= nowMs)
+          session.startedAtMs,
+    ]..sort();
+    return [for (final ms in startsMs) DateTime.fromMillisecondsSinceEpoch(ms)];
   }
 
   /// The cap on the lifts whose full history the PR scan walks. Not a
@@ -176,12 +203,14 @@ class StatsProgressService {
   static const int kNutritionTrendDays = 10;
 
   /// Window length, in calendar days, over which the Fuel row averages
-  /// intake and counts logged days. Seven days matches the weekly
-  /// cadence a user reasons about their eating in.
+  /// intake and counts logged days: the [kFuelWindowDays] **finished** days
+  /// ending yesterday — today is in neither the window nor the previous
+  /// range. Seven days matches the weekly cadence a user reasons about
+  /// their eating in.
   static const int kFuelWindowDays = 7;
 
   /// How far back the Fuel row looks for any logged food before it hides
-  /// itself entirely.
+  /// itself entirely: the last [kFuelVisibilityDays] days, today included.
   ///
   /// Deliberately longer than [kFuelWindowDays]: the row compares the
   /// current window against the previous one, so a user who has logged
@@ -478,7 +507,10 @@ class StatsProgressService {
   /// is rated enough; otherwise it is time (D-908). The baseline is the 12
   /// calendar blocks before the window's start day and never uses
   /// [startOfWeek]; that setting moves the strip's weeks and nothing else
-  /// (D-934, D-935).
+  /// (D-934, D-935). The rated weeks are the last 12 weeks ending at the
+  /// window's end day, current ones included (D-17104). An empty window with
+  /// completed history elsewhere returns an empty-window payload instead of
+  /// null (D-17005).
   Future<MixLayerData?> computeMixLayer({
     required StatsWindow window,
     required DateTime now,
@@ -511,6 +543,7 @@ class StatsProgressService {
       baselineEndMs: baselineEndMs,
       weekStarts: weekStarts,
       startOfWeek: startOfWeek,
+      keepEmptyWindow: true,
     );
   }
 
@@ -706,7 +739,9 @@ class StatsProgressService {
   ///
   /// [weekStarts] is the strip's own week starts, oldest first; an empty list
   /// means no strip at all. Null when the window holds no time at all: there is
-  /// nothing to split, and a bar of nothing is not a bar (D-914).
+  /// nothing to split, and a bar of nothing is not a bar (D-914). The one
+  /// exception is [keepEmptyWindow]: a window with no session at all, over a
+  /// history that has some, returns the empty-window payload (D-17006).
   MixLayerData? _mixPayload({
     required _HistoryIndex history,
     required DateTime fromMs,
@@ -715,26 +750,44 @@ class StatsProgressService {
     required int baselineEndMs,
     required List<DateTime> weekStarts,
     required String startOfWeek,
+    bool keepEmptyWindow = false,
   }) {
     final windowTime = <ExerciseSection, double>{};
     final windowLoad = <ExerciseSection, double>{};
     var windowTimeSeconds = 0.0;
     var unratedTimeSeconds = 0.0;
     var unratedSessionCount = 0;
+    var windowSessionCount = 0;
 
     final baselineLoad = <ExerciseSection, double>{};
-    final ratedBaselineBlocks = <int>{};
+    final ratedStarts = ratedWeekBlockStarts(localMidnightDay(toMs));
+    final ratedFirstMs = ratedStarts.first.millisecondsSinceEpoch;
+    final endDay = localMidnightDay(toMs);
+    final ratedEndMs = DateTime(
+      endDay.year,
+      endDay.month,
+      endDay.day + 1,
+    ).millisecondsSinceEpoch;
+    final ratedWeekBlocks = <int>{};
 
     final weekTime = <int, Map<ExerciseSection, double>>{};
     final weekLoad = <int, Map<ExerciseSection, double>>{};
 
+    // The latest completed session in all history, for the empty strip's line
+    // (D-4005). Rolling sessions count: they are completed sessions.
+    int? latestStartMs;
+
     for (final session in history.sessions) {
       if (session.endedAtMs == null) continue;
       final startMs = session.startedAtMs;
+      if (latestStartMs == null || startMs > latestStartMs) {
+        latestStartMs = startMs;
+      }
 
       final split = _sessionSplit(history, session);
 
       if (_sessionInWindow(session, fromMs, toMs)) {
+        windowSessionCount++;
         _addAll(windowTime, split.timeBySection);
         _addAll(windowLoad, split.loadBySection);
         windowTimeSeconds += split.timeSeconds;
@@ -748,8 +801,14 @@ class StatsProgressService {
         final block = _baselineBlockFor(baselineStarts, startMs);
         if (block != null) {
           _addAll(baselineLoad, split.loadBySection);
-          if (session.sessionFeeling != null) ratedBaselineBlocks.add(block);
         }
+      }
+
+      if (session.sessionFeeling != null &&
+          startMs >= ratedFirstMs &&
+          startMs < ratedEndMs) {
+        final week = _baselineBlockFor(ratedStarts, startMs);
+        if (week != null) ratedWeekBlocks.add(week);
       }
 
       final weekIndex = _weekIndexFor(weekStarts, startMs, startOfWeek);
@@ -765,11 +824,27 @@ class StatsProgressService {
       }
     }
 
-    if (windowTimeSeconds <= 0) return null;
+    if (windowTimeSeconds <= 0) {
+      if (!keepEmptyWindow || windowSessionCount > 0 || latestStartMs == null) {
+        return null;
+      }
+      return MixLayerData(
+        measure: MixMeasure.time,
+        segments: const [],
+        baselineSegments: const [],
+        unratedSessionCount: 0,
+        ratedWeeks: ratedWeekBlocks.length,
+        weeks: const [],
+        lastSessionDay: localMidnightDay(
+          DateTime.fromMillisecondsSinceEpoch(latestStartMs),
+        ),
+        windowIsEmpty: true,
+      );
+    }
 
-    final ratedBaselineWeeks = ratedBaselineBlocks.length;
+    final ratedWeeks = ratedWeekBlocks.length;
     final measure =
-        ratedBaselineWeeks >= kTrainingLoadMinRatedWeeks &&
+        ratedWeeks >= kTrainingLoadMinRatedWeeks &&
             unratedTimeSeconds / windowTimeSeconds <=
                 kTrainingLoadMaxUnratedShare
         ? MixMeasure.load
@@ -787,7 +862,12 @@ class StatsProgressService {
           ? mixSegments(baselineLoad)
           : const [],
       unratedSessionCount: unratedSessionCount,
-      ratedBaselineWeeks: ratedBaselineWeeks,
+      ratedWeeks: ratedWeeks,
+      lastSessionDay: latestStartMs == null
+          ? null
+          : localMidnightDay(
+              DateTime.fromMillisecondsSinceEpoch(latestStartMs),
+            ),
       weeks: [
         for (var i = 0; i < weekStarts.length; i++)
           _mixWeek(
@@ -1142,9 +1222,23 @@ class StatsProgressService {
   /// Each row also carries the same exercise's value over the immediately
   /// preceding range of the same calendar length, when the two are comparable,
   /// plus the cadence and heart-rate figures its section reads.
+  ///
+  /// One instance builds a window's sections once: a second call for the same
+  /// window returns the first call's result.
   Future<List<InstrumentSectionData>> computeInstrumentSections({
     required StatsWindow window,
-  }) async {
+  }) {
+    final key =
+        '${window.fromMs.millisecondsSinceEpoch}|'
+        '${window.toMs.millisecondsSinceEpoch}';
+    return _instrumentSectionsByWindow[key] ??= _buildInstrumentSections(
+      window,
+    );
+  }
+
+  Future<List<InstrumentSectionData>> _buildInstrumentSections(
+    StatsWindow window,
+  ) async {
     final fromMs = window.fromMs.millisecondsSinceEpoch;
     final toMs = window.toMs.millisecondsSinceEpoch;
 
@@ -1737,6 +1831,12 @@ class StatsProgressService {
     }
   }
 
+  /// The local midnight [kTopExerciseRecencyDays] calendar days before
+  /// [now]'s day. Calendar arithmetic, not a 24 h step, so the cutoff is
+  /// still a midnight when a DST change falls inside the window.
+  static DateTime topExerciseRecencyCutoff(DateTime now) =>
+      DateTime(now.year, now.month, now.day - kTopExerciseRecencyDays);
+
   /// Returns the top-[n] exercise IDs ordered by distinct training-day count
   /// (descending), with alphabetical name as a tiebreaker. Applies
   /// the recency floor ([kTopExerciseRecencyDays]) so any candidate
@@ -1760,14 +1860,10 @@ class StatsProgressService {
   }) {
     if (data.isEmpty) return const [];
 
-    final today = now ?? DateTime.now();
-    final todayMidnight = DateTime(today.year, today.month, today.day);
     // Threshold is inclusive on the trailing edge: a training day
     // exactly `kTopExerciseRecencyDays` days ago still qualifies.
     // Anything strictly older drops out.
-    final cutoff = todayMidnight.subtract(
-      Duration(days: kTopExerciseRecencyDays),
-    );
+    final cutoff = topExerciseRecencyCutoff(now ?? DateTime.now());
 
     final ranked =
         data.entries
@@ -1983,9 +2079,13 @@ class StatsProgressService {
   /// The Fuel row's figures: intake averaged over logged days, split by
   /// whether the day carried a completed session, against the day's target.
   ///
+  /// The window is the [kFuelWindowDays] finished days ending **yesterday**;
+  /// today is in neither the window nor the previous range (D-17201).
+  ///
   /// Returns `null` when nothing has been logged within
-  /// [kFuelVisibilityDays] — the row is hidden rather than shown empty,
-  /// matching the NUTRITION card's behaviour.
+  /// [kFuelVisibilityDays] — the last 14 days, today included — so the row
+  /// is hidden rather than shown empty, matching the NUTRITION card's
+  /// behaviour (D-17202).
   ///
   /// Averages divide by the number of **logged** days in the group, never
   /// by the window length: a week with three logged days is a three-day
@@ -1998,27 +2098,39 @@ class StatsProgressService {
   /// An in-progress session does not move today's food into the training
   /// bucket.
   Future<FuelSummary?> computeFuelSummary() async {
-    final points = await computeNutritionTrend(days: kFuelVisibilityDays);
-    if (points.isEmpty) return null;
+    final points = await computeNutritionTrend(days: 2 * kFuelWindowDays + 1);
 
     final todayMs = OmniDateUtils.todayMidnightMs();
     final today = DateTime.fromMillisecondsSinceEpoch(todayMs);
-    // Calendar arithmetic rather than `subtract(Duration(days: n))` for the
-    // DST reason documented on `computeNutritionTrend`.
+    // The row appears only when the last [kFuelVisibilityDays] days, today
+    // included, hold logged food (D-17202).
+    final visibleFrom = DateTime(
+      today.year,
+      today.month,
+      today.day - (kFuelVisibilityDays - 1),
+    );
+    if (!points.any((p) => !p.date.isBefore(visibleFrom))) return null;
+
+    // The window is the [kFuelWindowDays] finished days ending yesterday and
+    // the previous range the same number before it; today is in neither
+    // (D-17201). Calendar arithmetic for the DST reason documented on
+    // `computeNutritionTrend`.
     final windowStart = DateTime(
       today.year,
       today.month,
-      today.day - (kFuelWindowDays - 1),
+      today.day - kFuelWindowDays,
     );
+    final yesterday = DateTime(today.year, today.month, today.day - 1);
     final previousStart = DateTime(
       today.year,
       today.month,
-      today.day - (2 * kFuelWindowDays - 1),
+      today.day - 2 * kFuelWindowDays,
     );
 
     final window = <NutritionTrendPoint>[];
     final previous = <NutritionTrendPoint>[];
     for (final p in points) {
+      if (!p.date.isBefore(today)) continue;
       if (!p.date.isBefore(windowStart)) {
         window.add(p);
       } else if (!p.date.isBefore(previousStart)) {
@@ -2026,7 +2138,7 @@ class StatsProgressService {
       }
     }
 
-    final trainingDays = await _trainingDayKeys(windowStart, today);
+    final trainingDays = await _trainingDayKeys(windowStart, yesterday);
     final training = <NutritionTrendPoint>[];
     final rest = <NutritionTrendPoint>[];
     for (final p in window) {
@@ -2043,11 +2155,15 @@ class StatsProgressService {
       loggedDays: window.length,
       caloriesAverage: _averageOf(window, (p) => p.calories.toDouble()),
       proteinAverage: _averageOf(window, (p) => p.protein.toDouble()),
+      carbsAverage: _averageOf(window, (p) => p.carbs.toDouble()),
+      fatAverage: _averageOf(window, (p) => p.fat.toDouble()),
       previousCaloriesAverage: _averageOf(
         previous,
         (p) => p.calories.toDouble(),
       ),
       previousProteinAverage: _averageOf(previous, (p) => p.protein.toDouble()),
+      previousCarbsAverage: _averageOf(previous, (p) => p.carbs.toDouble()),
+      previousFatAverage: _averageOf(previous, (p) => p.fat.toDouble()),
       trainingCaloriesAverage: _averageOf(
         training,
         (p) => p.calories.toDouble(),
@@ -2057,6 +2173,8 @@ class StatsProgressService {
       restProteinAverage: _averageOf(rest, (p) => p.protein.toDouble()),
       targetCalories: target?.calories ?? 0,
       targetProtein: target?.protein ?? 0,
+      targetCarbs: target?.carbs ?? 0,
+      targetFat: target?.fat ?? 0,
     );
   }
 
@@ -2236,6 +2354,78 @@ class StatsProgressService {
       }
     }
     return best;
+  }
+
+  /// Every exercise's standing best, in one pass over the history.
+  ///
+  /// Fuses [getAllTimeBestE1RM] and [getAllTimeBestReps]: `e1rm` is the Epley
+  /// estimate the former returns and `reps` the bodyweight max the latter
+  /// returns, for every exercise at once. Callers that need all of them — the
+  /// wrist's `bests_down` frame (`WatchReferenceSync.buildBestsDown`) — would
+  /// otherwise re-walk the whole history once per exercise (D-5 of
+  /// `docs/plans/2026-10-26-87a-...`).
+  ///
+  /// An exercise appears only when one of its axes is above zero, and an
+  /// in-progress session contributes nothing, exactly as in the two
+  /// per-exercise walks. S-87a-5
+  /// (`test/stats_bests_builder_test.dart`) is the structural guard that the
+  /// fused walk equals them for every exercise of the same history.
+  Future<Map<String, ({double e1rm, int reps})>> getAllTimeBests() async {
+    final history = await _loadHistory();
+    final bests = <String, ({double e1rm, int reps})>{};
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (effort.effortKind != 'set') continue;
+          final exerciseId = effort.exerciseId;
+          if (exerciseId == null) continue;
+
+          final entries = ObservationGrouper.groupByEffortKind(
+            'set',
+            history.observationsOf(effort.id),
+          );
+          for (final entry in entries) {
+            final weight = (entry['weight'] as num?)?.toDouble() ?? 0.0;
+            final reps = entry['reps'] as int? ?? 0;
+
+            final current = bests[exerciseId] ?? (e1rm: 0.0, reps: 0);
+            var e1rm = current.e1rm;
+            var repsBest = current.reps;
+            final estimate = epley1RM(weight, reps);
+            if (estimate != null && estimate > e1rm) e1rm = estimate;
+            // Bodyweight sets only, matching [getAllTimeBestReps].
+            if (weight == 0.0 && reps > repsBest) repsBest = reps;
+
+            if (e1rm > 0 || repsBest > 0) {
+              bests[exerciseId] = (e1rm: e1rm, reps: repsBest);
+            }
+          }
+        }
+      }
+    }
+    return bests;
+  }
+
+  /// Calendar days the Stats screen describes: the four weeks ending today.
+  static const int kStatsWindowDays = 28;
+
+  /// The window every part of the Stats screen reads (D-17003): the
+  /// [kStatsWindowDays] calendar days ending with the end of today. Periods
+  /// play no part; they keep their meaning on the calendar and period screens.
+  static StatsWindow statsWindow({DateTime? now}) {
+    final today = now ?? DateTime.now();
+    return StatsWindow(
+      fromMs: DateTime(
+        today.year,
+        today.month,
+        today.day - (kStatsWindowDays - 1),
+      ),
+      toMs: DateTime(today.year, today.month, today.day, 23, 59, 59, 999),
+      label: 'Last 4 weeks',
+      isPeriodScoped: false,
+    );
   }
 
   // ── Window resolution (current-state window for exercise selection) ───────
@@ -2485,12 +2675,10 @@ class StatsProgressService {
     var cursor = earliestDay;
     var currentTarget = firstTarget;
     while (cursor.isBefore(lastDay)) {
-      cursor = cursor.add(const Duration(days: 1));
-      final ms = DateTime(
-        cursor.year,
-        cursor.month,
-        cursor.day,
-      ).millisecondsSinceEpoch;
+      // Calendar arithmetic: a 24 h step drifts off midnight after a DST
+      // change, which repeats a day and keys the step at the wrong hour.
+      cursor = DateTime(cursor.year, cursor.month, cursor.day + 1);
+      final ms = cursor.millisecondsSinceEpoch;
       final t = await _repository.getNutritionTargetForDate(ms);
       if (t == null) {
         // No target extends this far back from the cursor.

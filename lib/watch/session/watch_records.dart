@@ -70,6 +70,10 @@ abstract final class WatchObservationKind {
   /// the set block's span and the effort debt do not see it.
   static const String rest = 'rest';
 
+  /// One glass added to or removed from the day's water (plan 94 D-2). The
+  /// phone reads it; this twin emits no taps, so it is not in [all] (D-14).
+  static const String waterGlass = 'water_glass';
+
   static const List<String> all = [
     set,
     timed,
@@ -410,6 +414,7 @@ final class WatchTimerRecord extends WatchRecord {
     this.stoppedAt,
     this.accumulatedPauseMs = 0,
     this.plannedDurationMs,
+    this.sessionExerciseId,
     super.sequence,
   });
 
@@ -430,6 +435,10 @@ final class WatchTimerRecord extends WatchRecord {
 
   /// Planned length, when the timer counts down. Null for elapsed timers.
   final int? plannedDurationMs;
+
+  /// The exercise slot the timer is for, or null for a rest and for a row
+  /// written before the field existed (D-2/D-5).
+  final String? sessionExerciseId;
 
   /// One of [WatchTimerState], derived from which timestamps are present.
   String get state {
@@ -452,6 +461,7 @@ final class WatchTimerRecord extends WatchRecord {
     stoppedAt: stoppedAt,
     accumulatedPauseMs: accumulatedPauseMs,
     plannedDurationMs: plannedDurationMs,
+    sessionExerciseId: sessionExerciseId,
     sequence: sequence,
   );
 
@@ -468,6 +478,10 @@ final class WatchTimerRecord extends WatchRecord {
     // it, so the frame never carries it.
     if (plannedDurationMs != null && kind != 'rest')
       'plannedDurationMs': plannedDurationMs,
+    // A rest belongs to no slot, and the wire's timer allows the field on
+    // every kind but carries it only where it means something.
+    if (sessionExerciseId != null && kind != 'rest')
+      'sessionExerciseId': sessionExerciseId,
   };
 
   @override
@@ -483,6 +497,7 @@ final class WatchTimerRecord extends WatchRecord {
     'stoppedAt': stoppedAt == null ? null : utcIso(stoppedAt!),
     'accumulatedPauseMs': accumulatedPauseMs,
     'plannedDurationMs': plannedDurationMs,
+    'sessionExerciseId': sessionExerciseId,
   };
 
   static WatchTimerRecord fromJson(Map<String, Object?> json) =>
@@ -496,6 +511,7 @@ final class WatchTimerRecord extends WatchRecord {
         stoppedAt: parseOptionalUtcIso(json['stoppedAt']),
         accumulatedPauseMs: (json['accumulatedPauseMs'] as int?) ?? 0,
         plannedDurationMs: json['plannedDurationMs'] as int?,
+        sessionExerciseId: json['sessionExerciseId'] as String?,
         sequence: (json['sequence'] as int?) ?? 0,
       );
 }

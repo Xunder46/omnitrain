@@ -3,6 +3,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/constants/profile_measurements.dart';
@@ -36,6 +37,7 @@ import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/buttons/omni_header_add_button.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 import 'package:omnitrain/widgets/layout/omni_card_header.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
@@ -304,7 +306,10 @@ void main() {
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
     });
 
-    testWidgets('Periods (+) button is present in header actions', (
+    // Plan 91 (`docs/plans/2026-10-29-91-one-header-plus-plan`, D-91.7): the
+    // header action goes to the Training periods list, so it is an icon for
+    // that place, never a "+".
+    Future<(MockWorkoutRepository, CalendarState)> pumpCalendar(
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(400, 900));
@@ -327,18 +332,90 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      return (repo, calendarState);
+    }
 
-      // The '+' action button must be a descendant of OmniBackHeader.
-      // CalendarScreen uses an `OutlinedButton` (styled with the
-      // primary color + utility radius) so the Periods affordance
-      // reads as a tertiary header action, not a primary CTA.
-      expect(
-        find.descendant(
-          of: find.byType(OmniBackHeader),
-          matching: find.widgetWithText(OutlinedButton, '+'),
-        ),
-        findsOneWidget,
+    Finder inHeader(Finder matching) =>
+        find.descendant(of: find.byType(OmniBackHeader), matching: matching);
+
+    testWidgets('S-9155: the header shows the Training periods icon and no +', (
+      WidgetTester tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pumpCalendar(tester);
+
+      expect(inHeader(find.byIcon(Icons.date_range)), findsOneWidget);
+      expect(inHeader(find.byIcon(Icons.add)), findsNothing);
+      expect(inHeader(find.byType(OutlinedButton)), findsNothing);
+      expect(inHeader(find.byType(OmniHeaderAddButton)), findsNothing);
+      expect(inHeader(find.text('+')), findsNothing);
+      expect(inHeader(find.text('Periods')), findsNothing);
+
+      final periods = find.byKey(const Key('calendar_training_periods_button'));
+      expect(periods, findsOneWidget);
+      final button = tester.widget<IconButton>(periods);
+      expect(button.tooltip, 'Training periods');
+      expect(button.color, OmniTheme.colors.textDominant);
+      // One screen-reader stop: exactly one node carries the words (as label
+      // or tooltip), and that node is the one that can be activated.
+      final spoken = find.semantics.byPredicate(
+        (n) => n.label == 'Training periods' || n.tooltip == 'Training periods',
       );
+      expect(spoken, findsOne);
+      expect(
+        spoken.evaluate().single.getSemanticsData().hasAction(
+          SemanticsAction.tap,
+        ),
+        isTrue,
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('S-9156: the Training periods icon opens the Periodization '
+        'list, and back returns to the Calendar', (WidgetTester tester) async {
+      await pumpCalendar(tester);
+
+      await tester.tap(
+        find.byKey(const Key('calendar_training_periods_button')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(PeriodListScreen), findsOneWidget);
+      expect(inHeader(find.text('Periodization')), findsOneWidget);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(PeriodListScreen), findsNothing);
+      expect(find.byType(CalendarScreen), findsOneWidget);
+      expect(inHeader(find.byIcon(Icons.date_range)), findsOneWidget);
+    });
+
+    testWidgets('S-9156: returning from the Training periods list refreshes '
+        'the calendar', (WidgetTester tester) async {
+      final (repo, calendarState) = await pumpCalendar(tester);
+      const name = 'Plan 91 refresh block';
+
+      await tester.tap(
+        find.byKey(const Key('calendar_training_periods_button')),
+      );
+      await tester.pumpAndSettle();
+
+      // A period saved while the list is open is not in the calendar yet.
+      final now = DateTime.now();
+      await repo.createPeriod(
+        TrainingPeriod(
+          id: 'plan91-refresh-period',
+          name: name,
+          startDateMs: DateTime(now.year, now.month, 1).millisecondsSinceEpoch,
+          endDateMs: DateTime(now.year, now.month, 7).millisecondsSinceEpoch,
+          createdAtMs: now.millisecondsSinceEpoch,
+          updatedAtMs: now.millisecondsSinceEpoch,
+        ),
+      );
+      expect(calendarState.periods.map((p) => p.name), isNot(contains(name)));
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(calendarState.periods.map((p) => p.name), contains(name));
     });
   });
 
@@ -1343,9 +1420,9 @@ void main() {
           reason: 'EFFORT value must show the rating for rolling sessions',
         );
         expect(
-          find.text('Change'),
+          find.text('Change rating'),
           findsOneWidget,
-          reason: 'Change button must be visible when a rating exists',
+          reason: 'Change rating button must be visible when a rating exists',
         );
 
         // The combined info card is still rendered (3 OmniSurface: info + note + calendar)
@@ -1525,7 +1602,7 @@ void main() {
     await nutrition.loadConsumedToday();
     await foodLib.loadFoodGroups();
     await foodLib.loadFoods();
-    final primer = await buildNutritionPrimerState(repo);
+    final primer = await buildNutritionPrimerState(repo, seen: true);
     await tester.pumpWidget(
       MaterialApp(
         home: NutritionScreen(
@@ -2784,7 +2861,7 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Stats headers + window chip (Phase 5 of unified-card-and-header-plan)
+  // Stats section headers (Phase 5 of unified-card-and-header-plan)
   // ═══════════════════════════════════════════════════════════════════════
 
   // Shared helper: pump StatsScreen with a fresh MockWorkoutRepository.
@@ -2831,9 +2908,9 @@ void main() {
     );
   }
 
-  group('Stats – section headers + window chip (Phase 5)', () {
+  group('Stats – section headers (Phase 5)', () {
     testWidgets(
-      'S-004: zero sessions renders the empty state; ALL TIME header has D-1 typography',
+      'S-004: zero sessions renders the empty state; no section eyebrow renders',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(400, 900));
         await pumpStatsScreen(tester);
@@ -2861,10 +2938,11 @@ void main() {
         );
 
         // The fixture logs no effort, so the Instruments list has no section
-        // to draw and the screen's only eyebrow is `ALL TIME`. Every section
-        // the list does render is an `OmniCardHeader(title: section.label)`
-        // (S-1208 covers the list's own state).
-        for (final label in const ['ALL TIME']) {
+        // to draw. The Mock harness seeds sample food, so the Fuel card
+        // renders too. Every section the list does render is an
+        // `OmniCardHeader(title: section.label)` (S-1208 covers the list's
+        // own state).
+        for (final label in const ['TRAINING MIX', 'SIGNALS', 'FUEL']) {
           final titleFinder = find.descendant(
             of: find.byType(OmniCardHeader),
             matching: find.text(label),
@@ -2892,6 +2970,17 @@ void main() {
             reason: '$label must use OmniTheme.colors.textMuted',
           );
         }
+
+        // No other eyebrow renders with this fixture.
+        expect(
+          tester
+              .widgetList<Text>(
+                find.byKey(const Key('omniCardHeader_title')),
+              )
+              .map((text) => text.data)
+              .toSet(),
+          {'TRAINING MIX', 'SIGNALS', 'FUEL'},
+        );
       },
     );
   });

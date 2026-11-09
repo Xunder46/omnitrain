@@ -22,6 +22,7 @@ library;
 import 'package:uuid/uuid.dart';
 
 import '../../core/sync_protocol/message_validator.dart';
+import '../sensors/watch_platform_workout.dart';
 import 'watch_records.dart';
 import 'watch_session_store.dart';
 
@@ -105,6 +106,11 @@ class WatchSessionEngine {
   final Map<String, Map<String, Object?>> _entryCorrections = {};
   final Set<String> _deletedEntryIds = {};
 
+  /// The newest `sentAt` of a snapshot applied. A snapshot that is older
+  /// arriving later is refused whole, like the watch (Swift, plans 63 D-1 and
+  /// 127 D-8). Equal applies.
+  DateTime? _newestSnapshotAt;
+
   /// The ids whose held row the phone **replaced** rather than corrected: its
   /// snapshot re-stated the id with a different `loggedAt`, which is a
   /// different entry reusing a minted number (D-113.3). A correction merges
@@ -156,6 +162,18 @@ class WatchSessionEngine {
     _deletedEntryIds
       ..clear()
       ..addAll(_session?.deletedEntryIds ?? const []);
+
+    // D-127: the newest snapshot stamp is read back from storage, so the
+    // stale-snapshot guard survives a relaunch. Reset first: restore may be
+    // called twice.
+    _newestSnapshotAt = null;
+    for (final row in contents.sessions) {
+      if (!row.recordId.startsWith(_snapshotPrefix)) continue;
+      if (_newestSnapshotAt == null ||
+          row.recordedAt.isAfter(_newestSnapshotAt!)) {
+        _newestSnapshotAt = row.recordedAt;
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -501,6 +519,12 @@ class WatchSessionEngine {
       for (final entry in payload['entries']! as List) asJsonObject(entry),
     ];
     final sentAt = parseUtcIso(envelope['sentAt']);
+
+    // D-127: a snapshot older than the newest one applied is refused whole,
+    // before any write. Equal applies.
+    final newest = _newestSnapshotAt;
+    if (newest != null && sentAt.isBefore(newest)) return false;
+
     final messageId = envelope['messageId']! as String;
     final existing = _session?.sessionId == sessionId ? _session : null;
 
@@ -525,13 +549,20 @@ class WatchSessionEngine {
       _unhideTheIdTheSnapshotNames(entry);
     }
 
+    // First hearing only (plan 125d D-12591/D-12592): the phone's session modality is stamped
+    // only on the snapshot that CREATES the wrist row for this session. A held session keeps the
+    // value it has (null stays null) and a snapshot with a different, absent, null or bad key
+    // never overrides or nulls it.
+    final snapshotFocus = existing == null
+        ? WatchActivityTypes.knownModality(payload['modality'])
+        : null;
     final row = WatchSessionRecord(
       recordId: '$_snapshotPrefix$messageId',
       sessionId: sessionId,
       recordedAt: sentAt,
       startedAt:
           existing?.startedAt ?? _startedAtOf(entryMaps, fallback: sentAt),
-      modality: existing?.modality,
+      modality: existing?.modality ?? snapshotFocus,
       source: existing?.source ?? 'phone',
       status: payload['status']! as String,
       currentExerciseIndex: _clampIndex(
@@ -542,6 +573,7 @@ class WatchSessionEngine {
       revision: payload['revision']! as int,
     );
     await _appendSessionRow(row, lifecycle: null);
+    if (newest == null || sentAt.isAfter(newest)) _newestSnapshotAt = sentAt;
 
     for (final entry in entryMaps) {
       await _storeSnapshotEntry(sessionId, entry);
@@ -734,6 +766,9 @@ class WatchSessionEngine {
 
   /// A timer the phone told the watch about. It is not news back to the phone,
   /// so nothing is emitted: the phone already decided this.
+  ///
+  /// The owner's rule is that the earlier start wins (D-4/D-5), for the work
+  /// kinds only (see below).
   Future<bool> _adoptTimer(
     Map<String, Object?> timer,
     String sessionId, {
@@ -742,17 +777,38 @@ class WatchSessionEngine {
   }) async {
     if (_timers.any((row) => row.recordId == recordId)) return false;
 
+    final kind = timer['kind']! as String;
+    final slotId = timer['sessionExerciseId'] as String?;
+    final startedAt = parseUtcIso(timer['startedAt']);
+    final stoppedAt = parseOptionalUtcIso(timer['stoppedAt']);
+
+    // D-5: the owner's rule, the earlier start wins — for the work kinds only.
+    // A rest is exempt (D-4's second half): the phone's newer rest still
+    // supersedes the wrist's own, because a rest has no owner slot to tie the
+    // earlier copy to (S-336).
+    if (kind != WatchTimerKind.rest && stoppedAt == null) {
+      final held = _newestTimer(kind: kind);
+      if (held != null &&
+          held.sessionId == sessionId &&
+          held.state != WatchTimerState.stopped &&
+          held.sessionExerciseId == slotId &&
+          held.startedAt.isBefore(startedAt)) {
+        return false;
+      }
+    }
+
     final stored = await _store.append(
       WatchTimerRecord(
         recordId: recordId,
         sessionId: sessionId,
         recordedAt: recordedAt,
-        kind: timer['kind']! as String,
-        startedAt: parseUtcIso(timer['startedAt']),
+        kind: kind,
+        startedAt: startedAt,
         pausedAt: parseOptionalUtcIso(timer['pausedAt']),
-        stoppedAt: parseOptionalUtcIso(timer['stoppedAt']),
+        stoppedAt: stoppedAt,
         accumulatedPauseMs: (timer['accumulatedPauseMs'] as int?) ?? 0,
         plannedDurationMs: timer['plannedDurationMs'] as int?,
+        sessionExerciseId: slotId,
       ),
     );
     _timers.add(stored);
@@ -1399,9 +1455,13 @@ class WatchSessionEngine {
   // ---------------------------------------------------------------------------
 
   /// Starts [kind], replacing any timer of that kind that was already running.
+  ///
+  /// [sessionExerciseId] is the slot the work belongs to (D-2/D-5); a rest is
+  /// started with none.
   Future<WatchTimerRecord> startTimer(
     String kind, {
     int? plannedDurationMs,
+    String? sessionExerciseId,
   }) async {
     _requireTimerKind(kind);
     final now = _clock();
@@ -1413,6 +1473,7 @@ class WatchSessionEngine {
         kind: kind,
         startedAt: now,
         plannedDurationMs: plannedDurationMs,
+        sessionExerciseId: sessionExerciseId,
       ),
     );
     return stored;
@@ -1551,6 +1612,7 @@ class WatchSessionEngine {
     stoppedAt: stoppedAt ?? timer.stoppedAt,
     accumulatedPauseMs: accumulatedPauseMs ?? timer.accumulatedPauseMs,
     plannedDurationMs: timer.plannedDurationMs,
+    sessionExerciseId: timer.sessionExerciseId,
   );
 
   Future<WatchTimerRecord> _appendTimer(WatchTimerRecord row) async {

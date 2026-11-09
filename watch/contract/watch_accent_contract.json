@@ -1,0 +1,12 @@
+{
+  "description": "F-ACCENT: the theme accents the wrist wears, as one table both stacks read. `minContrastAgainstBlack` is the floor an accent has to clear to be worn at all: an accent whose contrast against black is below it is ignored, and the wrist keeps its default look. `themes` is the table: `theme` is the phone's theme name, `hex` is that theme's primary color as `#RRGGBB` — the value the phone sends in `preferences_down`'s `accentColorHex` — and `labelIsDark` is whether the accent takes dark labels (true) or light ones (false), which is true exactly when black text reads better on the accent than white. Measured on the six themes: contrast against black 13.13, 8.17, 10.98, 6.71, 6.38 and 8.08, every row above the floor and every row better read with black text than with white (1.6 to 3.3), so all six carry `labelIsDark: true` today; the wrist computes the luminance, both contrasts and the label from the hex rather than reading them here, and this table is what its tests are held to — as the phone's half is held to it against `OmniTheme.colorsForTheme`, so a theme color that changes fails there until this row moves with it.",
+  "minContrastAgainstBlack": 3.0,
+  "themes": [
+    { "theme": "abyssalNeon", "hex": "#2DE2E6", "labelIsDark": true },
+    { "theme": "forgeEmber", "hex": "#FF7B45", "labelIsDark": true },
+    { "theme": "obsidianVolt", "hex": "#E8B420", "labelIsDark": true },
+    { "theme": "voidPulse", "hex": "#A478FF", "labelIsDark": true },
+    { "theme": "crimsonDojo", "hex": "#FF4C47", "labelIsDark": true },
+    { "theme": "malachiteCore", "hex": "#24B85A", "labelIsDark": true }
+  ]
+}

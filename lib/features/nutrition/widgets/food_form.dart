@@ -7,8 +7,12 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/constants/omni_theme.dart';
 import '../../../core/models/food_draft.dart';
 import '../../../core/services/image_storage_service.dart';
+import '../../../core/utils/food_helpers.dart';
+import '../../../core/utils/food_serving.dart';
 import '../../../data/models/models.dart';
 import '../../../state/food_library_state.dart';
+import '../../../widgets/buttons/omni_utility_button.dart';
+import '../../../widgets/feedback/omni_message.dart';
 import '../../../widgets/inputs/select_all_on_focus.dart';
 // The form's `FoodFormImageTile` now delegates its image body
 // to the shared `FoodThumbnail` widget so the editor and the
@@ -30,18 +34,21 @@ export '../../../core/models/food_draft.dart' show FoodDraft;
 /// pre-populated with the food's values (edit mode).
 ///
 /// Form fields (top to bottom):
-///   * Image picker tile (`FoodFormImageTile`) — the very top of
-///     the form, before the name field. Square, 96×96, with a
-///     × overlay to clear.
-///   * Name
+///   * Name — with a quiet duplicate-name note underneath when the
+///     trimmed name already exists in the Library (D-92c.7).
+///   * Image picker tile (`FoodFormImageTile`) — directly below the
+///     name (and its note), before the category dropdown. Square,
+///     96×96, with a × overlay to clear (D-92c.6, D-92c.9).
 ///   * Category (group) dropdown
-///   * Unit type (count vs grams)
-///   * Reference amount + Reference label
-///   * Protein (g) — macro field
-///   * Carbs (g) — macro field
-///   * Fiber (g) — macro field (optional, blank = unset)
-///   * Fat (g) — macro field
-///   * Sodium (mg) — macro field (optional, blank = unset)
+///   * Serving — "Nutrition facts are per" (100 g / 100 ml / 1 serving,
+///     a package serving, or As saved), then the per-serving heading
+///   * Fat (g) — macro field (blank saves 0)
+///   * Carbs (g) — macro field (blank saves 0)
+///   * Fiber (g) — macro field (blank saves "not recorded")
+///   * Protein (g) — macro field (blank saves 0)
+///   * Sodium (mg) — macro field (blank saves "not recorded")
+///   * Calories — "= N cal", derived from protein/carbs/fat through
+///     `caloriesFromMacros` and live as the boxes change (D-92c.1)
 ///   * Notes (when [showNotesField] is true)
 ///
 /// **Primary bottom CTA**: the form no longer renders an inline
@@ -99,30 +106,25 @@ class FoodForm extends StatefulWidget {
   /// case after the shared-CTA migration).
   final FoodFormController? controller;
 
-  /// When true, the form auto-saves on blur (tap outside any field)
-  /// instead of requiring a save button press.
-  final bool autoSaveOnBlur;
+  /// Notified whenever the form-local photo changes, with the path the
+  /// form now holds: the persisted managed path after a pick, `null` after
+  /// the × overlay cleared it.
+  ///
+  /// Nothing about the photo reaches the data layer until Save (the save
+  /// draft carries `imagePath`), so a host that guards unsaved work has no
+  /// other way to see a pick or a clear; it compares the reported path
+  /// with the one the stored food started with.
+  final ValueChanged<String?>? onImageChanged;
 
-  /// Optional partial-save callback fired after a successful photo
-  /// pick in **edit mode** (when [initial] is non-null). The host
-  /// wires this to `updateCustomFood` / `updateCatalogFood` so the
-  /// new `imagePath` lands in the data layer immediately, even on
-  /// screens that have no Save button (e.g. `EditFoodScreen` with
-  /// `autoSaveOnBlur: true`).
+  /// Notified whenever the user changes how the food is measured: the
+  /// "Nutrition facts are per" toggle, a serving-word chip, or typing in
+  /// the serving-name or package-size box.
   ///
-  /// The draft passed to this callback is built from [initial] with
-  /// only `imagePath` changed. Concurrent edits to the form's text
-  /// controllers are NOT clobbered (the pick should not overwrite
-  /// a half-typed name).
-  ///
-  /// In create mode ([initial] is null) the callback is **not**
-  /// fired — the form just stores the image locally and the user
-  /// saves the whole food via the existing Save button.
-  ///
-  /// The D-7 cleanup (delete previous managed file) is the
-  /// state method's responsibility; the form does not call the
-  /// service directly.
-  final Future<bool> Function(FoodDraft draft)? onImageSave;
+  /// The toggle and the chips are not text boxes, and the two boxes only
+  /// exist after the toggle moves, so a host's unsaved-work probe (which
+  /// reads the boxes the form rendered when it opened) cannot see any of
+  /// them; this is how it learns about them.
+  final VoidCallback? onServingChanged;
 
   const FoodForm({
     super.key,
@@ -133,8 +135,8 @@ class FoodForm extends StatefulWidget {
     this.showNotesField = false,
     this.skipPopOnSave = false,
     this.controller,
-    this.autoSaveOnBlur = false,
-    this.onImageSave,
+    this.onImageChanged,
+    this.onServingChanged,
   });
 
   @override
@@ -182,33 +184,32 @@ class FoodFormController {
   }
 }
 
+/// The segments of the form's one serving control (D-92b.5).
+enum _ServingBasis { per100g, per100ml, serving, asSaved }
+
 class _FoodFormState extends State<FoodForm> {
+  /// Vertical gap between the serving toggle and whatever it opens, and
+  /// between the package button and its size field.
+  static const double _servingGap = 12;
+
   final _formKey = GlobalKey<FormState>();
-  // Form-level focus node: when `autoSaveOnBlur` is on, blurring
-  // the form (tapping outside any field) triggers an auto-save.
-  // Distinct from the per-field focus nodes below, which exist
-  // solely to select-all on focus for fast overwrite.
-  final _focusNode = FocusNode();
   late final TextEditingController _name;
-  late final TextEditingController _referenceAmount;
-  late final TextEditingController _referenceLabel;
+  late final TextEditingController _servingLabelController;
+  late final TextEditingController _packageAmountController;
   late final TextEditingController _protein;
   late final TextEditingController _carbs;
   late final TextEditingController _fiber;
   late final TextEditingController _fat;
   late final TextEditingController _sodium;
   late final TextEditingController _notes;
-  // Per-field focus nodes. Numeric value fields and the short
-  // unit label (reference label) are wired to select-all on focus
-  // so the user can retype a value without first clearing it
-  // (e.g. tapping into a pre-filled `4` g of fat and typing
-  // `0.5` overwrites `4` rather than appending). The free-text
-  // name field and the multi-line notes field are NOT wired to
-  // select-all — those are free-text fields where selecting
+  // Per-field focus nodes. Numeric value fields are wired to
+  // select-all on focus so the user can retype a value without
+  // first clearing it (e.g. tapping into a pre-filled `4` g of fat
+  // and typing `0.5` overwrites `4` rather than appending). The
+  // free-text name field and the multi-line notes field are NOT
+  // wired to select-all — those are free-text fields where selecting
   // everything on focus would get in the way of editing in place.
   final _nameFocus = FocusNode();
-  final _referenceAmountFocus = FocusNode();
-  final _referenceLabelFocus = FocusNode();
   final _proteinFocus = FocusNode();
   final _carbsFocus = FocusNode();
   final _fiberFocus = FocusNode();
@@ -227,7 +228,35 @@ class _FoodFormState extends State<FoodForm> {
   /// original on the parent widget.
   String? _imagePath;
 
-  FoodUnitType _unitType = FoodUnitType.grams;
+  /// The serving choice the control is on. A new food starts on 100 g
+  /// (D-92b.2); an edited food loads through `servingChoiceFrom`, so the
+  /// derivation never looks at text (D-92b.3).
+  ServingChoice _servingChoice = const Per100G();
+
+  /// The stored serving an As-saved food opened with. Non-null only when the
+  /// loaded triple fits none of the four choices; the fourth segment restores
+  /// it verbatim (D-92b.5).
+  AsSavedServing? _asSaved;
+
+  /// The triple the edited food was opened with; null for a New Food. The
+  /// D-92b.6 note compares the would-save triple against it.
+  (FoodUnitType, double, String)? _openedServing;
+
+  /// Whether the package row is open under the 100 g / 100 ml segment
+  /// (D-92b.11). The typed amount survives while the row is closed.
+  bool _packageOpen = false;
+
+  /// The named servings offered as chips (D-92b.5).
+  static const List<String> _servingWords = [
+    'slice',
+    'scoop',
+    'bar',
+    'piece',
+    'cup',
+    'tbsp',
+    'tsp',
+  ];
+
   String? _groupId; // null = Ungrouped
 
   bool _saving = false;
@@ -240,33 +269,63 @@ class _FoodFormState extends State<FoodForm> {
     // validation + save flow without exposing private state.
     widget.controller?.attach(_onSave);
 
-    // Set up focus listener for auto-save on blur
-    if (widget.autoSaveOnBlur) {
-      _focusNode.addListener(_onFocusChange);
-    }
-
     final initial = widget.initial;
     _name = TextEditingController(text: initial?.name ?? '');
-    _referenceAmount = TextEditingController(
-      text: (initial?.referenceAmount ?? 100).toString(),
+    // The duplicate note is derived from the live name text, so the
+    // note appears and disappears while typing (D-92c.11).
+    _name.addListener(_onNameChanged);
+    // The serving choice comes from the stored NUMERIC values, never from
+    // their text: a device round-trip stores `100.0` / `1.0`, and the old
+    // text comparison (`text == '100'`) silently missed them (D-92b.3).
+    if (initial != null) {
+      _openedServing = (
+        initial.unitType,
+        initial.referenceAmount,
+        initial.referenceLabel,
+      );
+      final loaded = servingChoiceFrom(
+        initial.unitType,
+        initial.referenceAmount,
+        initial.referenceLabel,
+      );
+      _servingChoice = loaded;
+      if (loaded is AsSavedServing) _asSaved = loaded;
+    }
+    _servingLabelController = TextEditingController(
+      text: switch (_servingChoice) {
+        NamedServing(:final label) => label,
+        _ => '',
+      },
     );
-    _referenceLabel = TextEditingController(
-      text: initial?.referenceLabel ?? 'g',
+    _packageAmountController = TextEditingController(
+      text: switch (_servingChoice) {
+        PackageServing(:final amount) => formatGrams(amount),
+        _ => '',
+      },
     );
-    // Macros are stored as `double`; `(initial?.protein ?? 0).toString()`
-    // would fail to compile with an `int`-vs-`double` mismatch in
-    // the `?? 0` branch, so use `0.0` (double literal) explicitly.
-    // The string form keeps trailing-zero display as the user typed
-    // it because we only render `toString()` of the underlying value.
+    _packageOpen = _servingChoice is PackageServing;
+    // A new food opens with blank boxes; an edit shows the stored value the
+    // way a label prints it (`31`, not `31.0`). A never-recorded fiber or
+    // sodium stays empty, so saving unchanged keeps it unrecorded
+    // (D-92c.3, D-92c.4).
+    final fiber = initial?.fiber;
+    final sodium = initial?.sodium;
     _protein = TextEditingController(
-      text: (initial?.protein ?? 0.0).toString(),
+      text: initial == null ? '' : formatGrams(initial.protein),
     );
-    _carbs = TextEditingController(text: (initial?.carbs ?? 0.0).toString());
-    _fiber = TextEditingController(text: (initial?.fiber ?? 0.0).toString());
-    _fat = TextEditingController(text: (initial?.fat ?? 0.0).toString());
-    _sodium = TextEditingController(text: (initial?.sodium ?? 0.0).toString());
+    _carbs = TextEditingController(
+      text: initial == null ? '' : formatGrams(initial.carbs),
+    );
+    _fiber = TextEditingController(
+      text: fiber == null ? '' : formatGrams(fiber),
+    );
+    _fat = TextEditingController(
+      text: initial == null ? '' : formatGrams(initial.fat),
+    );
+    _sodium = TextEditingController(
+      text: sodium == null ? '' : formatGrams(sodium),
+    );
     _notes = TextEditingController(text: initial?.notes ?? '');
-    _unitType = initial?.unitType ?? FoodUnitType.grams;
     _groupId = initial?.groupId;
     _imagePath = initial?.imagePath;
 
@@ -283,14 +342,6 @@ class _FoodFormState extends State<FoodForm> {
     // cursor-placement behavior so the user can position the
     // cursor freely inside free-form text.
     _selectAllDetachers.addAll([
-      bindSelectAllOnFocus(
-        focusNode: _referenceAmountFocus,
-        controller: _referenceAmount,
-      ),
-      bindSelectAllOnFocus(
-        focusNode: _referenceLabelFocus,
-        controller: _referenceLabel,
-      ),
       bindSelectAllOnFocus(focusNode: _proteinFocus, controller: _protein),
       bindSelectAllOnFocus(focusNode: _carbsFocus, controller: _carbs),
       bindSelectAllOnFocus(focusNode: _fiberFocus, controller: _fiber),
@@ -307,35 +358,23 @@ class _FoodFormState extends State<FoodForm> {
     }
     _selectAllDetachers.clear();
     _nameFocus.dispose();
-    _referenceAmountFocus.dispose();
-    _referenceLabelFocus.dispose();
     _proteinFocus.dispose();
     _carbsFocus.dispose();
     _fiberFocus.dispose();
     _fatFocus.dispose();
     _sodiumFocus.dispose();
     _notesFocus.dispose();
+    _name.removeListener(_onNameChanged);
     _name.dispose();
-    _referenceAmount.dispose();
-    _referenceLabel.dispose();
+    _servingLabelController.dispose();
+    _packageAmountController.dispose();
     _protein.dispose();
     _carbs.dispose();
     _fiber.dispose();
     _fat.dispose();
     _sodium.dispose();
     _notes.dispose();
-    _focusNode.removeListener(_onFocusChange);
-    _focusNode.dispose();
     super.dispose();
-  }
-
-  // ─── Focus handler for auto-save ────────────────────────────────────
-
-  void _onFocusChange() {
-    // When focus leaves the form (blur), auto-save
-    if (widget.autoSaveOnBlur && !_focusNode.hasFocus) {
-      _onSave();
-    }
   }
 
   // ─── Image picker ────────────────────────────────────────────────────
@@ -353,28 +392,23 @@ class _FoodFormState extends State<FoodForm> {
         // Web has no persistent file API; mirror the avatar flow's
         // user-facing message (D-5: web persistence is intentionally
         // out of scope for this iteration).
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Photo selection works on web, but food photo persistence is not supported there yet.',
-            ),
-          ),
+        OmniMessage.show(
+          context,
+          'Photo selection works on web, but food photo persistence is not '
+          'supported there yet.',
         );
         return;
       }
       await handlePickedImage(picked);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to update photo: $e')));
+      debugPrint('Update photo: $e');
+      OmniMessage.error(context, 'Could not update the photo. Try again.');
     }
   }
 
-  /// Persist a picked [XFile] into the managed directory, update
-  /// the form's local `_imagePath`, and (in edit mode) fire
-  /// [FoodForm.onImageSave] so the data layer sees the new path
-  /// immediately.
+  /// Persist a picked [XFile] into the managed directory and update
+  /// the form's local `_imagePath`.
   ///
   /// This is the single source of truth for the pick-handler
   /// post-Persistence work. `_pickImage` is the user-facing
@@ -382,14 +416,10 @@ class _FoodFormState extends State<FoodForm> {
   /// here. Tests invoke this method directly to bypass the
   /// `image_picker` platform channel.
   ///
-  /// The "save on upload" behaviour addresses the food-library
-  /// photo-persistence bug: `EditFoodScreen` uses
-  /// `autoSaveOnBlur: true, skipPopOnSave: true` and has no Save
-  /// button, so a pure `_pickImage` would leave the food's
-  /// `imagePath` null in the data layer until the user blurred
-  /// focus off the form (which they may not do — they may just
-  /// tap back). Firing `onImageSave` here means the photo is
-  /// saved the moment it is picked.
+  /// The photo stays form-local: nothing reaches the data layer
+  /// until the user saves (the save draft carries `imagePath`), so
+  /// the persisted path is reported through [FoodForm.onImageChanged]
+  /// for the host's unsaved-work guard (D-92a.2).
   @visibleForTesting
   Future<void> handlePickedImage(XFile picked) async {
     if (kIsWeb) return;
@@ -402,65 +432,20 @@ class _FoodFormState extends State<FoodForm> {
         .persistPickedImage(picked);
     if (!mounted) return;
     setState(() => _imagePath = persistedPath);
-
-    // Save on upload — edit mode only. The create flow uses the
-    // existing Save button; partial-saving a half-typed new food
-    // would write a corrupt row. The partial draft is built from
-    // [FoodForm.initial] (the existing food) with only
-    // `imagePath` changed, so concurrent edits to the form's
-    // text controllers (e.g. a half-typed name) are preserved.
-    final onImageSave = widget.onImageSave;
-    if (onImageSave == null || widget.initial == null) return;
-    final partialDraft = _partialDraftFromInitial(persistedPath);
-    final ok = await onImageSave(partialDraft);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Could not save photo')));
-    }
+    // The host's unsaved-work guard reads the pick through this
+    // callback: the photo stays form-local until Save, so nothing else
+    // can see it.
+    widget.onImageChanged?.call(persistedPath);
   }
 
-  /// Build a [FoodDraft] from [FoodForm.initial] with only
-  /// `imagePath` swapped. Used by [handlePickedImage] to fire
-  /// [FoodForm.onImageSave] without clobbering in-flight edits
-  /// to the form's text controllers.
-  FoodDraft _partialDraftFromInitial(String? imagePath) {
-    final initial = widget.initial!;
-    return FoodDraft(
-      name: initial.name,
-      groupId: initial.groupId,
-      unitType: initial.unitType,
-      referenceAmount: initial.referenceAmount,
-      referenceLabel: initial.referenceLabel,
-      protein: initial.protein,
-      carbs: initial.carbs,
-      fiber: initial.fiber,
-      fat: initial.fat,
-      sodium: initial.sodium,
-      notes: initial.notes,
-      imagePath: imagePath,
-    );
-  }
-
-  /// Clear the current image. In **edit mode** (`initial != null`
-  /// and an [FoodForm.onImageSave] callback is wired), fire the
-  /// callback with a partial draft whose `imagePath` is `null`
-  /// so the data layer immediately sees the cleared path. The
-  /// host (`EditFoodScreen`) wires `onImageSave` to
-  /// `FoodLibraryState.updateCatalogFood`, whose existing
-  /// `previousPath != draft.imagePath` branch handles D-7
-  /// cleanup of the previous managed file (calls
-  /// `svc.deleteIfManaged(previousPath)` when the previous
-  /// path was non-null and the new path is null).
+  /// Clear the current image.
   ///
-  /// In **create mode** (`initial == null`) the callback is
-  /// **not** fired — the image is just unset locally and the
-  /// user saves the whole food via the existing Save button.
-  ///
-  /// This mirrors [handlePickedImage]'s "save on upload" pattern
-  /// — the same partial-draft logic preserves any in-flight
-  /// edits to the form's text controllers (a half-typed name
-  /// is not clobbered by the clear).
+  /// The clear is form-local: nothing reaches the data layer until the
+  /// user saves, so `null` is reported through [FoodForm.onImageChanged]
+  /// for the host's unsaved-work guard (D-92a.2). The save draft then
+  /// carries `imagePath: null`, and the state method's
+  /// `previousPath != draft.imagePath` branch deletes the managed file
+  /// the clear replaced (D-7).
   ///
   /// **Production entry point**: the × (clear) overlay on
   /// [FoodFormImageTile] invokes this via the `onClear`
@@ -472,15 +457,7 @@ class _FoodFormState extends State<FoodForm> {
   @visibleForTesting
   Future<void> clearImage() async {
     setState(() => _imagePath = null);
-    final onImageSave = widget.onImageSave;
-    if (onImageSave == null || widget.initial == null) return;
-    final partialDraft = _partialDraftFromInitial(null);
-    final ok = await onImageSave(partialDraft);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Could not clear photo')));
-    }
+    widget.onImageChanged?.call(null);
   }
 
   // ─── Save ────────────────────────────────────────────────────────────
@@ -493,32 +470,34 @@ class _FoodFormState extends State<FoodForm> {
     setState(() => _saving = true);
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     try {
       final fiberRaw = _fiber.text.trim();
       final sodiumRaw = _sodium.text.trim();
       // Macros are stored as `double` (Food / FoodDraft) so the
-      // user can enter fractional grams (e.g. `0.5` g of fat).
-      // Optional fields (fiber, sodium) keep their nullable
-      // contract: empty string -> null, otherwise `double.parse`.
+      // user can enter fractional grams (e.g. `0.5` g of fat). A blank
+      // Protein/Carbs/Fat means 0; a blank Fiber/Sodium means "not
+      // recorded" (null). Validation has already rejected non-numeric
+      // text, so `tryParse` only softens the blank case (D-92c.5).
+      final (servingUnitType, servingAmount, servingLabel) =
+          storedServingFrom(_currentChoice);
       final draft = FoodDraft(
         name: _name.text.trim(),
         groupId: _groupId,
-        unitType: _unitType,
-        referenceAmount: double.parse(_referenceAmount.text.trim()),
-        referenceLabel: _referenceLabel.text.trim(),
-        protein: double.parse(_protein.text.trim()),
-        carbs: double.parse(_carbs.text.trim()),
-        fiber: fiberRaw.isEmpty ? null : double.parse(fiberRaw),
-        fat: double.parse(_fat.text.trim()),
-        sodium: sodiumRaw.isEmpty ? null : double.parse(sodiumRaw),
+        unitType: servingUnitType,
+        referenceAmount: servingAmount,
+        referenceLabel: servingLabel,
+        protein: double.tryParse(_protein.text.trim()) ?? 0.0,
+        carbs: double.tryParse(_carbs.text.trim()) ?? 0.0,
+        fiber: fiberRaw.isEmpty ? null : double.tryParse(fiberRaw),
+        fat: double.tryParse(_fat.text.trim()) ?? 0.0,
+        sodium: sodiumRaw.isEmpty ? null : double.tryParse(sodiumRaw),
         notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
         imagePath: _imagePath,
       );
       final ok = await widget.onSave(draft);
       if (!ok) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Could not save food')),
-        );
+        OmniMessage.errorOn(messenger, theme, 'Could not save food');
         return;
       }
       // Skip pop if caller wants to handle navigation (e.g., switch tabs)
@@ -526,12 +505,140 @@ class _FoodFormState extends State<FoodForm> {
       if (!navigator.mounted) return;
       navigator.pop();
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Could not save food')),
-      );
+      OmniMessage.errorOn(messenger, theme, 'Could not save food');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  // ─── Serving control ─────────────────────────────────────────────────
+
+  /// The segment shown for [_servingChoice]. A loaded package serving rides
+  /// on the 100 g / 100 ml segment with its row open (D-92b.11).
+  _ServingBasis get _basis => switch (_servingChoice) {
+    Per100G() => _ServingBasis.per100g,
+    Per100Ml() => _ServingBasis.per100ml,
+    PackageServing(:final label) =>
+      label == 'ml' ? _ServingBasis.per100ml : _ServingBasis.per100g,
+    NamedServing() => _ServingBasis.serving,
+    AsSavedServing() => _ServingBasis.asSaved,
+  };
+
+  /// The unit of the package row under the selected segment.
+  String get _packageLabel => _basis == _ServingBasis.per100ml ? 'ml' : 'g';
+
+  /// The choice the heading and the save read: built live from the controls
+  /// so the heading follows typing (D-92b.4). An open package row with no
+  /// usable amount falls back to its 100 g / 100 ml base.
+  ServingChoice get _currentChoice => switch (_servingChoice) {
+    Per100G() => _packageChoiceOrBase('g'),
+    Per100Ml() => _packageChoiceOrBase('ml'),
+    PackageServing(:final label) => _packageChoiceOrBase(label),
+    NamedServing() => NamedServing(label: _servingLabelController.text.trim()),
+    AsSavedServing() => _servingChoice,
+  };
+
+  ServingChoice _packageChoiceOrBase(String label) {
+    if (_packageOpen) {
+      final amount = double.tryParse(_packageAmountController.text.trim());
+      if (amount != null && amount > 0) {
+        return PackageServing(amount: amount, label: label);
+      }
+    }
+    return label == 'ml' ? const Per100Ml() : const Per100G();
+  }
+
+  /// Whether the line above the macros adds anything to the toggle: false for
+  /// a plain 100 g / 100 ml, which the selected segment already says.
+  bool get _showPerHeading => switch (_currentChoice) {
+    Per100G() || Per100Ml() => false,
+    _ => true,
+  };
+
+  /// The D-92b.6 line, or null when the numbers still describe the serving
+  /// the food was opened with or this is a New Food.
+  String? get _perNote {
+    final opened = _openedServing;
+    if (opened == null) return null;
+    final choice = _currentChoice;
+    if (storedServingFrom(choice) == opened) return null;
+    const prefix = 'Nutrition per ';
+    final heading = servingHeading(choice);
+    final per = heading.startsWith(prefix)
+        ? heading.substring(prefix.length)
+        : heading;
+    return 'Check these numbers are per $per';
+  }
+
+  List<ButtonSegment<_ServingBasis>> _basisSegments() {
+    final saved = _asSaved;
+    return [
+      const ButtonSegment(value: _ServingBasis.per100g, label: Text('100 g')),
+      const ButtonSegment(value: _ServingBasis.per100ml, label: Text('100 ml')),
+      const ButtonSegment(
+        value: _ServingBasis.serving,
+        label: Text('1 serving'),
+      ),
+      if (saved != null)
+        ButtonSegment(
+          value: _ServingBasis.asSaved,
+          label: Text('As saved: ${formatGrams(saved.amount)} ${saved.label}'),
+        ),
+    ];
+  }
+
+  /// The app's segmented-control style (same tokens as the nutrition trend
+  /// card's toggle): theme colours only, utility button radius.
+  ButtonStyle _basisButtonStyle() {
+    final colors = OmniTheme.colors;
+    return ButtonStyle(
+      backgroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) return colors.primary;
+        return colors.surface;
+      }),
+      foregroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) return colors.surface;
+        return colors.textSecondary;
+      }),
+      shape: WidgetStateProperty.all(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+        ),
+      ),
+    );
+  }
+
+  void _onBasisChanged(Set<_ServingBasis> selection) {
+    if (selection.isEmpty) return;
+    if (selection.first != _basis) widget.onServingChanged?.call();
+    setState(() {
+      switch (selection.first) {
+        case _ServingBasis.per100g:
+          _servingChoice = const Per100G();
+        case _ServingBasis.per100ml:
+          _servingChoice = const Per100Ml();
+        case _ServingBasis.serving:
+          _servingChoice = const NamedServing(label: '');
+        case _ServingBasis.asSaved:
+          final saved = _asSaved;
+          if (saved != null) _servingChoice = saved;
+      }
+    });
+  }
+
+  void _fillServingLabel(String word) {
+    widget.onServingChanged?.call();
+    setState(() {
+      _servingLabelController.value = TextEditingValue(
+        text: word,
+        selection: TextSelection.collapsed(offset: word.length),
+      );
+    });
+  }
+
+  /// Rebuild for the derived duplicate-name note as the name changes.
+  void _onNameChanged() {
+    if (mounted) setState(() {});
   }
 
   // ─── Build ───────────────────────────────────────────────────────────
@@ -539,17 +646,53 @@ class _FoodFormState extends State<FoodForm> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final calories = caloriesFromMacros(
+      protein: _parsed(_protein),
+      carbs: _parsed(_carbs),
+      fat: _parsed(_fat),
+    );
     return ListenableBuilder(
       listenable: widget.foodLibraryState,
       builder: (context, _) {
         final groups = _sortedGroups(widget.foodLibraryState.activeFoodGroups);
         return Form(
           key: _formKey,
-          child: Focus(
-            focusNode: _focusNode,
-            child: ListView(
+          child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                TextFormField(
+                  key: const Key('food_form_name'),
+                  controller: _name,
+                  focusNode: _nameFocus,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    border: OutlineInputBorder(),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Name is required';
+                    }
+                    return null;
+                  },
+                ),
+                // A quiet note, never a validation: the user may still save
+                // a name that already exists (D-92c.7).
+                if (widget.foodLibraryState.nameExistsInLibrary(
+                  _name.text.trim(),
+                  excluding: widget.initial,
+                )) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    "There's already a food called "
+                    '"${_name.text.trim()}" in the Library',
+                    key: const Key('food_form_duplicate_note'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: OmniTheme.colors.textSecondary,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
                 FoodFormImageTile(
                   key: const Key('food_form_image_tile'),
                   imagePath: _imagePath,
@@ -569,23 +712,6 @@ class _FoodFormState extends State<FoodForm> {
                   onClear: clearImage,
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
-                  key: const Key('food_form_name'),
-                  controller: _name,
-                  focusNode: _nameFocus,
-                  decoration: const InputDecoration(
-                    labelText: 'Name',
-                    border: OutlineInputBorder(),
-                  ),
-                  textCapitalization: TextCapitalization.words,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Name is required';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
                   key: const Key('food_form_group'),
                   initialValue: _groupId,
@@ -597,49 +723,46 @@ class _FoodFormState extends State<FoodForm> {
                   onChanged: (v) => setState(() => _groupId = v),
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<FoodUnitType>(
-                  key: const Key('food_form_unit_type'),
-                  initialValue: _unitType,
-                  decoration: const InputDecoration(
-                    labelText: 'Unit type',
-                    border: OutlineInputBorder(),
+                Text(
+                  'Nutrition facts are per',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: OmniTheme.colors.textSecondary,
                   ),
-                  items: const [
-                    DropdownMenuItem(
-                      value: FoodUnitType.count,
-                      child: Text('Count (1 unit)'),
-                    ),
-                    DropdownMenuItem(
-                      value: FoodUnitType.grams,
-                      child: Text('Grams (100 g)'),
-                    ),
-                  ],
-                  onChanged: (v) {
-                    if (v == null) return;
-                    setState(() {
-                      _unitType = v;
-                      if (v == FoodUnitType.grams) {
-                        if (_referenceAmount.text == '1') {
-                          _referenceAmount.text = '100';
-                          _referenceLabel.text = 'g';
-                        }
-                      } else {
-                        if (_referenceAmount.text == '100') {
-                          _referenceAmount.text = '1';
-                          _referenceLabel.text = 'unit';
-                        }
-                      }
-                    });
-                  },
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        key: const Key('food_form_reference_amount'),
-                        controller: _referenceAmount,
-                        focusNode: _referenceAmountFocus,
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SegmentedButton<_ServingBasis>(
+                    key: const Key('food_form_basis'),
+                    segments: _basisSegments(),
+                    selected: {_basis},
+                    showSelectedIcon: false,
+                    onSelectionChanged: _onBasisChanged,
+                    style: _basisButtonStyle(),
+                  ),
+                ),
+                if (_basis == _ServingBasis.per100g ||
+                    _basis == _ServingBasis.per100ml) ...[
+                  const SizedBox(height: _servingGap),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OmniUtilityButton(
+                      buttonKey: const Key('food_form_package_link'),
+                      onPressed: () =>
+                          setState(() => _packageOpen = !_packageOpen),
+                      icon: _packageOpen
+                          ? Icons.arrow_back
+                          : Icons.scale_outlined,
+                      label: _packageOpen
+                          ? 'Back to per 100 $_packageLabel'
+                          : 'Enter package serving instead',
+                    ),
+                  ),
+                  if (_packageOpen) ...[
+                    const SizedBox(height: _servingGap),
+                      TextFormField(
+                        key: const Key('food_form_package_amount'),
+                        controller: _packageAmountController,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -648,47 +771,85 @@ class _FoodFormState extends State<FoodForm> {
                             RegExp(r'^\d*\.?\d*$'),
                           ),
                         ],
-                        decoration: const InputDecoration(
-                          labelText: 'Reference amount',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: 'Serving size ($_packageLabel)',
+                          hintText: '30',
+                          border: const OutlineInputBorder(),
                         ),
                         validator: _validatePositiveDouble,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextFormField(
-                        key: const Key('food_form_reference_label'),
-                        controller: _referenceLabel,
-                        focusNode: _referenceLabelFocus,
-                        decoration: const InputDecoration(
-                          labelText: 'Reference label',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (v) {
-                          if (v == null || v.trim().isEmpty) {
-                            return 'Required';
-                          }
-                          return null;
+                        onChanged: (_) {
+                          widget.onServingChanged?.call();
+                          setState(() {});
                         },
                       ),
-                    ),
                   ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Macros (the reference above)',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: OmniTheme.colors.textSecondary,
+                ],
+                if (_basis == _ServingBasis.serving) ...[
+                  const SizedBox(height: _servingGap),
+                  TextFormField(
+                    key: const Key('food_form_serving_label'),
+                    controller: _servingLabelController,
+                    decoration: const InputDecoration(
+                      labelText: 'Called a…',
+                      hintText: 'slice',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (v) {
+                      if ((v ?? '').trim().isEmpty) {
+                        return 'Name the serving, e.g. slice';
+                      }
+                      return null;
+                    },
+                    onChanged: (_) {
+                      widget.onServingChanged?.call();
+                      setState(() {});
+                    },
                   ),
-                ),
-                const SizedBox(height: 8),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final word in _servingWords)
+                        FilterChip(
+                          key: Key('food_form_serving_chip_$word'),
+                          label: Text(word),
+                          selected:
+                              _servingLabelController.text.trim() == word,
+                          onSelected: (_) => _fillServingLabel(word),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 12),
+                // The line above the macros names the serving only when the
+                // toggle does not already say it: a plain 100 g / 100 ml
+                // would repeat the selected segment.
+                if (_showPerHeading) ...[
+                  Text(
+                    servingHeading(_currentChoice),
+                    key: const Key('food_form_per_heading'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: OmniTheme.colors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if (_perNote case final note?) ...[
+                  Text(
+                    note,
+                    key: const Key('food_form_per_note'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: OmniTheme.colors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 _macroField(
-                  key: const Key('food_form_protein'),
-                  controller: _protein,
-                  focusNode: _proteinFocus,
-                  label: 'Protein (g)',
-                  required: true,
+                  key: const Key('food_form_fat'),
+                  controller: _fat,
+                  focusNode: _fatFocus,
+                  label: 'Fat (g)',
                 ),
                 const SizedBox(height: 8),
                 _macroField(
@@ -696,7 +857,6 @@ class _FoodFormState extends State<FoodForm> {
                   controller: _carbs,
                   focusNode: _carbsFocus,
                   label: 'Carbs (g)',
-                  required: true,
                 ),
                 const SizedBox(height: 8),
                 _macroField(
@@ -704,15 +864,13 @@ class _FoodFormState extends State<FoodForm> {
                   controller: _fiber,
                   focusNode: _fiberFocus,
                   label: 'Fiber (g)',
-                  required: false,
                 ),
                 const SizedBox(height: 8),
                 _macroField(
-                  key: const Key('food_form_fat'),
-                  controller: _fat,
-                  focusNode: _fatFocus,
-                  label: 'Fat (g)',
-                  required: true,
+                  key: const Key('food_form_protein'),
+                  controller: _protein,
+                  focusNode: _proteinFocus,
+                  label: 'Protein (g)',
                 ),
                 const SizedBox(height: 8),
                 _macroField(
@@ -720,7 +878,17 @@ class _FoodFormState extends State<FoodForm> {
                   controller: _sodium,
                   focusNode: _sodiumFocus,
                   label: 'Sodium (mg)',
-                  required: false,
+                ),
+                const SizedBox(height: 8),
+                // The derived calories, live as the boxes change. One
+                // formula for the form and every stored food (D-92c.1);
+                // fiber and sodium never enter it.
+                Text(
+                  '= $calories cal',
+                  key: const Key('food_form_calories'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: OmniTheme.colors.textSecondary,
+                  ),
                 ),
                 if (widget.showNotesField) ...[
                   const SizedBox(height: 12),
@@ -745,18 +913,23 @@ class _FoodFormState extends State<FoodForm> {
                 // pipeline the inline button used to trigger.
               ],
             ),
-          ),
         );
       },
     );
   }
 
-  /// Macro text field with decimal input. Required fields reject
-  /// empty input; optional fields allow empty (treated as "unset",
-  /// persisted as `null` on the model).
+  /// A blank or half-typed macro box counts as 0 for the calories line
+  /// (D-92c.1).
+  static double _parsed(TextEditingController controller) =>
+      double.tryParse(controller.text.trim()) ?? 0.0;
+
+  /// Macro text field with decimal input. Every box is optional: a blank
+  /// Protein, Carbs or Fat saves 0, a blank Fiber or Sodium saves "not
+  /// recorded" (null). Non-numeric text (a lone `.`) still surfaces
+  /// `"Must be a number"`.
   ///
-  /// Accepts the same `^\d*\.?\d*$` pattern as the reference-amount
-  /// field (one optional decimal point, digits on either side).
+  /// Accepts the same `^\d*\.?\d*$` pattern as the package-size field
+  /// (one optional decimal point, digits on either side).
   /// This widens the prior `digitsOnly` contract that rejected
   /// `0.5` and `1.25`, so the user can store fractional grams
   /// like `0.5` g of fat. The validator uses `double.tryParse`
@@ -767,7 +940,6 @@ class _FoodFormState extends State<FoodForm> {
     required TextEditingController controller,
     required FocusNode focusNode,
     required String label,
-    required bool required,
   }) {
     return TextFormField(
       key: key,
@@ -777,15 +949,20 @@ class _FoodFormState extends State<FoodForm> {
       inputFormatters: [
         FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
       ],
+      // Rebuild as the box changes so readers derived from the text follow
+      // typing (D-92c.10).
+      onChanged: (_) => setState(() {}),
       decoration: InputDecoration(
         labelText: label,
+        hintText: '0',
+        // Material hides a hint while the label sits inside the box; `always`
+        // keeps the faint 0 visible without focus (D-92c.3, D-92c.14).
+        floatingLabelBehavior: FloatingLabelBehavior.always,
         border: const OutlineInputBorder(),
       ),
       validator: (v) {
         final trimmed = v?.trim() ?? '';
-        if (trimmed.isEmpty) {
-          return required ? 'Required' : null;
-        }
+        if (trimmed.isEmpty) return null;
         if (double.tryParse(trimmed) == null) {
           return 'Must be a number';
         }

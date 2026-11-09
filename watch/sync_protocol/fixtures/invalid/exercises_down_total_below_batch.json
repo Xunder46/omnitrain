@@ -1,0 +1,26 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-exercises-v2-2-badtotal-0",
+  "type": "exercises_down",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-07-13T17:00:00Z",
+    "catalogVersion": "v2-2-c0ffee00",
+    "batchIndex": 0,
+    "batchCount": 2,
+    "totalCount": 1,
+    "exercises": [
+      {
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      }
+    ]
+  }
+}

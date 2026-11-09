@@ -49,6 +49,7 @@ final class ScriptedPlatformStore: WatchPlatformWorkoutStore {
         var stranded: [String]
         var begins: [String] = []
         var ends = 0
+        var savings: [Bool] = []
         var log: [String] = []
         var inFlight = 0
         var raced = false
@@ -85,6 +86,10 @@ final class ScriptedPlatformStore: WatchPlatformWorkoutStore {
 
     /// How many ends reached the store.
     var ended: Int { withState { $0.ends } }
+
+    /// What each end asked for, in order: `true` saves the workout, `false`
+    /// discards it (plan 89 D-1).
+    var endSavings: [Bool] { withState { $0.savings } }
 
     /// Every call, in the order it arrived: `begin(<name>)`, `end`,
     /// `inProgressActivityTypes`.
@@ -136,10 +141,11 @@ final class ScriptedPlatformStore: WatchPlatformWorkoutStore {
         withState { $0.settle() }
     }
 
-    func end() async {
+    func end(saving: Bool) async {
         withState { state in
             state.enter("end")
             state.ends += 1
+            state.savings.append(saving)
             if !state.stranded.isEmpty { state.stranded.removeFirst() }
             state.settle()
         }
@@ -320,7 +326,7 @@ final class WatchWorkoutCoordinatorTests: XCTestCase {
         let store = ScriptedPlatformStore()
         let (coordinator, _) = makeCoordinator(store)
 
-        await coordinator.recoverInProgress()
+        await coordinator.recoverInProgress(storedSession: { await engine.storedSession() })
         await coordinator.refresh(engine.session)
 
         XCTAssertEqual(store.calls, ["inProgressActivityTypes"], "one question, no begin, no end")
@@ -340,7 +346,7 @@ final class WatchWorkoutCoordinatorTests: XCTestCase {
         let store = ScriptedPlatformStore(inProgress: ["flexibility"])
         let (coordinator, platform) = makeCoordinator(store)
 
-        await coordinator.recoverInProgress()
+        await coordinator.recoverInProgress(storedSession: { await engine.storedSession() })
         await coordinator.refresh(session)
 
         XCTAssertEqual(
@@ -359,7 +365,7 @@ final class WatchWorkoutCoordinatorTests: XCTestCase {
         let store = ScriptedPlatformStore(inProgress: ["flexibility"])
         let (coordinator, platform) = makeCoordinator(store)
 
-        await coordinator.recoverInProgress()
+        await coordinator.recoverInProgress(storedSession: { await engine.storedSession() })
         await coordinator.refresh(engine.session)
 
         XCTAssertEqual(
@@ -369,7 +375,7 @@ final class WatchWorkoutCoordinatorTests: XCTestCase {
         )
         XCTAssertNil(platform.running, "nothing is left open")
 
-        await coordinator.recoverInProgress()
+        await coordinator.recoverInProgress(storedSession: { await engine.storedSession() })
         XCTAssertEqual(store.ended, 1, "the second recovery finds nothing stranded and adds no end")
     }
 

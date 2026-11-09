@@ -314,6 +314,41 @@ void main() {
       }
     });
   });
+
+  // S-18708 (D-18706): muted text must clear 4.5:1 against both stops of the
+  // page background gradient, on every theme.
+  test(
+    'Check 19: muted text clears 4.5:1 on the page background (every theme)',
+    () {
+      for (final theme in AppTheme.values) {
+        final colors = OmniTheme.colorsForTheme(theme);
+
+        final topContrast = contrastRatio(
+          colors.textMuted,
+          colors.backgroundTop,
+        );
+        expect(
+          topContrast,
+          greaterThanOrEqualTo(4.5),
+          reason:
+              'Check 19 FAIL (${theme.name}): textMuted vs backgroundTop '
+              'contrast = $topContrast (required ≥ 4.5:1)',
+        );
+
+        final bottomContrast = contrastRatio(
+          colors.textMuted,
+          colors.backgroundBottom,
+        );
+        expect(
+          bottomContrast,
+          greaterThanOrEqualTo(4.5),
+          reason:
+              'Check 19 FAIL (${theme.name}): textMuted vs backgroundBottom '
+              'contrast = $bottomContrast (required ≥ 4.5:1)',
+        );
+      }
+    },
+  );
 }
 
 /// Get CIELAB L* (lightness) for a color.

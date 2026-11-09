@@ -1,0 +1,43 @@
+# Review: 2026-11-05-126-wrist-pause-resume-reaches-phone-plan · P0-P2 · HEAD(558cfb40)..working tree
+Verdict: APPROVE WITH FIXES
+Counts: blocker 1 · major 1 · minor 0 · tests: not run by reviewer (brief: full `flutter test` forbidden, governor ran — brief states 46 pass in `test/wrist_pause_resume_adoption_test.dart` and 36 pass in `test/watch_timer_adoption_test.dart`; not observed here)
+Diff vs Predicted Files: conforms for the plan's five files (`lib/state/workout/timer_manager.dart`, the two test files, the two docs — the `git diff --stat` scoped to them is their only content type). The tree also carries many other modified files (calendar/planned-session/protocol sources and tests) from concurrent sessions; they belong to other plans, not reviewed.
+## Findings
+
+1. [Blocker] lib/state/workout/timer_manager.dart:281-282 — the `adoptRemoteTimer` doc comment still says "The effort's open rests are closed in memory and persisted as [startTimedEntry] does." The diff rewrote the sentence directly above it to add the 126 same-start pause/resume branch, but that branch closes no rest (D-4; `S-12610` asserts an open rest on another effort stays open through an adopted pause). A maintainer reading the comment would expect a wrist pause to close the session's rests — the exact opposite of the invariant this plan adds. Fix: one clause, e.g. after "(126); a later or older copy is refused" insert "a same-start pause or resume closes no rest." Guard: none needed (comment only; behaviour is already pinned by `S-12610` in `test/wrist_pause_resume_adoption_test.dart`).
+
+2. [Major] test/wrist_pause_resume_adoption_test.dart:79 (+ shape helpers ~:108-116) — `_RowShape` is `(state, startedAtMs, pausedAtMs)`, so `_expectStoredMatchesMemoryTimed` (and the `_expectNothingChangedTimed` before-comparisons, and the inline `_roundShape(...)` parity lines of `S-12603`/`S-12610`) never compare `totalPausedDurationMs`, nor a round's `plannedDurationSecs`. A repository whose `updateTimedInstance`/`updateRoundInstance` dropped or mangled exactly the fields this plan's rule writes (accumulated pause; a round's planned length) would pass every state scenario's stored-vs-memory check, so the plan invariant "Mock and Hive hold identical rows after every state scenario" is unasserted for those fields. Fix: add `totalPausedDurationMs` to `_timedShape`/`_roundShape` and `plannedDurationSecs` to `_roundShape` (Mock and Hive both then assert it for free). Guard: the existing adopted scenarios become the failing test the moment a store drops the field.
+
+## Assumption Log rulings
+Empty in the plan; nothing to rule.
+
+## Scenario coverage
+Addresses Q1–Q3 of the brief (state file `test/wrist_pause_resume_adoption_test.dart`, both `Mock` and `Hive` groups run the same fixtures, lines 363-364):
+S-12601 -> the adopted state, stamp and accumulated pause are asserted, then `_expectStoredMatchesMemoryTimed` (stored rows equal memory rows; memory was asserted to the new values first, so the parity check must fail if either side is missed) | PASS
+S-12602 -> same shape | PASS
+S-12603 -> pause (a) and resume (b), both assert `plannedDurationSecs` kept and stored-round parity | PASS
+S-12604 -> sequential pause then resume, stored parity after each | PASS
+S-12605 -> S-12605a (P+400, start kept), S-12605b (P−400, start taken), S-12605c (+1000 inclusive), S-12605d (−1000 inclusive) | PASS
+S-12606 -> S-12606a (running A1 vs paused A0), S-12606b (pre-pause running copy), S-12606c (older running copy); each asserts `changed == false`, memory-before and stored-before rows equal, no revision bump, 0 notifications | PASS
+S-12607 -> both stamp directions refused, phone's stamp asserted retained (D-5 tie) | PASS
+S-12608 -> S-12608a (missed cycle accepted), S-12608b (identical copy, S-6102c) | PASS
+S-12609 -> restart-shaped later pause with larger accumulated pause | PASS
+S-12610 -> pause adopted; rest stays open in memory AND in the store (D-4) | PASS
+S-12611 -> second delivery refused; one revision bump, one notification | PASS
+S-12612 -> logged-timer refusal (121b) untouched; both rows and the index count asserted | PASS
+S-12613 -> paused copy of a logged interval, the dangerous variant | PASS
+S-12614 -> S-12614a (far-later refused), S-12614b (far-earlier overwrites) | PASS
+S-12615 -> earlier running start still wins (121b S-12159 pin) | PASS
+Graph scenarios S-12631..S-12640 exist in `test/watch_timer_adoption_test.dart` (group `S-1263x`, from :1202; the no-echo expectations of S-12631/S-12632 and the D-5 ties of S-12636/S-12637 are present); their bodies were not read line-by-line — the brief marks them established.
+
+## Answers to the brief's five questions
+1. Reachability — YES. The same-interval branch is guarded by `old.state != notStarted` (:397 timed, :456 round), so a not-started target never enters it (it falls to the start path, unchanged). It is entered only when `remote.startedAtMs >= old.startedAtMs`; a strictly earlier start falls to the pre-existing earlier-start overwrite path (O-3), inclusive ±1000 edges verified by `S-12605a..d`. `adoptRemoteTimer` runs `if (_remoteIsLoggedInterval(effortId, effortKind, remote)) return false;` at :302 before either branch, so a paused/resumed copy of a FINISHED interval is refused first (D-6); `_targetIndex` cannot return a finished row (its second loop skips finished), so the branch never reads a finished `old` beyond the accepted tolerance-window limit the plan names.
+2. Symmetry — YES. Timed (:398-423) and round (:457-482) compute `sameInterval` identically (`(remote.startedAtMs - old.startedAtMs).abs() <= _sameStartToleranceMs`), call `_isNewerPauseProgress` with the kind's own `paused` predicate and the same `remote`, and `copyWith` exactly `state`, `pausedAtMs`, `totalPausedDurationMs`, `updatedAtMs`; neither touches the start. Timed does not write `targetDurationSecs` (keeps it, D-3), round does not write `plannedDurationSecs` (asserted kept by both `S-12603` halves). Each then writes its own repository method, updates memory and returns true. The overwrite paths (with rest closing) are structurally unchanged.
+3. A refusal leaves everything untouched — YES. Both refusals (`!sameInterval || !_isNewerPauseProgress`) are a bare `return false` placed before any `copyWith`, `updateTimedInstance`/`updateRoundInstance`, memory assignment or `closeAllOpenRestsInSessionInMemory()`; that call sits strictly after the branch. `S-12606`/`S-12607`/`S-12612`/`S-12613`/`S-12614a` assert stored rows, revision and notifications unchanged on refusals; `S-12610` asserts the adopted write keeps the other effort's open rest (D-4).
+4. Stored rows in both storages — YES, with the finding-2 gap. Both groups (:363-364) run the same fixtures; adopted scenarios end with `_expectStoredMatchesMemoryTimed` (it cannot pass if only one side was written, because the memory asserts new values first), and refused scenarios compare both the memory and the stored before-shapes to the fixture. Gap: the shape omits `totalPausedDurationMs` (and round `plannedDurationSecs`), see finding 2.
+5. Docs vs code — YES, with the brief's D-2 order key intact. `docs/state_management/workout_state.md` (the `adoptRemoteWorkTimer` row) states the key exactly as `_isNewerPauseProgress` (:510-518) does: a larger accumulated pause, or an equal one with the phone running and the remote paused; names the refusals ("a paused copy against a paused phone, an older, identical or pre-pause copy, and any other later start change nothing"), ties to `S-12601`–`S-12615` (all present in the named file) and names `TimerManager._sameStartToleranceMs` (exists, :315). `docs/watch_session_capture.md` states that a wrist pause or resume of the timer the phone already runs reaches the phone, that the phone's own stamp wins a simultaneous pause and that a simultaneous resume may leave the clocks about a second apart until the next pause (D-5), tied to `S-12631`–`S-12640` (all present). Both sentences are true against the code.
+
+## Docs delta
+`docs/state_management/workout_state.md` MODIFIED ("a newer pause or resume of the same start") -> applied (verbatim in the row; claims verified true, all named tests/types exist)
+`docs/watch_session_capture.md` ADDED ("a wrist pause or resume reaches the phone") -> applied (the marker words are split by wording — "a wrist pause or resume of the timer the phone already runs reaches the phone"; sentences judged true and tied to `S-12631`–`S-12640`)
+No doc edit outside the table was found in the diffs.

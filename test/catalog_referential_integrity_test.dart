@@ -2,8 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/catalog_version.dart';
 import 'package:omnitrain/core/services/bundled_catalog_source.dart';
 import 'package:omnitrain/core/services/catalog_refresh_service.dart';
+import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/data/models/muscle_taxonomy.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/mock/seed_data.dart';
+
+import 'helpers/conditioning_catalog_rows.dart';
+import 'helpers/yoga_catalog_rows.dart';
 
 /// Referential integrity of the bundled catalog.
 ///
@@ -22,10 +27,10 @@ void main() {
     test('R-001: every referenced muscle group is defined', () {
       final dangling = <String>{};
 
-      for (final entry in SeedData.exerciseMuscleGroupRelationships.entries) {
-        for (final groupId in entry.value) {
-          if (!muscleGroupIds.contains(groupId)) {
-            dangling.add('${entry.key} -> $groupId');
+      for (final entry in SeedData.exerciseMuscleLinks.entries) {
+        for (final link in entry.value) {
+          if (!muscleGroupIds.contains(link.muscleGroupId)) {
+            dangling.add('${entry.key} -> ${link.muscleGroupId}');
           }
         }
       }
@@ -68,7 +73,7 @@ void main() {
         }
       }
 
-      check('muscleGroups', SeedData.exerciseMuscleGroupRelationships.keys);
+      check('muscleGroups', SeedData.exerciseMuscleLinks.keys);
       check('equipment', SeedData.exerciseEquipmentRelationships.keys);
       check('capabilities', SeedData.exerciseCapabilityRelationships.keys);
 
@@ -81,9 +86,372 @@ void main() {
       );
     });
 
-    test('R-004: no duplicate muscle group ids', () {
+    test('R-004: muscle groups are the taxonomy entries, with no duplicate ids', () {
       final ids = SeedData.sampleMuscleGroups.map((g) => g.id).toList();
       expect(ids.length, muscleGroupIds.length, reason: 'duplicate ids: $ids');
+      expect(
+        ids,
+        equals(MuscleTaxonomy.entries.map((entry) => entry.id).toList()),
+        reason:
+            'SeedData.sampleMuscleGroups must carry exactly the taxonomy '
+            'ids, in taxonomy order',
+      );
+    });
+  });
+
+  // Plan 33 (S-3): `SeedData.exerciseMuscleLinks` is the tagging the bundled
+  // catalog ships, and R-001/R-003/R-004/R-005 above read it too.
+  group('Bundled catalog — muscle link map (S-3)', () {
+    /// The ids one role holds on [exerciseId].
+    Set<String> rolesIn(String exerciseId, MuscleRole role) => {
+      for (final link in SeedData.exerciseMuscleLinks[exerciseId]!)
+        if (link.role == role) link.muscleGroupId,
+    };
+
+    test('S-3: the map is keyed by real exercises', () {
+      final unknown = {
+        for (final key in SeedData.exerciseMuscleLinks.keys)
+          if (!exerciseIds.contains(key)) key,
+      };
+
+      expect(
+        unknown,
+        isEmpty,
+        reason:
+            'these muscle-link entries are keyed by exercise ids that are '
+            'not in the catalog: ${unknown.join(", ")}',
+      );
+    });
+
+    test('S-3: every linked muscle group is defined', () {
+      final dangling = <String>{};
+
+      for (final entry in SeedData.exerciseMuscleLinks.entries) {
+        for (final link in entry.value) {
+          if (!muscleGroupIds.contains(link.muscleGroupId)) {
+            dangling.add('${entry.key} -> ${link.muscleGroupId}');
+          }
+        }
+      }
+
+      expect(
+        dangling,
+        isEmpty,
+        reason:
+            'these exercises point at muscle groups that do not exist in '
+            'SeedData.sampleMuscleGroups: ${dangling.join(", ")}',
+      );
+    });
+
+    test('S-3: every entry carries at least one primary link', () {
+      final withoutPrimary = {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (!entry.value.any((link) => link.role == MuscleRole.primary))
+            entry.key,
+      };
+
+      expect(
+        withoutPrimary,
+        isEmpty,
+        reason:
+            'a filter matches on primary links only, so these exercises '
+            'would be unreachable by muscle: ${withoutPrimary.join(", ")}',
+      );
+    });
+
+    test('S-3: no id appears twice and none carries both roles', () {
+      final repeated = <String>{};
+      final bothRoles = <String>{};
+
+      for (final entry in SeedData.exerciseMuscleLinks.entries) {
+        final ids = [for (final link in entry.value) link.muscleGroupId];
+        if (ids.toSet().length != ids.length) repeated.add(entry.key);
+
+        final primary = rolesIn(entry.key, MuscleRole.primary);
+        final secondary = rolesIn(entry.key, MuscleRole.secondary);
+        if (primary.intersection(secondary).isNotEmpty) {
+          bothRoles.add(entry.key);
+        }
+      }
+
+      expect(repeated, isEmpty, reason: 'duplicate ids in ${repeated.join(", ")}');
+      expect(
+        bothRoles,
+        isEmpty,
+        reason: 'an id in both roles on ${bothRoles.join(", ")}',
+      );
+    });
+
+    test('S-3: no entry links a region next to one of its own muscles', () {
+      final offending = <String>{};
+
+      for (final entry in SeedData.exerciseMuscleLinks.entries) {
+        final linked = {for (final link in entry.value) link.muscleGroupId};
+        for (final id in linked) {
+          if (MuscleTaxonomy.isRegion(id) &&
+              MuscleTaxonomy.musclesOf(id).any(linked.contains)) {
+            offending.add('${entry.key} -> $id');
+          }
+        }
+      }
+
+      expect(
+        offending,
+        isEmpty,
+        reason:
+            'a region is redundant next to one of its own muscles: '
+            '${offending.join(", ")}',
+      );
+    });
+
+    test('S-3: the map holds one entry per tagged exercise', () {
+      expect(
+        SeedData.exerciseMuscleLinks,
+        hasLength(
+          226 +
+              yogaCatalogRows.where((r) => r.main.isNotEmpty).length +
+              conditioningCatalogRows.where((r) => r.main.isNotEmpty).length,
+        ),
+      );
+    });
+
+    test('S-3: only the twelve region-tagged exercises carry a region', () {
+      final regionTagged = {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (entry.value.any(
+            (link) => MuscleTaxonomy.isRegion(link.muscleGroupId),
+          ))
+            entry.key,
+      };
+
+      expect(regionTagged, {
+        'exercise-tennis-match',
+        'exercise-tennis-drill',
+        'exercise-volleyball-match',
+        'exercise-volleyball-drill',
+        'exercise-badminton-match',
+        'exercise-table-tennis-match',
+        'exercise-cricket-match',
+        'exercise-ice-hockey-match',
+        'exercise-baseball-game',
+        'exercise-american-football-game',
+        'exercise-rugby-match',
+        'exercise-lacrosse-game',
+      });
+    });
+
+    test('S-3: the approved rows, each role compared as a set', () {
+      expect(rolesIn('exercise-bench-press', MuscleRole.primary), {
+        'muscle-chest',
+      });
+      expect(rolesIn('exercise-bench-press', MuscleRole.secondary), {
+        'muscle-triceps',
+        'muscle-front-delts',
+      });
+
+      expect(rolesIn('exercise-barbell-squat', MuscleRole.primary), {
+        'muscle-quads',
+      });
+      expect(rolesIn('exercise-barbell-squat', MuscleRole.secondary), {
+        'muscle-glutes',
+        'muscle-hamstrings',
+      });
+
+      expect(rolesIn('exercise-tennis-match', MuscleRole.primary), {
+        'muscle-legs',
+        'muscle-shoulders',
+        'muscle-core',
+      });
+      expect(rolesIn('exercise-tennis-match', MuscleRole.secondary), isEmpty);
+
+      expect(rolesIn('exercise-deadlift', MuscleRole.primary), {
+        'muscle-glutes',
+        'muscle-hamstrings',
+        'muscle-lower-back',
+      });
+
+      // S-18803: Tibialis Raise is tagged Shins only, no secondary.
+      expect(SeedData.exerciseMuscleLinks['exercise-tibialis-raise'], [
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-tibialis',
+          role: MuscleRole.primary,
+        ),
+      ]);
+      expect(
+        SeedData.exerciseMuscleLinks,
+        hasLength(
+          226 +
+              yogaCatalogRows.where((r) => r.main.isNotEmpty).length +
+              conditioningCatalogRows.where((r) => r.main.isNotEmpty).length,
+        ),
+      );
+
+      // S-18904 (plan 115a): the three D-18902 re-tags, compared as lists.
+      expect(SeedData.exerciseMuscleLinks['exercise-cable-hip-abduction'], [
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-abductors',
+          role: MuscleRole.primary,
+        ),
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-glutes',
+          role: MuscleRole.secondary,
+        ),
+      ]);
+      expect(SeedData.exerciseMuscleLinks['exercise-cable-external-rotation'], [
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-rotator-cuff',
+          role: MuscleRole.primary,
+        ),
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-rear-delts',
+          role: MuscleRole.secondary,
+        ),
+      ]);
+      expect(SeedData.exerciseMuscleLinks['exercise-hammer-curl'], [
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-biceps',
+          role: MuscleRole.primary,
+        ),
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-brachialis',
+          role: MuscleRole.primary,
+        ),
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-forearms',
+          role: MuscleRole.secondary,
+        ),
+      ]);
+
+      final tibialisTagged = {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (entry.value.any(
+            (link) => link.muscleGroupId == 'muscle-tibialis',
+          ))
+            entry.key,
+      };
+      expect(tibialisTagged, {'exercise-tibialis-raise'});
+
+      final mainCalves = {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (rolesIn(entry.key, MuscleRole.primary).contains('muscle-calves'))
+            entry.key,
+      };
+      expect(mainCalves, {
+        'exercise-standing-calf-raise',
+        'exercise-seated-calf-raise',
+        'exercise-calf-raise-hold',
+        'exercise-single-leg-calf-raise-hold',
+        'exercise-standing-calf-stretch',
+        'exercise-soleus-stretch',
+        'exercise-jump-rope-steady',
+        'exercise-jump-rope-intervals',
+        'exercise-donkey-calf-raise',
+        'exercise-leg-press-calf-raise',
+        // Plan 118 Phase 2B (S-19204): the one new main Calf.
+        'exercise-jumping-jack',
+      });
+
+      final assistingCalves = {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (rolesIn(
+            entry.key,
+            MuscleRole.secondary,
+          ).contains('muscle-calves'))
+            entry.key,
+      };
+      expect(assistingCalves, {
+        'exercise-nordic-curl',
+        'exercise-wall-sit',
+        'exercise-sled-push',
+        'exercise-sled-drag',
+        'exercise-downward-facing-dog',
+        // Plan 118 Phase 2A (S-19202): the six jumping rows.
+        'exercise-box-jump',
+        'exercise-jump-squat',
+        'exercise-tuck-jump',
+        'exercise-broad-jump',
+        'exercise-jump-lunge',
+        'exercise-skater-jump',
+        // Plan 118 Phase 2B (S-19204): the row 2A left for this phase.
+        'exercise-high-knees',
+      });
+
+      // S-18904 (plan 115a): the exercise sets that the Phase 2A rows complete.
+      Set<String> mainIds(String muscleId) => {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (rolesIn(entry.key, MuscleRole.primary).contains(muscleId))
+            entry.key,
+      };
+      Set<String> assistIds(String muscleId) => {
+        for (final entry in SeedData.exerciseMuscleLinks.entries)
+          if (rolesIn(entry.key, MuscleRole.secondary).contains(muscleId))
+            entry.key,
+      };
+
+      // Plan 118 Phase 2B (S-19204): the conditioning rows reach the muscle
+      // filters that list their main muscle only.
+      expect(
+        mainIds('muscle-lats'),
+        contains('exercise-medicine-ball-slam'),
+      );
+      expect(
+        mainIds('muscle-chest'),
+        containsAll(['exercise-burpee', 'exercise-plyo-push-up']),
+      );
+      expect(
+        mainIds('muscle-abs'),
+        containsAll([
+          'exercise-mountain-climber',
+          'exercise-bear-crawl',
+          'exercise-squat-thrust',
+          'exercise-medicine-ball-slam',
+        ]),
+      );
+
+      expect(mainIds('muscle-abductors'), {
+        'exercise-cable-hip-abduction',
+        'exercise-machine-hip-abduction',
+        'exercise-banded-clamshell',
+        'exercise-banded-lateral-walk',
+      });
+
+      expect(mainIds('muscle-rotator-cuff'), {
+        'exercise-cable-external-rotation',
+        'exercise-side-lying-external-rotation',
+        'exercise-cable-internal-rotation',
+      });
+      expect(assistIds('muscle-rotator-cuff'), {
+        'exercise-band-pull-apart',
+      });
+
+      expect(mainIds('muscle-brachialis'), {
+        'exercise-hammer-curl',
+        'exercise-reverse-curl',
+        'exercise-zottman-curl',
+        'exercise-cross-body-hammer-curl',
+      });
+      expect(assistIds('muscle-brachialis'), isEmpty);
+
+      expect(mainIds('muscle-biceps'), {
+        'exercise-barbell-curl',
+        'exercise-dumbbell-curl',
+        'exercise-hammer-curl',
+        'exercise-preacher-curl',
+        'exercise-incline-dumbbell-curl',
+        'exercise-cable-curl',
+        'exercise-concentration-curl',
+        'exercise-zottman-curl',
+        'exercise-cross-body-hammer-curl',
+      });
+
+      expect(
+        mainIds('muscle-glutes'),
+        isNot(contains('exercise-cable-hip-abduction')),
+      );
+      expect(
+        mainIds('muscle-rear-delts'),
+        isNot(contains('exercise-cable-external-rotation')),
+      );
     });
   });
 
@@ -104,6 +472,21 @@ void main() {
           'muscle-adductors',
           'muscle-calves',
           'muscle-neck',
+          // Plan 33: the seven groups the hierarchy adds.
+          'muscle-lats',
+          'muscle-lower-back',
+          'muscle-front-delts',
+          'muscle-side-delts',
+          'muscle-rear-delts',
+          'muscle-abs',
+          'muscle-obliques',
+          // Plan 114: Shins, added in catalog version 13.
+          'muscle-tibialis',
+          // Plan 115a: Brachialis, Rotator cuff and Abductors, added in
+          // catalog version 14.
+          'muscle-brachialis',
+          'muscle-rotator-cuff',
+          'muscle-abductors',
         ];
         await repo.setCatalogVersion(bundledCatalogVersion - 1);
 
@@ -131,13 +514,35 @@ void main() {
           );
         }
 
+        // The rename travels with the same refresh.
+        final byId = {
+          for (final group in await repo.getMuscleGroups()) group.id: group,
+        };
+        expect(
+          byId['muscle-traps']!.name,
+          equals('Traps'),
+          reason: 'the refresh renames Trapezius to Traps',
+        );
+
+        // Every muscle carries its taxonomy parent after the refresh.
+        for (final entry in MuscleTaxonomy.entries) {
+          if (entry.parentId == null) continue;
+          expect(
+            byId[entry.id]!.parentId,
+            equals(entry.parentId),
+            reason: '${entry.id} must carry its taxonomy parent',
+          );
+        }
+
         // Every mapping must still resolve after the refresh.
-        for (final entry in SeedData.exerciseMuscleGroupRelationships.entries) {
-          for (final groupId in entry.value) {
+        for (final entry in SeedData.exerciseMuscleLinks.entries) {
+          for (final link in entry.value) {
             expect(
               after,
-              contains(groupId),
-              reason: '${entry.key} points at $groupId, absent post-refresh',
+              contains(link.muscleGroupId),
+              reason:
+                  '${entry.key} points at ${link.muscleGroupId}, '
+                  'absent post-refresh',
             );
           }
         }

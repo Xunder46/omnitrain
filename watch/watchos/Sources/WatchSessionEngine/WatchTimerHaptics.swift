@@ -26,14 +26,31 @@ public struct WatchTimerMilestone: Equatable {
     }
 }
 
+/// Which tap a countdown's end is owed: one per countdown kind, each distinct
+/// from the log's, the rest ping's, the Next tap's and the finish tap's
+/// (plan 82 D-7). Which `WKHapticType` each maps to is the wrist's feel
+/// decision, in `WristHaptics`.
+public enum WatchHapticCue: Equatable {
+    case roundEnd
+    case holdEnd
+    case targetReached
+}
+
 /// Decides which countdowns the user is owed a haptic for.
 public final class WatchTimerHaptics {
     private let engine: WatchSessionEngine
 
-    /// Timer rows already announced. Keyed on the record rather than the kind,
-    /// so the next round's countdown — a new row — is owed its own haptic.
-    private var announced: Set<String> = []
-
+    /// Countdowns already announced live on the engine
+    /// (`announcedCountdownKeys`), so a rebuilt screen's fresh
+    /// `WatchTimerHaptics` does not repeat one already given. The next round's
+    /// countdown starts at a new instant, so it is owed its own haptic.
+    ///
+    /// Keyed on the countdown, not on the stored row: stopping or pausing it
+    /// appends a row with a new `recordId` but the same start, and a period
+    /// that expired and was then logged is exactly that row.
+    static func countdownKey(_ timer: WatchTimerRecord) -> String {
+        "\(timer.sessionId)|\(timer.kind)|\(timer.startedAt.timeIntervalSince1970)"
+    }
     public init(_ engine: WatchSessionEngine) {
         self.engine = engine
     }
@@ -52,7 +69,7 @@ public final class WatchTimerHaptics {
             guard kind != WatchTimerKind.rest else { continue }
             guard let timer = engine.timerFor(kind) else { continue }
             guard remainingMs(timer, now: now) == 0 else { continue }
-            guard announced.insert(timer.recordId).inserted else { continue }
+            guard engine.announcedCountdownKeys.insert(Self.countdownKey(timer)).inserted else { continue }
 
             milestones.append(
                 WatchTimerMilestone(
@@ -63,5 +80,16 @@ public final class WatchTimerHaptics {
         }
 
         return milestones
+    }
+
+    /// The cue a countdown kind is owed, or nil for the kinds owed none: a rest
+    /// is a count-up (`poll` already skips it), and an unknown kind has no tap.
+    public static func cue(for kind: String) -> WatchHapticCue? {
+        switch kind {
+        case WatchTimerKind.round: return .roundEnd
+        case WatchTimerKind.hold: return .holdEnd
+        case WatchTimerKind.elapsed: return .targetReached
+        default: return nil
+        }
     }
 }

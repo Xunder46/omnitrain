@@ -96,6 +96,20 @@ enum Fixtures {
         return object
     }
 
+    /// F-ACCENT: the theme accents both watch clients wear, as one table of
+    /// themes, hexes and label colors, with the contrast floor the wrist holds
+    /// an accent to.
+    static func accentContract() throws -> [String: Any] {
+        let url = repositoryRoot.appendingPathComponent(
+            "watch/contract/watch_accent_contract.json"
+        )
+        let data = try Data(contentsOf: url)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw FixtureError.malformed("watch/contract/watch_accent_contract.json")
+        }
+        return object
+    }
+
     static func json(_ relativePath: String) throws -> [String: Any] {
         let url = protocolRoot.appendingPathComponent(relativePath)
         let data = try Data(contentsOf: url)

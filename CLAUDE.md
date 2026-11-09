@@ -77,6 +77,7 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
 - Keep edits minimal and architecture-consistent.
 - Never bypass repository interfaces from state/features.
 - Follow conventions/tokens from docs and constants; do not invent parallel patterns.
+- UI work: use the shared piece for the job and the rules in `docs/design_system.md` sections "Shared pieces and rules per job" and "How these rules are enforced".
 
 ### PR scope budget
 

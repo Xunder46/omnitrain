@@ -170,9 +170,12 @@ class WatchSessionStartPaths {
   /// carries the capabilities the phone resolved the exercise from, which is
   /// what makes the logging surface the right one without asking the phone.
   ///
-  /// The session carries no modality: `routines_down` has no field for one, so
-  /// the wrist resolves each exercise from its capabilities instead of guessing
-  /// from the routine. See the plan's open items.
+  /// A routine whose Focus is a modality the wrist knows
+  /// ([WatchRoutine.startModality]) starts its session with it, so the Health
+  /// type, GPS and round word follow it. A routine with no or an unknown Focus
+  /// starts a session with no modality, as before. A routine that fills an
+  /// empty session already held keeps that session's modality: the held branch
+  /// below is untouched (D-12561's EDGE was cut).
   Future<WatchSessionRecord> startFromRoutine(String routineId) async {
     final routine = _routine(routineId);
     // A routine picked while an empty session is live is what that session was
@@ -185,12 +188,18 @@ class WatchSessionStartPaths {
         held.status == WatchSessionStatus.active &&
         held.exercises.isEmpty) {
       var filled = held;
-      for (final slot in routine.slots) {
+      for (final slot in routine.slotsFor(sessionToken(held.sessionId))) {
         filled = await _engine.insertExercise(slot, moveTo: false);
       }
       return filled;
     }
-    return _engine.createSession(modality: null, exercises: routine.slots);
+    // The session id is minted inside `createSession`, so the slots built here
+    // carry the token of the id the start paths mint for the start (plan 81
+    // D-9).
+    return _engine.createSession(
+      modality: routine.startModality,
+      exercises: routine.slotsFor(sessionToken(_newId())),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -232,19 +241,38 @@ class WatchSessionStartPaths {
   /// A slot id the session is not using yet. The same exercise may legitimately
   /// fill two slots — that is what a superset is — so a second pick gets its
   /// own id rather than being swallowed as a duplicate.
+  ///
+  /// The de-duplication runs on the plain bases — the session's own ids with
+  /// their token removed — and the token goes back on last, so a second pick
+  /// of one exercise is `sx-<id>-2~<token>` (plan 81 D-1, S-15002).
   String _availableSlotId(WatchCatalogExercise exercise) {
     final taken = {
       for (final slot
           in _engine.session?.exercises ?? const <Map<String, Object?>>[])
-        slot['sessionExerciseId'],
+        _plainSlotId(slot['sessionExerciseId']),
     };
 
     final base = exercise.slotId;
-    if (!taken.contains(base)) return base;
-    for (var suffix = 2; ; suffix++) {
-      final candidate = '$base-$suffix';
-      if (!taken.contains(candidate)) return candidate;
+    var free = base;
+    if (taken.contains(base)) {
+      for (var suffix = 2; ; suffix++) {
+        final candidate = '$base-$suffix';
+        if (!taken.contains(candidate)) {
+          free = candidate;
+          break;
+        }
+      }
     }
+    final token = sessionToken(_engine.session?.sessionId ?? _newId());
+    return '$free~$token';
+  }
+
+  /// A slot id with its session token removed — the text before the last `~`
+  /// (plan 81 D-1). An id with no `~` is already plain.
+  static String _plainSlotId(Object? id) {
+    final text = id is String ? id : '';
+    final at = text.lastIndexOf('~');
+    return at < 0 ? text : text.substring(0, at);
   }
 
   /// The exercises the wrist used most recently, newest session first.

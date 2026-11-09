@@ -66,11 +66,13 @@ non-overlapping training periods).
 | [Profile & Measurements](profile_and_measurements.md) | Profile identity, avatar flow, body measurement logging, and history chart behavior |
 | [Theme & Settings](theme_and_settings.md) | Theme system, measurement/calendar preferences, timer alerts, workout toggles, and Settings screen behavior |
 | [Rolling Sessions](rolling_sessions.md) | Rolling/continuous free session format, segment block grouping, isRolling flag, and inline start-sheet guidance |
-| [Stats Screen](stats_screen.md) | The all-time aggregate card (Sessions / Time / Streak), the Instruments list (one section per kind of work, one row per exercise, enumerating the work in the current window), and the Fuel row (intake averaged over its own logged-days window, split by training and rest days). The Instruments list is selected from a "current-state window" (active training period or the most recent training days). Its header opens [Records & Trends](records_and_trends.md). |
+| [Stats Screen](stats_screen.md) | The Mix, Signals, Instruments, Fuel and Weight blocks: the Instruments list (one section per kind of work, one row per exercise, enumerating the work in the current window), and the Fuel row (intake averaged over its own logged-days window, split by training and rest days). The Instruments list is selected from a "current-state window" (active training period or the most recent training days). Its header opens [Records & Trends](records_and_trends.md). |
+| [Stats Screen — Signals Layer](stats_screen/signals_layer.md) | Part of the Stats Screen doc, split out to keep that page under the indexing ceiling: the Signals layer's place on the screen, the rated-weeks gate, the cards, the quiet line (and its shorter form above waiting lines), the waiting lines, dismissal and how it loads with the rest of the screen. |
 | [Records & Trends](records_and_trends.md) | Per-exercise all-time bests, grouped by effort kind, with a search field and one exercise's progress page (best, series, recent training days). Reached from the Stats header's chart icon. |
 | [Stats Best-Load Investigation](stats_best_load_investigation.md) | Investigation finding (2026-08-16), not a feature doc. Traces every computation that produces a per-exercise best/heaviest-load figure and every surface that displays one. Records what the deleted Records section's "Heaviest load" actually computed (one set's `weight × reps`), which mislabeled figures are still live (Recent PRs and the session-summary PR line show an *estimated* 1RM as a bare weight), and why rep records came out uniformly `10` (a persisted default, not a cap). |
 | [Training Load & Mix](training_load.md) | The pure definitions behind the training-load figures — session load, the effort-to-modality rule, the per-modality time and load splits, the segment rounding and order, the baseline period's calendar blocks, and the week-start helper. The single home for the arithmetic a caller imports rather than restates. |
-| [Signals](signals.md) | The pure Signals framework (`lib/core/models/signals.dart`, `lib/core/services/signals/`) and `SignalsService`: the rated-baseline gate, the card cap and priority rule, the quiet line, the kind vocabulary, the `Signal` contract, and the repository-backed dismissal store with its local-calendar-day window and pruning. |
+| [Signals](signals.md) | The pure Signals framework (`lib/core/models/signals.dart`, `lib/core/services/signals/`) and `SignalsService`: the rated-weeks gate, the card cap and priority rule, the quiet line, the kind vocabulary, the `Signal` contract, and the repository-backed dismissal store with its local-calendar-day window and pruning. |
+| [Registered Signals](signals_registered.md) | The ten registered signals' definitions, adapters, gates, copy and the tests that pin them (Progression Rate, Modality Mix Shift, Cross-Modality Interference, Fuel vs Load, Protein Consistency, Sustained High Load, Cardio Efficiency Drift, Consistency, Training Gap, Hold Progress), split out of [Signals](signals.md). |
 | [Nutrition](nutrition.md) | Daily food and water logging, the food library and the shipped catalog, nutrition targets, the full-history trend with its target line, and the first-run primer. Behaviour owner for the nutrition screens. |
 
 ### Release & Operations
@@ -84,7 +86,7 @@ non-overlapping training periods).
 | Document | Description |
 |----------|-------------|
 | [Navigation & Screens](navigation_and_screens.md) | Complete screen map, navigation flow, dependency injection pattern |
-| [State Management & Services](state_management.md) | **Index** — ChangeNotifier classes, service classes, dependency graph. Split into [Workout](state_management/workout_state.md), [Nutrition](state_management/nutrition_state.md), [Routine/Calendar/Home/Profile/Settings](state_management/app_state.md), [Services & Utilities](state_management/services_and_utils.md), and [The Watch Surface](state_management/watch_surface.md) |
+| [State Management & Services](state_management.md) | **Index** — ChangeNotifier classes, service classes, dependency graph. Split into [Workout](state_management/workout_state.md), [Nutrition](state_management/nutrition_state.md), [Routine/Calendar/Home/Profile/Settings](state_management/app_state.md), [Services & Utilities](state_management/services_and_utils.md), [The Watch Surface](state_management/watch_surface.md), [The Watch Surface — the Wrist's Half](state_management/watch_surface_wrist.md) (including the sync progress spinner), [The Watch Surface — the Wrist's Logging Session](state_management/watch_surface_wrist_logging.md), [The Watch Surface — the Wrist's Exercise Pager](state_management/watch_surface_wrist_pager.md), [The Watch Surface — Nutrition and Water](state_management/watch_surface_nutrition.md), [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md), and [The Watch's Reference Data](state_management/watch_reference_data.md) |
 | [Data Models](data_models.md) | All domain models — sessions, exercises, templates, measurements, relationships |
 | [Constants & Configuration](constants_reference.md) | Modalities, capabilities, metrics, effort kinds, intents, design tokens |
 | [DB Integration](db_integration.md) | Database setup, schema, seed data, dual-backend strategy |
@@ -148,7 +150,7 @@ lib/
 │   ├── nutrition_state.dart     # NutritionState (targets, consumed log, water)
 │   └── food_library_state.dart  # FoodLibraryState (catalog + groups + personal library)
 ├── widgets/
-│   ├── buttons/          # (empty — reserved)
+│   ├── buttons/          # OmniHeaderAddButton (the one header "+")
 │   ├── cards/            # EnergyTile, EnergyCore, MaintenanceTile
 │   ├── chart/            # Shared chart primitives
 │   ├── common/           # InteractiveLogo
@@ -158,7 +160,7 @@ lib/
 │   ├── logo/             # AnimatedZenHalo, ZenHaloPainter
 │   ├── models/           # UiSetData (presentation model)
 │   ├── pickers/          # MetricChooserDialog, ModalityPickerDialog
-│   └── session/          # InlineMetricEditor, DominantMetricWidget
+│   └── session/          # InlineMetricEditor, DominantMetricWidget, ValueStepperRow
 ├── app.dart              # MyApp, theme construction
 └── main.dart             # Entry point, DI setup
 ```

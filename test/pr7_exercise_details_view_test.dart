@@ -240,6 +240,7 @@ void main() {
         find.text('Custom Sparse Exercise'),
         find.byType(ListView).first,
         const Offset(0, -200),
+        maxIteration: 200,
       );
       expect(find.text('Custom Sparse Exercise'), findsOneWidget);
 
@@ -376,7 +377,12 @@ void main() {
         updatedAtMs: now,
       );
       await repo.createExercise(full);
-      await repo.setExerciseMuscleGroups(full.id, ['muscle-chest']);
+      await repo.setExerciseMuscleLinks(full.id, const [
+        ExerciseMuscleLink(
+          muscleGroupId: 'muscle-chest',
+          role: MuscleRole.primary,
+        ),
+      ]);
 
       await tester.pumpWidget(
         MaterialApp(

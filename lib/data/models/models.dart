@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../core/utils/macro_energy.dart';
+
 // Data model classes aligned with SQLite schema
 
 class SportCategory {
@@ -718,12 +720,20 @@ class WorkoutTemplate {
   /// Returns a copy with selected fields replaced. `isBuiltInDemo` defaults
   /// to preserving the current value, mirroring the
   /// `Optional<String?>`-style semantics of the other nullable fields.
+  ///
+  /// Passing `null` for `note`, `description`, `primaryDisciplineId` or
+  /// `ownerUserId` keeps the current value rather than clearing it (known
+  /// trap: none of them can be cleared through `copyWith` today). Only
+  /// `focusModality` has a clear flag: `clearFocusModality: true` sets the
+  /// result's Focus to `null`, overriding both `focusModality` and the
+  /// current value.
   WorkoutTemplate copyWith({
     String? id,
     String? ownerUserId,
     String? name,
     String? description,
     String? focusModality,
+    bool clearFocusModality = false,
     String? primaryDisciplineId,
     String? note,
     bool? isBuiltInDemo,
@@ -735,7 +745,9 @@ class WorkoutTemplate {
       ownerUserId: ownerUserId ?? this.ownerUserId,
       name: name ?? this.name,
       description: description ?? this.description,
-      focusModality: focusModality ?? this.focusModality,
+      focusModality: clearFocusModality
+          ? null
+          : (focusModality ?? this.focusModality),
       primaryDisciplineId: primaryDisciplineId ?? this.primaryDisciplineId,
       note: note ?? this.note,
       isBuiltInDemo: isBuiltInDemo ?? this.isBuiltInDemo,
@@ -921,26 +933,83 @@ class Tag {
   };
 }
 
+/// The role a muscle group plays on an exercise.
+///
+/// Persisted as the enum name, `'primary'` or `'secondary'`.
+enum MuscleRole { primary, secondary }
+
+/// One muscle group an exercise loads, together with the role it plays.
+///
+/// Stored as a map (`muscle_group_id`, `role`) in the exercise's muscle link
+/// list. Only [MuscleRole.primary] links match a muscle filter.
+class ExerciseMuscleLink {
+  final String muscleGroupId;
+  final MuscleRole role;
+
+  const ExerciseMuscleLink({required this.muscleGroupId, required this.role});
+
+  factory ExerciseMuscleLink.fromMap(Map<String, dynamic> m) {
+    final rawRole = m['role'];
+    if (rawRole == MuscleRole.primary.name) {
+      return ExerciseMuscleLink(
+        muscleGroupId: m['muscle_group_id'] as String,
+        role: MuscleRole.primary,
+      );
+    }
+    if (rawRole == MuscleRole.secondary.name) {
+      return ExerciseMuscleLink(
+        muscleGroupId: m['muscle_group_id'] as String,
+        role: MuscleRole.secondary,
+      );
+    }
+    throw ArgumentError.value(rawRole, 'role', 'Unknown muscle role');
+  }
+
+  Map<String, dynamic> toMap() => {
+    'muscle_group_id': muscleGroupId,
+    'role': role.name,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ExerciseMuscleLink &&
+      other.muscleGroupId == muscleGroupId &&
+      other.role == role;
+
+  @override
+  int get hashCode => Object.hash(muscleGroupId, role);
+
+  @override
+  String toString() => 'ExerciseMuscleLink($muscleGroupId, ${role.name})';
+}
+
 class MuscleGroup {
   final String id;
   final String name;
+
+  /// The id of the parent entry: a region for a muscle, `null` for a region
+  /// and for a standalone entry (Chest, Neck).
+  final String? parentId;
   final int createdAtMs;
 
   MuscleGroup({
     required this.id,
     required this.name,
+    this.parentId,
     required this.createdAtMs,
   });
 
   factory MuscleGroup.fromMap(Map<String, dynamic> m) => MuscleGroup(
     id: m['id'] as String,
     name: m['name'] as String,
+    parentId: m['parent_id'] as String?,
     createdAtMs: m['created_at_ms'] as int,
   );
 
   Map<String, dynamic> toMap() => {
     'id': id,
     'name': name,
+    'parent_id': parentId,
     'created_at_ms': createdAtMs,
   };
 }
@@ -1389,6 +1458,9 @@ class TimedInstance {
 ///
 /// When a planned session is actually executed as a workout, [linkedSessionId]
 /// may be set to point to the resulting [TrainingSession].
+///
+/// A routine plan stores a null `modality`; its colour is resolved from the
+/// routine's Focus Modality at display time (see `CalendarState`).
 ///
 /// Recurrence is NOT yet implemented.
 /// [recurrenceRule] is reserved for future use; always set it to null for now.
@@ -1984,7 +2056,7 @@ class Food {
   /// Macros are stored as `double` to support fractional grams
   /// (e.g. `0.5` g of fat); the calorie count is rounded to `int`
   /// at the display boundary because the UI shows whole kcal.
-  int get calories => (protein * 4 + carbs * 4 + fat * 9).round();
+  int get calories => macroKcal(protein: protein, carbs: carbs, fat: fat).round();
 
   /// Computed net carbs: carbs - (fiber ?? 0).
   /// Rounded to `int` for parity with the existing
@@ -2203,7 +2275,8 @@ class ConsumedFood {
   ///   - 3 of a per-1-egg food (6P / 1C / 5F = 73 kcal):
   ///     73 * (3 / 1) = 73 * 3 = 219.
   int get caloriesConsumed =>
-      ((protein * 4 + carbs * 4 + fat * 9) * (amountConsumed / referenceAmount))
+      (macroKcal(protein: protein, carbs: carbs, fat: fat) *
+              (amountConsumed / referenceAmount))
           .round();
 
   factory ConsumedFood.fromMap(Map<String, dynamic> m) => ConsumedFood(
@@ -2316,13 +2389,19 @@ class ConsumedFood {
 //
 // One row per calendar day, keyed by `dateMs` (local midnight). The day's
 // water volume is stored as a real volume in milliliters so the historical
-// record stays unit-clean — the on-screen "glass count" is derived at the
-// display boundary (`volumeMl ~/ kWaterGlassMl`), not stored. Editing a day's
+// record stays unit-clean — the on-screen total is converted to the user's
+// volume unit at the display boundary (`UnitFormatter.formatWaterTotal`),
+// never stored. Editing a day's
 // water writes a new `updatedAtMs`; past days are never mutated automatically.
 //
 // Water has no goal — like macros and sodium, it is tracked and stored for the
 // historical record only. Each new day starts at 0; logging takes effect
 // immediately and survives closing and reopening the app on the same day.
+//
+// `appliedTapIds` is the day's ledger of watch taps already applied (plan 94
+// D-4): kept in the same row as the volume so one write changes both, and a
+// redelivered tap is never counted twice. Stored as JSON text
+// (`applied_tap_ids`); a row written before the field reads as `[]`.
 
 class WaterLogEntry {
   /// Deterministic id (`'water-<dateMs>'`) so the per-day row has a stable
@@ -2340,12 +2419,16 @@ class WaterLogEntry {
   final int createdAtMs;
   final int updatedAtMs;
 
+  /// Ids of the watch taps already applied to this day, in append order.
+  final List<String> appliedTapIds;
+
   const WaterLogEntry({
     required this.id,
     required this.dateMs,
     required this.volumeMl,
     required this.createdAtMs,
     required this.updatedAtMs,
+    this.appliedTapIds = const [],
   });
 
   /// Stable per-day id (`'water-<dateMs>'`). Used by both repository
@@ -2358,7 +2441,16 @@ class WaterLogEntry {
     volumeMl: m['volume_ml'] as int,
     createdAtMs: m['created_at_ms'] as int,
     updatedAtMs: m['updated_at_ms'] as int,
+    appliedTapIds: _tapIdsFrom(m['applied_tap_ids']),
   );
+
+  /// Reads the JSON text the contract stores, or the list a Hive row holds;
+  /// an absent key (a row written before the ledger) is `[]`.
+  static List<String> _tapIdsFrom(Object? raw) {
+    if (raw == null) return const [];
+    final list = raw is String ? jsonDecode(raw) as List : raw as List;
+    return List<String>.unmodifiable(list.cast<String>());
+  }
 
   Map<String, dynamic> toMap() => {
     'id': id,
@@ -2366,6 +2458,7 @@ class WaterLogEntry {
     'volume_ml': volumeMl,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
+    'applied_tap_ids': jsonEncode(appliedTapIds),
   };
 
   WaterLogEntry copyWith({
@@ -2374,6 +2467,7 @@ class WaterLogEntry {
     int? volumeMl,
     int? createdAtMs,
     int? updatedAtMs,
+    List<String>? appliedTapIds,
   }) {
     return WaterLogEntry(
       id: id ?? this.id,
@@ -2381,6 +2475,7 @@ class WaterLogEntry {
       volumeMl: volumeMl ?? this.volumeMl,
       createdAtMs: createdAtMs ?? this.createdAtMs,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+      appliedTapIds: appliedTapIds ?? this.appliedTapIds,
     );
   }
 }

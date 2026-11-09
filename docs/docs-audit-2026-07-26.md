@@ -208,6 +208,14 @@ and a green `hub_interaction_test.dart` does not mean the hub works in the app.
 was abandoned. That is a product call, and fixing it would change application
 behavior, which is out of scope here.
 
+> **2026-10-13: only one hub exists; the second was deleted.** `HubSheet` and
+> `lib/widgets/hub/` no longer exist anywhere in `lib/` (searched `class
+> HubSheet` and globbed `lib/widgets/hub/**` — no matches). The only hub is
+> `_buildMaintenanceGrid` in `lib/features/home/home_screen.dart`, with five
+> destinations: Profile, Stats, Calendar, Settings, Exercise Library. The
+> resolution the section above could not make is now a fact of the code; the
+> table and prose above are kept as the frozen record.
+
 ### 8.2 No way to identify a custom exercise
 *Flagged in `data_models.md` under `Exercise`.*
 

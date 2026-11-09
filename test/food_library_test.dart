@@ -722,7 +722,7 @@ void main() {
     // with `hidden: true`; the search must return zero matches
     // for any query that resolves to those rows (or to any
     // hidden row added later). The empty-query full-list result
-    // also excludes them — only 166 visible rows surface.
+    // also excludes them — only 167 visible rows surface.
     test('S-005: searchCatalogFoods filters out hidden catalog rows', () async {
       final repo = await _freshRepo();
       final state = FoodLibraryState(repo);
@@ -753,8 +753,8 @@ void main() {
       final all = await state.searchCatalogFoods('');
       expect(
         all.length,
-        166,
-        reason: 'empty-query search returns the 166 visible rows only',
+        167,
+        reason: 'empty-query search returns the 167 visible rows only',
       );
       expect(all.any((f) => f.id == 'beer_regular'), isFalse);
       expect(all.any((f) => f.id == 'red_wine'), isFalse);

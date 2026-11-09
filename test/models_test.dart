@@ -1220,6 +1220,44 @@ void main() {
     });
   });
 
+  // ── WorkoutTemplate ───────────────────────────────────────────────────────
+
+  group('WorkoutTemplate.copyWith focusModality', () {
+    WorkoutTemplate buildTemplate() => WorkoutTemplate(
+      id: 'tpl-1',
+      name: 'Push Day',
+      focusModality: 'resistance_lifting',
+      createdAtMs: 100,
+      updatedAtMs: 200,
+    );
+
+    test('clearFocusModality: true clears the focus', () {
+      final copy = buildTemplate().copyWith(clearFocusModality: true);
+      expect(copy.focusModality, isNull);
+    });
+
+    test('default copyWith keeps focusModality', () {
+      final copy = buildTemplate().copyWith(name: 'Leg Day');
+      expect(copy.focusModality, 'resistance_lifting');
+      expect(copy.name, 'Leg Day');
+    });
+
+    test('focusModality sets a new focus', () {
+      final copy = buildTemplate().copyWith(
+        focusModality: 'cardio_endurance',
+      );
+      expect(copy.focusModality, 'cardio_endurance');
+    });
+
+    test('clearFocusModality: true wins over focusModality given', () {
+      final copy = buildTemplate().copyWith(
+        focusModality: 'cardio_endurance',
+        clearFocusModality: true,
+      );
+      expect(copy.focusModality, isNull);
+    });
+  });
+
   // ── BodyMeasurementEntry ──────────────────────────────────────────────────
 
   group('BodyMeasurementEntry', () {

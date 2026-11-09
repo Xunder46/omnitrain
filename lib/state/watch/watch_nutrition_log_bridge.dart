@@ -115,7 +115,8 @@ class WatchNutritionLogBridge {
   ///
   /// Idempotent by the phone's own rule rather than by a ledger of its own: one
   /// row per food per day means a message that arrives twice leaves one entry
-  /// (S-002).
+  /// (S-002). A log is filed on the local day the wrist says it was tapped
+  /// when that day is before the bridge's day.
   Future<WatchNutritionLogResult> receive(Map<String, Object?> envelope) async {
     final decision = SyncProtocolValidator.evaluateOrAccept(
       _validator,
@@ -153,10 +154,15 @@ class WatchNutritionLogBridge {
       }
       // The portion travels in servings of the food's own reference amount, and
       // the day log counts in the food's own unit.
-      final rowId = await _nutrition.logConsumedFoodAt(
-        food,
-        servings * food.referenceAmount,
-      );
+      final amount = servings * food.referenceAmount;
+      final tapped = _tappedDayOrNull(event['loggedAt']);
+      final rowId = tapped == null
+          ? await _nutrition.logConsumedFoodAt(food, amount)
+          : await _nutrition.logConsumedFoodOnDay(
+              food,
+              amount,
+              loggedAt: tapped,
+            );
       if (rowId == null) {
         unplaced.add(foodId);
         continue;
@@ -211,5 +217,25 @@ class WatchNutritionLogBridge {
       if (food.id == foodId) return food;
     }
     return null;
+  }
+
+  /// The instant the wrist says the user tapped, as a local time, when it lies
+  /// on an EARLIER local day than the bridge's clock; otherwise null, and the
+  /// phone files the log on today (plan 112, D-18604): no time, an unreadable
+  /// time, a time later than the clock (a wrist whose clock runs ahead), and a
+  /// time on today's date all mean "today".
+  DateTime? _tappedDayOrNull(Object? raw) {
+    if (raw is! String) return null;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return null;
+    final now = _clock();
+    if (parsed.isAfter(now)) return null;
+    final tapped = parsed.toLocal();
+    final today = now.toLocal();
+    final sameDay =
+        tapped.year == today.year &&
+        tapped.month == today.month &&
+        tapped.day == today.day;
+    return sameDay ? null : tapped;
   }
 }

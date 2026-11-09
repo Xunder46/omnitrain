@@ -116,7 +116,7 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         XCTAssertEqual(value(surface, WatchMetricKey.weight), 82.5)
     }
 
-    func testS001ABodyweightSetCarriesNoLoadAtAll() async throws {
+    func testS001ABodyweightSetOffersAWeightThatCarriesNoLoadAtZero() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
         _ = await engine.createSession(
@@ -125,14 +125,19 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         )
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
 
-        XCTAssertEqual(surface.fields.map(\.metricKey), [WatchMetricKey.reps])
+        XCTAssertEqual(
+            surface.fields.map(\.metricKey),
+            [WatchMetricKey.reps, WatchMetricKey.weight],
+            "a bodyweight set offers the added weight, as on the phone (plan 52d)"
+        )
         XCTAssertEqual(value(surface, WatchMetricKey.reps), 10)
+        XCTAssertEqual(value(surface, WatchMetricKey.weight), 0)
 
         try await surface.log()
 
         let logged = try loggedEvent(harness)
         XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
-        XCTAssertNil(logged.event["loadKg"])
+        XCTAssertNil(logged.event["loadKg"], "a weight left at 0 is no load claim")
     }
 
     // MARK: - S-062 zero still means "no load claim"
@@ -444,6 +449,8 @@ final class WatchLoggingSurfacesTests: XCTestCase {
 
     // MARK: - S-006 a manual distance never reaches the log
 
+    /// Plan 93 S-16012, plain-state half: a timed surface without GPS offers no
+    /// distance row, so a dial attempt changes nothing and no distance travels.
     func testS006AManualDistanceNeverReachesTheObservation() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
@@ -455,14 +462,16 @@ final class WatchLoggingSurfacesTests: XCTestCase {
 
         await surface.startWork()
         harness.clock.advance(120)
+        surface.adjust(WatchMetricKey.distance, detents: 5)
         try await surface.log()
 
         let logged = try loggedEvent(harness)
         XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
         XCTAssertNil(
             logged.event["distanceMeters"],
-            "a timed surface shows no distance row, so nothing dials one (D-1305)"
+            "a timed surface without GPS has no distance row to dial (plan 93 D-1)"
         )
+        XCTAssertNil(logged.event["distanceSource"], "and no source travels alone (D-2206)")
     }
 
     // MARK: - S-008 terminology parity with the phone
@@ -633,7 +642,7 @@ final class WatchLoggingSurfacesTests: XCTestCase {
     func testEveryValidObservationsEventIsReproducedByTheSurfaceShape() async throws {
         // The surface's own output must sit in the same shape as the fixture
         // the phone's validator accepts: same field names, same value types.
-        let fixture = try Fixtures.json("fixtures/valid/observations_up_distance_and_load.json")
+        let fixture = try Fixtures.json("fixtures/valid/observations_up_distance_source.json")
         let events = (fixture["payload"] as? [String: Any])?["events"] as? [[String: Any]] ?? []
         XCTAssertFalse(events.isEmpty)
 
@@ -643,9 +652,9 @@ final class WatchLoggingSurfacesTests: XCTestCase {
             modality: "cardio_endurance",
             exercises: [slot("sx-ride", capabilities: ["time", "distance"])]
         )
-        // The fixture's event carries a distance, and a timed surface has no
-        // distance row left to dial: a measured fix is the only way to that
-        // key set now (D-1305).
+        // The fixture's first timed event is a measured `gps` distance, and the
+        // surface under these fixtures never dials: a fix arriving inside the
+        // effort's own window is what puts the keys there (D-2205, D-2206).
         let source = FakeSensorSource()
         let sensors = WatchSessionSensors(
             platform: WatchPlatformWorkout(store: FakePlatformStore()),
@@ -656,8 +665,6 @@ final class WatchLoggingSurfacesTests: XCTestCase {
             )
         )
         await sensors.start(try XCTUnwrap(engine.session))
-        source.fix(2400)
-        await eventually { sensors.recorder.readings.distanceMeters == 2400 }
 
         let surface = WatchLoggingState(
             engine: engine,
@@ -665,17 +672,21 @@ final class WatchLoggingSurfacesTests: XCTestCase {
             sensors: sensors.recorder
         )
         await surface.startWork()
-        harness.clock.advance(1200)
+        harness.clock.advance(600)
+        source.fix(2400)
+        await eventually { sensors.recorder.readings.distanceMeters == 2400 }
+        harness.clock.advance(600)
         try await surface.log()
 
         let logged = try loggedEvent(harness)
+        XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
         let fixtureTimed = try XCTUnwrap(
             events.first(where: { $0["kind"] as? String == "timed" })
         )
         XCTAssertEqual(
             Set(logged.event.keys),
             Set(fixtureTimed.keys),
-            "the surface emits the fixture's field set, no more and no less"
+            "the surface emits the fixture's timed event's field set, no more and no less"
         )
     }
 }

@@ -28,6 +28,7 @@ Active session persistence semantics:
 - A session is considered in-progress when `endedAtMs == null`.
 - Cold-start resume flow reads these in-progress rows and surfaces only the most recent session.
 - No model changes were required for resume behavior.
+- A routine session (`intent == 'routine'`) freezes the routine's Focus Modality into `modality` when it is created (or, on past sessions, once by data-migration step 18); a later Focus edit or routine delete never rewrites it. Stats read what was logged, not this label.
 
 Models with no behaviour beyond their fields: SessionSegment, SessionBlock.
 
@@ -82,7 +83,9 @@ Observations are persisted one-per-entry and grouped by effort kind:
   - `metric-distance` (valueReal)
   - `metric-extra-weight` (valueReal) — enables loaded carries and weighted cardio (negative = band assist, positive = added load)
   
-  > **Backward Compatibility Note**: Pre-existing timed entries (created before March 2026) contain only `metric-distance`. New entries always include both. The UI uses a guard pattern (`if (entryData['extra-weight'] != null)`) to show the extra-weight editor only for entries that have the observation.
+  > **Backward Compatibility Note**: Pre-existing timed entries (created before March 2026) contain only `metric-distance`. New entries always include both. Since plan 39 the interval screen shows its weight row again (plan 39 D-5, superseding the earlier O-11 rule for the interval), like a hold, which always shows its weight row whether or not the observation exists yet.
+  >
+  > Verified by `test/count_up_screen_test.dart` (group `Cardio weight — live (S-4708)` · `S-4708: an interval carries a 0.0 KG row under its digits`, `S-4708: + steps the interval 2.5 kg and stores kilograms`; group `Count-up — holds (S-4264..S-4270)` · `S-4264: a hold shows digits plus one weight row`) and `test/cardio_interval_weight_storage_test.dart` (groups `Mock` and `Hive` · `S-4708 a logged interval weight is stored as kilograms`).
   
 - **`drill` effort**: 1 observation per entry
   - `metric-extra-weight` (valueReal) — for isometric holds with additional load
@@ -190,9 +193,101 @@ Models with no behaviour beyond their fields: Discipline, SportCategory.
 
 ### MuscleGroup
 
-> **Corrected 2026-07-26 (docs audit).** `bodyRegion` was listed but does not
-> exist on the model or as a column on `app_muscle_group`. `createdAtMs` was
-> missing.
+`MuscleGroup` (`lib/data/models/models.dart`) carries `id`, `name`,
+`parentId` and `createdAtMs`. `parentId` is the id of the parent region for a
+muscle, and `null` for a region and for a standalone entry.
+
+The hierarchy has exactly two levels and one code source, `MuscleTaxonomy`
+(`lib/data/models/muscle_taxonomy.dart`); `SeedData.sampleMuscleGroups` is
+built from it and never hand-edited. Verified by `test/muscle_taxonomy_test.dart`
+(`S-1 taxonomy integrity` · `27 entries: 5 regions, 20 muscles, 2 standalone`,
+`no entry hangs off a muscle: the hierarchy has two levels`,
+`sampleMuscleGroups mirrors the taxonomy, Traps included`).
+
+| Region (id) | Muscles (ids) |
+|---|---|
+| Arms (`muscle-arms`) | Biceps (`muscle-biceps`), Triceps (`muscle-triceps`), Forearms (`muscle-forearms`), Brachialis (`muscle-brachialis`) |
+| Legs (`muscle-legs`) | Quadriceps (`muscle-quads`), Hamstrings (`muscle-hamstrings`), Glutes (`muscle-glutes`), Calves (`muscle-calves`), Shins (`muscle-tibialis`), Adductors (`muscle-adductors`), Abductors (`muscle-abductors`) |
+| Back (`muscle-back`) | Lats (`muscle-lats`), Traps (`muscle-traps`), Lower back (`muscle-lower-back`) |
+| Shoulders (`muscle-shoulders`) | Front delts (`muscle-front-delts`), Side delts (`muscle-side-delts`), Rear delts (`muscle-rear-delts`), Rotator cuff (`muscle-rotator-cuff`) |
+| Core (`muscle-core`) | Abs (`muscle-abs`), Obliques (`muscle-obliques`) |
+
+Chest (`muscle-chest`) and Neck (`muscle-neck`) are standalone: no parent and
+no children (`test/muscle_taxonomy_test.dart` · `Chest and Neck are standalone:
+no parent, no children`).
+
+An exercise's muscle load is stored as `ExerciseMuscleLink`s — a muscle-group
+id plus a `MuscleRole` (`primary` / `secondary`, persisted as the enum name) —
+not as bare ids:
+
+- Hive: box `exercise_muscle_groups` holds a list of `ExerciseMuscleLink`
+  maps. A legacy value that is a plain list of id strings is still read, and
+  every id in it is read as `primary`; the reader normalises nothing.
+  Verified by `test/muscle_links_storage_test.dart` (`Hive — muscle links
+  storage` · `S-4 reads the legacy shape straight out of the box as primary
+  links`, `S-10 roles survive closing and reopening the store`).
+- Mock: an in-memory map of exercise id to `ExerciseMuscleLink` list.
+- SQL: `app_exercise_muscle_group.is_primary` (1 = primary, 0 = secondary);
+  see [DB Integration](db_integration.md).
+
+Interpretation rules — how a muscle filter reads the links
+(`MuscleTaxonomy.matches`):
+
+- Only `primary` links match a filter.
+- Selecting a region matches a primary link to the region itself or to any of
+  its muscles; selecting a muscle or a standalone entry matches that exact id
+  only, so a region-only link never matches a muscle.
+- An exercise that matches any selected id is returned once, however many
+  selections it satisfies.
+
+Verified by `test/muscle_taxonomy_test.dart` (`a region matches its muscles; a
+muscle matches its own id only`, `only primary links match, so a secondary
+muscle never does`) and `test/muscle_filter_test.dart` (`Mock — muscle filter`
+/ `Hive — muscle filter` · `S-5 Legs returns the squat and Tennis Match, each
+once`, `S-5 two selections of the same lift return it once`, `S-5 a
+secondary-only link excludes the exercise`).
+
+Display rules — how the screens read the links (the helpers in
+`lib/core/utils/muscle_display.dart`):
+
+- The exercise picker's muscle filter is one list built by
+  `muscleFilterEntries`: the standalone entries of `kMuscleStandaloneIds`
+  first, then each region of `kMuscleRegionOrder` followed by its own muscles,
+  the muscles indented one step.
+- The row chips on the picker and the library list show main (primary) muscles
+  only, in link order; a region-only tag shows the region's name, and a link
+  whose group row is missing adds no chip.
+- The detail view lists Primary and Secondary separately; each row is hidden
+  when its list is empty and the whole section is absent when both are.
+
+Verified by `test/muscle_display_test.dart` (`S-1 muscleFilterEntries runs
+standalone, then regions with muscles`, `S-1 musclesWithRole keeps link order
+and skips missing groups`), `test/muscle_filter_picker_test.dart` (`S-3 / S-9:
+rows show main muscles only` · `bench press shows Chest and neither Triceps nor
+Front delts`, `a region-only main link shows the region name (S-8)`, `the
+library list row shows only the main muscle`) and
+`test/exercise_detail_muscle_groups_test.dart` (`ExerciseDetailViewBody —
+Primary / Secondary rows (S-4)` · `primary and secondary chips stay in their
+own row`).
+
+Storage rules, enforced by `MuscleTaxonomy.normalize` on every write through
+`setExerciseMuscleLinks`: no region link sits next to one of its own muscles;
+no id appears in both roles; a non-empty list always carries at least one
+primary; the stored order is deterministic (primary first, then secondary,
+each role in taxonomy order, unknown ids last). Verified by
+`test/muscle_taxonomy_test.dart` (`normalize drops the region that sits next
+to its own muscle`, `normalize throws when one id carries both roles`,
+`normalize throws for a secondary without a primary`, `normalize sorts primary
+first, then the secondary links`) and `test/muscle_links_storage_test.dart`
+(`S-4 set stores the normalised order (primary first)`, `S-13 set drops a
+region next to its muscle and keeps the rest`).
+
+The per-exercise tagging itself is seed data, not documentation:
+`SeedData.exerciseMuscleLinks` (`lib/mock/seed_data.dart`) is its single
+source, guarded by `test/catalog_referential_integrity_test.dart`
+(`Bundled catalog — referential integrity` · `S-3: every entry carries at
+least one primary link`, `S-3: no entry links a region next to one of its own
+muscles`, `S-3: the approved rows, each role compared as a set`).
 
 Models with no behaviour beyond their fields: Equipment, Tag, ExerciseAlias.
 
@@ -249,6 +344,8 @@ WorkoutTemplate (routine)
 
 Models with no behaviour beyond their fields: WorkoutTemplate, TemplateSegment, TemplateEffort, TemplateTarget.
 
+`WorkoutTemplate.copyWith` keeps the current value when a nullable field is passed as null; only `focusModality` has a clear flag (`clearFocusModality: true` sets it to null). `note`, `description`, `primaryDisciplineId` and `ownerUserId` cannot be cleared through `copyWith`. Verified by `test/models_test.dart` (group `WorkoutTemplate.copyWith focusModality` · `clearFocusModality: true clears the focus`, `default copyWith keeps focusModality`, `focusModality sets a new focus`, `clearFocusModality: true wins over focusModality given`); the cannot-clear rule for the other nullable fields is read from `lib/data/models/models.dart` (`WorkoutTemplate.copyWith`) and has no dedicated test.
+
 ---
 
 ## Session Summary Models
@@ -292,6 +389,7 @@ Methods: `fromMap(Map)` and `toMap()` (use key `date_ms` for `dateMs`); `copyWit
 Round-trip notes:
 - All four macros are non-nullable and default to `0.0`; never `null`.
 - `0.0` is the canonical "no goal" sentinel — the UI hides the row and never attempts division-by-zero math against it.
+- Protein, carbs and fat are grams the user sets on the `NutritionTargetScreen`; `0.0` is no target for that macro, and the carbs target counts TOTAL carbohydrates, fibre included. Verified by `test/daily_targets_screen_test.dart` (`S-14015 Save stores the typed target for today`) and `test/daily_targets_display_test.dart` (group `CalorieRingCard — focus text with macro targets (S-14035)`).
 - A target with `dateMs == null` indicates a legacy single-row save (kept for back-compat with `WorkoutRepository.getNutritionTarget()` / `saveNutritionTarget()`).
 
 ### FoodUnitType
@@ -314,7 +412,7 @@ Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
 ### Food
 
 A food item with macronutrient metadata. Foods exist in two collections:
-- **Catalog** (`isCatalog == true`): the **global managed library** of foods. Mutated at runtime — the user can edit any catalog food (row tap in the **Library** tab of `AddFoodScreen`) and create new catalog foods (**+ New Item** tab). The bundled seed (`FoodCatalogSeed` / `assets/data/food_catalog.json`) is loaded once on first install and is then mutable.
+- **Catalog** (`isCatalog == true`): the **global managed library** of foods. Mutated at runtime — the user can create new catalog foods (the header "+" `New Food` on the Library tab of `AddFoodScreen`; verified by `test/nutrition_test.dart` `S-9161`, `S-9165` and `test/library_merge_test.dart` `S-12814`) and edit user-created catalog foods (the pencil on a Library row of `AddFoodScreen`). A bundled seed row is never edited directly: editing a default food creates a new food of the user's own (`FoodLibraryState.createOwnCopyOfDefault`), and the bundled row stays at its shipped values. The bundled seed (`FoodCatalogSeed` / `assets/data/food_catalog.json`) is loaded once on first install and stays at its shipped values. Verified by `test/food_library_own_copy_test.dart` (group `FoodLibraryState create own copy (Mock)`: `createOwnCopyOfDefault not in list adds nothing (S-13317)`, `createOwnCopyOfDefault in list swaps the row (S-13317)`, `createOwnCopyOfDefault (source not a default) throws (D-13310)`) and `test/food_library_edit_test.dart` (`S-92b.10 a serving-changing catalog edit clears the linked copy's remembered amount`).
 - **Library** (`isCatalog == false`): user-owned foods, the personal logging library. Catalog copies land here via the **Add** button on a catalog row.
 
 Derived getters:
@@ -390,13 +488,25 @@ Logged days are split by whether a completed session started that day: the
 training side and the rest side are each averaged over their own days, so the
 split covers the same logged days the overall average does.
 
-The summary carries the window's logged-day count; the window's calories and
-protein averages and the preceding range's; the training and rest split of each;
-and the day's calorie and protein targets, with `hasCalorieTarget` /
-`hasProteinTarget` reporting which are set. The row compares
+The summary carries the window's logged-day count; the window's calories,
+protein, carbs and fat averages and the preceding range's; the training and
+rest split of each; and the day's calorie, protein, carbs and fat targets, with
+`hasCalorieTarget` / `hasProteinTarget` / `hasCarbsTarget` / `hasFatTarget`
+reporting which are set. It also carries `showsAverages`, the gate over
+`kFuelMinLoggedDays` (declared beside the class) that tells the row whether the
+window holds enough logged days to show averages at all; below the floor the
+model still carries every average, and the row decides what to draw. The row
+compares
 an average against the target where one is set and against the previous range
-otherwise. The window it averages over is the service's own (`kFuelWindowDays`),
-not the Stats screen's selected training period.
+otherwise. The window it averages over is the service's own — the
+`kFuelWindowDays` finished days ending yesterday, today in neither the window
+nor the previous range — not the Stats screen's selected training period.
+Verified by `test/fuel_summary_window_test.dart` (`S-17201 window is the 7
+finished days ending yesterday`, `S-17202 three logged days show averages, two
+do not`) and by
+`test/fuel_row_screen_test.dart` (group `Fuel row — carbs and fat (plan 80)`:
+`S-14040 the averages are means of TOTAL carbs and fat over the logged days,
+against the saved targets`).
 
 ---
 
@@ -433,9 +543,11 @@ fields were added to the model, this section documents state-side caching only.
 
 ### WaterLogEntry
 
-One row per calendar day, keyed by `dateMs` (local midnight). The day's water volume is stored as a real volume in milliliters so the historical record stays unit-clean — the on-screen glass count is derived at the display boundary (`volumeMl ~/ kWaterGlassMl`), not stored.
+One row per calendar day, keyed by `dateMs` (local midnight). The day's water volume is stored as a real volume in milliliters so the historical record stays unit-clean; the on-screen total is shown in the user's volume unit at the display boundary, never stored. Verified by `test/nutrition_test.dart` (group `WaterTrackerControl — total in the volume unit (S-13207, S-13210, S-13214)`: `S-13207 1500 ml in ml reads 1.5 L with step 250 ml`) and `test/state_test.dart` (group `NutritionState volume unit`: `S-13206 a unit switch notifies NutritionState exactly once; another setting is silent; waterTodayMl never rewrites`).
 
 Water has no goal — like macros and sodium, it is tracked and stored for the historical record only. Each new day starts at 0; logging takes effect immediately and survives closing and reopening the app on the same day. Prior days are never modified automatically.
+
+`appliedTapIds` (`List<String>`, default `[]`) is the day's ledger of watch taps already applied, in append order. It sits in the same row as the volume so one write changes both and a redelivered tap is never counted twice; a day records at most `kWatchWaterTapsPerDay` taps (plan 94 D-3, D-4). `toMap` writes it as JSON text (`applied_tap_ids`); `fromMap` reads JSON text or a list, and an absent key as `[]`.
 
 Methods: `fromMap(Map)`, `toMap()`, `copyWith()`, and the static helper `WaterLogEntry.idForDate(int dateMs)`.
 
@@ -446,15 +558,15 @@ Methods: `fromMap(Map)`, `toMap()`, `copyWith()`, and the static helper `WaterLo
 | Field / method | Type | Description |
 |---|---|---|
 | `waterTodayMl` | `int` | Cached volume in milliliters for the most recently loaded day. `0` until the first explicit load. |
-| `waterTodayGlasses` | `int` | Derived from `waterTodayMl ~/ kWaterGlassMl`. The displayed count is never a volume figure — the icon + `250 ml` annotation carries the unit. |
 | `loadWaterForDate(dateMs)` | `Future<void>` | Reloads the day's stored ml from the repository, updates the cache, and notifies listeners. Idempotent. |
 | `loadWaterForToday()` | `Future<void>` | Convenience wrapper that delegates to `loadWaterForDate(todayMidnightMs)`. Called from `NutritionScreen.initState` alongside the target + consumed loads. |
-| `incrementWaterForDate(dateMs)` | `Future<void>` | Adds `kWaterGlassMl` (250 ml), persists, updates the cache, notifies. |
-| `decrementWaterForDate(dateMs)` | `Future<void>` | Subtracts `kWaterGlassMl` (floors at 0 ml), persists, updates the cache, notifies. A minus at 0 is a no-op (no write, no notification, no spurious row). |
+| `incrementWaterForDate(dateMs)` | `Future<void>` | Adds the water step (250 ml, or 237 ml with the fl oz unit), persists, updates the cache, notifies. Verified by `test/state_test.dart` (group `daily water log`: `incrementWaterForDate stores +250 ml and notifies`; group `NutritionState volume unit`: `S-13205 the fl oz unit steps 237 ml through plus, minus and watch taps; the ml unit still steps 250`). |
+| `decrementWaterForDate(dateMs)` | `Future<void>` | Subtracts the step (`waterStepMl`, floors at 0 ml), persists, updates the cache, notifies. A minus at 0 is a no-op (no write, no notification, no spurious row). Verified by `test/state_test.dart` (group `daily water log`: `decrementWaterForDate stores −250 ml and notifies`, `decrementWaterForDate at 0 is a no-op (no negative ml)`; group `NutritionState volume unit`: `S-13215 a 237 ml step reaches a non-multiple day and floors exactly at 0`). |
+| `applyWatchWaterTap({dateMs, tapId, add})` | `Future<bool>` | Applies one watch tap at most once; updates the cache only for the day it was loaded for. Contract: [Nutrition State](state_management/nutrition_state.md). |
 
 Day rollover (`rolloverToDate(dateMs)`) clears the water cache (`_waterTodayMl = 0`) and reloads it for the new day via `loadWaterForDate(dateMs)`. Prior dates' stored ml are untouched — only the in-memory cache is cleared.
 
-The canonical per-glass amount lives in `kWaterGlassMl` (`lib/core/constants/water_constants.dart`); the model never hard-codes `250` so a future per-glass change propagates to the widget, the state, and the storage layer in lockstep.
+The tap step lives in `waterStepMlFor(unit)` (`lib/core/constants/water_constants.dart`, 250 ml with the ml unit or 237 ml with the fl oz unit); the model never hard-codes the step so a future step change propagates to the widget, the state, and the storage layer in lockstep. Verified by `test/water_tap_ledger_test.dart` (group `water constants (D-11)`: `waterStepMlFor: 250 ml by default, 237 ml for the floz unit (S-13203)`).
 
 ---
 

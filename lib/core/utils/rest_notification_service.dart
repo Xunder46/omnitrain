@@ -134,6 +134,32 @@ class RestNotificationService {
 
   bool get _isWeb => _isWebOverride ?? kIsWeb;
 
+  /// Settable gate (plan 86, D-2): when it answers true the wrist owns
+  /// the rest pings and the phone schedules nothing. Null — the default,
+  /// and what every existing caller and test sees — never quiets the
+  /// phone. Read at pass time, so a flip between calls is honoured.
+  bool Function()? wristOwnsPings;
+
+  /// The rest-ping request `scheduleRestPings` last saw, remembered so
+  /// `reevaluate` can re-run it when the gate flips. Forgotten by the
+  /// public `cancelRestNotifications` (a rest that ended must not be
+  /// re-scheduled on a reconnect).
+  (int, int, String, bool)? _rememberedRestPingRequest;
+
+  /// Serialises `scheduleRestPings`, `reevaluate` and the public
+  /// `cancelRestNotifications` (plan 86, D-7) so two passes never
+  /// interleave over the same notification ids.
+  Future<void> _restPingQueue = Future.value();
+
+  Future<void> _enqueueRestPingPass(Future<void> Function() body) {
+    final pass = _restPingQueue.then((_) => body());
+    // A failure in one pass must not poison the queue for the passes
+    // behind it; the returned future keeps the body's own error
+    // behaviour for its caller.
+    _restPingQueue = pass.then((_) {}, onError: (Object _) {});
+    return pass;
+  }
+
   Future<void> initialize() async {
     if (_isWeb) return;
 
@@ -270,11 +296,34 @@ class RestNotificationService {
     required int intervalSecs,
     required String soundId,
     bool playSound = true,
+  }) {
+    return _enqueueRestPingPass(
+      () => _scheduleRestPingsNow(
+        restStartMs: restStartMs,
+        intervalSecs: intervalSecs,
+        soundId: soundId,
+        playSound: playSound,
+      ),
+    );
+  }
+
+  Future<void> _scheduleRestPingsNow({
+    required int restStartMs,
+    required int intervalSecs,
+    required String soundId,
+    bool playSound = true,
   }) async {
     if (_isWeb) return;
 
-    await cancelRestNotifications();
-    if (intervalSecs <= 0) return;
+    _rememberedRestPingRequest = (restStartMs, intervalSecs, soundId, playSound);
+    final gate = wristOwnsPings;
+    final wristOwns = gate != null && gate();
+
+    // The internal cancel calls the raw, unqueued body: queueing it
+    // here would await a queue entry that waits for this very pass
+    // and deadlock (plan 86, D-7).
+    await _cancelRestNotificationsNow();
+    if (wristOwns || intervalSecs <= 0) return;
 
     // Resolve exact-alarm capability once per batch, not per ping.
     await _refreshExactAlarmCapability();
@@ -613,7 +662,34 @@ class RestNotificationService {
     }
   }
 
-  Future<void> cancelRestNotifications() async {
+  /// Re-runs the remembered rest-ping request through the same path
+  /// (plan 86, D-2): gate true -> cancel and schedule nothing; gate
+  /// false -> schedule the boundaries still in the future; nothing
+  /// remembered -> nothing.
+  Future<void> reevaluate() {
+    return _enqueueRestPingPass(_reevaluateNow);
+  }
+
+  Future<void> _reevaluateNow() async {
+    final request = _rememberedRestPingRequest;
+    if (request == null) return;
+    final (restStartMs, intervalSecs, soundId, playSound) = request;
+    await _scheduleRestPingsNow(
+      restStartMs: restStartMs,
+      intervalSecs: intervalSecs,
+      soundId: soundId,
+      playSound: playSound,
+    );
+  }
+
+  Future<void> cancelRestNotifications() {
+    return _enqueueRestPingPass(() async {
+      _rememberedRestPingRequest = null;
+      await _cancelRestNotificationsNow();
+    });
+  }
+
+  Future<void> _cancelRestNotificationsNow() async {
     if (_isWeb) return;
 
     for (int i = restPingBaseId; i < restPingBaseId + maxRestPings; i++) {

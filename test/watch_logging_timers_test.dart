@@ -48,11 +48,13 @@ Map<String, Object?> _timerJson(
   String kind, {
   required String startedAt,
   int? plannedDurationMs,
+  String? sessionExerciseId,
 }) => {
   'kind': kind,
   'state': WatchTimerState.running,
   'startedAt': startedAt,
   'plannedDurationMs': plannedDurationMs,
+  'sessionExerciseId': ?sessionExerciseId,
 };
 
 Map<String, Object?> _frame(
@@ -449,6 +451,247 @@ void main() {
         engine.timerFor(WatchTimerKind.rest)!.state,
         WatchTimerState.stopped,
         reason: 'a kind the phone names is a kind the phone is speaking about',
+      );
+    });
+  });
+
+  group('S-6006 the earlier start wins at adoption', () {
+    late String sessionId;
+
+    setUp(() {
+      sessionId = engine.session!.sessionId;
+    });
+
+    /// The wrist runs `elapsed` for `sx-run`, started at T0+10 s.
+    Future<DateTime> wristRunsElapsed() async {
+      clock.advance(const Duration(seconds: 10));
+      await engine.startTimer(
+        WatchTimerKind.elapsed,
+        sessionExerciseId: 'sx-run',
+      );
+      return clock.now;
+    }
+
+    Future<int> storedElapsedRows() async =>
+        (await store.readAll()).timers
+            .where((row) => row.kind == WatchTimerKind.elapsed)
+            .length;
+
+    test('S-6006 an earlier phone start replaces the wrist start', () async {
+      final t0 = clock.now;
+      final wristStartedAt = await wristRunsElapsed();
+
+      await engine.applyMessage(
+        _frame('timer_state', sessionId, 'm-6006-early', {
+          'timers': {
+            'elapsed': _timerJson(
+              WatchTimerKind.elapsed,
+              startedAt: utcIso(t0),
+              sessionExerciseId: 'sx-run',
+            ),
+          },
+        }),
+      );
+
+      final timer = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(timer.startedAt, t0);
+      expect(
+        timer.startedAt.isBefore(wristStartedAt),
+        isTrue,
+        reason: 'the phone saw this interval begin before the wrist did',
+      );
+      expect(
+        timer.sessionExerciseId,
+        'sx-run',
+        reason: 'the earlier copy is the one the work began at (D-4)',
+      );
+    });
+
+    test('S-6006 a later phone start leaves the wrist start alone', () async {
+      final wristStartedAt = await wristRunsElapsed();
+      final rows = await storedElapsedRows();
+      clock.advance(const Duration(seconds: 10));
+
+      await engine.applyMessage(
+        _frame('timer_state', sessionId, 'm-6006-late', {
+          'timers': {
+            'elapsed': _timerJson(
+              WatchTimerKind.elapsed,
+              startedAt: utcIso(clock.now),
+              sessionExerciseId: 'sx-run',
+            ),
+          },
+        }),
+      );
+
+      expect(
+        engine.timerFor(WatchTimerKind.elapsed)!.startedAt,
+        wristStartedAt,
+        reason: "a later start does not push the wrist's own start out",
+      );
+      expect(
+        await storedElapsedRows(),
+        rows,
+        reason: 'the row that lost is stored nowhere',
+      );
+    });
+
+    test('S-6006 a stopped phone row with a later start still stops it', () async {
+      await wristRunsElapsed();
+      clock.advance(const Duration(seconds: 10));
+      final stoppedAt = clock.now;
+
+      await engine.applyMessage(
+        _frame('timer_state', sessionId, 'm-6006-stop', {
+          'timers': {
+            'elapsed': {
+              ..._timerJson(
+                WatchTimerKind.elapsed,
+                startedAt: utcIso(stoppedAt),
+                sessionExerciseId: 'sx-run',
+              ),
+              'state': WatchTimerState.stopped,
+              'stoppedAt': utcIso(stoppedAt),
+            },
+          },
+        }),
+      );
+
+      final timer = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(
+        timer.state,
+        WatchTimerState.stopped,
+        reason: 'an ending always applies (D-4)',
+      );
+      expect(timer.stoppedAt, stoppedAt);
+    });
+
+    test('S-6006 a timer for another slot is stored beside', () async {
+      final t0 = clock.now;
+      await wristRunsElapsed();
+
+      await engine.applyMessage(
+        _frame('timer_state', sessionId, 'm-6006-other', {
+          'timers': {
+            'elapsed': _timerJson(
+              WatchTimerKind.elapsed,
+              startedAt: utcIso(t0),
+              sessionExerciseId: 'sx-other',
+            ),
+          },
+        }),
+      );
+
+      final timer = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(
+        timer.sessionExerciseId,
+        'sx-other',
+        reason:
+            "another slot's timer is stored beside the wrist's own (D-3 hides "
+            'it on the logging screen; the engine keeps it)',
+      );
+      expect(timer.startedAt, t0);
+    });
+
+    test('S-6006 a LATER timer for another slot is stored', () async {
+      await wristRunsElapsed();
+      final rows = await storedElapsedRows();
+      clock.advance(const Duration(seconds: 10));
+      final phoneStartedAt = clock.now;
+
+      await engine.applyMessage(
+        _frame('timer_state', sessionId, 'm-6006-other-late', {
+          'timers': {
+            'elapsed': _timerJson(
+              WatchTimerKind.elapsed,
+              startedAt: utcIso(phoneStartedAt),
+              sessionExerciseId: 'sx-other',
+            ),
+          },
+        }),
+      );
+
+      final timer = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(
+        timer.sessionExerciseId,
+        'sx-other',
+        reason:
+            'the earlier-start rule ties a copy to its own slot, so a later '
+            'timer for another slot is news (D-5)',
+      );
+      expect(
+        timer.startedAt,
+        phoneStartedAt,
+        reason: 'the other slot begins where the phone saw it begin',
+      );
+      expect(
+        await storedElapsedRows(),
+        rows + 1,
+        reason: "the other slot's row is stored, not refused",
+      );
+    });
+
+    test('S-6006 a start after the previous timer stopped is stored', () async {
+      await wristRunsElapsed();
+      clock.advance(const Duration(seconds: 30));
+      await engine.stopTimer(kind: WatchTimerKind.elapsed);
+      final rows = await storedElapsedRows();
+      clock.advance(const Duration(seconds: 30));
+      final phoneStartedAt = clock.now;
+
+      await engine.applyMessage(
+        _frame('timer_state', sessionId, 'm-6006-after-stop', {
+          'timers': {
+            'elapsed': _timerJson(
+              WatchTimerKind.elapsed,
+              startedAt: utcIso(phoneStartedAt),
+              sessionExerciseId: 'sx-run',
+            ),
+          },
+        }),
+      );
+
+      final timer = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(
+        timer.startedAt,
+        phoneStartedAt,
+        reason: 'a stopped timer is not the interval the phone is describing',
+      );
+      expect(
+        timer.state,
+        WatchTimerState.running,
+        reason: 'the phone reports a timer that is running now',
+      );
+      expect(timer.sessionExerciseId, 'sx-run');
+      expect(
+        await storedElapsedRows(),
+        rows + 1,
+        reason: 'the start after the stop is a new row',
+      );
+    });
+
+    /// D-4 applies to the work kinds only: a rest has no owner slot, and the
+    /// phone's newer rest still supersedes the wrist's own (S-336).
+    test('S-6006 a phone rest with a later start still supersedes', () async {
+      await engine.startTimer(WatchTimerKind.rest);
+      clock.advance(const Duration(seconds: 8));
+      final phoneStartedAt = clock.now;
+
+      await engine.applyMessage(
+        _frame('timer_state', sessionId, 'm-6006-rest', {
+          'timers': {
+            'rest': _timerJson(
+              WatchTimerKind.rest,
+              startedAt: utcIso(phoneStartedAt),
+            ),
+          },
+        }),
+      );
+
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.startedAt,
+        phoneStartedAt,
+        reason: "a later rest from the phone still supersedes the wrist's own",
       );
     });
   });

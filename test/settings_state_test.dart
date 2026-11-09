@@ -668,4 +668,103 @@ void main() {
 
     expect(notifyCount, 3);
   });
+
+  // ─── Tap-to-type hints (plan 44, D-6 / D-12) ─────────────────────────────
+
+  group('Tap-to-type hints (plan 44)', () {
+    test('a fresh install has every control unlearned', () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+
+      final state = SettingsState(repository, fakePreferencesService());
+      await state.initialize();
+
+      for (final control in TapHintControl.values) {
+        expect(
+          state.isTapHintLearned(control),
+          isFalse,
+          reason: '${control.name} starts unlearned',
+        );
+      }
+    });
+
+    test('marking weight learns only weight, persists it, notifies once',
+        () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+
+      final state = SettingsState(repository, fakePreferencesService());
+      await state.initialize();
+
+      var notifications = 0;
+      state.addListener(() => notifications += 1);
+
+      await state.markTapHintLearned(TapHintControl.weight);
+
+      expect(state.isTapHintLearned(TapHintControl.weight), isTrue);
+      for (final other in TapHintControl.values) {
+        if (other == TapHintControl.weight) continue;
+        expect(
+          state.isTapHintLearned(other),
+          isFalse,
+          reason: '${other.name} is not learned by a weight tap',
+        );
+      }
+      expect(
+        await repository.getPreferenceBool(TapHintControl.weight.preferenceKey),
+        isTrue,
+      );
+      expect(notifications, 1);
+    });
+
+    test('marking the same control twice notifies only once', () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+
+      final state = SettingsState(repository, fakePreferencesService());
+      await state.initialize();
+
+      var notifications = 0;
+      state.addListener(() => notifications += 1);
+
+      await state.markTapHintLearned(TapHintControl.reps);
+      await state.markTapHintLearned(TapHintControl.reps);
+
+      expect(state.isTapHintLearned(TapHintControl.reps), isTrue);
+      expect(notifications, 1);
+    });
+
+    test('the four controls keep their documented preference keys', () {
+      expect(
+        {
+          for (final control in TapHintControl.values)
+            control.name: control.preferenceKey,
+        },
+        equals({
+          'reps': 'hint_seen_tap_to_type_reps',
+          'weight': 'hint_seen_tap_to_type_weight',
+          'roundLength': 'hint_seen_tap_to_type_round_length',
+          'elapsed': 'hint_seen_tap_to_type_elapsed',
+        }),
+      );
+    });
+
+    test('a second state over the same repo reads the flags back', () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+
+      final first = SettingsState(repository, fakePreferencesService());
+      await first.initialize();
+      await first.markTapHintLearned(TapHintControl.weight);
+      await first.markTapHintLearned(TapHintControl.roundLength);
+
+      final second = SettingsState(repository, fakePreferencesService());
+      await second.initialize();
+
+      expect(second.isTapHintLearned(TapHintControl.weight), isTrue);
+      expect(second.isTapHintLearned(TapHintControl.roundLength), isTrue);
+      expect(second.isTapHintLearned(TapHintControl.reps), isFalse);
+      expect(second.isTapHintLearned(TapHintControl.elapsed), isFalse);
+    });
+  });
 }

@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/models/exercise_metric.dart';
 import 'package:omnitrain/core/utils/chart_axis_helper.dart';
+import 'package:omnitrain/features/stats/widgets/native_value_format.dart';
 
 void main() {
   // ── computeBounds ─────────────────────────────────────────────────────────
@@ -528,6 +530,77 @@ void main() {
           reason:
               'last is 2 after a multiple of 3 for total=$total; '
               'clean gap so it is labelled',
+        );
+      }
+    });
+  });
+
+  // ── clock axis ────────────────────────────────────────────────────────────
+
+  group('ChartAxisHelper clock axis', () {
+    test('formatClockAxisValue reads seconds as a clock', () {
+      expect(ChartAxisHelper.formatClockAxisValue(0), '0:00');
+      expect(ChartAxisHelper.formatClockAxisValue(45), '0:45');
+      expect(ChartAxisHelper.formatClockAxisValue(900), '15:00');
+      expect(ChartAxisHelper.formatClockAxisValue(3600), '1:00:00');
+      expect(ChartAxisHelper.formatClockAxisValue(5400), '1:30:00');
+    });
+
+    test('a pace series gets steps on whole minutes, never 8:20 / 16:40', () {
+      // The Brisk Walk series: ~14:00 to ~27:30 per mile.
+      final bounds = ChartAxisHelper.computeTimeBounds([
+        1649,
+        868,
+        1357,
+        1251,
+        942,
+        1321,
+      ]);
+      expect(bounds.interval, 300);
+      expect(bounds.min % 300, 0);
+      expect(bounds.max % 300, 0);
+      expect(bounds.min, lessThanOrEqualTo(868));
+      expect(bounds.max, greaterThanOrEqualTo(1649));
+      final ticks = ((bounds.max - bounds.min) / bounds.interval).round() + 1;
+      expect(ticks, lessThanOrEqualTo(6));
+    });
+
+    test('short holds step in 5 / 10 / 15 / 30 second units', () {
+      final bounds = ChartAxisHelper.computeTimeBounds([20, 30, 45, 60]);
+      expect(const [5, 10, 15, 30], contains(bounds.interval));
+      expect(bounds.max - bounds.min, greaterThan(0));
+    });
+
+    test('a 0:00 to 1:30 hold series reads 0:00, 0:30, 1:00, 1:30, 2:00', () {
+      final bounds = ChartAxisHelper.computeTimeBounds([90, 0]);
+      expect(bounds.min, 0);
+      expect(bounds.interval, 30);
+      expect(bounds.max, 120);
+      final labels = [
+        for (var v = bounds.min; v <= bounds.max; v += bounds.interval)
+          ChartAxisHelper.formatClockAxisValue(v),
+      ];
+      expect(labels, ['0:00', '0:30', '1:00', '1:30', '2:00']);
+    });
+
+    test('a flat series still has a visible range', () {
+      final bounds = ChartAxisHelper.computeTimeBounds([600, 600]);
+      expect(bounds.max, greaterThan(bounds.min));
+    });
+  });
+
+  group('nativeMetricIsClock', () {
+    test('pace, duration and hold are clock axes; the rest are not', () {
+      const clock = {
+        NativeMetric.pace,
+        NativeMetric.duration,
+        NativeMetric.hold,
+      };
+      for (final metric in NativeMetric.values) {
+        expect(
+          nativeMetricIsClock(metric),
+          clock.contains(metric),
+          reason: '$metric',
         );
       }
     });

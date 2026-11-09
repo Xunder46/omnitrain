@@ -24,6 +24,10 @@ import '../../../core/constants/omni_theme.dart';
 /// for any environment that supports the standard Flutter canvas API
 /// (web and native).
 class CalorieRing extends StatelessWidget {
+  /// Default subtext shown when consumed is zero and no [emptyHint]
+  /// override is passed.
+  static const String defaultEmptyHint = 'Log a food to start filling';
+
   /// Today's consumed calories (non-negative). Fractional values are
   /// rounded for display.
   final double consumed;
@@ -39,7 +43,7 @@ class CalorieRing extends StatelessWidget {
   final double strokeWidth;
 
   /// Subtext shown when consumed is zero (both target set and target
-  /// unset). Default "Log a food to start filling".
+  /// unset). Defaults to [defaultEmptyHint].
   final String emptyHint;
 
   /// Optional widget to render in the center of the ring in place
@@ -58,7 +62,7 @@ class CalorieRing extends StatelessWidget {
     required this.target,
     this.size = 160,
     this.strokeWidth = 14,
-    this.emptyHint = 'Log a food to start filling',
+    this.emptyHint = defaultEmptyHint,
     this.centerOverride,
   });
 

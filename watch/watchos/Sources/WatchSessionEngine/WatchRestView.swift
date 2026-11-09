@@ -13,9 +13,17 @@
 //  Rest is a count-up from the moment a set is logged; there is no preset
 //  length. The elapsed is re-read every second from the persisted timer row, so
 //  a screen that was off comes back showing the truth. One control, Next: it
-//  ends the rest and returns to logging (D-161). No End, no picker, no dial,
-//  no pause. The one cue a rest has is the ping: at each multiple of the
-//  interval the phone last sent, the wrist taps (D-250).
+//  ends the rest and returns to logging (D-161), opening the exercise the next
+//  line names when the line names one (plan 79, D-6). No End, no picker, no
+//  dial, no pause. The one cue a rest has is the ping: at each multiple of the
+//  interval the phone last sent, the wrist taps (D-250). The host's
+//  `WatchRestPingScheduler` asks for that ping on its own clock, so a screen
+//  that is off or dimmed pings on time; this view only shows the clock, and
+//  shows whole minutes while the display is dimmed (plan 61).
+//
+//  Plan 88 D-1: the shell swaps this surface in the instant a record log starts
+//  a rest, so this surface overlays the same "New PR" banner the logging surface
+//  does, from its own timeline tick rather than a timer (D-2).
 //
 
 #if os(watchOS)
@@ -25,83 +33,121 @@ import SwiftUI
 public struct WatchRestView: View {
     private let state: WatchLoggingState
 
-    /// The phone's interval, read on each tick rather than captured at
-    /// construction: a sync landing mid-rest is heard on the next tick, and the
-    /// newest copy is what the wrist honours (D-250).
-    private let restPingSeconds: () -> Int
-    private let haptics: WatchHaptics
-    private let onNext: () -> Void
+    /// True while the display is dimmed (Always On, wrist down): the clock then
+    /// shows whole minutes and the timeline ticks once a minute (plan 61, D-3).
+    @Environment(\.isLuminanceReduced) private var dimmed
 
-    /// The ping rule's state — which boundary this rest row has already pinged
-    /// at. A class, so the tick mutates it in place instead of writing state
-    /// during the view update.
-    @State private var ping = WatchRestPing()
+    /// The phone's accent, for the "New PR" banner's capsule — the same value
+    /// the logging surface reads (plan 88 D-1).
+    @Environment(\.watchAccent) private var accent
+
+    private let haptics: WatchHaptics
+    /// Moves the session to the slot id the next line announced (plan 79, D-6).
+    /// The default refuses, so a caller without the menu keeps today's behaviour.
+    private let advance: (String) async -> Bool
+    private let onNext: () -> Void
 
     /// Wrist-scale inset, as the other wrist surfaces use.
     private static let surfaceInset = 4.0
 
     public init(
         state: WatchLoggingState,
-        restPingSeconds: @escaping () -> Int,
         haptics: WatchHaptics = WristHaptics(),
+        advance: @escaping (String) async -> Bool = { _ in false },
         onNext: @escaping () -> Void
     ) {
         self.state = state
-        self.restPingSeconds = restPingSeconds
         self.haptics = haptics
+        self.advance = advance
         self.onNext = onNext
     }
 
     public var body: some View {
         // The timeline is the ticker: the elapsed is derived from the row, and
-        // re-reading it once a second is what makes the count-up move and what
-        // the ping is asked on.
-        TimelineView(.periodic(from: .now, by: 1)) { _ in
-            let _ = pingIfOwed()
+        // re-reading it makes the count-up move; dimmed, once a minute on the
+        // rest's own minute marks.
+        TimelineView(.periodic(from: state.restStartedAt ?? Date(), by: dimmed ? 60 : 1)) { _ in
+            let labels = state.restLabels
             VStack(spacing: Self.surfaceInset) {
-                Text(state.exerciseName ?? "No exercise")
+                Text(WatchRestSurfaceCopy.restCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(labels.now)
                     .font(.caption2)
-                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
                 Text(elapsed)
-                    .font(.title3)
-                    .fontWeight(.bold)
+                    .font(.largeTitle)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .accessibilityLabel("Rest time")
+                    .accessibilityValue(WatchSpokenText.duration(seconds: state.restElapsedSeconds() ?? 0))
+                    .accessibilityAddTraits(.updatesFrequently)
                 Spacer(minLength: 0)
+                Text(labels.next)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
                 nextButton
             }
             .padding(.horizontal, Self.surfaceInset)
+            // A record log starts the rest and the shell swaps this screen in
+            // at once (D-161), so the banner the logging surface shows is
+            // continued here rather than torn down with it (plan 88 D-1). It is
+            // built inside the timeline's closure, so its window is read on this
+            // screen's existing tick and it needs no timer of its own (D-2).
+            .overlay(alignment: .top) {
+                WatchPersonalRecordBanner(state: state, accent: accent)
+            }
+        }
+        // One announcement per record, whichever surface is up when it is due
+        // (plan 88 D-3): appearing is the moment a record logged before the swap
+        // is announced, and a record logged while the rest is up arrives as a new
+        // stamp. The state hands it out once, so a record already announced on
+        // the logging surface stays silent here.
+        .onAppear { announcePersonalRecordIfDue() }
+        .onChange(of: state.personalRecordBannerUntil) { _ in announcePersonalRecordIfDue() }
+    }
+
+    /// Posts the record's one announcement when the state still owes it (plan 88
+    /// D-3). Guarded like the logging surface's, because the package's floor is
+    /// watchOS 9; there the banner's own label is what VoiceOver reads.
+    private func announcePersonalRecordIfDue() {
+        guard state.takePersonalRecordAnnouncement() else { return }
+        if #available(watchOS 10.0, *) {
+            AccessibilityNotification.Announcement(WatchSpokenText.personalRecord).post()
         }
     }
 
-    /// Asks the rule whether this tick owes a ping, and plays it if so. A rest
-    /// that is not open has no row and no elapsed to consult, so a tick after
-    /// the rest ended pings nothing (S-224); Off never pings (S-242).
-    private func pingIfOwed() {
-        guard ping.isOwed(
-            restId: state.engine.timerFor(WatchTimerKind.rest)?.recordId,
-            elapsed: state.restElapsedSeconds(),
-            interval: restPingSeconds()
-        ) else { return }
-        haptics.playRestPing()
-    }
-
     /// The rest's elapsed time as "m:ss", read from the persisted row at this
-    /// instant rather than counted by the view.
+    /// instant rather than counted by the view; dimmed, whole minutes.
     private var elapsed: String {
-        WatchLoggingState.clock(Double(state.restElapsedSeconds() ?? 0))
+        let seconds = state.restElapsedSeconds() ?? 0
+        return dimmed
+            ? WatchLoggingState.dimmedRestClock(seconds: seconds)
+            : WatchLoggingState.clock(Double(seconds))
     }
 
     /// The surface's one control: ending the rest and returning to logging.
     private var nextButton: some View {
         Button {
             Task {
+                let target = state.restLabels.nextSlotId
                 await state.endRest()
+                if let target { _ = await advance(target) }
+                haptics.playNext()
                 onNext()
             }
         } label: {
             Text("Next").frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .watchProminent()
+        .accessibilityHint(state.restLabels.next)
     }
 }
 

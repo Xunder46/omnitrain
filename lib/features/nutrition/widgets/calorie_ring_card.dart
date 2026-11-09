@@ -57,10 +57,16 @@ class CalorieRingCard extends StatefulWidget {
   /// (so this widget stays presentational and testable).
   final VoidCallback onEditTap;
 
+  /// Overrides the ring's empty subtext (shown when nothing is
+  /// logged today). When `null`, the ring keeps its own default
+  /// ([CalorieRing.defaultEmptyHint]).
+  final String? emptyHint;
+
   const CalorieRingCard({
     super.key,
     required this.nutritionState,
     required this.onEditTap,
+    this.emptyHint,
   });
 
   @override
@@ -136,9 +142,11 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
         ];
 
         // Center content: default calories vs the focused
-        // macro's content. Per S-041 / D-4, the focused view shows
-        // grams + the macro's share of *consumed calories* (never
-        // "of target"). Calories per macro follow D-4:
+        // macro's content. Per S-041 / D-4, without a macro
+        // target the focused view shows grams + the macro's
+        // share of *consumed calories*; with a target it shows
+        // "<grams> of <target> g" (plan 80). Calories per macro
+        // follow D-4:
         //   protein*4 + carbs*4 + fat*9
         // Net carbs and protein are scaled to the reference
         // amount already, so we multiply by 4 (kcal per gram).
@@ -168,12 +176,28 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
             pct = totalKcal == 0 ? 0 : (sectionKcal * 100 / totalKcal).round();
           }
           final isInformational = s.name == 'Fiber';
+          // A macro with a daily target reads "<grams> of <target> g". The
+          // carbs target is TOTAL carbs (fibre included), so the Net Carbs
+          // slice then names "Carbs" and counts total carbs.
+          final rawTarget = switch (s.name) {
+            'Protein' => target?.protein,
+            'Net Carbs' => target?.carbs,
+            'Fat' => target?.fat,
+            _ => null,
+          };
+          final focusTarget = (rawTarget != null && rawTarget > 0)
+              ? rawTarget.round()
+              : null;
+          final showsTotalCarbs = s.name == 'Net Carbs' && focusTarget != null;
           centerOverride = MacroFocusContent(
-            name: s.name,
-            grams: s.grams,
+            name: showsTotalCarbs ? 'Carbs' : s.name,
+            grams: showsTotalCarbs
+                ? widget.nutritionState.todayConsumedCarbs
+                : s.grams,
             percentOfCalories: pct ?? 0,
             color: s.color,
             informational: isInformational,
+            targetGrams: focusTarget,
           );
         } else {
           centerOverride = null;
@@ -222,6 +246,8 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
                         target: targetCalories,
                         size: 195,
                         centerOverride: centerOverride,
+                        emptyHint:
+                            widget.emptyHint ?? CalorieRing.defaultEmptyHint,
                       ),
                       // Outer macro donut on top — its
                       // GestureDetector owns hit testing for
@@ -254,25 +280,30 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
                   ),
                 ),
               ),
-              // Bottom row — sodium chip on the left (D-7 / S-043) and
-              // the water tracker on the right. The two are siblings
-              // in a single spaceBetween row so they horizontally
-              // mirror each other — sodium on the left, water on the
-              // right. The water tracker reads from the same
-              // `nutritionState` via the existing `ListenableBuilder`
-              // so it rebuilds when the day's volume changes.
+              // Bottom row — sodium chip on the left (D-7 / S-043,
+              // hidden on an empty day) and the water tracker on the
+              // right. The two are siblings in a single spaceBetween
+              // row so they horizontally mirror each other — sodium
+              // on the left, water on the right. The water tracker
+              // reads from the same `nutritionState` via the existing
+              // `ListenableBuilder` so it rebuilds when the day's
+              // volume changes.
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    _SodiumTotalChip(
-                      sodiumMg: widget.nutritionState.todayConsumedSodium,
-                      themeColors: themeColors,
-                    ),
+                    if (widget.nutritionState.todayConsumedSodium > 0)
+                      _SodiumTotalChip(
+                        sodiumMg: widget.nutritionState.todayConsumedSodium,
+                        themeColors: themeColors,
+                      )
+                    else
+                      const SizedBox.shrink(),
                     WaterTrackerControl(
-                      glasses: widget.nutritionState.waterTodayGlasses,
+                      volumeMl: widget.nutritionState.waterTodayMl,
+                      volumeUnit: widget.nutritionState.waterVolumeUnit,
                       onIncrement: () =>
                           widget.nutritionState.incrementWaterForDate(
                             OmniDateUtils.todayMidnightMs(),
@@ -294,8 +325,9 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
 }
 
 /// Small chip-style label that renders today's consumed sodium as
-/// `"Na 148 mg"`. Lives in the calorie-ring card's top-right corner
-/// to the left of the edit-targets icon (D-7 / S-043).
+/// `"Na 148 mg"`. Sits at the bottom-left of the calorie-ring card,
+/// opposite the water tracker (D-7 / S-043); hidden on days with
+/// nothing logged.
 ///
 /// Uses comma-grouped integers for the mg value so large numbers
 /// (e.g. 1,250 mg) read at a glance. The label is muted-text in

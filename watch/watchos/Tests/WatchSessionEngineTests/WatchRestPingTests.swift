@@ -6,6 +6,12 @@
 //  `docs/plans/2026-10-08-22-rest-ping-on-watch-plan/2026-10-08-22-rest-ping-on-watch-plan.md`:
 //  the wrist half of the rest ping (D-243, D-244, D-250, D-251, S-247).
 //
+//  Phase D1 of
+//  `docs/plans/2026-10-11-23d-watch-accent-color-plan/2026-10-11-23d-watch-accent-color-plan.md`
+//  adds the theme accent the wrist wears (S-3713, S-3714). It rides the same
+//  `preferences_down` copy and the same store as the interval, so it is read
+//  back the same way and its store tests live beside the interval's.
+//
 //  Every expectation is read from
 //  `watch/contract/watch_rest_ping_contract.json` — the table the Dart half, the
 //  view and this suite share — so a number here is the contract rather than a
@@ -498,6 +504,178 @@ final class WatchRestPingTests: XCTestCase {
             preferences.restPingSeconds,
             sent,
             "S-247: nothing malformed replaced the interval the wrist holds"
+        )
+    }
+
+    // MARK: - S-3713/S-3714 the accent the phone sends
+
+    func testS3713TheWristStoresTheAccentAndReadsTheNewestCopyWithIt() async throws {
+        let harness = Harness()
+        let preferences = WatchPhonePreferences(
+            store: harness.store,
+            validator: Harness.validator(),
+            clock: harness.clock.call
+        )
+        let wire = try Fixtures.json("fixtures/valid/preferences_down_accent.json")
+        let sent = try XCTUnwrap(
+            (wire["payload"] as? [String: Any])?["accentColorHex"] as? String,
+            "the accent fixture carries an accent"
+        )
+        let other = "#FF7B45"
+        XCTAssertNotNil(
+            WatchAccent.usable(hex: other),
+            "the later accent is one the wrist would wear"
+        )
+        XCTAssertNotEqual(
+            sent,
+            other,
+            "the two accents differ, so a stale copy is distinguishable"
+        )
+
+        XCTAssertNil(
+            preferences.accentColorHex,
+            "a wrist that has never heard from the phone wears its default look"
+        )
+        let first = await preferences.applyPreferencesDown(wire)
+        XCTAssertTrue(first.applied, "the fixture conforms to the schema")
+        XCTAssertEqual(preferences.accentColorHex, sent, "S-3713: the wrist reads the accent it stored")
+
+        var payload = try XCTUnwrap(wire["payload"] as? [String: Any])
+        payload["accentColorHex"] = other
+        payload["generatedAt"] = "2026-09-25T08:00:00Z"
+        var stale = wire
+        stale["messageId"] = "msg-preferences-accent-stale"
+        stale["payload"] = payload
+        _ = await preferences.applyPreferencesDown(stale)
+        XCTAssertEqual(
+            preferences.accentColorHex,
+            sent,
+            "S-3713: a copy generated earlier that arrives late does not replace the accent that applies"
+        )
+
+        var newer = wire
+        newer["messageId"] = "msg-preferences-accent-newer"
+        payload["generatedAt"] = "2026-09-25T10:00:00Z"
+        newer["payload"] = payload
+        _ = await preferences.applyPreferencesDown(newer)
+        XCTAssertEqual(preferences.accentColorHex, other, "S-3713: a newer copy does apply")
+
+        await preferences.restore()
+        XCTAssertEqual(
+            preferences.accentColorHex,
+            other,
+            "S-3713: the accent survives a relaunch, read back out of storage"
+        )
+
+        // A newer copy with no accent: the phone has none to send, and the
+        // wrist goes back to its default look rather than the last accent.
+        payload.removeValue(forKey: "accentColorHex")
+        payload["generatedAt"] = "2026-09-25T11:00:00Z"
+        var plain = wire
+        plain["messageId"] = "msg-preferences-accent-absent"
+        plain["payload"] = payload
+        let absent = await preferences.applyPreferencesDown(plain)
+        XCTAssertTrue(absent.applied, "S-3713: the copy itself is understood")
+        XCTAssertNil(
+            preferences.accentColorHex,
+            "S-3713: a newer copy with no accent reads as no accent"
+        )
+
+        await preferences.restore()
+        XCTAssertNil(
+            preferences.accentColorHex,
+            "S-3713: and the absence survives a relaunch too"
+        )
+    }
+
+    func testS3713TheRecordCarriesTheAccentThroughItsOwnJson() throws {
+        let record = WatchPreferencesRecord(
+            recordId: "pref-accent",
+            recordedAt: instant("2026-10-11T10:00:00Z"),
+            generatedAt: instant("2026-10-11T10:00:00Z"),
+            effortRatingPrompt: false,
+            restPingSeconds: 90,
+            accentColorHex: "#2DE2E6"
+        )
+        XCTAssertEqual(
+            record.toJson()["accentColorHex"] as? String,
+            "#2DE2E6",
+            "S-3713: the row carries the accent"
+        )
+        XCTAssertEqual(
+            try WatchPreferencesRecord.fromJson(record.toJson()).accentColorHex,
+            "#2DE2E6",
+            "S-3713: the accent round-trips through the row's JSON"
+        )
+        XCTAssertEqual(
+            record.withSequence(3).accentColorHex,
+            "#2DE2E6",
+            "S-3713: a re-sequenced copy keeps the accent"
+        )
+
+        // A copy the phone sent no accent on writes no key at all, so a wrist
+        // reading it back keeps its default look instead of an invented color.
+        let plain = WatchPreferencesRecord(
+            recordId: "pref-plain",
+            recordedAt: instant("2026-10-11T10:00:00Z"),
+            generatedAt: instant("2026-10-11T10:00:00Z"),
+            effortRatingPrompt: false,
+            restPingSeconds: 90
+        )
+        XCTAssertNil(
+            plain.toJson()["accentColorHex"],
+            "S-3713: a copy with no accent writes no key"
+        )
+
+        // A row written before the wrist knew the key reads as no accent.
+        let legacy = try WatchPreferencesRecord.fromJson([
+            "recordType": StoredWatchRecord.preferencesType,
+            "recordId": "pref-legacy-accent",
+            "sessionId": "",
+            "recordedAt": "2026-10-11T10:00:00Z",
+            "sequence": 0,
+            "generatedAt": "2026-10-11T10:00:00Z",
+            "effortRatingPrompt": false,
+            "restPingSeconds": 90,
+        ])
+        XCTAssertNil(legacy.accentColorHex, "S-3713: a pre-accent row reads no accent")
+    }
+
+    func testS3714ABadAccentIsRefusedAndThePreviousOneStays() async throws {
+        let harness = Harness()
+        let preferences = WatchPhonePreferences(
+            store: harness.store,
+            validator: Harness.validator(),
+            clock: harness.clock.call
+        )
+        let wire = try Fixtures.json("fixtures/valid/preferences_down_accent.json")
+        let sent = try XCTUnwrap(
+            (wire["payload"] as? [String: Any])?["accentColorHex"] as? String,
+            "the accent fixture carries an accent"
+        )
+        let accepted = await preferences.applyPreferencesDown(wire)
+        XCTAssertTrue(accepted.applied, "the well-formed copy is stored")
+        XCTAssertEqual(preferences.accentColorHex, sent, "and the wrist reads its accent")
+
+        let bad = try Fixtures.json("fixtures/invalid/preferences_down_accent_bad.json")
+        let refused = await preferences.applyPreferencesDown(bad)
+        XCTAssertFalse(refused.applied, "a hex that is not #RRGGBB is refused, not stored")
+        XCTAssertEqual(
+            refused.rejections.map(\.code),
+            [SyncRejectionCode.constraintViolation],
+            "S-3714: the refusal is the pattern's, and the same code the phone's validator gives"
+        )
+        XCTAssertEqual(
+            preferences.accentColorHex,
+            sent,
+            "S-3714: and nothing replaced the accent the wrist holds"
+        )
+
+        await preferences.restore()
+        XCTAssertEqual(
+            preferences.accentColorHex,
+            sent,
+            "S-3714: nothing was written behind the in-memory copy either"
         )
     }
 

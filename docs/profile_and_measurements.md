@@ -18,7 +18,7 @@ Primary capabilities:
 
 - `HomeScreen` maintenance sheet:
   - Profile tile pushes `ProfileScreen`
-  - Stats tile pushes `StatsScreen` (all-time aggregates, the Instruments list, the Fuel row — see [Stats Screen](stats_screen.md))
+  - Stats tile pushes `StatsScreen` (the Mix, Signals, Instruments, Fuel and Weight blocks — see [Stats Screen](stats_screen.md))
   - Settings tile pushes `SettingsScreen` (preferences, sounds & alerts, Effort Rating toggle, theme grid, version footer — see [Theme & Settings](theme_and_settings.md))
 - `ProfileScreen` depends on `ProfileState` via constructor injection
 
@@ -78,6 +78,39 @@ Convenience getters (all are pure derivations of `_latestMeasurements` — no ex
 
 ---
 
+## The weight line on Stats
+
+The Stats screen's Weight block is fed by the body-weight history this feature
+owns. The rule (`weightTrend` in `lib/core/models/weight_trend.dart`) keeps
+the `bodyweight` entries in canonical kilograms (`unit-kg`) recorded in the 28
+local days ending today, takes the earliest and the latest of them by time,
+and returns a trend only when at least two usable weigh-ins are at least 7
+whole calendar days apart — the days are counted on the dates re-read as UTC,
+so a clock change inside the window cannot shorten a week. Fewer than two
+usable weigh-ins, or a closer pair, is no trend. Verified by
+`test/weight_trend_test.dart`, group `S-17701 weightTrend`.
+
+The line (`weightTrendLine`) reads `80.2 kg, −0.6 kg over 4 weeks` — a true
+minus sign, `+0.4 kg` for a rise, `no change` when the change rounds to 0.0.
+Verified by the same file, group `S-17702 weightTrendLine`; that the unit is
+the user's weight setting is verified by `test/weight_trend_screen_test.dart`,
+group `S-17705 the Weight block — Mock` › group `the unit is pounds` ›
+`the same two figures read in pounds`.
+
+`WeightTrendService.compute` (`lib/core/services/weight_trend_service.dart`)
+reads `getMeasurementHistory('bodyweight')` and applies the rule. Verified by
+the same file, groups `S-17703 WeightTrendService — Mock` and
+`S-17703 WeightTrendService — Hive`.
+
+On the screen the block is drawn by `StatsScreen` directly after the Fuel row
+(keys `weight_trend`, `weight_trend_line`), only with a completed session in
+the history and when the weigh-in rule is met (there is no setting to hide it); with no completed
+session the empty state is alone. Verified by
+`test/weight_trend_screen_test.dart`, groups `S-17705 the Weight block — Mock`
+and `S-17705 the Weight block — Hive`.
+
+---
+
 ## UI Behavior
 
 ### Identity Section
@@ -86,6 +119,15 @@ A compact horizontal header — avatar on the left, name and height stacked besi
 directly on the gradient with no card chrome, so it collapses to roughly the avatar's height and
 leaves the space below for the measurement cards. Name and height are each their own tap target,
 opening their respective editors.
+
+### Load Failure
+
+When `loadProfile()` fails, the screen shows the plain line
+`Could not load your profile. Try again.` with a `Try again` button that
+re-runs the load; the exception is logged and never rendered. Verified by
+`test/profile_screen_test.dart`, group `D-27.2: a failed profile load says so
+in plain words` · "the screen shows the plain line and the exception text is
+nowhere on it".
 
 ### Measurement Sections
 
@@ -184,7 +226,8 @@ via `OmniNavigator.push(..., fullscreenDialog: true)`); the
 sheet's confirm writes the cropped region via
 `ImageStorageService.persistImageBytes` and then
 `ProfileState.updateAvatarPath(basename)`. On web the existing
-`kIsWeb` early-return shows the existing snackbar; the crop step
+`kIsWeb` early-return shows a message through the shared
+`OmniMessage`; the crop step
 is not reached (web persistence is intentionally out of scope).
 
 The `OmniNavigator.push` route is mandatory — see the navigation
@@ -289,8 +332,9 @@ When the avatar or food photo is replaced or removed:
 ### Web Behavior
 
 On web, the `kIsWeb` early-return in the picker handlers shows a
-snackbar: "Photo selection works on web, but avatar/food photo
-persistence is not supported there yet." The service is not called.
+message through the shared `OmniMessage` (each picker names its own
+surface — the avatar picker and the food-photo picker have separate
+copies) instead of calling the service. The service is not called.
 
 ### Implementation Files
 

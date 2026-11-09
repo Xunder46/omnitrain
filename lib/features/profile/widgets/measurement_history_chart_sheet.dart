@@ -11,6 +11,7 @@ import '../../../widgets/chart/scrollable_trend_chart.dart';
 import '../../../state/profile/profile_state.dart';
 import '../../../state/settings/settings_state.dart';
 import '../../../widgets/dialogs/confirmation_dialog.dart';
+import '../../../widgets/feedback/omni_message.dart';
 
 class MeasurementHistoryChartSheet extends StatefulWidget {
   final ProfileState profileState;
@@ -482,9 +483,8 @@ class _MeasurementHistoryChartSheetState
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to delete entry: $e')));
+      debugPrint('Delete entry: $e');
+      OmniMessage.error(context, 'Could not delete the entry. Try again.');
       return;
     }
     if (!mounted) return;

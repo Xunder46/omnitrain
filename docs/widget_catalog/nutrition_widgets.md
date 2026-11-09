@@ -12,8 +12,8 @@
 
 One-shot orientation sheet for the Daily Nutrition page. The page inverts the usual food-logging model and packs several unfamiliar ideas onto one screen (curate a "Foods I Eat" list once from the global library, check foods off daily with adjustable per-food portions, watch the day roll up into a calories/macros ring + water + sodium), so a brief primer helps a first-time user understand the model. The sheet is single-pane (no carousel, no `PageView`, no Next/Back navigation, no pointers anchored to on-screen widgets) and presents exactly three labeled blocks:
 
-1. **YOUR LIST, BUILT ONCE** — describes the curated "Foods I Eat" list and the pencil edit control on the page.
-2. **CHECK TO LOG, SET THE AMOUNT** — describes daily check-off logging and the per-food portion amount.
+1. **YOUR LIST, BUILT ONCE** — describes the curated "Foods I Eat" list and the Choose foods button and the pencil on the page.
+2. **TAP TO LOG, SET THE AMOUNT** — describes logging by tapping a food's picture and the per-food portion amount.
 3. **TODAY AND OVER TIME** — describes the rollup: calories vs target, protein/carb/fat split, water, sodium.
 
 The sheet does NOT cover target editing, group management, or water-stepper instructions — those are discoverable and out of scope.
@@ -24,14 +24,26 @@ The sheet does NOT cover target editing, group management, or water-stepper inst
 
 **Behavior**:
 - Rendered inside `showModalBottomSheet(isScrollControlled: true, ...)` — the host screen owns the show/dismiss lifecycle.
-- Single `FilledButton` "Got it" CTA, full width, height `OmniTheme.buttonPrimaryHeight`, `shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius))` — no Material 3 `StadiumBorder`. Color from `theme.colorScheme.primary`.
+- Single `FilledButton` "Got it" CTA, full width, sized from the shared
+  button tokens (`OmniTheme.buttonPrimaryHeight`,
+  `OmniTheme.buttonBorderRadius`) with an explicit shape — no Material 3
+  `StadiumBorder`. Color from `theme.colorScheme.primary`.
 - The three blocks use a section header `OmniCardHeader` (or the canonical D-1 typography) per the global section-header contract.
 - The "Got it" CTA fires `Navigator.of(context).pop()` and then `onDismiss?.call()`. The seen-state mutation lives in the host screen (`HomeScreen._openNutritionScreen` calls `nutritionPrimerState.markSeen()` AFTER the sheet pops), NOT inside the sheet — the sheet is presentation-only.
 - The header "?" control on `NutritionScreen` uses the same widget but passes an `onDismiss` that does NOT call `markSeen()` — the seen state is preserved across reopens.
 
-**Auto-show contract**:
-- The home strip's first-ever tap opens this sheet over the home screen via `showModalBottomSheet`. On dismiss, the host calls `NutritionPrimerState.markSeen()` and then pushes `NutritionScreen`.
-- The header "?" on `NutritionScreen` opens the same sheet at any time. The seen state is NOT mutated.
+**Auto-show contract** (plan 77d): the home strip's tap pushes
+`NutritionScreen` at once; the first time it opens (primer unseen) the
+screen itself raises this sheet over the screen it explains, and on dismiss
+marks the primer seen; the header "?" reopens the same sheet at any time
+without touching the seen state. The sheet content scrolls when a small
+phone or large text leaves less room than it needs
+(`test/screen_overflow_contract_test.dart`, Nutrition cases). Pinned by
+`test/row_caption_and_primer_test.dart` (`S-13013`) and
+`test/nutrition_primer_test.dart` (groups 'S-001: first nutrition strip
+tap shows the primer', 'S-003: header "?" reopens the primer regardless
+of seen state', 'S-005: primer never gates access', 'S-006: wrong-pattern
+guard — persisted value, not in-memory').
 
 **Test keys** (used by `test/nutrition_primer_test.dart`):
 - `nutrition_primer_block_curate`, `nutrition_primer_block_check`, `nutrition_primer_block_rollup` — the three labeled blocks.
@@ -57,9 +69,11 @@ One row per food in the "Foods I Eat" list, and the actual logging affordance: t
 the toggle that logs or unlogs the food for today, alongside an amount input and a single-line
 macro summary.
 
-**An unsaved amount edit is not a log.** Typing in the amount field updates the in-memory
-controller only; the food row is written when the user explicitly commits. This keeps a
-half-typed number from being persisted as a real entry.
+**Amount edits auto-commit on a logged row.** Editing the amount on a food already
+logged today writes the new amount to the day log automatically (debounced; see
+`_scheduleAutoCommit` in `lib/features/nutrition/widgets/log_food_row.dart`) — the
+user does not re-tap the thumb. The thumb tap is the explicit commit only for the
+first log of an unlogged food.
 
 The row's selected and unselected states are visually distinct without relying on colour alone.
 
@@ -77,121 +91,377 @@ reads from the managed image directory, the web stub renders the placeholder.
 
 **File**: `lib/features/nutrition/widgets/food_form.dart`
 
-Shared form widget used by both the **+ New Item** flow on
+Shared form widget used by both the header **+ New Food** flow on
 `AddFoodScreen` and the **Edit Food** screen
 (`EditFoodScreen`). Parameterized by an optional `Food?` initial
 value: `null` → create mode, non-null → edit mode.
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `initial` | `Food?` | required | Pre-fill the form with this food's values when non-null. |
-| `foodLibraryState` | `FoodLibraryState` | required | Source for the categories dropdown (re-reads `activeFoodGroups` on every notification). |
-| `onSave` | `Future<bool> Function(FoodDraft draft)` | required | Save callback. Returns `true` to pop, `false` to surface a snackbar. |
-| `saveLabel` | `String` | `'Save'` | Primary CTA label. |
-| `showNotesField` | `bool` | `false` | When true, renders a "Notes (optional)" multi-line field. Edit mode only. |
-| `onImageSave` | `Future<bool> Function(FoodDraft draft)?` | `null` | Optional partial-save callback fired after a successful photo pick **or** after the × (clear) overlay clears the photo in **edit mode** (`initial != null`). Wired by `EditFoodScreen` to `FoodLibraryState.updateCatalogFood` so the new or cleared `imagePath` lands in the data layer immediately, even on screens that have no Save button. The draft is built from `initial` with only `imagePath` swapped, so concurrent edits to the form's text controllers (a half-typed name, for example) are preserved. **Not fired in create mode** — the image is just stored locally until the user saves the whole food. |
+The form is parameterized by an optional `Food?` initial value
+(`null` → create mode, non-null → edit mode), the `FoodLibraryState`
+that sources the categories dropdown (re-reading `activeFoodGroups` on
+every notification), a `saveLabel` for the host's CTA, an optional
+`showNotesField` flag (edit mode), a required `onSave` callback, and an
+optional `onImageChanged` callback (`ValueChanged<String?>` — the
+form-local photo path, `null` after the × overlay clears it) and an
+optional `onServingChanged` callback (`VoidCallback` — fired when the
+serving toggle or a serving-word chip changes, or the serving-name or
+package-size box is typed in). The serving
+control and the label-like macro block below are stated in full; the
+remaining fields' keys and defaults are the file's own.
 
-**Form fields (top to bottom)**:
-1. Image picker tile (`FoodFormImageTile`, key `food_form_image_tile`) — square 96×96 tile. The displayed photo follows the same three-tier precedence as the library list's `FoodThumbnail`: user-picked `imagePath`, then `FoodPhotoService.bundledPhotoAssetPath` resolved via `foodId`/`catalogId`, then placeholder. The × (clear) overlay is gated on a user-set photo (the shipped photo is the food's baseline, not the user's), and the edit overlay is shown whenever any photo is rendered. Overlay gating and picker behaviour are verified by `test/food_form_shipped_photo_test.dart` (S-001..S-006).
-2. Name (`food_form_name`) — `TextFormField` with `TextCapitalization.words`.
-3. Group (`food_form_group`) — `DropdownButtonFormField<String?>` of the active groups + an "Ungrouped" `null` entry. When the food's stored `groupId` points at a category that is not in the active list (deleted, or a default category that was never created because of a name collision at first launch), the form synthesises an extra item carrying the stored `groupId` and the group's resolved name from the full group cache (suffixed " (archived)") or the raw id (suffixed " (no longer available)") rendered with `OmniTheme.colors.textMuted`. See `test/food_form_orphan_category_test.dart` (S-001 / S-002).
-4. Unit type (`food_form_unit_type`) — `DropdownButtonFormField<FoodUnitType>` of `count` / `grams`. Swapping units pre-fills sensible defaults for the reference amount + label.
-5. Reference amount (`food_form_reference_amount`) + Reference label (`food_form_reference_label`).
-6. Macros (per the reference above) — `Protein (g)` (required), `Carbs (g)` (required), `Fiber (g)` (optional, blank = unset), `Fat (g)` (required), `Sodium (mg)` (optional, blank = unset). All accept **decimal** input (e.g. `0.5`, `1.25`) via the `^\d*\.?\d*$` regex filter, mirroring the reference-amount field. Macros are stored as `double` on `Food` / `FoodDraft` so fractional grams persist (S-001).
-7. Notes (`food_form_notes`) — when `showNotesField: true`.
+**Serving control.** One single-choice `SegmentedButton` (key
+`food_form_basis`) asks what the nutrition numbers are per: `100 g`,
+`100 ml`, `1 serving`, plus `As saved: <amount> <label>` only for a food
+whose stored serving the first three cannot express. Under `100 g` /
+`100 ml`, a link (key `food_form_package_link`) toggles a package row
+with a numeric amount (key `food_form_package_amount`, g or ml only);
+under `1 serving`, a label field (key `food_form_serving_label`) pairs
+with the chips `food_form_serving_chip_<word>` for slice, scoop, bar,
+piece, cup, tbsp and tsp, which fill the field. The heading
+`food_form_per_heading` is `servingHeading(choice)` and follows typing; it is hidden for a
+plain 100 g / 100 ml, which the selected segment already says (`S-95.2`);
+in edit mode a note `food_form_per_note` reads `Check these numbers are
+per <X>` while the serving differs from the one the food was opened
+with, and is absent when they match or on a New Food.
 
-**Save CTA**: the form does **not** render an inline save button. The host screen owns the primary bottom CTA via the shared `OmniBottomCTA` (see `docs/plans/primary-bottom-cta-anchor-width-plan.md`). The host wires the CTA's `onPressed` to `FoodFormController.submit`, which routes through the form's validation + save pipeline — the same pipeline the inline button used to trigger.
+The choice maps to the stored fields through the pure-Dart mapper
+`lib/core/utils/food_serving.dart` (`servingChoiceFrom`,
+`storedServingFrom`, `servingHeading`); the form never compares box text:
 
-**Behavior**:
-- The form owns validation, the image picker, and the
-  translation from controllers to a typed `FoodDraft`. The caller
-  hands the draft to `FoodLibraryState.createCustomFood` (create)
-  or `FoodLibraryState.updateCustomFood` / `updateCatalogFood`
-  (edit) — never to the repository directly.
-- "Save on upload" (edit mode): when `onImageSave` is provided
-  and `initial != null`, the photo pick handler persists the new
-  `imagePath` to the data layer immediately (D-7 cleanup of the
-  previous managed file is the state method's responsibility —
-  the form does not call the service directly). On hosts that
-  have no Save button (`EditFoodScreen` with
-  `autoSaveOnBlur: true`), this is the **only** path that writes
-  the picked photo to the data layer before the user navigates
-  away, so without it the photo would not persist.
-- "Save on clear" (edit mode): symmetric to "Save on upload".
-  Tapping the × (clear) overlay invokes `clearImage()` which
-  sets `_imagePath = null` locally and fires `onImageSave` with
-  a partial draft (`imagePath: null`). The state method's
-  `previousPath != draft.imagePath` branch handles D-7 cleanup
-  of the previous managed file. **Not fired in create mode**
-  (no source food to partial-save against).
-- Fiber is exposed alongside carbs in the macro list, matching
-  the `Food.fiber` field on the model. The existing
-  `calculateNetCarbs(food)` helper handles the net-carb math.
-- **Auto-select on focus** (S-004..S-006): every `TextFormField`
-  on the form (name, reference amount, reference label, all five
-  macros, notes) has a per-field `FocusNode` wired to a
-  `_selectAllOnFocus` handler. Tapping a pre-filled field
-  highlights the entire value via
-  `controller.selection = TextSelection(baseOffset: 0,
-  extentOffset: controller.text.length)`, so the user can
-  retype a value without first clearing it. Empty fields are a
-  no-op (no select-all across an empty range). The handler is
-  separate from the form-level `FocusNode` that drives
-  `autoSaveOnBlur`; the two co-exist without conflict.
+| Choice | `unitType` | `referenceAmount` | `referenceLabel` |
+|---|---|---|---|
+| `100 g` | `grams` | `100` | `g` |
+| `100 ml` | `grams` | `100` | `ml` |
+| Package serving (e.g. `30 g`, `250 ml`) | `grams` | the typed amount | `g` / `ml` |
+| `1 serving` (e.g. slice) | `count` | `1` | the typed label, trimmed |
+| `As saved` | the stored triple, unchanged | | |
+
+Verified by `test/food_serving_test.dart` (group `food_serving`:
+`S-92b.1 round trip over every shipped catalog triple`, `S-92b.1 round
+trip over the odd stored servings`, `S-92b.1 stored serving loads as the
+matching choice`, `S-92b.1 odd stored servings load as As saved`,
+`S-92b.1 each choice stores its triple`, `S-92b.1 heading strings`) and by
+`test/food_form_serving_test.dart` (group `FoodForm serving (S-92b)`:
+`S-92b.2 New Food defaults to 100 g and saves grams / 100 / g`,
+`S-92b.3 100 ml saves grams / 100 / ml`, `S-92b.4 1 serving requires a
+label and the chips fill it`, `S-92b.5 package serving sets the amount,
+and Back restores 100 g`, `S-92b.6 an edited food opens on its stored
+serving and saves both ways`, `S-92b.7 a package-stored food opens with
+its amount and keeps it on save`, `S-92b.8 As saved round trips and
+restores the opened triple`, `S-92b.9 the check line appears off the
+opened serving and hides again`, `S-92b.11 a millilitre food opens on
+100 ml and saves it unchanged`, `S-92b.12 a padded serving label saves
+trimmed`, `S-92b.13 package amount 0 and . are rejected`, `S-92b.14 the
+package row survives a parent rebuild`, `S-92b.15 chips are hidden off
+the serving segment`, `S-92b.16 both edit hosts render the same serving
+control`, `S-92b.18 switching segments keeps the typed label and amount`,
+`S-92b.19 the note is hidden while the package row reproduces the opened
+serving`). A save whose serving differs from the stored one clears the
+library copy's remembered log amount, and one that leaves it equal keeps
+it — see [nutrition_state.md](../state_management/nutrition_state.md)
+and `test/food_library_edit_test.dart` (`S-92b.10 a serving-changing
+catalog edit clears the linked copy's remembered amount`, `S-92b.10 a
+name-only catalog edit keeps the linked copy's remembered amount`).
+
+The form owns validation, the image picker, and the translation from
+controllers to a typed `FoodDraft`. The caller hands the draft to
+`FoodLibraryState.createCustomFood` (create) or
+`FoodLibraryState.updateCustomFood` / `updateCatalogFood` (edit) —
+never to the repository directly. One more edit host exists: when the
+screen is given a default food, `EditFoodScreen` asks
+(`confirmSaveAsOwnFood` in
+`lib/features/nutrition/widgets/save_default_as_own_food.dart`) and hands
+the draft to `FoodLibraryState.createOwnCopyOfDefault`, which makes a
+food of the user's own
+(verified by `test/library_row_toggle_test.dart`, group
+`Library row toggle (plan 77a S-12710..S-12717)` · `S-12719: the Edit
+screen routes a default food's save through the copy flow`, and by
+`test/edit_default_food_test.dart`, group `Edit a default food (plan 133)`
+· `S-13312 Confirm makes a food of your own, not added to the list`).
+
+**Label-like macro block.** The five macro boxes run top to bottom in the
+order a package prints them — Fat (g), Carbs (g), Fiber (g), Protein (g),
+Sodium (mg) — with the keys `food_form_fat`, `food_form_carbs`,
+`food_form_fiber`, `food_form_protein` and `food_form_sodium`; create and
+edit share one order, and the photo tile `food_form_image_tile` sits below
+the name field rather than at the top of the list. A new food opens with
+all five boxes empty and a faint `0` hint; the hint and
+`FloatingLabelBehavior.always` belong to the macro boxes only. An edit
+prefills through `formatGrams`, so a stored `31.0` reads `31`, and a
+never-recorded fiber or sodium stays empty so an unchanged save keeps it
+unrecorded. The blank-save contract follows from that: a blank Protein,
+Carbs or Fat saves `0`, a blank Fiber or Sodium saves "not recorded"
+(`null`), and a lone `.` surfaces `Must be a number` without saving — the
+macro validator never requires a value, and amount fields keep `Required`
+for their own positive check. Calories are derived, never stored: the line
+under Sodium (key `food_form_calories`, `= <N> cal`) computes from the
+parsed boxes through `caloriesFromMacros` in
+`lib/core/utils/food_helpers.dart`, the same function `calculateCalories`
+delegates to, so the line and every stored food's `<cal> cal` agree. Macros
+are stored as `double` on `Food` / `FoodDraft` so fractional grams persist;
+fiber is exposed alongside carbs, matching `Food.fiber`, and
+`calculateNetCarbs(food)` owns the net-carb math.
+
+Verified by `test/food_form_label_test.dart` (top-level `testWidgets`, no
+group): `S-92c.2: the macros run top to bottom in package order`,
+`S-92c.3: a new food starts with five blank boxes and a faint 0`,
+`S-92c.4: a name-only food saves blanks as 0.0 and null`,
+`S-92c.5: edit prefills with formatGrams and keeps a null fiber empty`,
+`S-92c.6: a lone dot blocks Save with "Must be a number"`,
+`S-92c.14: a stored 0.0 fiber opens as 0 and stays 0.0`,
+`S-92c.14: an unrecorded fiber and sodium open empty and save null`,
+`S-92c.14: typing then clearing sodium saves null`,
+`S-92c.16: the always-on label and faint 0 are macro-only`,
+`S-92c.1: the calories line follows the macros`,
+`S-92c.13: fractional macros agree on the line and the row`,
+`S-92c.7: the photo tile sits below the name, above Category`; the formula
+itself by `test/food_library_state_test.dart` (group `Food Helper
+Functions`: `S-92c.9 caloriesFromMacros computes whole-number macros`,
+`S-92c.9 caloriesFromMacros rounds half away from zero`,
+`S-92c.9 caloriesFromMacros matches calculateCalories`).
+
+**Duplicate-name note.** While the live name text matches an existing food,
+`FoodLibraryState.nameExistsInLibrary(name, excluding: initial)` shows a
+quiet note (key `food_form_duplicate_note`) under the name, above the photo
+tile and the Category dropdown. It never blocks Save and never changes
+validation. The predicate is name-only — trimmed and case-folded — and skips
+the food being edited plus its `catalogId` twin in either direction, so
+editing a copy of a bundled food notes only a rename. Verified by
+`test/food_form_label_test.dart` (`S-92c.8: an existing catalog name shows
+the note, Save works`, `S-92c.8: editing a user-created food notes only a
+rename`, `S-92c.8: editing a library copy of a bundled food shows none`,
+`S-92c.10: padded and differently-cased names still match`,
+`S-92c.11: clearing the name hides the note`, `S-92c.12: two rows with the
+same name show one note`) and by `test/food_library_state_test.dart` (group
+`nameExistsInLibrary`: `S-92c.9 returns true for a catalog food`,
+`S-92c.9 returns true for a library-only food`, `S-92c.9 returns false for
+an archived food`, `S-92c.9 returns false for the excluded library row
+itself`, `S-92c.9 returns false for the excluded catalog row itself`,
+`S-92c.9 excluding a library copy ignores its catalog twin`,
+`S-92c.9 excluding a catalog row ignores its library copies`,
+`S-92c.9 a legacy row with no catalogId is a separate food (D-92c.13)`,
+`S-92c.9 returns false for a blank name`, `S-92c.9 ignores case and
+surrounding spaces`).
+
+**Save CTA**: the form does **not** render an inline save button. Every host
+owns a primary bottom CTA through the shared `OmniBottomCTA` (see
+`docs/plans/primary-bottom-cta-anchor-width-plan.md`) and wires its `onPressed` to
+`FoodFormController.submit`, so the validation + save pipeline stays in one
+place. `_NewFoodFormScreen`, `_LegacyLibraryEditScreen` and `EditFoodScreen`
+all follow that wiring: each renders a bottom `Save` with key `food_form_save`
+(New Food's CTA reads `Save`, not `Create` — `test/nutrition_test.dart`, group
+`AddFoodScreen — + New Item (S-004 / S-005)` · "the New Food bottom bar says
+Save, not Create (S-92a.10)"), and `EditFoodScreen` pairs it with the
+unsaved-changes guard below.
+
+**Contracts that outlive the file's internals**:
+
+- `onSave` returns `true` to pop, `false` to surface feedback.
+- Nothing about the photo writes until Save: the save draft carries
+  `imagePath`, and the state method that applies it (`updateCatalogFood`,
+  `createOwnCopyOfDefault`, `updateCustomFood`) owns the D-7 delete of the replaced
+  managed file — the form never calls the service directly. A pick only
+  copies the picked file into the managed directory and moves the form's
+  local path; a clear only nulls that path. Verified by
+  `test/food_photo_clear_legacy_edit_test.dart` (`clearing a legacy library
+  food's photo waits for the Save tap`) and `test/food_form_pick_saves_test.dart`
+  (groups `FoodForm: a picked photo waits for Save (S-92a.5)` and `FoodForm: a
+  cleared photo waits for Save (S-92a.6)`).
+- `onImageChanged` reports that form-local path, because a pick or a clear is
+  neither a rendered field nor an `EditableText` and is therefore invisible to
+  the probe's field walk. All three hosts mark a `FoodFormUnsavedProbe` with
+  it; the probe compares the reported path with the one the screen opened
+  with, so New Food (which starts from no photo) is dirty after a pick and
+  clean again after pick-then-clear, while the two edit screens start from the
+  stored `imagePath`. Verified by `test/nutrition_test.dart`, group
+  `AddFoodScreen — New Food form unsaved guard (S-2902)` ·
+  "a picked photo counts as unsaved work (S-2902)" and "picking then
+  clearing the photo is clean again (S-2902)", and by
+  `test/food_photo_clear_legacy_edit_test.dart`.
+- **Select-all on focus is per-field, not form-wide** (S-004..S-006):
+  the numeric entry fields each carry a per-field `FocusNode` wired
+  to the shared `bindSelectAllOnFocus` helper, so tapping a
+  pre-filled field highlights the entire value and the user can
+  retype without first clearing it; empty fields are a no-op. The
+  free-text name field and the multi-line notes field are
+  intentionally NOT wired — they keep default cursor-placement
+  behaviour.
 - All colors come from `OmniTheme.colors` /
   `ThemeData.colorScheme`. No hardcoded colors.
+
+The photo tile's three-tier photo precedence (user-picked
+`imagePath`, then the bundled photo resolved from the food's id, then
+placeholder) and the clear-overlay gating (the shipped photo is the
+food's baseline, not the user's) are the shipped-photo rules verified
+by `test/food_form_shipped_photo_test.dart` (S-001..S-006). The group
+dropdown's orphan-category handling is verified by
+`test/food_form_orphan_category_test.dart` (group 'FoodForm: orphan
+category (S-001 / S-002)'). Decimal entry and per-field select-all
+are verified by `test/food_form_decimals_and_autofocus_test.dart`
+(groups 'FoodForm: decimal macros (S-001/S-002/S-003)' and 'FoodForm:
+auto-select on focus (S-004/S-005/S-006)').
 
 **Test seam**: `handlePickedImage(XFile)` and `clearImage()` are
 both `@visibleForTesting` on the form's state. Production callers
 go through the OS picker via `_pickImage(ImageSource)` and the
 × overlay via the `FoodFormImageTile.onClear` callback; tests
 invoke the seams directly to bypass the platform channel and
-overlay tap.
+overlay tap. Neither seam saves — both move the form-local path
+and report it through `onImageChanged`.
 
 ---
 
-### `_CategoriesTab` (private to `AddFoodScreen`)
+### `FoodFormUnsavedProbe`
+
+**File**: `lib/features/nutrition/widgets/food_form_unsaved_probe.dart`
+
+The unsaved-work probe every `FoodForm` host shares: `EditFoodScreen`,
+`_NewFoodFormScreen` and the legacy library edit shim each build one with
+the form's `GlobalKey` and mark it from `FoodForm.onImageChanged` and
+`FoodForm.onServingChanged` (the serving toggle and chips are not rendered
+fields, and the serving-name and package-size boxes only exist after the
+toggle moves, so a serving-only edit is otherwise invisible; verified by
+`test/edit_default_food_test.dart` `S-13335`), so the three guards cannot
+drift apart. A plain class, not a widget. It reads the
+form's rendered `FormField`s for its baseline and reports a later difference
+as unsaved work; `initialImagePath` is the stored photo a pick or a clear is
+compared against. The blank-form and edited-form outcomes are verified by
+`test/nutrition_test.dart` (groups `AddFoodScreen — New Food form unsaved
+guard (S-2902)` and `AddFoodScreen — legacy edit shim unsaved guard
+(S-2902)`) and by `test/edit_food_save_test.dart` (`S-92a.3: back with edits
+asks; Discard drops them and Keep editing stays`, `S-92a.4: back on an
+untouched form closes with no dialog`).
+
+---
+
+### `_CatalogRow` (private to `AddFoodScreen`)
 
 **File**: `lib/features/nutrition/add_food_screen.dart` (private
-`_CategoriesTab`, `_GroupRow`, `_UngroupedRow`, `_DeleteGroupDialog`)
+`_CatalogRow`, `_CatalogRowState`)
 
-The third tab of `AddFoodScreen`. Manages the food groups that
+One row of the Library tab, one per catalog food. The whole row is the
+toggle: a food not in the user's library is added by tapping the row (the
+trailing `Add` button, key `add_catalog_food_<id>`, does the same); a food
+in the library is removed by tapping the row, which asks
+`Remove <name> from Foods I Eat?` first (keys `food-remove-cancel` /
+`food-remove-confirm`) and unlogs the food for today on confirm. An in-list
+row shows the user's copy with a primary-colour outline (key
+`library_row_outline_<id>`) and a pencil `IconButton` (key
+`edit_catalog_food_<id>`, tooltip `Edit food`) — the pencil sits on every
+Library row, a not-in-list bundled row included — that opens
+`EditFoodScreen`: with the library copy for an in-list bundled food, with
+the catalog row itself for a bundled food not in the list and for a
+user-created food. The row also carries a check (key
+`remove_catalog_food_<id>`)
+where the red trash button used to be. The row's text is two lines:
+`<cal> cal per <serving>` and `<P>P · <C>C · <F>F`, the serving built by
+`foodServingLabel` in `lib/core/utils/food_helpers.dart`. Verified by
+`test/library_row_toggle_test.dart` (group `Library row toggle (plan 77a
+S-12710..S-12717)`: `S-12710: row tap adds a not-in-list food to the
+library`, `S-12711: in-list row tap asks before removing; Cancel keeps,
+Confirm removes and unlogs today`, `S-12712: the in-list row carries the
+primary outline; the not-in-list row has none`, `S-12713: the pencil on an
+in-list bundled food opens its copy; Save asks and makes a food of your
+own`, `S-12714: the pencil does not toggle the row`, `S-12715: the row macro
+line reads the copy after an edit`, `S-12716: source guard on
+_CatalogRowState`, `S-12717: a user-created (non-bundled) in-list food
+has no Reset button`; `test/edit_default_food_test.dart`, group
+`Edit a default food (plan 133)`: `S-13310 the pencil shows on a
+not-in-list default row and opens the editor on it`) and by
+`test/screen_widget_test.dart` (`Library row
+tap adds the food; its pencil opens EditFoodScreen (S-001)`).
+
+---
+
+### `save_default_as_own_food.dart` (screen-level helper)
+
+**File**: `lib/features/nutrition/widgets/save_default_as_own_food.dart`
+
+The copy flow's pair of helpers under an `EditFoodScreen` save of a default
+food (`FoodLibraryState.isDefaultFood`). `confirmSaveAsOwnFood(context, food: …)`
+presents the non-destructive `Save as your own food?` `ConfirmationDialog`
+(body naming the default's own name; keys `food-copy-cancel` /
+`food-copy-confirm`), and Cancel returns to the form with nothing written
+and no error message. `saveDefaultAsOwnFood` carries the save itself: it
+calls `FoodLibraryState.createOwnCopyOfDefault`, and when the default was
+in the list and logged today it unlogs the old row, swaps it for the new
+food and logs the same amount again — putting the amount back on the row
+that is in the list when a step fails, with the editor left open and the
+`Could not save food` message shown once. Verified by
+`test/edit_default_food_test.dart` (group `Edit a default food (plan 133)`:
+`S-13311 Save on an edited default asks first; Cancel writes nothing; an
+untouched form pops with no dialog`, `S-13328 Cancel shows no error
+snackbar`, `S-13313 Confirm on an in-list logged default replaces it and
+carries today's amount`, `S-13319 Cancel on the dialog leaves the log
+alone`, `S-13327 a failed swap keeps today's log`; top level: `S-13318
+source guards pin the copy flow`, which asserts the helper source carries
+`food-copy-confirm`) and by `test/food_library_own_copy_test.dart`
+(groups `FoodLibraryState create own copy (Mock)` / `(Hive)`:
+`createOwnCopyOfDefault not in list adds nothing (S-13317)`,
+`createOwnCopyOfDefault in list swaps the row (S-13317)`).
+
+---
+
+### `_LibrarySectionHeader` (private to `AddFoodScreen`)
+
+The category heading in the Library list (key `library_section_<title>`): the
+category name in the section-title style, with no divider between it and its
+first food. Shown only while the search box is empty. Covered by
+`test/library_grouping_test.dart` (`S-12820`, `S-12825`).
+
+### `_YoursTag` and `_UserFoodRow` (private to `AddFoodScreen`)
+
+`_YoursTag` is the small primary-colour `Yours` label at the end of a food's
+macros line (the private `_MacroLine` places it, so the name keeps the full
+width). A `_CatalogRow` shows it (key `yours_tag_<foodId>`) when the food is not
+bundled;
+`_UserFoodRow`, now used only for older library-only custom foods, always shows
+it and keeps its red delete button (`delete_user_food_<id>`). Both rows appear in
+the one Library list. Covered by `test/library_merge_test.dart` (`S-12811`,
+`S-12812`).
+
+### `_GroupsTab` (private to `AddFoodScreen`)
+
+**File**: `lib/features/nutrition/add_food_screen.dart` (private
+`_GroupsTab`, `_GroupRow`, `_UngroupedRow`, `_DeleteGroupDialog`)
+
+The second tab of `AddFoodScreen`. Manages the food categories that
 organize the user's library. Layout (top to bottom):
 
 - A scrollable list of `_GroupRow` widgets, one per active
   `FoodGroup` (alphabetical, case-insensitive).
 - A trailing read-only `_UngroupedRow` (foods with `groupId == null`).
-- A "+ New Group" `OutlinedButton.icon` (key `new_group_button`)
-  that calls `FoodLibraryState.createFoodGroup('New Group')`.
+- No bottom button: the host's header "+" (`OmniHeaderAddButton`, read
+  aloud `New Category`, key `new_group_button`) calls
+  `FoodLibraryState.createFoodGroup('New Category')`.
 
 The list rebuilds via `ListenableBuilder(listenable: foodLibraryState)`
 so add / rename / archive operations reflect immediately.
 
-### `_GroupRow` (private to `_CategoriesTab`)
+### `_GroupRow` (private to `_GroupsTab`)
 
 **File**: `lib/features/nutrition/add_food_screen.dart`
 
 One editable food group: inline rename plus delete.
 
-### `_UngroupedRow` (private to `_CategoriesTab`)
+### `_UngroupedRow` (private to `_GroupsTab`)
 
 **File**: `lib/features/nutrition/add_food_screen.dart`
 
-The synthetic "Ungrouped" bucket. Informational only — it cannot be renamed or deleted, because it
+The synthetic "Uncategorized" bucket. Informational only — it cannot be renamed or deleted, because it
 is not a stored `FoodGroup` but the absence of one.
 
 ### `_DeleteGroupDialog`
 
-Confirmation dialog for deleting a non-empty group. Title
-"Delete group?"; body shows the count of foods to be moved and a
-`DropdownButtonFormField` (key `delete_group_destination`) for
-the destination group. Options: "Ungrouped" (the default, value
-`null`) plus every other active group. Actions: `TextButton("Cancel")`
-returns the private `_cancelledSentinel`; `FilledButton("Delete")`
-(red `theme.colorScheme.error`, key `delete_group_confirm`)
-returns the picked destination id (which may be `null` for
-Ungrouped). The caller uses the sentinel to distinguish cancel from
-"Ungrouped".
+Confirmation dialog for deleting a non-empty group: it asks where the
+affected foods should move (Uncategorized by default, or another
+active group) and returns the picked destination, distinguishing
+cancel from an Uncategorized pick via a private sentinel. Cancel leaves
+the category and its foods unchanged and does not throw. Verified by
+`test/nutrition_test.dart` (group 'AddFoodScreen — Groups tab', tests
+'trash icon on a non-empty group shows the confirm dialog' and 'Cancel on a
+non-empty category closes the dialog without throwing and keeps the category
+and its foods (S-2910)').
 
 ---
 

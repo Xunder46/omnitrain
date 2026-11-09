@@ -21,15 +21,19 @@
 
 import 'package:flutter/material.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
+import 'package:omnitrain/core/navigation/omni_navigator.dart';
 import 'package:omnitrain/core/services/exercise_library_service.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
+import 'package:omnitrain/core/utils/muscle_display.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 
 import 'exercise_detail_view_screen.dart';
+import 'exercise_editor_screen.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 class ExerciseLibraryDetailScreen extends StatefulWidget {
   final Exercise exercise;
@@ -51,7 +55,8 @@ class ExerciseLibraryDetailScreen extends StatefulWidget {
 class _ExerciseLibraryDetailScreenState
     extends State<ExerciseLibraryDetailScreen> {
   List<Discipline> _disciplines = const [];
-  List<MuscleGroup> _muscleGroupsForExercise = const [];
+  List<MuscleGroup> _primaryMuscles = const [];
+  List<MuscleGroup> _secondaryMuscles = const [];
 
   Exercise get exercise => widget.exercise;
   ExerciseLibraryState get libraryState => widget.libraryState;
@@ -70,11 +75,15 @@ class _ExerciseLibraryDetailScreenState
     if (workoutState.disciplines.isEmpty) {
       await workoutState.loadDisciplines();
     }
-    final muscles = await workoutState.getExerciseMuscleGroups(exercise.id);
+    final links =
+        await workoutState.getExerciseMuscleLinks(exercise.id) ??
+        const <ExerciseMuscleLink>[];
+    final groups = workoutState.muscleGroups;
     if (!mounted) return;
     setState(() {
       _disciplines = workoutState.disciplines;
-      _muscleGroupsForExercise = muscles;
+      _primaryMuscles = musclesWithRole(links, groups, MuscleRole.primary);
+      _secondaryMuscles = musclesWithRole(links, groups, MuscleRole.secondary);
     });
   }
 
@@ -90,48 +99,38 @@ class _ExerciseLibraryDetailScreenState
     try {
       final created = await libraryState.copyAsCustom(exercise);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Copied as "${created.name}"')));
+      OmniMessage.show(context, 'Copied as "${created.name}"');
       Navigator.of(context).pop();
     } on BuiltInExerciseImmutableError {
       // Defensive — UI prevents this path.
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Built-in exercises cannot be copied.')),
-      );
+      OmniMessage.error(context, 'Built-in exercises cannot be copied.');
     }
   }
 
   Future<void> _onEdit(BuildContext context) async {
-    // PR 8 reuses the PR 7 read-only details surface for inspection;
-    // edit body lives behind the editor screen via the existing
-    // ExerciseEditorScreen in edit mode. We surface a future
-    // rename-flow via the library service directly here so the
-    // edit action does not require a full editor round-trip.
+    // Edit opens the full editor (name, modality, capabilities, muscles).
+    // The editor persists through `WorkoutState`, so on the way back the
+    // list is reloaded and the detail screen steps aside to it.
     final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    if (!context.mounted) return;
-    final newName = await showDialog<String>(
-      context: context,
-      builder: (ctx) => _RenameDialog(initialName: exercise.name),
+    final saved = await OmniNavigator.push<Exercise>(
+      context,
+      (_) => ExerciseEditorScreen(
+        workoutState: workoutState,
+        initialExercise: exercise,
+      ),
     );
-    if (newName == null || newName.trim().isEmpty) return;
-    try {
-      await libraryState.renameCustom(exercise: exercise, newName: newName);
-      navigator.pop();
-    } on BuiltInExerciseImmutableError {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Built-in exercises cannot be renamed.')),
-      );
-    }
+    if (saved == null || !mounted) return;
+    await libraryState.reload();
+    navigator.pop();
   }
 
   Future<void> _onRemove(BuildContext context) async {
-    // Capture navigator + messenger before the await so we can use
-    // them safely after `planRemoval` resolves.
+    // Capture navigator, messenger and theme before the await so we
+    // can use them safely after `planRemoval` resolves.
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     final plan = await libraryState.service.planRemoval(exercise.id);
     if (!context.mounted) return;
     final confirmed = await showDialog<bool>(
@@ -143,8 +142,10 @@ class _ExerciseLibraryDetailScreenState
       await libraryState.removeExercise(exercise);
       navigator.pop();
     } on BuiltInExerciseImmutableError {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Built-in exercises cannot be removed.')),
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Built-in exercises cannot be removed.',
       );
     }
   }
@@ -174,7 +175,8 @@ class _ExerciseLibraryDetailScreenState
                     key: const Key('exercise_library_detail_metadata'),
                     exercise: exercise,
                     discipline: _resolveDiscipline(exercise.disciplineId),
-                    muscleGroups: _muscleGroupsForExercise,
+                    primaryMuscles: _primaryMuscles,
+                    secondaryMuscles: _secondaryMuscles,
                     contentPadding: EdgeInsets.zero,
                   ),
                   const SizedBox(height: 24),
@@ -276,77 +278,6 @@ class _ManagementActionBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
       ),
-    );
-  }
-}
-
-class _RenameDialog extends StatefulWidget {
-  final String initialName;
-  const _RenameDialog({required this.initialName});
-
-  @override
-  State<_RenameDialog> createState() => _RenameDialogState();
-}
-
-class _RenameDialogState extends State<_RenameDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialName);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AlertDialog(
-      title: const Text('Rename exercise'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        decoration: const InputDecoration(
-          labelText: 'New name',
-          border: OutlineInputBorder(),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          style: TextButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(
-                OmniTheme.buttonUtilityRadius,
-              ),
-            ),
-          ),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final value = _controller.text.trim();
-            if (value.isEmpty) return;
-            Navigator.pop(context, value);
-          },
-          style: FilledButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(
-                OmniTheme.buttonUtilityRadius,
-              ),
-            ),
-          ),
-          child: Text(
-            'Save',
-            style: TextStyle(color: theme.colorScheme.onPrimary),
-          ),
-        ),
-      ],
     );
   }
 }

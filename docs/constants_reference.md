@@ -209,6 +209,53 @@ Default target values when creating new sets/entries:
 
 ---
 
+## Session Widget Constants
+
+Plan 39 pinned these sizes as named constants so tests and docs can name them
+instead of literals.
+
+**File**: `lib/widgets/session/inline_metric_editor.dart`
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `kCountUpDigitsFontSize` | `112` | Font size of the live count-up readout (interval and hold elapsed digits, `MetricEmphasisTier.hero`) |
+| `kRingDigitsFontSize` | `48` | Font size of the ring digits; the session detail view passes it as `valueFontSize` |
+
+**File**: `lib/widgets/session/set_segment_bar.dart`
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `kSetBarCaptionedHeight` | `34` | Set-bar tap-cell height when captions are shown |
+| `kSetBarPlainHeight` | `18` | Set-bar tap-cell height without captions |
+| `kSetBarCaptionMaxSets` | `5` | Above this many entries captions are dropped entirely |
+
+**File**: `lib/widgets/session/metric_crown_widget.dart`
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `MetricStepCalc.maxDurationSeconds` | `36000` | Duration ceiling of the steppers and the typed popup; the round-length `showDurationEntryDialog` callers pass it as `maxSecs` |
+
+---
+
+## Timer Digit Formatting
+
+**File**: `lib/core/utils/date_utils.dart`
+
+- `OmniDateUtils.formatTimerDigits(int seconds)` — the digits a timer is read
+  in: `mm:ss` (both padded) below an hour, `h:mm:ss` (hour unpadded) from it,
+  negative → `00:00`. Used by the count-up digits, the session header timer
+  (live and edit), the rest chip, the round-length row, the `… total`
+  lines and the logger's logged captions — timed, drill and round captions
+  read the same format since plan 44 D-5 (`_loggedValueText` in
+  `lib/features/session/workout_session_detail_view.dart`; S-5108).
+- `OmniDateUtils.formatClock` — the caption shape (`m:ss`), unchanged. It
+  remains for Stats (`native_value_format.dart`) and the watch
+  (`lib/watch/logging/*`); the session detail view no longer calls it.
+
+Verified by `test/utils_test.dart` (group `OmniDateUtils.formatTimerDigits`).
+
+---
+
 ## Health Sync Constants
 
 **File**: `lib/core/constants/health_constants.dart`
@@ -221,7 +268,7 @@ plugin types so the mapping logic is testable everywhere; the native gateway tra
 |--------|---------|
 | `HealthPrefs` | Preference keys for the two toggles and the written-session ledger, plus the ledger cap and read lookback window |
 | `HealthToggleState` | `off` / `on` / `permissionDenied` — the third state is what lets a denied toggle stay visibly denied instead of reading as off |
-| `HealthActivityKind` | App-owned workout vocabulary (`strength`, `cardio`, `flexibility`, `sport`, `conditioning`, `other`) that modality maps onto |
+| `HealthActivityKind` | App-owned workout vocabulary (`strength`, `cardio`, `flexibility`, `sport`, `yoga`, `conditioning`, `other`) that modality maps onto |
 | `parseHealthToggleState` / `healthToggleStateValue` | The single serialization pair for the toggle states; unknown persisted values resolve to `off` |
 
 ---
@@ -237,7 +284,7 @@ owner; the file itself states each rule.
 |----------|-----------------|
 | `kMixStripWeeks` | How many weeks a weekly strip holds |
 | `kTrainingLoadBaselineWeeks` | How many 7-calendar-day blocks the baseline spans |
-| `kTrainingLoadMinRatedWeeks` | How many rated baseline weeks the load measure needs before it is shown |
+| `kTrainingLoadMinRatedWeeks` | How many of the last 12 seven-day weeks, current ones included, must hold a rated session for the load measure to be shown |
 | `kTrainingLoadMaxUnratedShare` | The largest share of a window's time that may be unrated for the load measure to be shown; the boundary is inclusive |
 
 Verified by `test/training_load_test.dart` (the constants group).
@@ -274,6 +321,7 @@ reader can find the owner; the file itself states each rule.
 | `kSignalDismissalDays` | How many local calendar days a dismissal hides its signal |
 | `kSignalDismissalsKey` | The repository preference key the dismissal store persists under |
 | `kSignalQuietLine` | The sentence a gate-met load reports when no card qualifies |
+| `kSignalQuietLineWithWaiting` | The shorter sentence the layer draws instead when waiting lines sit under the quiet line |
 | `kSignalPositiveLabel` / `kSignalCautionLabel` | The two kind labels, resolved by `signalKindLabel` |
 
 Verified by `test/signals_framework_test.dart` (the selection group, the kind
@@ -510,25 +558,38 @@ See [Design System](design_system.md) for the full token reference. Key categori
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `kWaterGlassMl` | `250` | Milliliters per logged glass |
+| `kWaterGlassMl` | `250` | Milliliters per tap with the ml unit |
+| `kWatchWaterTapsPerDay` | `500` | Most watch water taps the phone records for one day |
+| `kWaterOzStepMl` | `237` | Milliliters per tap with the fl oz unit (8 fl oz rounded) |
+| `waterStepMlFor(unit)` | function | The per-tap step: `kWaterGlassMl` for the ml unit, `kWaterOzStepMl` for the fl oz unit |
+| `waterGlassesFor(volumeMl, [stepMl])` | function | The whole-tap count the watch wire sends for a stored volume: whole taps of the phone's current per-tap step (250 ml with kg, 237 ml with lbs; `kWaterGlassMl` when no step is given), so four 8 oz taps read 4; the one place it is derived. Verified by `test/water_tap_ledger_test.dart` (`waterGlassesFor counts whole taps of the given step (S-13220)`), `test/watch_sync_request_handler_test.dart` (the `S-13221` test) and `test/watch_water_log_test.dart` (the `S-13222` test) |
 
 Water has **no goal** — like macros and sodium it is tracked for the historical
-record only. The day's stored **volume in ml** is the source of truth; the
-on-screen glass count is derived at the display boundary
-(`volumeMl ~/ kWaterGlassMl`). Never hardcode `250` — go through the constant
-so storage, unit, and widget agree.
+record only. The day's stored **volume in ml** is the source of truth and the
+on-screen total is shown in the user's volume unit (`750 ml`, `1.5 L`, `48 oz`).
+Verified by `test/utils_test.dart` (group `UnitFormatter volume (S-13201,
+S-13202, S-13203)`: `formatWaterTotal (ml unit): ml below 1000, litres with at
+most two decimals above` and `formatWaterTotal (fl oz unit): whole rounded
+ounces`). The per-tap step is 250 ml with the ml unit and 237 ml with the fl oz
+unit — verified by `test/water_tap_ledger_test.dart` (group `water constants
+(D-11)`: `waterStepMlFor: 250 ml by default, 237 ml for the floz unit
+(S-13203)`) and `test/utils_test.dart` (`waterStepLabel: the per-tap amount for
+each unit (S-13203)`). Never hardcode a step — go through the constants so
+storage, unit, and widget agree.
 
 ### `catalog_version.dart`
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `bundledCatalogVersion` | `3` | Content version of the bundled catalog (exercises, capability / muscle-group / equipment links, food catalog, demo routines) |
+| `bundledCatalogVersion` | `18` | Content version of the bundled catalog (exercises, capability and muscle-group links, food catalog, demo routines; equipment, equipment links and the default food groups are written at first install only; the refresh also delivers sport categories, disciplines, units, metric definitions and effort kinds, tags) |
 
 At app start the device compares its stored version against
 `bundledCatalogVersion`; when the bundled version is newer,
 `CatalogRefreshService` writes new / changed entries in place. **Bumping this
-integer by 1 is the only step required for a catalog change to reach existing
-users.** Versions are monotonically increasing integers; there is no
+integer by 1 is the only step required for an exercise, capability, muscle-link,
+category, discipline, unit, metric, effort-kind, tag, food or demo-routine
+change to reach existing users.** Equipment, equipment links and the
+default food groups are not delivered by the refresh. Versions are monotonically increasing integers; there is no
 cross-version schema compatibility story, because the refresh always reads the
 bundled catalog directly.
 
@@ -541,7 +602,7 @@ strings persist across app upgrades; keep them stable.
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `currentDataVersion` | `15` | Version a device reaches once the last consolidated migration step has run |
+| `currentDataVersion` | `18` | Version a device reaches once the last consolidated migration step has run; the last step is a one-off back-fill of past routine sessions' modality (`backfillRoutineSessionModality`, plan 122, retire after launch); step 17 removed the retired seed template rows (`retireOrphanTemplateRows`, ids in `lib/core/constants/retired_template_seed.dart`) |
 
 Replaces the former ~13 independent one-time `bool`-gated steps with a single
 ordered sequence tracked by the device's `data_version` integer. Steps are

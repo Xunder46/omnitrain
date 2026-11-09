@@ -193,6 +193,9 @@ List<String> _sectionTexts(WidgetTester tester) => tester
         matching: find.byType(Text),
       ),
     )
+    // The card's tap hint (D-3209) is not a row; it is asserted where it
+    // belongs (S-3213).
+    .where((text) => text.key != const Key('session_distance_hint'))
     .map((text) => text.data ?? '')
     .toList();
 

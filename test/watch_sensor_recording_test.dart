@@ -637,6 +637,22 @@ void main() {
         );
       }
     });
+    test('S-4810 the exercise rule answers the contract\'s cases', () {
+      final cases = (_contract()['exerciseGpsCases']! as List)
+          .map((entry) => (entry as Map).cast<String, Object?>())
+          .toList();
+
+      expect(cases, hasLength(7));
+      for (final entry in cases) {
+        expect(
+          WatchGpsPolicy.coversDistance(
+            (entry['capabilities']! as List).cast<String>(),
+          ),
+          entry['gps'],
+          reason: 'the shared case $entry diverged from the Dart rule',
+        );
+      }
+    });
   });
 
   group('Sensor storage', () {

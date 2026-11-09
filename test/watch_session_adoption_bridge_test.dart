@@ -34,6 +34,8 @@
 // output and the wiring is part of what these tests prove. Plain `test()`: no
 // widget is involved.
 
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/block_types.dart';
 import 'package:omnitrain/core/constants/capability.dart';
@@ -241,6 +243,18 @@ Map<String, Object?> _s1Envelope() => _snapshot(
   messageId: 'msg-s1',
 );
 
+/// The `session_started` report that opens `s-w1`'s row before any snapshot:
+/// a free session, no plan (D-8977).
+Map<String, Object?> _report() => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': 'msg-start-s-w1',
+  'sessionId': 's-w1',
+  'type': 'session_started',
+  'origin': 'watch',
+  'sentAt': '2026-10-05T10:00:00Z',
+  'payload': {'sessionId': 's-w1', 'at': '2026-10-05T10:00:00Z'},
+};
+
 /// The rows a phone session the user is already running has: its own id family,
 /// one segment, one effort per exercise — and, for an active one, a logged entry.
 Future<void> _seedPhoneSession(
@@ -391,6 +405,142 @@ void main() {
     expect(dumps['Hive'], dumps['Mock']);
   });
 
+  test('S-8980 the first snapshot fills a report-opened row with the ladder',
+      () async {
+    final dumps = <String, Map<String, Object?>>{};
+    final reference = <String, Map<String, Object?>>{};
+
+    for (final factory in harnessFactories) {
+      final harness = factory();
+      final repository = await harness.open();
+      try {
+        final phone = await _phone(repository);
+
+        // 1. The report opens the row: a segment, no effort (D-8977).
+        await phone.router.receive(_report());
+        expect(
+          await repository.getSession('s-w1'),
+          isNotNull,
+          reason: '${harness.name}: the report opened the row',
+        );
+        expect(
+          await importedEfforts(repository, 's-w1'),
+          isEmpty,
+          reason: '${harness.name}: D-8977 the report copies no effort',
+        );
+
+        // 2. The FIRST snapshot brings the ladder (D-8978).
+        await phone.router.receive(_s1Envelope());
+        final efforts = await importedEfforts(repository, 's-w1');
+        expect(
+          [for (final effort in efforts) effort.id],
+          ['sl-1', 'sl-2'],
+          reason:
+              '${harness.name}: the first snapshot brings the ladder',
+        );
+        expect(
+          [for (final effort in efforts) effort.orderIndex],
+          [0, 1],
+          reason: '${harness.name}: the ladder in the snapshot\'s order',
+        );
+        final segments = await repository.getSessionSegments('s-w1');
+        expect(
+          segments,
+          hasLength(1),
+          reason: '${harness.name}: one segment holds the whole ladder',
+        );
+        expect(
+          [for (final effort in efforts) effort.segmentId],
+          [segments.single.id, segments.single.id],
+          reason: '${harness.name}: both efforts on the one segment',
+        );
+        expect(
+          phone.state.currentSession?.id,
+          's-w1',
+          reason: '${harness.name}: the phone holds the session',
+        );
+        expect(
+          phone.state.hasActiveSession,
+          isTrue,
+          reason: '${harness.name}: the placeholder row is no longer empty',
+        );
+        expect(phone.failures, isEmpty, reason: '${harness.name}: no failure');
+
+        dumps[harness.name] = await importedRows(repository, 's-w1');
+
+        // 4. A second snapshot writes nothing (D-2: no rewrite, no doubling).
+        await phone.router.receive(
+          _snapshot(
+            sessionId: 's-w1',
+            revision: 4,
+            currentExerciseIndex: 1,
+            exercises: [_slot('sl-1', 'ex-bench'), _slot('sl-2', 'ex-squat')],
+            messageId: 'msg-again',
+          ),
+        );
+        expect(
+          await importedRows(repository, 's-w1'),
+          dumps[harness.name],
+          reason: '${harness.name}: a snapshot never rewrites its rows',
+        );
+        expect(
+          [for (final effort in await importedEfforts(repository, 's-w1')) effort.id],
+          ['sl-1', 'sl-2'],
+          reason: '${harness.name}: no doubled effort',
+        );
+        expect(
+          phone.failures,
+          isEmpty,
+          reason: '${harness.name}: still no failure',
+        );
+      } finally {
+        await harness.close();
+      }
+    }
+
+    // 3. The ladder's rows equal an ordinary first adoption's (S-1's): the
+    // same efforts, and the same first entries the adoption seeds. Only the
+    // efforts and the observations are compared — the session row is the
+    // report's own (its stamps and title are D-8977's business) — and the
+    // harnesses are compared one at a time, each against its own kind.
+    for (final factory in harnessFactories) {
+      final harness = factory();
+      final referenceRepository = await harness.open();
+      try {
+        await (await _phone(referenceRepository)).router.receive(_s1Envelope());
+        reference[harness.name] = await importedRows(referenceRepository, 's-w1');
+      } finally {
+        await harness.close();
+      }
+    }
+
+    expect(
+      dumps['Mock']!['efforts'],
+      reference['Mock']!['efforts'],
+      reason: 'S-8980 the placeholder takes the ladder an adoption writes '
+          '(Mock)',
+    );
+    expect(
+      dumps['Mock']!['observations'],
+      reference['Mock']!['observations'],
+      reason: 'S-8980 the first entries equal an ordinary adoption\'s (Mock)',
+    );
+    expect(
+      dumps['Hive']!['efforts'],
+      reference['Hive']!['efforts'],
+      reason: 'S-8980 the placeholder takes the ladder an adoption writes '
+          '(Hive)',
+    );
+    expect(
+      dumps['Hive']!['observations'],
+      reference['Hive']!['observations'],
+      reason: 'S-8980 the first entries equal an ordinary adoption\'s (Hive)',
+    );
+
+    // 5. The two implementations agree, as S-1's adoption does.
+    expect(dumps['Hive'], dumps['Mock']);
+  });
+
   test('S-1 a restart resolves the same session and slot ids', () async {
     for (final factory in harnessFactories) {
       final harness = factory();
@@ -417,6 +567,49 @@ void main() {
           ['sl-1', 'sl-2'],
           reason: '${harness.name}: the slot ids survive the restart unchanged',
         );
+      } finally {
+        await harness.close();
+      }
+    }
+  });
+
+  test('S-8980 a row that already holds an effort is loaded as it is, never '
+      'filled from the snapshot', () async {
+    // D-8978's other arm: only an effort-less row is a placeholder. A row the
+    // phone already structured (here one it trained: one effort and a logged
+    // set) is the structure authority (D-2), so a snapshot that names one more
+    // slot is not written into it by this first meeting; the phone's own
+    // ladder stays as it is.
+    for (final factory in harnessFactories) {
+      final harness = factory();
+      final repository = await harness.open();
+      try {
+        await _seedPhoneSession(
+          repository,
+          sessionId: 's-w1',
+          efforts: const [('sl-1', 'ex-bench')],
+          loggedEffortId: 'sl-1',
+        );
+        final before = await importedRows(repository, 's-w1');
+
+        final phone = await _phone(repository);
+        await phone.router.receive(_s1Envelope());
+
+        expect(
+          [
+            for (final effort in await importedEfforts(repository, 's-w1'))
+              effort.id,
+          ],
+          ['sl-1'],
+          reason: '${harness.name}: the snapshot\'s second slot is not written '
+              'into a row that already holds an effort',
+        );
+        expect(
+          await importedRows(repository, 's-w1'),
+          before,
+          reason: '${harness.name}: the row is loaded, not rewritten',
+        );
+        expect(phone.failures, isEmpty, reason: '${harness.name}: no failure');
       } finally {
         await harness.close();
       }
@@ -1543,6 +1736,356 @@ void main() {
         first['revision'],
         reason: 'S-1411 and the revision does not move for an unchanged ladder',
       );
+    });
+
+    // Plan 2026-10-15-36b, Phase A2 (D-3, A5, I-1): the planned values ride the
+    // ladder the wrist dials each set in from, so an edit to one of them is a
+    // changed ladder and states a newer revision — the phone's own stated
+    // revision must stay monotonic, exactly as a length-only edit keeps it
+    // (D-1410).
+    test('S-3622 a planned-value edit moves the revision', () async {
+      final at = _adoptedAt.millisecondsSinceEpoch;
+      final repository = await _repository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-planned',
+        efforts: const [('sx-bench', 'ex-bench')],
+        kinds: const [BlockTypes.set],
+      );
+      // Three planned sets of 10 reps at 40 kg: the phone's rows, none of them
+      // logged, which is what a routine started on the phone holds (A1).
+      for (var number = 0; number < 3; number++) {
+        await repository.createObservation(
+          repsRow('sx-bench', number, 10, atMs: at),
+        );
+        await repository.createObservation(
+          weightRow('sx-bench', number, 40.0, atMs: at),
+        );
+      }
+
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-planned');
+
+      final first = (await phone.bridge.projectSession(null))!;
+      expect(
+        slotOf(first, 'sx-bench')['plannedSets'],
+        [
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+        ],
+        reason: 'the fixture: three planned sets, and the projection sends them',
+      );
+
+      final unchanged = (await phone.bridge.projectSession(null))!;
+      expect(
+        unchanged['revision'],
+        first['revision'],
+        reason:
+            'S-3622 nothing changed between the two projections, so the ladder '
+            'is the same and the revision already stated stands',
+      );
+
+      // The user edits the first planned set's reps in the session screen.
+      await phone.state.updateEntryValue('sx-bench', 0, 'reps', 12);
+
+      final second = (await phone.bridge.projectSession(null))!;
+      expect(
+        slotOf(second, 'sx-bench')['plannedSets'],
+        [
+          {'reps': 12, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+        ],
+        reason: 'the edit reaches the projection, on the set it was made for',
+      );
+      expect(
+        second['revision'],
+        (first['revision']! as int) + 1,
+        reason:
+            'D-3 the wrist starts set 1 from what the phone sends, so a '
+            'planned-value edit is a changed ladder and must state a newer '
+            'revision (A5)',
+      );
+      expect(
+        jsonEncode(second),
+        isNot(jsonEncode(first)),
+        reason: 'S-3622 and the payload the wrist is asked to take differs',
+      );
+
+      final third = (await phone.bridge.projectSession(null))!;
+      expect(
+        third['revision'],
+        second['revision'],
+        reason:
+            'S-3622 a ladder that has not changed again keeps the revision the '
+            'edit stated',
+      );
+    });
+  });
+
+  // Plan 129 (P1b, D-8965/D-8968 + D-8972): a wrist `session_started` report
+  // is judged before anything is written. A report that is not a wrist report
+  // of a start, or names a plan the calendar cannot start (unknown, already
+  // completed or already linked), writes nothing at all and throws nothing.
+  // These exercise the bridge directly: the graph tests that prove the wiring
+  // and the parity live in `test/watch_session_import_test.dart`.
+  group("S-8964 the start report is judged before anything is written", () {
+    late MockWorkoutRepository repository;
+
+    setUp(() async {
+      repository = (await _repository()) as MockWorkoutRepository;
+    });
+
+    Future<void> seedPlan(String id, {required String templateId}) async {
+      await repository.createTemplate(
+        WorkoutTemplate(
+          id: templateId,
+          ownerUserId: 'user-129',
+          name: 'Push',
+          description: null,
+          focusModality: null,
+          primaryDisciplineId: null,
+          note: null,
+          isBuiltInDemo: false,
+          createdAtMs: _adoptedAt.millisecondsSinceEpoch,
+          updatedAtMs: _adoptedAt.millisecondsSinceEpoch,
+        ),
+      );
+      await repository.createPlannedSession(
+        PlannedSession(
+          id: id,
+          ownerUserId: 'user-129',
+          scheduledDateMs: DateTime(2026, 10, 5).millisecondsSinceEpoch,
+          modality: null,
+          title: null,
+          note: null,
+          isCompleted: false,
+          linkedSessionId: null,
+          routineTemplateId: templateId,
+          createdAtMs: _adoptedAt.millisecondsSinceEpoch,
+          updatedAtMs: _adoptedAt.millisecondsSinceEpoch,
+        ),
+      );
+    }
+
+    Map<String, Object?> startReport({
+      String type = 'session_started',
+      String origin = 'watch',
+      String? sessionId = 'w-129',
+      String? plannedSessionId = 'p-today',
+      String? routineTemplateId = 'tpl-push',
+      bool topLevelSessionId = true,
+    }) => {
+      'protocolVersion': SyncProtocolValidator.protocolVersion,
+      'messageId': 'msg-start-129',
+      if (topLevelSessionId) 'sessionId': sessionId,
+      'type': type,
+      'origin': origin,
+      'sentAt': '2026-10-05T11:00:00.000Z',
+      'payload': {
+        if (!topLevelSessionId) 'sessionId': sessionId,
+        'routineTemplateId': ?routineTemplateId,
+        'plannedSessionId': ?plannedSessionId,
+      },
+    };
+
+    /// One bridge whose link step is a recorder, so a test can see what the
+    /// report linked without the app's calendar along.
+    ({WatchSessionAdoptionBridge bridge, List<({String plan, String session})> started,
+    List<Object> failures}) bridgeWithRecorder() {
+      final started = <({String plan, String session})>[];
+      final failures = <Object>[];
+      final bridge = WatchSessionAdoptionBridge(
+        repository: repository,
+        clock: () => _adoptedAt,
+        onFailure: (error, stack) => failures.add(error),
+        onPlanStarted: (planId, sessionId) async => started.add(
+          (plan: planId, session: sessionId),
+        ),
+      );
+      return (
+        bridge: bridge,
+        started: started,
+        failures: failures,
+      );
+    }
+
+    /// One seed set of three plans: an unknown report names nothing the store
+    /// holds, one plan is completed, one plan is linked already.
+    Future<void> seedThreePlans() async {
+      await seedPlan('p-done', templateId: 'tpl-done');
+      await seedPlan('p-linked', templateId: 'tpl-squat');
+      final stored = await repository.getPlannedSessions();
+      for (final plan in stored) {
+        if (plan.id == 'p-done') {
+          await repository.updatePlannedSession(
+            PlannedSession(
+              id: plan.id,
+              ownerUserId: plan.ownerUserId,
+              scheduledDateMs: plan.scheduledDateMs,
+              modality: plan.modality,
+              title: plan.title,
+              note: plan.note,
+              isCompleted: true,
+              linkedSessionId: null,
+              routineTemplateId: plan.routineTemplateId,
+              createdAtMs: plan.createdAtMs,
+              updatedAtMs: _adoptedAt.millisecondsSinceEpoch,
+            ),
+          );
+        }
+        if (plan.id == 'p-linked') {
+          await repository.updatePlannedSession(
+            PlannedSession(
+              id: plan.id,
+              ownerUserId: plan.ownerUserId,
+              scheduledDateMs: plan.scheduledDateMs,
+              modality: plan.modality,
+              title: plan.title,
+              note: plan.note,
+              isCompleted: false,
+              linkedSessionId: 'w-other',
+              routineTemplateId: plan.routineTemplateId,
+              createdAtMs: plan.createdAtMs,
+              updatedAtMs: _adoptedAt.millisecondsSinceEpoch,
+            ),
+          );
+        }
+      }
+    }
+
+    test('S-8964 a report that is not a session_started type, or a start '
+        "reported by this phone, is dropped", () async {
+      final good = startReport();
+      final recorder = bridgeWithRecorder();
+      await recorder.bridge.onSessionStarted({
+        ...good,
+        'type': 'session_lifecycle',
+      });
+      await recorder.bridge.onSessionStarted({...good, 'origin': 'phone'});
+      expect(await repository.getSession('w-129'), isNull);
+      expect(recorder.started, isEmpty);
+      expect(recorder.failures, isEmpty,
+          reason: 'a dropped report is not a failure: it is not a report');
+    });
+
+    test('S-8964 a report that names no session, or an empty id, is dropped',
+        () async {
+      final recorder = bridgeWithRecorder();
+      await recorder.bridge.onSessionStarted(
+        startReport(sessionId: null, topLevelSessionId: false),
+      );
+      await recorder.bridge.onSessionStarted(startReport(sessionId: ''));
+      expect((await repository.getPlannedSessions()).length, 0,
+          reason: 'nothing planted on the calendar for the dropped reports');
+      expect(recorder.started, isEmpty);
+      expect(recorder.failures, isEmpty);
+    });
+
+    test('S-8972 a missing, a completed and an already-linked plan link '
+        'nothing and write nothing (D-8972)', () async {
+      await seedThreePlans();
+      final before = await repository.getPlannedSessions();
+      final recorder = bridgeWithRecorder();
+
+      await recorder.bridge
+          .onSessionStarted(startReport(plannedSessionId: 'p-missing'));
+      await recorder.bridge.onSessionStarted(startReport(plannedSessionId: 'p-done'));
+      await recorder.bridge
+          .onSessionStarted(startReport(plannedSessionId: 'p-linked'));
+
+      expect(recorder.started, isEmpty);
+      expect(await repository.getSession('w-129'), isNull);
+      expect(recorder.failures, isEmpty);
+      final after = await repository.getPlannedSessions();
+      expect(after.map((plan) => plan.id), before.map((plan) => plan.id));
+      for (final plan in before) {
+        final next = after.singleWhere((row) => row.id == plan.id);
+        expect(next.isCompleted, plan.isCompleted, reason: 'plan ${plan.id}');
+        expect(next.linkedSessionId, plan.linkedSessionId,
+            reason: 'plan ${plan.id}');
+        expect(next.updatedAtMs, plan.updatedAtMs, reason: 'plan ${plan.id}');
+      }
+      expect(
+        after.map((plan) => (plan.isCompleted, plan.linkedSessionId)),
+        before.map((plan) => (plan.isCompleted, plan.linkedSessionId)),
+        reason: 'S-8972 the completed and the linked plan stay as they were',
+      );
+    });
+
+    test('S-8963 a startable plan opens the row, no effort, one segment '
+        '(D-8977)', () async {
+      await seedPlan('p-today', templateId: 'tpl-push');
+      final recorder = bridgeWithRecorder();
+
+      await recorder.bridge.onSessionStarted(startReport());
+
+      final session = await repository.getSession('w-129');
+      expect(session, isNotNull);
+      expect(session!.routineTemplateId, 'tpl-push');
+      expect(session.title, 'Push');
+      expect(session.intent, 'routine');
+      final segments = await repository.getSessionSegments('w-129');
+      expect(segments, hasLength(1));
+      expect(segments.single.id, 'segment-w-129');
+      expect(await repository.getSegmentEfforts(segments.single.id), isEmpty,
+          reason: 'D-8977 the wrist lands the ladder with its first snapshot; '
+              'the phone does not write the routine\'s structure twice');
+      // Plan 130 (D-13030/D-13031): the report remembers the plan; the link
+      // happens at the wrist's `completed` lifecycle. This test has a recorder
+      // wired, not the app's calendar, so the plan row only shows that the
+      // report changed nothing.
+      expect(recorder.started, isEmpty,
+          reason: 'the report alone does not link');
+      expect(recorder.failures, isEmpty);
+      var plan = (await repository.getPlannedSessions()).single;
+      expect(plan.isCompleted, isFalse,
+          reason: 'the report alone leaves the plan planned');
+      expect(plan.linkedSessionId, isNull);
+
+      // The wrist finishes the session: the recorded link step runs now.
+      await recorder.bridge.onLifecycle(const {
+        'protocolVersion': SyncProtocolValidator.protocolVersion,
+        'messageId': 'msg-lifecycle-129',
+        'sessionId': 'w-129',
+        'type': 'session_lifecycle',
+        'origin': 'watch',
+        'sentAt': '2026-10-05T11:30:00.000Z',
+        'payload': {'state': 'completed', 'at': '2026-10-05T11:30:00.000Z'},
+      });
+
+      expect(recorder.started.single.plan, 'p-today');
+      expect(recorder.started.single.session, 'w-129');
+      expect(recorder.failures, isEmpty);
+      plan = (await repository.getPlannedSessions()).single;
+      expect(plan.isCompleted, isFalse,
+          reason: 'the bridge opens the row and calls the callback; this '
+              'recorder does not write');
+      expect(plan.linkedSessionId, isNull);
+    });
+
+    test('S-8964 a row the disk will not take is a recorded failure, not a '
+        'throw', () async {
+      final unwritable = _UnwritableRepository();
+      await unwritable.initialize();
+      final started = <({String plan, String session})>[];
+      final failures = <Object>[];
+      final bridge = WatchSessionAdoptionBridge(
+        repository: unwritable,
+        clock: () => _adoptedAt,
+        onFailure: (error, stack) => failures.add(error),
+        onPlanStarted: (planId, sessionId) async =>
+            started.add((plan: planId, session: sessionId)),
+      );
+
+      await bridge.onSessionStarted(startReport(plannedSessionId: null, routineTemplateId: null));
+
+      expect(failures, hasLength(1),
+          reason: 'the failed row write goes to the failure hook');
+      expect(started, isEmpty,
+          reason: 'nothing to point an unlinked plan at');
+      expect(failures.single, isA<StateError>());
     });
   });
 }

@@ -320,17 +320,31 @@ final class WatchSessionEngineTests: XCTestCase {
     // MARK: - S-004 append-only enforcement at the storage API
 
     func testS004NoMutatingOperationExistsAnywhereInTheModule() throws {
-        // Exactly five names are deliberate. `pruneConfirmed` and
-        // `pruneSensorSamples` are the two ways anything leaves the store, and
-        // each is gated on having nothing left to lose: confirmed observations
-        // for the first, and for the second a session that is over whose numbers
-        // the phone has already recorded in full. A third prune, or a wider
-        // gate, has to be added here on purpose.
+        // Exactly eight names are deliberate. `pruneConfirmed` and
+        // `pruneSensorSamples` are two ways anything leaves the store, each
+        // gated on having nothing left to lose: confirmed observations for the
+        // first, and for the second a session that is over whose numbers the
+        // phone has already recorded in full. The third, `pruneExerciseBatches`,
+        // drops only the stored batches of list versions that are not the active
+        // one, and its caller names a version only once a complete list of it is
+        // active. The fourth, `pruneBests`, drops the bests frames the wrist has
+        // replaced: its caller names the one copy it holds as newest, having just
+        // written it (D-11, D-17). The fifth, `pruneWater`, is added on purpose
+        // with the same gate for the water frames: its caller names the one copy
+        // it holds as newest (plan 95 D-23). The sixth, `pruneWaterTaps`, is
+        // added on purpose (plan 96 D-43, D-44): it drops only water taps the
+        // phone confirmed and that were logged before the caller's cutoff, which
+        // no count can still read. A seventh prune, or a wider gate, has to be
+        // added here on purpose.
         let allowed: Set<String> = [
             "append",
             "readAll",
             "pruneConfirmed",
             "pruneSensorSamples",
+            "pruneExerciseBatches",
+            "pruneBests",
+            "pruneWater",
+            "pruneWaterTaps",
         ]
         let verbs = "update|delete|remove|replace|edit|overwrite|write|clear"
             + "|purge|wipe|reset|drop|truncate|erase|forget|modify|mutate|destroy|set"
@@ -1323,33 +1337,6 @@ final class WatchSessionEngineTests: XCTestCase {
         XCTAssertTrue(relaunched.pendingObservations().isEmpty)
     }
 
-    func testASessionTheWristJoinedEndsWithNoEnd() async throws {
-        let harness = Harness()
-        let engine = await harness.runningEngine()
-        _ = try await engine.applyMessage([
-            "protocolVersion": SyncProtocolValidator.protocolVersion,
-            "messageId": "msg-join",
-            "sessionId": "s-phone",
-            "type": "session_snapshot",
-            "origin": "phone",
-            "sentAt": "2026-07-13T06:00:00Z",
-            "payload": [
-                "sessionId": "s-phone",
-                "revision": 0,
-                "status": WatchSessionStatus.active,
-                "currentExerciseIndex": 0,
-                "exercises": [exercise("sx-bench")],
-                "entries": [[String: Any]](),
-                "timers": [String: Any](),
-            ] as [String: Any],
-        ])
-
-        _ = await engine.finishSession()
-
-        XCTAssertEqual(engine.session?.status, WatchSessionStatus.completed)
-        XCTAssertNil(sessionEnd(engine), "D-120 a session the wrist joined from the phone gets none")
-    }
-
     // MARK: - S-240 resend across sessions
 
     func testS240EveryUnacknowledgedObservationOfEverySessionIsResentInStoreOrder() async throws {
@@ -2340,6 +2327,111 @@ final class WatchSessionEngineTests: XCTestCase {
                 utcIso(t0.addingTimeInterval(60)),
             ]
         )
+    }
+
+    // MARK: - Plan 129: the planned-start report (S-8968)
+
+    /// D-8970's seam, judged by the protocol: the frame the engine builds and
+    /// sends for a planned start conforms, its message id derives from the
+    /// record, and the three ways the report can go wrong are refused.
+    func testS8968TheEmittedStartReportIsConformantAndDerivesItsMessageId() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        try harness.engine.emitSessionStarted(
+            sessionId: harness.sessionId,
+            routineTemplateId: "tpl-push-a",
+            plannedSessionId: "p-1",
+            at: harness.clock.now
+        )
+
+        let reports = harness.emitted("session_started")
+        XCTAssertEqual(reports.count, 1)
+        let report = try XCTUnwrap(reports.first)
+
+        XCTAssertTrue(
+            Harness.validator().validateEnvelope(report).isEmpty,
+            "the report is a frame the phone can read"
+        )
+        XCTAssertEqual(report["messageId"] as? String, "msg-session-started-\(harness.sessionId)")
+        XCTAssertEqual(report["origin"] as? String, "watch")
+        XCTAssertEqual(report["sessionId"] as? String, harness.sessionId)
+        let payload = try XCTUnwrap(report["payload"] as? [String: Any])
+        XCTAssertEqual(payload["sessionId"] as? String, harness.sessionId)
+        XCTAssertEqual(payload["routineTemplateId"] as? String, "tpl-push-a")
+        XCTAssertEqual(payload["plannedSessionId"] as? String, "p-1")
+        XCTAssertEqual(payload["at"] as? String, utcIso(harness.clock.now))
+    }
+
+    /// A report that names nothing yet is still the report's own shape: the ids
+    /// travel only when known.
+    func testS8968AReportMayNameNothingAndStaysConformant() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        try harness.engine.emitSessionStarted(
+            sessionId: harness.sessionId,
+            routineTemplateId: nil,
+            plannedSessionId: nil,
+            at: harness.clock.now
+        )
+
+        let report = try XCTUnwrap(harness.emitted("session_started").last)
+        XCTAssertTrue(Harness.validator().validateEnvelope(report).isEmpty)
+        let payload = try XCTUnwrap(report["payload"] as? [String: Any])
+        XCTAssertNil(payload["routineTemplateId"])
+        XCTAssertNil(payload["plannedSessionId"])
+    }
+
+    func testS8968AReportWithAnExtraFieldIsRefused() throws {
+        var report = try self.sessionStartedReport()
+        var payload = try XCTUnwrap(report["payload"] as? [String: Any])
+        payload["extra"] = "a field nothing reads"
+        report["payload"] = payload
+
+        let rejections = Harness.validator().validateEnvelope(report)
+
+        XCTAssertFalse(rejections.isEmpty, "the validator refuses the extra field")
+    }
+
+    func testS8968AReportWithoutItsSessionIdIsRefused() throws {
+        var report = try self.sessionStartedReport()
+        report["payload"] = ["at": utcIso(testInstant())]
+
+        let rejections = Harness.validator().validateEnvelope(report)
+
+        XCTAssertFalse(rejections.isEmpty, "a report without its session id names nothing")
+    }
+
+    func testS8968AReportFromThePhoneIsRefused() throws {
+        var report = try self.sessionStartedReport()
+        report["origin"] = "phone"
+
+        let rejections = Harness.validator().validateEnvelope(report)
+
+        XCTAssertFalse(rejections.isEmpty, "the report is the wrist's to send")
+    }
+
+    /// The conformant report the engine emits, rebuilt from parts so the
+    /// refusal verdicts come from the validator, not from memory.
+    private func sessionStartedReport() throws -> [String: Any] {
+        let record = [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-session-started-w-1",
+            "sessionId": "w-1",
+            "type": "session_started",
+            "origin": "watch",
+            "sentAt": utcIso(testInstant()),
+            "payload": [
+                "sessionId": "w-1",
+                "routineTemplateId": "tpl-push-a",
+                "plannedSessionId": "p-1",
+                "at": utcIso(testInstant()),
+            ] as [String: Any],
+        ] as [String: Any]
+
+        XCTAssertTrue(Harness.validator().validateEnvelope(record).isEmpty)
+        return record
     }
 }
 

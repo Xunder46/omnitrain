@@ -95,6 +95,10 @@ class ScrollableTrendChart extends StatefulWidget {
   /// `' kcal'`, `' g'`). Empty string omits the unit.
   final String unitLabel;
 
+  /// Formats each y-axis tick. Null prints the bare number; a clock axis
+  /// passes [ChartAxisHelper.formatClockAxisValue].
+  final String Function(double value)? yLabelFormatter;
+
   /// Number of points being plotted. Used to compute the
   /// intrinsic plot width and to decide whether the scroll
   /// engages.
@@ -121,6 +125,7 @@ class ScrollableTrendChart extends StatefulWidget {
     required this.themeColors,
     required this.bounds,
     required this.unitLabel,
+    this.yLabelFormatter,
     required this.pointCount,
     required this.chartBuilder,
     this.maxVisiblePoints = kScrollableTrendMaxVisiblePoints,
@@ -214,6 +219,7 @@ class _ScrollableTrendChartState extends State<ScrollableTrendChart> {
           child: _PinnedYAxis(
             bounds: widget.bounds,
             unitLabel: widget.unitLabel,
+            yLabelFormatter: widget.yLabelFormatter,
             themeColors: widget.themeColors,
             chartHeight: widget.height,
           ),
@@ -292,12 +298,14 @@ const double kScrollableTrendPinnedAxisWidth = 64.0;
 class _PinnedYAxis extends StatelessWidget {
   final ChartAxisBounds bounds;
   final String unitLabel;
+  final String Function(double value)? yLabelFormatter;
   final OmniThemeColors themeColors;
   final double chartHeight;
 
   const _PinnedYAxis({
     required this.bounds,
     required this.unitLabel,
+    required this.yLabelFormatter,
     required this.themeColors,
     required this.chartHeight,
   });
@@ -338,7 +346,7 @@ class _PinnedYAxis extends StatelessWidget {
                   child: Text(
                     // Bare numeric value, no unit. Unit appears once
                     // in the dedicated position below the labels (D-3).
-                    v.toStringAsFixed(0),
+                    yLabelFormatter?.call(v) ?? v.toStringAsFixed(0),
                     style: TextStyle(fontSize: 9, color: themeColors.textMuted),
                     maxLines: 1,
                     softWrap: false,

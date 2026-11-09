@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/navigation/navigation.dart';
+import '../../core/utils/date_utils.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../exercise/exercise_picker_screen.dart';
@@ -13,8 +14,10 @@ import '../../data/models/models.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
 import 'workout_session_screen.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 class SessionOverviewScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -68,21 +71,24 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
   }
 
   Future<void> _addExercise() async {
-    final modality = widget.workoutState.currentSession?.modality;
+    final session = widget.workoutState.currentSession;
+    final modality = session?.modality;
+    // Plan 122 D-12205/D-12213: routine sessions always ask the kind and list unranked.
+    final askKind = modality == null || session?.intent == 'routine';
 
     final selectedExercise = await OmniNavigator.push<Exercise>(
       context,
       (_) => ExercisePickerScreen(
         workoutState: widget.workoutState,
-        sessionModality: modality,
+        sessionModality: askKind ? null : modality,
       ),
     );
 
     if (selectedExercise != null) {
       String? effortKindOverride;
 
-      // If Free Training or Routine session (null modality), ask user to pick a modality
-      if (modality == null) {
+      // Free Training or any routine session (even one carrying the routine's Focus): ask the user to pick a modality
+      if (askKind) {
         final modalityResult = await showDialog<(bool, String?)>(
           context: context,
           builder: (context) => const ModalityPickerDialog(),
@@ -119,9 +125,8 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
         await _initializeSession();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to add exercise: $e')));
+          debugPrint('Add exercise: $e');
+          OmniMessage.error(context, 'Could not add the exercise. Try again.');
         }
       }
     }
@@ -175,33 +180,10 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
               const SizedBox(height: 32),
               Expanded(
                 child: exercises.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.fitness_center,
-                              size: 64,
-                              color: theme.colorScheme.onSurface.withAlpha(
-                                (0.3 * 255).round(),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No exercises yet',
-                              style: theme.textTheme.headlineSmall,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Add your first exercise to get started',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withAlpha(
-                                  (0.6 * 255).round(),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                    ? const OmniEmptyState(
+                        icon: Icons.fitness_center,
+                        title: 'No exercises yet',
+                        hint: 'Add your first exercise to get started',
                       )
                     : ListView.builder(
                         itemCount: exercises.length,
@@ -224,10 +206,8 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                 (sum, e) =>
                                     sum + ((e['duration'] as int?) ?? 0),
                               );
-                              final minutes = totalDuration ~/ 60;
-                              final seconds = totalDuration % 60;
                               subtitle =
-                                  '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
+                                  '${OmniDateUtils.formatTimerDigits(totalDuration)} total';
                               break;
                             case 'round':
                               final effortId = exercise['id'] as String;
@@ -240,8 +220,10 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                         round.finishedAtMs != null,
                                   )
                                   .length;
-                              subtitle =
-                                  '$completedRounds round${completedRounds != 1 ? 's' : ''}';
+                              subtitle = ModalityDisplay.roundCount(
+                                modality,
+                                completedRounds,
+                              );
                               break;
                             case 'drill':
                               subtitle =
@@ -266,6 +248,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                               subtitle: Text(subtitle),
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete_outline),
+                                tooltip: 'Remove exercise',
                                 onPressed: () async {
                                   final effortId = exercise['id'] as String;
                                   final confirmed = await ConfirmationDialog.showTwoChoice(

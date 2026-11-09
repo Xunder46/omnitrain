@@ -49,13 +49,18 @@ public final class SyncProtocolValidator {
 
     public static let messageTypes = [
         "routines_down",
+        "exercises_down",
         "foods_down",
+        "bests_down",
+        "water_down",
         "preferences_down",
+        "planned_down",
         "exercise_push",
         "structure_change",
         "observations_up",
         "receipt",
         "session_lifecycle",
+        "session_started",
         "session_snapshot",
         "timer_state",
     ]
@@ -63,9 +68,11 @@ public final class SyncProtocolValidator {
     public static let timerKinds = ["rest", "round", "hold", "elapsed"]
 
     /// Entry kinds that are not logged against a slot: a nutrition quick-log,
-    /// and the two session-scoped kinds, which describe the whole session.
+    /// a glass of water, and the two session-scoped kinds, which describe the
+    /// whole session.
     private static let slotlessKinds: Set<String> = [
         "nutrition_quick_log",
+        "water_glass",
         "effort_rating",
         "session_end",
     ]
@@ -84,6 +91,8 @@ public final class SyncProtocolValidator {
         ("rating", ["effort_rating"]),
         ("status", ["session_end"]),
         ("modality", ["session_end"]),
+        ("followed", ["session_end"]),
+        ("glassChange", ["water_glass"]),
     ]
 
     /// Root of every message path, as a constant so `$` never needs escaping.
@@ -190,6 +199,12 @@ public final class SyncProtocolValidator {
             return duplicateAcknowledgementRejections(payload)
         case "routines_down":
             return fallbackCoverageRejections(payload)
+        case "exercises_down":
+            return exerciseBatchRejections(payload)
+        case "bests_down":
+            return bestsRejections(payload)
+        case "water_down":
+            return waterRejections(payload)
         default:
             return []
         }
@@ -551,6 +566,153 @@ public final class SyncProtocolValidator {
         ]
     }
 
+    /// A batch of the exercise list. The list is assembled from batches, so a
+    /// batch's own numbers must agree with each other and with what it carries:
+    /// (a) the batch is one of `batchCount` slices, (b) the whole list's size
+    /// fits both the exercises this batch carries and the exercises the batches
+    /// can hold, and (c) one exercise appears once in the list. The rules are
+    /// reported in that order, and the Dart twin reports the same three, in the
+    /// same order, with the same words (D-3811).
+    private func exerciseBatchRejections(_ payload: [String: Any]) -> [SyncProtocolRejection] {
+        let exercises = payload["exercises"] as? [Any] ?? []
+        let batchIndex = (payload["batchIndex"] as? NSNumber)?.intValue
+        let batchCount = (payload["batchCount"] as? NSNumber)?.intValue
+        let totalCount = (payload["totalCount"] as? NSNumber)?.intValue
+
+        var rejections: [SyncProtocolRejection] = []
+
+        if let batchIndex, let batchCount, batchIndex >= batchCount {
+            rejections.append(
+                rejection(
+                    SyncRejectionCode.semanticViolation,
+                    "\(Self.root).payload.batchIndex",
+                    "batchIndex \(batchIndex) must be less than batchCount \(batchCount)"
+                )
+            )
+        }
+
+        if let totalCount {
+            if exercises.count > totalCount {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        "\(Self.root).payload.totalCount",
+                        "totalCount \(totalCount) is less than the \(exercises.count) "
+                            + "exercises this batch carries"
+                    )
+                )
+            }
+            if let batchCount, totalCount > batchCount * 100 {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        "\(Self.root).payload.totalCount",
+                        "totalCount \(totalCount) exceeds the \(batchCount * 100) "
+                            + "exercises \(batchCount) batches can carry"
+                    )
+                )
+            }
+        }
+
+        var seen = Set<String>()
+        var duplicates: [String] = []
+        for exercise in exercises {
+            guard let exerciseId = (exercise as? [String: Any])?["exerciseId"] as? String
+            else { continue }
+            if !seen.insert(exerciseId).inserted { duplicates.append(exerciseId) }
+        }
+        if !duplicates.isEmpty {
+            rejections.append(
+                rejection(
+                    SyncRejectionCode.semanticViolation,
+                    "\(Self.root).payload.exercises",
+                    "the same exerciseId appears twice: "
+                        + "\(duplicates.joined(separator: ", "))"
+                )
+            )
+        }
+
+        return rejections
+    }
+
+    /// Each exercise's standing best. The dialect cannot state these rules as
+    /// constraints (no `anyOf`, and `oneOf` is exactly-one, so "at least one
+    /// axis" would refuse an entry that carries both), and `minimum: 0` admits a
+    /// zero estimate: an entry names at least one axis, both numbers are
+    /// positive, and an exercise appears once. The Dart twin reports the same
+    /// rules in the same order with the same words (D-14).
+    private func bestsRejections(_ payload: [String: Any]) -> [SyncProtocolRejection] {
+        let entries = payload["bests"] as? [Any] ?? []
+        var rejections: [SyncProtocolRejection] = []
+        var seen = Set<String>()
+
+        for (index, entry) in entries.enumerated() {
+            guard let entry = entry as? [String: Any] else { continue }
+            let path = "\(Self.root).payload.bests[\(index)]"
+            let e1rmKg = entry["e1rmKg"] as? NSNumber
+            let repsBest = entry["repsBest"] as? NSNumber
+
+            if e1rmKg == nil && repsBest == nil {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        path,
+                        "entry carries neither e1rmKg nor repsBest"
+                    )
+                )
+            }
+            if let e1rmKg, e1rmKg.doubleValue <= 0 {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        path,
+                        "e1rmKg must be greater than 0"
+                    )
+                )
+            }
+            if let repsBest, repsBest.doubleValue <= 0 {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        path,
+                        "repsBest must be at least 1"
+                    )
+                )
+            }
+            if let exerciseId = entry["exerciseId"] as? String,
+               !seen.insert(exerciseId).inserted {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        path,
+                        "the same exerciseId appears twice: \(exerciseId)"
+                    )
+                )
+            }
+        }
+
+        return rejections
+    }
+
+    /// The phone applies a wrist tap once, so the day's count lists its id
+    /// once: the dialect has no `uniqueItems`, so a repeated id is a semantic
+    /// rule (plan 94 D-10). The Dart twin reports it with the same words.
+    private func waterRejections(_ payload: [String: Any]) -> [SyncProtocolRejection] {
+        let tapIds = payload["appliedTapIds"] as? [Any] ?? []
+        var seen = Set<String>()
+        var rejections: [SyncProtocolRejection] = []
+        for case let tapId as String in tapIds where !seen.insert(tapId).inserted {
+            rejections.append(
+                rejection(
+                    SyncRejectionCode.semanticViolation,
+                    "\(Self.root).payload.appliedTapIds",
+                    "the same tap id appears twice: \(tapId)"
+                )
+            )
+        }
+        return rejections
+    }
+
     // MARK: - Schema layer
 
     private func validate(
@@ -704,6 +866,13 @@ public final class SyncProtocolValidator {
             )
         }
 
+        if let maxItems = (schema["maxItems"] as? NSNumber)?.intValue,
+           array.count > maxItems {
+            rejections.append(
+                constraint(path, "expected at most \(maxItems) items, found \(array.count)")
+            )
+        }
+
         if let items = schema["items"] as? [String: Any] {
             for (index, value) in array.enumerated() {
                 rejections += validate(
@@ -731,6 +900,16 @@ public final class SyncProtocolValidator {
                 constraint(
                     path,
                     "expected at least \(minLength) characters, found \(value.count)"
+                )
+            )
+        }
+
+        if let maxLength = (schema["maxLength"] as? NSNumber)?.intValue,
+           value.count > maxLength {
+            rejections.append(
+                constraint(
+                    path,
+                    "expected at most \(maxLength) characters, found \(value.count)"
                 )
             )
         }

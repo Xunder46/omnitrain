@@ -530,7 +530,7 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
-  // S-031a — My Foods tab population: structural guard
+  // S-031a — Library tab population: structural guard
   // (Phase 3.1 supersedure of S-031)
   // ═══════════════════════════════════════════════════════════════════════
   //
@@ -542,46 +542,15 @@ void main() {
   // catalogIdFor == null`) went unnoticed.
   //
   // This group seeds a realistic mix and asserts the expected
-  // My Foods surface. To avoid mirroring the widget's merge
+  // Library surface. To avoid mirroring the widget's merge
   // logic in a helper (which would also mirror bugs), we pump
-  // the actual `AddFoodScreen` and read what the `My Foods` tab
+  // the actual `AddFoodScreen` and read what the `Library` tab
   // renders. The widget is private, but the screen is public.
 
-  /// Collects the food names rendered in the **My Foods** tab of
-  /// an already-pumped `AddFoodScreen`. The row layout puts the
-  /// name in a `Text` widget directly above a macro-line Text
-  /// (`"N cal · P P · C C · F F"`). We pick the name by exclusion:
-  /// a `Text` whose data is the food name is the one above the
-  /// macro line. To avoid coupling to row internals, we just
-  /// return every `Text` string on the screen and filter for
-  /// the known food names declared by the test fixture.
-  List<String> collectMyFoodsRowNames(WidgetTester tester) {
-    final candidates = <String>[];
-    for (final element in find.byType(Text).evaluate()) {
-      final data = (element.widget as Text).data;
-      if (data == null) continue;
-      // Skip strings the empty-state, tab labels, and CTAs render.
-      if (data == 'Manage Food Library') continue;
-      if (data == 'My Foods') continue;
-      if (data == 'Library') continue;
-      if (data == 'Categories') continue;
-      if (data == '+ New Food') continue;
-      if (data == 'No custom foods yet') continue;
-      if (data == 'Create your own foods to use in your nutrition tracking') {
-        continue;
-      }
-      if (data == '+ New Category') continue;
-      // Macro line: contains " cal · " (foods render e.g.
-      // "151 cal · 31P · 0C · 4F").
-      if (data.contains(' cal · ')) continue;
-      candidates.add(data);
-    }
-    return candidates;
-  }
-
-  group('My Foods population — S-031a structural guard', () {
-    testWidgets('bundled foods + their library copies never appear; '
-        'D-2 custom appears exactly once; legacy custom appears once', (
+  group('Library population — S-031a structural guard', () {
+    testWidgets('bundled foods render once even with library copies; '
+        'D-2 custom appears exactly once with its yours tag; '
+        'legacy custom appears once', (
       tester,
     ) async {
       final repo = await _freshRepo();
@@ -625,7 +594,7 @@ void main() {
       );
       await state.loadFoods();
 
-      // Pump the AddFoodScreen and read the My Foods tab.
+      // Pump the AddFoodScreen; the Library tab is the default.
       await tester.pumpWidget(
         MaterialApp(
           home: AddFoodScreen(
@@ -635,50 +604,39 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('My Foods'));
-      await tester.pumpAndSettle();
 
-      final renderedNames = collectMyFoodsRowNames(tester);
+      // The Library list is lazy: filter by each food's name via
+      // the search field, then count the rendered rows. The row
+      // title is scoped to the list because the search field's
+      // EditableText carries the same text.
+      Future<int> rowsNamed(String name) async {
+        await tester.enterText(
+          find.byKey(const Key('catalog_search_field')),
+          name,
+        );
+        await tester.pumpAndSettle();
+        return find
+            .descendant(of: find.byType(ListView), matching: find.text(name))
+            .evaluate()
+            .length;
+      }
 
       // ─── Assertions ────────────────────────────────────────
-      // The two bundled foods and their library copies are all
-      // excluded (4 rows total — 2 catalog + 2 library — none
-      // leak into My Foods).
-      expect(
-        renderedNames,
-        isNot(contains('Chicken breast, skinless')),
-        reason: 'bundled food excluded even with library copy',
-      );
-      expect(
-        renderedNames,
-        isNot(contains('Brown rice')),
-        reason: 'bundled food excluded even with library copy',
-      );
+      // A bundled food renders once even though it also has a
+      // library copy — the copy does not add a second row.
+      expect(await rowsNamed('Chicken breast, skinless'), 1);
+      expect(await rowsNamed('Brown rice, cooked'), 1);
 
-      // The D-2 custom appears exactly once.
-      final customCount = renderedNames.where((n) => n == 'My Bar').length;
+      // The D-2 custom appears exactly once, tagged as the
+      // user's own food.
+      expect(await rowsNamed('My Bar'), 1);
       expect(
-        customCount,
-        1,
-        reason:
-            'D-2 custom must render exactly once (catalog row + '
-            'auto library copy collapsed by the identity filter)',
+        find.byKey(Key('yours_tag_${myBarCatalog.id}')),
+        findsOneWidget,
       );
 
       // The legacy custom appears exactly once.
-      final legacyCount = renderedNames
-          .where((n) => n == 'Grandma\'s Stew')
-          .length;
-      expect(legacyCount, 1);
-
-      // The merged surface contains ONLY the two user-created
-      // foods (1 D-2 + 1 legacy). Nothing else.
-      expect(
-        renderedNames,
-        hasLength(2),
-        reason: 'rendered My Foods surface: ${renderedNames.toList()}',
-      );
-      expect(renderedNames.toList()..sort(), ['Grandma\'s Stew', 'My Bar']);
+      expect(await rowsNamed('Grandma\'s Stew'), 1);
     });
 
     test(

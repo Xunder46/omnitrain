@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/constants/workout_constants.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/models/routine_session_manifest.dart';
@@ -10,7 +13,9 @@ import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
+import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'helpers/fake_preferences_service.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -29,6 +34,23 @@ Future<MockWorkoutRepository> _freshRepoCleanConsumed() async {
   final repo = await _freshRepo();
   repo.clearConsumedFoodsForTest();
   return repo;
+}
+
+/// Repository whose first `getWaterVolumeForDate` parks on a completer
+/// until the test releases it — drives S-13213's in-flight tap.
+class _GatedWaterRepo extends MockWorkoutRepository {
+  final Completer<void> gate = Completer<void>();
+  bool _firstReadUsed = false;
+
+  @override
+  Future<int> getWaterVolumeForDate(int dateMs) async {
+    if (!_firstReadUsed) {
+      _firstReadUsed = true;
+      await gate.future;
+      return super.getWaterVolumeForDate(dateMs);
+    }
+    return super.getWaterVolumeForDate(dateMs);
+  }
 }
 
 /// Local equivalent of `services_test.dart`'s `_seedCompletedSetSession`,
@@ -304,7 +326,7 @@ void main() {
     });
 
     test(
-      'updateRoutineFocusModality with null preserves prior value (copyWith limitation)',
+      'updateRoutineFocusModality with null clears the Focus (Mixed / Not set)',
       () async {
         final repo = await _freshRepo();
         final state = RoutineState(repo);
@@ -314,8 +336,8 @@ void main() {
         await state.updateRoutineFocusModality('resistance_lifting');
         await state.updateRoutineFocusModality(null);
 
-        // copyWith uses ?? so null keeps existing value
-        expect(state.currentTemplate!.focusModality, 'resistance_lifting');
+        // null clears the Focus (plan 123)
+        expect(state.currentTemplate!.focusModality, isNull);
       },
     );
 
@@ -2455,6 +2477,198 @@ void main() {
       );
 
       test(
+        'round: updatePlannedDurationFrom reaches the later unstarted rounds',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'sports');
+
+          final exercises = await repo.getExercises();
+          final roundExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('rounds'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            roundExercise,
+            effortKindOverride: 'round',
+          );
+          await state.addRound(effortId);
+          await state.addRound(effortId);
+
+          // (a) Nothing started yet: the change reaches every round.
+          final allTouched = await state.updatePlannedDurationFrom(
+            effortId,
+            0,
+            240,
+          );
+          expect(allTouched, [0, 1, 2]);
+          expect(
+            state
+                .getRoundsForEffort(effortId)
+                .map((r) => r.plannedDurationSecs)
+                .toList(),
+            [240, 240, 240],
+          );
+
+          // (b) Round 0 is over: changing round 1's length leaves it alone.
+          await state.setRoundDuration(effortId, 0, 100);
+          final laterTouched = await state.updatePlannedDurationFrom(
+            effortId,
+            1,
+            120,
+          );
+          expect(laterTouched, [1, 2]);
+          expect(
+            state
+                .getRoundsForEffort(effortId)
+                .map((r) => r.plannedDurationSecs)
+                .toList(),
+            [240, 120, 120],
+          );
+
+          // Persisted, not only cached.
+          final stored = await repo.getRoundInstances(effortId);
+          expect(
+            stored.map((r) => r.plannedDurationSecs).toList(),
+            [240, 120, 120],
+          );
+        },
+      );
+
+      test(
+        'round: updatePlannedDurationFrom leaves a finished round at fromIndex alone',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'sports');
+
+          final exercises = await repo.getExercises();
+          final roundExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('rounds'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            roundExercise,
+            effortKindOverride: 'round',
+          );
+          await state.addRound(effortId);
+          await state.addRound(effortId);
+
+          // Round 0 is over: 100 s logged of its 180 s planned length.
+          await state.setRoundDuration(effortId, 0, 100);
+          expect(
+            state.getRoundsForEffort(effortId).first.state,
+            RoundState.finished,
+          );
+
+          // fromIndex is the finished round itself: it is not rewritten, while
+          // every later round that has not started follows the new value.
+          final touched = await state.updatePlannedDurationFrom(effortId, 0, 240);
+          expect(touched, [1, 2]);
+          final rounds = state.getRoundsForEffort(effortId);
+          expect(
+            rounds.map((r) => r.plannedDurationSecs).toList(),
+            [180, 240, 240],
+          );
+          expect(rounds[0].actualDurationSecs, 100);
+
+          // Persisted, not only cached.
+          final stored = await repo.getRoundInstances(effortId);
+          expect(
+            stored.map((r) => r.plannedDurationSecs).toList(),
+            [180, 240, 240],
+          );
+        },
+      );
+
+      test(
+        'round: updatePlannedDurationFrom keeps the running round its length',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'sports');
+
+          final exercises = await repo.getExercises();
+          final roundExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('rounds'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            roundExercise,
+            effortKindOverride: 'round',
+          );
+          await state.addRound(effortId);
+          await state.addRound(effortId);
+
+          // (c) Round 1 is running: it keeps the length it started with, while
+          // round 0 (not started) and round 2 follow the new value.
+          await state.startRound(effortId, 1);
+          final runningSkipped = await state.updatePlannedDurationFrom(
+            effortId,
+            0,
+            300,
+          );
+          expect(runningSkipped, [0, 2]);
+          final rounds = state.getRoundsForEffort(effortId);
+          expect(
+            rounds.map((r) => r.plannedDurationSecs).toList(),
+            [300, 180, 300],
+          );
+          expect(rounds[1].state, RoundState.active);
+
+          // Persisted, not only cached.
+          final stored = await repo.getRoundInstances(effortId);
+          expect(
+            stored.map((r) => r.plannedDurationSecs).toList(),
+            [300, 180, 300],
+          );
+        },
+      );
+
+      test(
+        'round: edit-mode setRoundDuration changes only that round (S-4414)',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'sports');
+
+          final exercises = await repo.getExercises();
+          final roundExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('rounds'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            roundExercise,
+            effortKindOverride: 'round',
+          );
+          await state.addRound(effortId);
+          await state.addRound(effortId);
+
+          // Distinct planned lengths, so a stray neighbour write shows up.
+          await state.updateRoundPlannedDuration(effortId, 0, 100);
+          await state.updateRoundPlannedDuration(effortId, 1, 200);
+          await state.updateRoundPlannedDuration(effortId, 2, 300);
+
+          // The retrospective edit-mode path writes one round only.
+          await state.setRoundDuration(effortId, 1, 90);
+
+          final rounds = state.getRoundsForEffort(effortId);
+          expect(rounds[1].actualDurationSecs, 90);
+          expect(rounds[1].state, RoundState.finished);
+          expect(
+            rounds.map((r) => r.plannedDurationSecs).toList(),
+            [100, 200, 300],
+          );
+
+          final stored = await repo.getRoundInstances(effortId);
+          expect(
+            stored.map((r) => r.plannedDurationSecs).toList(),
+            [100, 200, 300],
+          );
+        },
+      );
+
+      test(
         'drill: addEntry carries extra-weight forward into the new drill',
         () async {
           final repo = await _freshRepo();
@@ -4152,11 +4366,9 @@ void main() {
           final state = NutritionState(repo);
           // Cache is empty until the explicit load call.
           expect(state.waterTodayMl, 0);
-          expect(state.waterTodayGlasses, 0);
 
           await state.loadWaterForDate(today);
           expect(state.waterTodayMl, 500);
-          expect(state.waterTodayGlasses, 2);
         },
       );
 
@@ -4170,7 +4382,6 @@ void main() {
 
         await state.incrementWaterForDate(today);
         expect(state.waterTodayMl, 250);
-        expect(state.waterTodayGlasses, 1);
         // Repository confirms the persisted value.
         expect(await repo.getWaterVolumeForDate(today), 250);
         // The increment emitted a notifyListeners call.
@@ -4191,7 +4402,6 @@ void main() {
 
         await state.decrementWaterForDate(today);
         expect(state.waterTodayMl, 250);
-        expect(state.waterTodayGlasses, 1);
         expect(await repo.getWaterVolumeForDate(today), 250);
         expect(notifications, greaterThanOrEqualTo(1));
       });
@@ -4206,7 +4416,6 @@ void main() {
         await state.decrementWaterForDate(today);
         // Still 0 — no negative leak.
         expect(state.waterTodayMl, 0);
-        expect(state.waterTodayGlasses, 0);
         // Repository still reports 0 (no row created by a no-op decrement).
         expect(await repo.getWaterVolumeForDate(today), 0);
       });
@@ -4219,27 +4428,22 @@ void main() {
         // 0 ml → 0 glasses.
         await state.loadWaterForDate(today);
         expect(state.waterTodayMl, 0);
-        expect(state.waterTodayGlasses, 0);
 
         // 250 ml → 1 glass.
         await state.incrementWaterForDate(today);
         expect(state.waterTodayMl, 250);
-        expect(state.waterTodayGlasses, 1);
 
         // 500 ml → 2 glasses.
         await state.incrementWaterForDate(today);
         expect(state.waterTodayMl, 500);
-        expect(state.waterTodayGlasses, 2);
 
         // 750 ml → 3 glasses.
         await state.incrementWaterForDate(today);
         expect(state.waterTodayMl, 750);
-        expect(state.waterTodayGlasses, 3);
 
         // 1000 ml → 4 glasses.
         await state.incrementWaterForDate(today);
         expect(state.waterTodayMl, 1000);
-        expect(state.waterTodayGlasses, 4);
       });
 
       test(
@@ -4261,7 +4465,6 @@ void main() {
           expect(reader.waterTodayMl, 0); // cache cold
           await reader.loadWaterForDate(today);
           expect(reader.waterTodayMl, 1000);
-          expect(reader.waterTodayGlasses, 4);
         },
       );
 
@@ -4284,11 +4487,9 @@ void main() {
         final fresh = NutritionState(repo);
         await fresh.loadWaterForDate(dayA);
         expect(fresh.waterTodayMl, 750);
-        expect(fresh.waterTodayGlasses, 3);
 
         await fresh.loadWaterForDate(dayB);
         expect(fresh.waterTodayMl, 250);
-        expect(fresh.waterTodayGlasses, 1);
 
         // Reading day A again still returns 750 (cache + repo both
         // date-keyed; no cross-talk).
@@ -4313,11 +4514,286 @@ void main() {
         final today = OmniDateUtils.todayMidnightMs();
         await state.rolloverToDate(today);
         expect(state.waterTodayMl, 0);
-        expect(state.waterTodayGlasses, 0);
 
         // The prior date's stored ml is unchanged.
         expect(await repo.getWaterVolumeForDate(dayA), 750);
       });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // NutritionState and the water unit derived from the weight unit
+    // (plan 132, Revision 1)
+    //
+    // Stored water stays ml. The weight unit changes the per-tap step
+    // (250 ml → 237 ml = 8 fl oz) and the display unit.
+    // ═══════════════════════════════════════════════════════════════════
+    group('NutritionState volume unit', () {
+      // Settings seeded to fl oz via the weight unit before the state
+      // is built.
+      Future<SettingsState> buildFlozSettings(MockWorkoutRepository repo) async {
+        final settingsState = SettingsState(repo, fakePreferencesService());
+        await settingsState.initialize();
+        await settingsState.setPreferredWeightUnit('lbs');
+        return settingsState;
+      }
+
+      test(
+        'S-13205 the fl oz unit steps 237 ml through plus, minus and watch '
+        'taps; the ml unit still steps 250',
+        () async {
+          final repo = await _freshRepo();
+          final settings = await buildFlozSettings(repo);
+          final state = NutritionState(repo, settings: settings);
+          final today = OmniDateUtils.todayMidnightMs();
+
+          await state.incrementWaterForDate(today);
+          expect(state.waterTodayMl, 237);
+          await state.incrementWaterForDate(today);
+          expect(state.waterTodayMl, 474);
+          await state.decrementWaterForDate(today);
+          expect(state.waterTodayMl, 237);
+
+          // A minus at 0 ml is no write and no notification.
+          final emptyDayMs = OmniDateUtils.startOfDayMs(DateTime(2026, 4, 2));
+          var notifies = 0;
+          state.addListener(() => notifies++);
+          await state.decrementWaterForDate(emptyDayMs);
+          expect(await repo.getWaterVolumeForDate(emptyDayMs), 0);
+          expect(notifies, 0);
+
+          // Watch taps on the loaded day, each with a fresh tap id.
+          await state.loadWaterForDate(today);
+          expect(state.waterTodayMl, 237);
+          final appliedAdd = await state.applyWatchWaterTap(
+            dateMs: today,
+            tapId: 's-13205-add',
+            add: true,
+          );
+          expect(appliedAdd, isTrue);
+          expect(state.waterTodayMl, 474);
+          final appliedRemove = await state.applyWatchWaterTap(
+            dateMs: today,
+            tapId: 's-13205-remove',
+            add: false,
+          );
+          expect(appliedRemove, isTrue);
+          expect(state.waterTodayMl, 237);
+
+          // The ml unit still steps 250 from a cold start.
+          final mlRepo = await _freshRepo();
+          final mlState = NutritionState(mlRepo);
+          await mlState.incrementWaterForDate(today);
+          expect(mlState.waterTodayMl, 250);
+          await mlState.incrementWaterForDate(today);
+          expect(mlState.waterTodayMl, 500);
+          await mlState.decrementWaterForDate(today);
+          expect(mlState.waterTodayMl, 250);
+          await mlState.loadWaterForDate(today);
+          expect(
+            await mlState.applyWatchWaterTap(
+              dateMs: today,
+              tapId: 's-13205-ml-add',
+              add: true,
+            ),
+            isTrue,
+          );
+          expect(mlState.waterTodayMl, 500);
+          expect(
+            await mlState.applyWatchWaterTap(
+              dateMs: today,
+              tapId: 's-13205-ml-remove',
+              add: false,
+            ),
+            isTrue,
+          );
+          expect(mlState.waterTodayMl, 250);
+        },
+      );
+
+      test(
+        'S-13206 a unit switch notifies NutritionState exactly once; '
+        'another setting is silent; waterTodayMl never rewrites',
+        () async {
+          final repo = await _freshRepo();
+          final today = OmniDateUtils.todayMidnightMs();
+          await repo.saveWaterVolumeForDate(today, 1000);
+
+          final settings = SettingsState(repo, fakePreferencesService());
+          await settings.initialize();
+          final state = NutritionState(repo, settings: settings);
+          await state.loadWaterForDate(today);
+
+          var notifies = 0;
+          state.addListener(() => notifies++);
+
+          await settings.setPreferredWeightUnit('lbs');
+          expect(state.waterTodayMl, 1000, reason: 'storage is ml only');
+          expect(notifies, 1);
+
+          // Any non-volume setting never notifies NutritionState.
+          await settings.setAppTheme(
+            settings.appTheme == AppTheme.forgeEmber
+                ? AppTheme.abyssalNeon
+                : AppTheme.forgeEmber,
+          );
+          expect(notifies, 1);
+
+          await state.incrementWaterForDate(today);
+          expect(state.waterTodayMl, 1237);
+          expect(notifies, 2);
+        },
+      );
+
+      test(
+        'S-13215 a 237 ml step reaches a non-multiple day and floors '
+        'exactly at 0',
+        () async {
+          final repo = await _freshRepo();
+          final settings = await buildFlozSettings(repo);
+          final state = NutritionState(repo, settings: settings);
+          final today = OmniDateUtils.todayMidnightMs();
+          await repo.saveWaterVolumeForDate(today, 763);
+          await state.loadWaterForDate(today);
+          expect(state.waterTodayMl, 763);
+
+          await state.decrementWaterForDate(today);
+          expect(state.waterTodayMl, 526);
+          expect(state.waterTodayMl, isNot(lessThan(0)));
+          await state.decrementWaterForDate(today);
+          expect(state.waterTodayMl, 289);
+          await state.decrementWaterForDate(today);
+          expect(state.waterTodayMl, 52);
+          await state.decrementWaterForDate(today);
+          expect(state.waterTodayMl, 0);
+          expect(await repo.getWaterVolumeForDate(today), 0);
+
+          await state.incrementWaterForDate(today);
+          expect(state.waterTodayMl, 237);
+        },
+      );
+
+      test(
+        'S-13216 a null-settings NutritionState stays ml; an unbound '
+        'SettingsState mutation notifies nothing here',
+        () async {
+          final repo = await _freshRepo();
+          final today = OmniDateUtils.todayMidnightMs();
+          final settings = SettingsState(repo, fakePreferencesService());
+          await settings.initialize();
+          final state = NutritionState(repo);
+          await state.loadWaterForDate(today);
+
+          expect(state.waterVolumeUnit, 'ml');
+          expect(state.waterStepMl, 250);
+
+          var notifies = 0;
+          state.addListener(() => notifies++);
+
+          await state.incrementWaterForDate(today);
+          expect(state.waterTodayMl, 250);
+          await state.decrementWaterForDate(today);
+          expect(state.waterTodayMl, 0);
+          expect(
+            await state.applyWatchWaterTap(
+              dateMs: today,
+              tapId: 's-13216-add',
+              add: true,
+            ),
+            isTrue,
+          );
+          expect(state.waterTodayMl, 250);
+          expect(
+            await state.applyWatchWaterTap(
+              dateMs: today,
+              tapId: 's-13216-remove',
+              add: false,
+            ),
+            isTrue,
+          );
+          expect(state.waterTodayMl, 0);
+          expect(notifies, 4);
+
+          // Mutating the SettingsState this state was never bound to.
+          await settings.setPreferredWeightUnit('lbs');
+          expect(state.waterVolumeUnit, 'ml');
+          expect(state.waterStepMl, 250);
+          expect(notifies, 4);
+        },
+      );
+
+      test(
+        'S-13213 a plus parked mid-write keeps the unit it read at its '
+        'closure start; the queued next write uses the new unit',
+        () async {
+          final repo = _GatedWaterRepo();
+          await repo.initialize();
+          // The settings start fl oz, so the in-flight tap steps 237.
+          final settings = await buildFlozSettings(repo);
+          final state = NutritionState(repo, settings: settings);
+          final today = OmniDateUtils.todayMidnightMs();
+          expect(state.waterStepMl, 237);
+
+          var notifies = 0;
+          state.addListener(() => notifies++);
+
+          // Start a plus; flush microtasks so its body starts, reads its
+          // 237 step and parks inside the repository read.
+          final first = state.incrementWaterForDate(today);
+          await Future<void>.delayed(Duration.zero);
+          // Switch the unit while the first closure is parked.
+          await settings.setPreferredWeightUnit('kg');
+          // Queue a second plus behind the first.
+          final second = state.incrementWaterForDate(today);
+
+          // Release the parked read: the first closure continues with
+          // its 237 step.
+          repo.gate.complete();
+          await first;
+          expect(state.waterTodayMl, 237);
+
+          await second;
+          expect(state.waterTodayMl, 487);
+
+          await state.decrementWaterForDate(today);
+          expect(state.waterTodayMl, 237);
+          expect(await repo.getWaterVolumeForDate(today), 237);
+          // One notify per write (3) and the unit switch (1).
+          expect(notifies, 4);
+        },
+      );
+
+      test(
+        'S-13218 the water unit follows the weight setting: lbs flips to '
+        'floz, kg back to ml; the distance unit is silent (plan 132 Rev 1)',
+        () async {
+          final repo = await _freshRepo();
+          final today = OmniDateUtils.todayMidnightMs();
+
+          final settings = SettingsState(repo, fakePreferencesService());
+          await settings.initialize();
+          final state = NutritionState(repo, settings: settings);
+          await state.loadWaterForDate(today);
+
+          var notifies = 0;
+          state.addListener(() => notifies++);
+          final baseline = notifies;
+
+          await settings.setPreferredWeightUnit('lbs');
+          expect(state.waterVolumeUnit, 'floz');
+          expect(notifies - baseline, 1);
+
+          // Any non-weight setting never notifies NutritionState.
+          await settings.setPreferredDistanceUnit('miles');
+          expect(notifies - baseline, 1);
+
+          await state.incrementWaterForDate(today);
+          expect(await repo.getWaterVolumeForDate(today), 237);
+
+          await settings.setPreferredWeightUnit('kg');
+          expect(state.waterVolumeUnit, 'ml');
+          expect(notifies - baseline, 3);
+        },
+      );
     });
 
     // ── Per-macro totals (Phase 1 of the macro-donut-chart plan) ───────

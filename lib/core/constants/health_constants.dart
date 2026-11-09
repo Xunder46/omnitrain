@@ -39,6 +39,7 @@ enum HealthActivityKind {
   cardio,
   flexibility,
   sport,
+  yoga,
   conditioning,
   other,
 }

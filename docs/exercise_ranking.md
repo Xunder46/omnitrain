@@ -53,13 +53,13 @@ Note: the precise numeric weights live in `ModalityConfig.forModality` / `calcul
 ## UI considerations
 
 - The UI (`ExercisePickerScreen`) requests `getExercisesRankedForModality(modality, ...)` and receives a sorted list.
-- Previously the dialog partitioned results into "Recommended" (exercises supporting the modality's primary metric) and "Other exercises"; that partitioning has been removed and the list is displayed in the repository's sorted order.
+- When a session modality is set, the picker partitions the ranked list into "Recommended" (exercises scoring at or above the modality's recommended threshold) and "Other" section headers; the split is `_partitionExercises` in `ExercisePickerScreen`, keyed on `RECOMMENDED_SCORE_THRESHOLD` in `lib/core/constants/modality_config.dart`.
 
 ## Files to update when tuning behavior
 
 - `lib/core/constants/modality_config.dart` — adjust primary/secondary/anti capability lists and weights.
 - `lib/data/repositories/mock_workout_repository.dart` — port to SQLite: the same input/output contract should be preserved.
-- `lib/features/exercise/exercise_picker_screen.dart` — decide whether to reintroduce UI grouping by thresholds or display score badges.
+- `lib/features/exercise/exercise_picker_screen.dart` — adjust the picker's partitioning behaviour or display score badges.
 
 ---
 Generated: automated documentation added to repository.

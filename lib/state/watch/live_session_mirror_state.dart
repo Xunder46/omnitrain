@@ -75,12 +75,14 @@ class LiveSessionMirrorState extends ChangeNotifier {
     required Map<String, Object?> snapshot,
     SyncProtocolValidator? validator,
     DateTime Function()? clock,
+    DateTime Function()? ledgerClock,
     String Function()? idFactory,
     Future<Map<String, Object?>?> Function(Map<String, Object?>? incoming)?
     projection,
   }) : _transport = transport,
        _validator = validator,
        _clock = clock ?? _utcNow,
+       _ledgerClock = ledgerClock ?? clock ?? _utcNow,
        _newId = idFactory ?? _uuid,
        _projection = projection,
        _reconciler = SyncSessionReconciler.fromSnapshot(snapshot);
@@ -94,6 +96,12 @@ class LiveSessionMirrorState extends ChangeNotifier {
   final WatchMirrorTransport _transport;
   final SyncProtocolValidator? _validator;
   final DateTime Function() _clock;
+
+  /// The instant the unconfirmed-end ledger (plan 128) measures its bounds
+  /// against. Separate from [_clock] on purpose: [_clock] stamps every frame, and
+  /// a graph clock that stands still would stop the wrist's strictly-older
+  /// snapshot refusal (plan 127 D-8) from telling frames apart.
+  final DateTime Function() _ledgerClock;
   final String Function() _newId;
   final SyncSessionReconciler _reconciler;
 
@@ -109,6 +117,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// The session as the phone closed it. Null while it is running.
   Map<String, Object?>? _completedRecord;
 
+  /// The `sentAt` of the newest `session_snapshot` this mirror has applied:
+  /// the stamp an older snapshot arriving late is judged against (plan 63 D-1).
+  DateTime? _newestSnapshotAt;
+
   /// How each session this phone announced an end for ended, by session id.
   ///
   /// [owesResetFor]'s status is the memory for the session this mirror is
@@ -116,6 +128,16 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// exactly the ones a wrist still announcing them is owed an answer for
   /// (D-182's fourth row, S-190).
   final Map<String, String> _fates = {};
+
+  /// Plan 128, D-1: ends the phone announced whose wrist confirmation is still
+  /// owed, by session id. Memory only, like [_fates] — a phone restart empties
+  /// it and the stored row (D-3) takes over.
+  final Map<String, _UnconfirmedEnd> _unconfirmedEnds = {};
+
+  /// Plan 128, D-1: sessions whose end was confirmed by the wrist, capped by
+  /// the re-offer budget or expired — an id here is never re-armed in this run,
+  /// so a late frame cannot resurrect a debt the ledger already stopped paying.
+  final Set<String> _retiredEnds = {};
 
   // ---------------------------------------------------------------------------
   // What the surface reads
@@ -128,12 +150,24 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// The session's identity, as both devices know it.
   String? get sessionId => state['sessionId'] as String?;
 
+  /// Whether the converged session already holds a session effort rating: the
+  /// wrist's own answer, which the phone must not echo back (plan 42b D-3).
+  bool get holdsEffortRating =>
+      entries.any((entry) => entry['kind'] == 'effort_rating');
+
   /// The protocol's status for the session — `active`, `completed`, or
   /// `abandoned`.
   String? get status => state['status'] as String?;
 
   /// Whether the session is still running on the wrist.
   bool get isActive => status == WatchSessionStatus.active;
+
+  /// Whether the wrist last reported [sessionId] as the session it is running,
+  /// with an exercise in it — the state in which the wrist has its own Fitness
+  /// workout open for it (plan 89c1 D-2). Only a wrist snapshot moves this
+  /// mirror onto a session; the placeholder is never active.
+  bool wristRunsSession(String sessionId) =>
+      this.sessionId == sessionId && isActive && exercises.isNotEmpty;
 
   /// Where in the ladder the session is.
   int get currentExerciseIndex => (state['currentExerciseIndex'] as int?) ?? 0;
@@ -211,6 +245,8 @@ class LiveSessionMirrorState extends ChangeNotifier {
       return MirrorOutcome.ignored;
     }
 
+    if (isStaleSnapshot(envelope)) return MirrorOutcome.ignored;
+
     // A message about a session this mirror is not holding is not this mirror's
     // news. A nutrition quick-log taken with no workout running names the day it
     // was logged on, and folding it into whatever session happens to be live
@@ -230,6 +266,18 @@ class LiveSessionMirrorState extends ChangeNotifier {
         _asObject(envelope['payload'])['sessionId'] != before['sessionId'];
     _reconciler.applyMessage(envelope);
     if (switchesSession) _completedRecord = null;
+    if (envelope['type'] == 'session_snapshot') {
+      final sentAt = envelope['sentAt'];
+      if (sentAt is String) {
+        final sent = DateTime.tryParse(sentAt);
+        if (sent != null) {
+          final newest = _newestSnapshotAt;
+          _newestSnapshotAt = newest == null || sent.isAfter(newest)
+              ? sent
+              : newest;
+        }
+      }
+    }
     notifyListeners();
 
     if (switchesSession) return MirrorOutcome.applied;
@@ -262,6 +310,18 @@ class LiveSessionMirrorState extends ChangeNotifier {
 
   static bool _holdsLadder(Map<String, Object?> state) =>
       _objects(state['exercises']).isNotEmpty;
+
+  /// True when [envelope] is a `session_snapshot` stamped earlier than the
+  /// newest snapshot this mirror has applied: an older state arriving late
+  /// (plan 63 D-1). An equal stamp is not stale.
+  bool isStaleSnapshot(Map<String, Object?> envelope) {
+    if (envelope['type'] != 'session_snapshot') return false;
+    final newest = _newestSnapshotAt;
+    final sentAt = envelope['sentAt'];
+    if (newest == null || sentAt is! String) return false;
+    final sent = DateTime.tryParse(sentAt);
+    return sent != null && sent.isBefore(newest);
+  }
 
   /// True when [envelope] names the session this mirror holds. An envelope that
   /// names none at all is not a session's news either, and is equally not this
@@ -306,7 +366,9 @@ class LiveSessionMirrorState extends ChangeNotifier {
     final projection = _projection;
     if (projection == null) return null;
     return projection(<String, Object?>{
-      'payload': <String, Object?>{'currentExerciseIndex': currentExerciseIndex},
+      'payload': <String, Object?>{
+        'currentExerciseIndex': currentExerciseIndex,
+      },
     });
   }
 
@@ -349,6 +411,41 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// handed over, not the frame (D-196, D-197).
   Future<WatchDelivery> sendState(Map<String, Object?> state) =>
       _transport.send(snapshotEnvelope(state: state));
+
+  /// Tells the wrist the phone answered the effort question for [sessionId]
+  /// first (plan 42b D-1): this mirror's converged state plus one
+  /// `effort_rating` entry under the wrist's own id, `rating-<sessionId>`, so
+  /// the wrist's open question closes and cannot be answered late. Sends
+  /// nothing and answers undelivered when the mirror holds another session.
+  Future<WatchDelivery> sendRatingFor(String sessionId, int rating) {
+    if (this.sessionId != sessionId) {
+      return Future.value(WatchDelivery.undelivered);
+    }
+    final id = 'rating-$sessionId';
+    return sendState({
+      ...state,
+      'entries': [
+        ...entries,
+        {
+          'entryId': id,
+          'eventId': id,
+          'kind': 'effort_rating',
+          'loggedAt': utcIso(_clock()),
+          'rating': rating,
+        },
+      ],
+    });
+  }
+
+  /// Hands the watch the phone's work timers for [sessionId] as one
+  /// `timer_state` frame (plan 43b3 D-2). A kind mapped to null clears that
+  /// timer. Nothing is applied to this mirror: its timers are the wrist's.
+  Future<WatchDelivery> sendTimers(
+    String sessionId,
+    Map<String, Object?> timers,
+  ) => _transport.send(
+    _envelopeFor(sessionId, 'timer_state', {'timers': timers}),
+  );
 
   /// Asks the watch for its snapshot — the phone's half of joining a session
   /// that was started on the wrist.
@@ -654,6 +751,136 @@ class LiveSessionMirrorState extends ChangeNotifier {
       return;
     }
     _fates[sessionId] = state;
+    _armUnconfirmedEnd(sessionId, state);
+  }
+
+  /// Arms (or keeps) the ledger entry [sessionId] owes (plan 128, D-1).
+  ///
+  /// An id already retired stays retired, and an entry whose state is already
+  /// the announced one is kept as it is — a re-offer round-trips through
+  /// [reportLifecycleFor], and resetting its counters there would let a frame
+  /// flood outlive the bounds. A different state replaces the entry: an
+  /// `abandoned` announced after a `completed` is a new end to pay.
+  void _armUnconfirmedEnd(String sessionId, String state) {
+    if (_retiredEnds.contains(sessionId)) return;
+    final existing = _unconfirmedEnds[sessionId];
+    if (existing != null) {
+      if (existing.state == state) return;
+      _unconfirmedEnds.remove(sessionId);
+    }
+    _unconfirmedEnds[sessionId] = _UnconfirmedEnd(
+      state: state,
+      since: _ledgerClock(),
+    );
+  }
+
+  /// Retires the ledger entry [sessionId]: confirmed, capped or expired, it is
+  /// done (plan 128, D-1) and must never be re-armed in this run.
+  void _retireEnd(String sessionId) {
+    _unconfirmedEnds.remove(sessionId);
+    _retiredEnds.add(sessionId);
+  }
+
+  /// The wrist says it holds the end of [sessionId]: drop the debt for good
+  /// (plan 128, D-1 i).
+  void confirmEnd(String sessionId) => _retireEnd(sessionId);
+
+  /// Every end whose debt names another session than [sessionId] is confirmed:
+  /// a frame that tells the phone the wrist holds [sessionId] is news that the
+  /// wrist has moved off them (plan 128, D-1 ii). Only frames that announce an
+  /// ended state may drive this — a frame naming [sessionId] is not by itself
+  /// proof the wrist left the others (plan 128, S-12806).
+  void confirmEndsExcept(String sessionId) {
+    for (final id in List.of(_unconfirmedEnds.keys)) {
+      if (id != sessionId) _retireEnd(id);
+    }
+  }
+
+  /// Takes one end the session [sessionId] is owed, or null when the ledger
+  /// has none that is due (plan 128, D-1, D-2a).
+  ///
+  /// Due when the entry is younger than 24 h (older is retired, never again
+  /// offered: D-1 iii) and has not spent its three re-offers (D-1 iv), and at
+  /// least 30 s have passed since the last one — a timer tick must not flood
+  /// (D-2a). Taking it stamps the pacing only; [noteOfferSent] counts it
+  /// (plan 128 D-10): an offer whose send threw did not leave, and must not
+  /// spend a re-offer it never delivered.
+  String? takeOwedEnd(String sessionId) {
+    final entry = _unconfirmedEnds[sessionId];
+    if (entry == null) return null;
+    final now = _ledgerClock();
+    final age = now.difference(entry.since);
+    if (age >= _endLedgerTtl || age.isNegative) {
+      _retireEnd(sessionId);
+      return null;
+    }
+    if (entry.offers >= _endLedgerMaxOffers) {
+      _retireEnd(sessionId);
+      return null;
+    }
+    final last = entry.lastOfferAt;
+    if (last != null && now.difference(last) < _endLedgerRepeatWindow) {
+      return null;
+    }
+    entry.lastOfferAt = now;
+    return entry.state;
+  }
+
+  /// The offer [takeOwedEnd] returned was handed to the transport without a throw: it now counts toward D-1 iv, and
+  /// the third retires the entry (plan 128 D-10). An entry confirmed or retired meanwhile is left alone.
+  void noteOfferSent(String sessionId) {
+    final entry = _unconfirmedEnds[sessionId];
+    if (entry == null) return;
+    entry.offers++;
+    if (entry.offers >= _endLedgerMaxOffers) _retireEnd(sessionId);
+  }
+
+  /// Offers every end still due to the wrist, oldest first (plan 128, D-2b) —
+  /// the link coming back into reach is the trigger, so the 30 s window does
+  /// not apply here. Each offer goes through [reportLifecycleFor] (the frame
+  /// is durable already) and counts toward D-1 iv, but stamps none of the
+  /// window the frame-driven takes ([takeOwedEnd]) pace themselves with — a
+  /// link offer and a wrist frame in the same instant are both owed an answer
+  /// (S-12813a).
+  ///
+  /// Each end is tried and counted as sent only after its send returned
+  /// (plan 128 D-10); the first error is rethrown after the loop, so the
+  /// wiring still reports it while no end is left unoffered.
+  Future<void> offerAllOwedEnds() async {
+    final entries = [..._unconfirmedEnds.entries]
+      ..sort((a, b) => a.value.since.compareTo(b.value.since));
+    final now = _ledgerClock();
+    Object? firstError;
+    StackTrace? firstStack;
+    for (final entry in entries) {
+      if (_unconfirmedEnds[entry.key] != entry.value) continue;
+      if (now.difference(entry.value.since) >= _endLedgerTtl ||
+          entry.value.offers >= _endLedgerMaxOffers) {
+        _retireEnd(entry.key);
+        continue;
+      }
+      try {
+        await reportLifecycleFor(entry.key, entry.value.state);
+        noteOfferSent(entry.key);
+      } catch (error, stack) {
+        firstError ??= error;
+        firstStack ??= stack;
+      }
+    }
+    if (firstError != null) Error.throwWithStackTrace(firstError, firstStack!);
+  }
+
+  /// Arms a `completed` end for [sessionId] from the stored row — the phone's
+  /// ledger is empty after a restart, and the row's `endedAtMs` is what the
+  /// caller has already read (plan 128, D-3). A session the ledger still owes,
+  /// or one it already stopped owing, is left as it is.
+  void adoptEndedFromRow(String sessionId) {
+    if (_retiredEnds.contains(sessionId)) return;
+    if (_unconfirmedEnds.containsKey(sessionId)) return;
+    _unconfirmedEnds[sessionId] = _UnconfirmedEnd(
+      state: WatchLifecycleState.completed,
+      since: _ledgerClock(),
+    );
   }
 
   /// A message the phone originates: applied here first, then handed to the
@@ -759,4 +986,34 @@ class LiveSessionMirrorState extends ChangeNotifier {
 
   static Map<String, Object?> _asObject(Object? value) =>
       (value as Map?)?.cast<String, Object?>() ?? const <String, Object?>{};
+
+  /// Plan 128, D-1: how long an unconfirmed end stays owed.
+  static const Duration _endLedgerTtl = Duration(hours: 24);
+
+  /// Plan 128, D-2a: the least disharmony between two answers to the same
+  /// wrist — one offer per session per window.
+  static const Duration _endLedgerRepeatWindow = Duration(seconds: 30);
+
+  /// Plan 128, D-1 iv: the re-offer budget of one end.
+  static const int _endLedgerMaxOffers = 3;
+}
+
+/// One end the ledger is still paying (plan 128, D-1): mutable on purpose —
+/// each take counts [offers] and stamps [lastOfferAt].
+class _UnconfirmedEnd {
+  _UnconfirmedEnd({required this.state, required this.since})
+    : offers = 0,
+      lastOfferAt = null;
+
+  /// How the phone announced the end: `completed` or `abandoned`.
+  final String state;
+
+  /// When the phone announced it, read from the mirror's own clock.
+  final DateTime since;
+
+  /// Re-offers already sent for it.
+  int offers;
+
+  /// When the newest re-offer went out, or null while none has.
+  DateTime? lastOfferAt;
 }

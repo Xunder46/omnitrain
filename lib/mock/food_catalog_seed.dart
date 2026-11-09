@@ -22,7 +22,7 @@ import '../data/models/models.dart';
 /// the `groupId` FK). Keep the two in lockstep with the loader map in
 /// `FoodCatalogLoader._categoryToGroupId`.
 class FoodCatalogSeed {
-  /// All 168 catalog foods.
+  /// All 169 catalog foods.
   static final List<Food> sampleCatalogFoods = _buildCatalogFoods();
 
   static List<Food> _buildCatalogFoods() {
@@ -57,6 +57,22 @@ class FoodCatalogSeed {
         fiber: 0,
         fat: 10,
         sodium: 84,
+        createdAtMs: 1700000000000,
+        updatedAtMs: 1700000000000,
+      ),
+      const Food(
+        id: 'chicken_thigh_skin_on',
+        name: 'Chicken thigh, with skin',
+        groupId: 'food-group-proteins',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: 'g',
+        isCatalog: true,
+        protein: 24,
+        carbs: 0,
+        fiber: 0,
+        fat: 15,
+        sodium: 93,
         createdAtMs: 1700000000000,
         updatedAtMs: 1700000000000,
       ),

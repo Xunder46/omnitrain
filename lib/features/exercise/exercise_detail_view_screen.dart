@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:omnitrain/core/constants/capability.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
+import 'package:omnitrain/core/utils/muscle_display.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
@@ -64,7 +65,8 @@ class _ExerciseDetailViewScreenState extends State<ExerciseDetailViewScreen> {
   bool _hasPoppedWithAdd = false;
 
   List<Discipline> _disciplines = const [];
-  List<MuscleGroup> _muscleGroupsForExercise = const [];
+  List<MuscleGroup> _primaryMuscles = const [];
+  List<MuscleGroup> _secondaryMuscles = const [];
 
   @override
   void initState() {
@@ -79,13 +81,15 @@ class _ExerciseDetailViewScreenState extends State<ExerciseDetailViewScreen> {
     if (widget.workoutState.muscleGroups.isEmpty) {
       await widget.workoutState.loadMuscleGroups();
     }
-    final muscles = await widget.workoutState.getExerciseMuscleGroups(
-      widget.exercise.id,
-    );
+    final links =
+        await widget.workoutState.getExerciseMuscleLinks(widget.exercise.id) ??
+        const <ExerciseMuscleLink>[];
+    final groups = widget.workoutState.muscleGroups;
     if (!mounted) return;
     setState(() {
       _disciplines = widget.workoutState.disciplines;
-      _muscleGroupsForExercise = muscles;
+      _primaryMuscles = musclesWithRole(links, groups, MuscleRole.primary);
+      _secondaryMuscles = musclesWithRole(links, groups, MuscleRole.secondary);
     });
   }
 
@@ -115,7 +119,8 @@ class _ExerciseDetailViewScreenState extends State<ExerciseDetailViewScreen> {
         child: ExerciseDetailViewBody(
           exercise: widget.exercise,
           discipline: _resolveDiscipline(widget.exercise.disciplineId),
-          muscleGroups: _muscleGroupsForExercise,
+          primaryMuscles: _primaryMuscles,
+          secondaryMuscles: _secondaryMuscles,
         ),
       ),
       bottomNavigationBar: widget.showAddAction
@@ -159,7 +164,13 @@ class ExerciseDetailViewBody extends StatelessWidget {
 
   final Exercise exercise;
   final Discipline? discipline;
-  final List<MuscleGroup> muscleGroups;
+
+  /// Muscles with a `primary` link, in link order. Shown under "Primary".
+  final List<MuscleGroup> primaryMuscles;
+
+  /// Muscles with a `secondary` link, in link order. Shown under
+  /// "Secondary"; the row is hidden when this list is empty.
+  final List<MuscleGroup> secondaryMuscles;
 
   /// Padding for content inside the scrollable body.
   /// Defaults to `EdgeInsets.fromLTRB(16, 16, 16, 24)` to preserve the
@@ -171,7 +182,8 @@ class ExerciseDetailViewBody extends StatelessWidget {
     super.key,
     required this.exercise,
     required this.discipline,
-    required this.muscleGroups,
+    required this.primaryMuscles,
+    required this.secondaryMuscles,
     this.contentPadding = const EdgeInsets.fromLTRB(16, 16, 16, 24),
   });
 
@@ -189,7 +201,8 @@ class ExerciseDetailViewBody extends StatelessWidget {
         .toList();
     final hasTracking = trackingCaps.isNotEmpty;
     final hasMovement = movementCaps.isNotEmpty;
-    final hasMuscles = muscleGroups.isNotEmpty;
+    final hasMuscles =
+        primaryMuscles.isNotEmpty || secondaryMuscles.isNotEmpty;
     final isCustom = exercise.isCustomExercise;
 
     return SingleChildScrollView(
@@ -299,18 +312,42 @@ class ExerciseDetailViewBody extends StatelessWidget {
             ),
           if (hasMovement) const SizedBox(height: 12),
 
-          // Muscles (collapsed when absent).
+          // Muscles (collapsed when absent): main muscles first, then the
+          // assisting ones. Each row is hidden when its list is empty.
           if (hasMuscles)
-            _DetailRow(
+            Column(
               key: const Key('exercise_detail_muscles_section'),
-              label: 'Muscles',
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final mg in muscleGroups) _MetaChip(label: mg.name),
-                ],
-              ),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (primaryMuscles.isNotEmpty)
+                  _DetailRow(
+                    key: const Key('exercise_detail_primary_muscles'),
+                    label: 'Primary',
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final mg in primaryMuscles)
+                          _MetaChip(label: mg.name),
+                      ],
+                    ),
+                  ),
+                if (primaryMuscles.isNotEmpty && secondaryMuscles.isNotEmpty)
+                  const SizedBox(height: 12),
+                if (secondaryMuscles.isNotEmpty)
+                  _DetailRow(
+                    key: const Key('exercise_detail_secondary_muscles'),
+                    label: 'Secondary',
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final mg in secondaryMuscles)
+                          _MetaChip(label: mg.name),
+                      ],
+                    ),
+                  ),
+              ],
             ),
         ],
       ),

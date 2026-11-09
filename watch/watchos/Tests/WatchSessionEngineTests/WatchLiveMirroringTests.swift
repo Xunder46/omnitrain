@@ -372,8 +372,10 @@ final class WatchLiveMirroringTests: XCTestCase {
             (expected["exercises"] as? [[String: Any]] ?? []) as NSArray,
             path
         )
+        // The wrist's own `session_end` is capture bookkeeping, not converged state: a
+        // session that ends owes the phone its heart rate (plan 71), and no fixture says so.
         XCTAssertEqual(
-            engine.entries.map(\.payload) as NSArray,
+            engine.entries.map(\.payload).filter { $0["kind"] as? String != WatchObservationKind.sessionEnd } as NSArray,
             (expected["entries"] as? [[String: Any]] ?? []) as NSArray,
             path
         )

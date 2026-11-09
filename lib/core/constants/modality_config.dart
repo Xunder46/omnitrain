@@ -4,6 +4,7 @@
 library;
 
 import '../../data/models/models.dart';
+import 'modality_display.dart';
 
 /// Threshold score for determining "Recommended" exercises during exercise selection.
 /// Exercises with relevanceScore >= this threshold are considered well-suited for the modality.
@@ -260,16 +261,8 @@ class ModalityConfig {
   }
 
   /// Get display label for rounds based on modality
-  static String getRoundsLabel(String? modality) {
-    switch (modality) {
-      case 'sports':
-        return 'Periods'; // Can be periods, halves, quarters
-      case 'cardio_endurance':
-        return 'Intervals';
-      default:
-        return 'Rounds';
-    }
-  }
+  static String getRoundsLabel(String? modality) =>
+      ModalityDisplay.getRoundsLabel(modality);
 
   /// Calculate exercise relevance score for this modality (0-100).
   /// Scoring breakdown:

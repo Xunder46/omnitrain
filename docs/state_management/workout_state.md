@@ -34,6 +34,15 @@ graph, `lib/main.dart` builds `WorkoutState` after `createWatchSync` and builds
 `test/watch_session_edit_restore_late_entry_test.dart` (`S-1401` to `S-1410`,
 `S-1414`).
 
+It also takes an optional `wristRunsSession` predicate, `main.dart` passing the
+watch graph's `LiveSessionMirrorState.wristRunsSession`: `endSession` reads it to
+leave the Health write to the watch (plan 89c1 D-2). Null without a watch.
+
+It also takes an optional `screenAwake` (`ScreenAwakePort`), the keep-awake port
+plan 120 wires from `createScreenAwakePort()`; null falls back to
+`ScreenAwakePort.noop()`. The facade builds the `SessionScreenAwake` on it and
+exposes it as the `screenAwake` getter.
+
 Each sub-holder receives `notify: () => notifyListeners()` so all `notifyListeners()` calls still fire once from the single `ChangeNotifier` that consumers subscribe to. No consumer screen or test changes are required.
 
 **`notify` callback pattern**: Sub-holders are plain Dart objects (not ChangeNotifiers). They call the injected `notify` callback in place of `notifyListeners()`. This preserves the single-listener model and avoids the double-dispatch overhead of chaining multiple ChangeNotifiers.
@@ -49,6 +58,41 @@ Each sub-holder receives `notify: () => notifyListeners()` so all `notifyListene
 | `countSetsForSession(String sessionId)` | Read-only aggregate count of `EffortObservation` rows across all session segments/efforts for resume dialog display |
 
 These methods keep feature screens on the state boundary and avoid direct repository access from `features/`.
+
+---
+
+---
+
+### `SessionScreenAwake`
+
+**File**: `lib/state/workout/session_screen_awake.dart`
+**Depends on**: `ScreenAwakePort`, the owning `WorkoutState` listenable,
+`WidgetsBindingObserver`
+
+A plain `WidgetsBindingObserver` (not a `ChangeNotifier` — it never notifies
+listeners) that holds the keep-awake port while a work timer runs. `WorkoutState`
+constructs it with the injected port, its own listenable as the change source and
+`inProgressWorkTimers().isNotEmpty` as the work-timer predicate. Presence is
+counted: `attach`/`detach` maintain `attachedCount`, the first `attach`
+registers the lifecycle observer and the last `detach` removes it.
+
+Rationale — the phone must not auto-lock while a work timer (timed, hold, round)
+is running or paused on the live session screen. The hold is on exactly when at
+least one live (non-edit) session screen is attached, the app is foreground
+(resumed, inactive, or no lifecycle event yet; paused, hidden and detached are off) and a work timer is
+in progress. Rest, set efforts and the session elapsed clock never count.
+`WorkoutSessionScreen` attaches in `initState` when `!editMode` and detaches
+first in `dispose`, so routes pushed above the screen keep it attached. The port
+is called only when the computed value changes, plus one `false` at construction
+to clear a stale hold; port errors are logged and swallowed.
+
+Verified by `test/session_screen_awake_test.dart` (group `SessionScreenAwake
+(Mock)`: `S-19501 a running timed interval keeps awake`, `S-19507 screen
+disposed while running`, `S-19510 backgrounded and back`, `S-19513 rest and sets
+never count`, `S-19516 dedupe on a hot path, startup reset once`, `S-19517 a
+port that throws does not break state`) and
+`test/session_screen_awake_widget_test.dart` (`S-19520: a live session screen
+attaches on push and releases on pop, and the running timer survives the pop`).
 
 ---
 
@@ -79,6 +123,7 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 | `_currentModalityConfig` | `ModalityConfig?` | Active modality config |
 | `_isLoading` | `bool` | Loading state |
 | `_error` | `String?` | Last error message |
+| `_watchRefreshRevision` | `int` | Counter bumped by the watch-driven writes the open session screen reads (`refreshEfforts`, `appendSessionSlots`) and by nothing the phone itself writes, so a screen that reacts to it cannot loop on its own reload (D-3505) |
 
 #### Session Lifecycle Methods
 
@@ -88,13 +133,15 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 | `loadSessionData()` | Loads exercises, efforts, observations for current session |
 | `refreshEfforts(effortIds)` | Re-reads only the named efforts' observations, instances and entry rests from the repository — a refresh, not a reload, so a running timer survives. Used by the watch merge (`docs/watch_session_sync.md`, D-17); verified by `test/watch_session_merge_test.dart`'s S-16 |
 | `loadHistoricalSession(session)` | Loads a previously completed session for review/edit mode; sets `_currentModalityConfig` correctly from `session.modality` |
-| `endSession()` | Marks session as ended: `endedAtMs` is `max(startedAtMs, now)`, so a stored end never precedes its start (D-153; `S-155 writer table — every phone-owned writer leaves an ordered window`, `endSession clamps a start that lies ahead of the phone clock` in `test/session_window_never_inverted_test.dart`); idempotent — no-op if session already has `endedAtMs`. After a successful save, delegates to the injected `HealthSyncService` (no-op when not injected or when the health write toggle is off) |
+| `endSession({writeToHealth = true})` | Marks session as ended: `endedAtMs` is `max(startedAtMs, now)`, so a stored end never precedes its start (D-153; `S-155 writer table — every phone-owned writer leaves an ordered window`, `endSession clamps a start that lies ahead of the phone clock` in `test/session_window_never_inverted_test.dart`); idempotent — no-op if session already has `endedAtMs`. After a successful save, delegates to the injected `HealthSyncService` (no-op when not injected or when the health write toggle is off), except when `writeToHealth` is false (the wrist's own end, from the adoption bridge) or the injected `wristRunsSession` says the wrist is running the session: the watch saves that workout (plan 89c1, `S-89c1-*` in `test/health_platform_test.dart`) |
 | `clearSession()` | Removes session reference from state (doesn't delete data) |
-| `discardCurrentSession()` | Deletes session and all related data |
+| `discardCurrentSession()` | Deletes session and all related data; then, without awaiting, hands a finished session to `HealthSyncService.onSessionDeleted` (plan 89 `S-89-4` in `test/health_platform_test.dart`) |
 | `updateSessionNote(note)` | Updates session note |
 | `updateSessionEndTime(durationSecs)` | Edit-mode only — sets `endedAtMs = max(startedAtMs, startedAtMs + durationSecs × 1000)` (D-153); no-op if `durationSecs ≤ 0` (`S-155 writer table — every phone-owned writer leaves an ordered window`, `updateSessionEndTime with a zero or negative duration writes nothing` in `test/session_window_never_inverted_test.dart`) |
-| `updateSessionFeeling(sessionId, rating)` | Persists the 1-5 session effort rating (1 Very easy … 5 Max effort) to `TrainingSession.sessionFeeling` for any session id; updates `_currentSession` in-place when it is that session |
+| `updateSessionFeeling(sessionId, rating, {onlyIfUnrated})` | Persists the 1-5 session effort rating (1 Very easy … 5 Max effort) to `TrainingSession.sessionFeeling` for any session id; updates `_currentSession` in-place when it is that session. With `onlyIfUnrated: true` it writes nothing when the stored row already holds a rating — the automatic post-workout prompt saves this way, so a rating the watch's import wrote first is never overwritten by it. Verified by `test/rating_first_answer_state_test.dart` (`S-4304 onlyIfUnrated leaves the stored rating alone, the default still writes`) |
+| `adoptSessionFeeling(sessionId, feeling)` | Adopts a rating the wrist's import already wrote: updates `_currentSession` in-place when it is that session and notifies; writes nothing (the import wrote the row). Wired from `WatchSessionInbox`'s `onSessionRated` (see `docs/watch_session_sync.md`). Verified by `test/rating_first_answer_state_test.dart` (`S-4301 the wrist answer settles once and the live session adopts it`) |
 | `isRollingSession` | Getter — returns `true` when the active session has `isRolling == true`; returns `false` when no session is loaded |
+| `watchRefreshRevision` | Getter — the count of watch-driven writes (D-3505); re-exported by `WorkoutState.watchRefreshRevision`. `WorkoutSessionScreen` remembers the revision it last read and, when the mounted session is still running and the revision has moved, re-reads the list through `_resyncExercisesFromState()` without leaving the screen — it neither reloads the session nor resets the open entry, timers or loading state. Verified by `test/watch_live_refresh_screen_test.dart` (`S-3510` to `S-3514`) |
 
 #### Exercise Management
 
@@ -103,18 +150,20 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 | `addExerciseToSession(exercise, {chosenMetric})` | Hydrates the cached exercise via `_repository.getExerciseById(exercise.id)` so the session cache carries the canonical capabilities (matching how the exercise browser presents them), then creates the effort with the correct `effortKind`. The caller's `Exercise` is used as a fallback only if the repository doesn't know the id. |
 | `removeExerciseFromSession(effortId)` | Deletes effort + observations + rounds |
 | `getExercisesRankedForModality(modality, {...})` | Returns exercises sorted by relevance |
-| `createCustomExercise(name, {modality, ...})` | Creates new exercise in repository with persisted modality key |
-| `updateCustomExercise(exercise, {...})` | Updates existing exercise metadata + capability/muscle-group associations via repository interface |
+| `createCustomExercise(name, {modality, ...})` | Creates new exercise in repository with persisted modality key; the muscle choices reach it as `List<ExerciseMuscleLink>` (muscle-group id + role) and are stored through `setExerciseMuscleLinks`. Verified by `test/muscle_editor_state_test.dart` (group `S-2 state API` · `createCustomExercise stores the links normalised`) |
+| `updateCustomExercise(exercise, {...})` | Updates existing exercise metadata + capability/muscle-link associations via repository interface; the muscle links replace the stored set. Verified by `test/muscle_editor_state_test.dart` (group `S-2 state API` · `updateCustomExercise replaces the links`) |
+| `getExerciseMuscleLinks(exerciseId)` | Returns the exercise's stored muscle links (id + role); a repository failure surfaces through the error channel and returns an empty list. Verified by `test/muscle_editor_state_test.dart` (group `S-2 state API` · `createCustomExercise stores the links normalised`) |
 
 #### Observation Management
 
 | Method | Purpose |
 |--------|---------|
 | `addEntry(effortId, {previousValues})` | Creates a new set/interval/round/drill. The optional `previousValues` map carries forward metrics from the prior entry into the new observation rows / round instance — see the per-effort-kind table below. A distance is never carried forward: a new timed entry starts at 0 m with no source (D-702). Keys not present fall back to the app-wide defaults in `lib/core/constants/effort_defaults.dart` and `workout_constants.dart`. The carry-forward is read-only on the prior entry — `previousValues` only seeds the new entry's defaults, it does not mutate prior observations. The `_addSet` caller in `workout_session_screen.dart` populates `previousValues` from the prior entry in `getExercisesWithEntries()` so each new set/interval/round/drill pre-fills with the prior values (June 2026, exercise-set-last-value-plan). Verified by `test/row_invariants_guard_test.dart` (`S-1304`) |
+| `seedFirstEntry(effortId, {atMs})` | Gives an effort that holds no entry its first one, by calling `addEntry`. A slot the wrist added arrives with no sets or intervals; without this the session screen reads "Set 1 of 0" and the exercise cannot be removed. The seeded set is unlogged (no rest marks it logged), and the wrist's first logged set fills it instead of adding a second row (the live merge's planned-row rule). Called for every slot of a fresh watch adoption and for each slot `appendSessionSlots` adds; a no-op when the effort already holds an entry. Verified by `test/watch_live_refresh_screen_test.dart` (`S-3516`, `S-3517`) |
 
 | `updateEntryValue(effortId, entryIndex, metricKey, value)` | Persists metric value immediately; preserves all existing fields — `rpeRating`, `restDurationMs`, and, for every metric but distance, `valueSource`. A distance row's source is instead derived from the value written: `entered` for a positive value that has none, none for a zero (clearing it), and an existing source kept otherwise. The row it writes is the one entry *k* owns ([Entry Identity](../data_models.md#entry-identity), D-324), so an edit lands on the entry the user chose; a set's missing extra weight is created with that set's own number, and a hold's or a timed entry's missing predecessors are filled first. Verified by `test/entry_identity_test.dart` (`S-853`, `S-857`, `S-863`, `S-864`); the distance-source derivation by `test/distance_source_test.dart` (`S-804` (a)) and `test/row_invariants_guard_test.dart` (`S-883` steps 2a, 2b) |
 | `deleteLastEntry(effortId)` | Removes last set |
-| `deleteEntry(effortId, entryIndex)` | Removes exactly the rows entry *k* owns and nothing else — for a set, the *k*-th group; for a timed or hold entry, delegated to `deleteTimedEntry`. No row is renamed (D-326). Verified by `test/entry_identity_test.dart` (`S-851`, `S-852`, `S-860`) |
+| `deleteEntry(effortId, entryIndex)` | Removes exactly the rows entry *k* owns and nothing else — for a set, the *k*-th group; for a timed or hold entry, delegated to `deleteTimedEntry`; for a round, to `deleteRound`. No row is renamed (D-326). The entry's rest goes with it: after the delete, `TimerManager.rekeyEntryRestsAfterDelete` (`lib/state/workout/timer_manager.dart`) removes the rest at index *k* + 1 (the mark that set *k* was logged) and re-keys every rest above it down one, keeping the id shape `rest-<effortId>-<index>` and each rest's times and open/paused state, so a set added afterwards is a new unlogged set. Verified by `test/entry_identity_test.dart` (`S-851`, `S-852`, `S-860`) and `test/entry_delete_rests_test.dart` (group `${harness.name} — deleteEntry takes the rest with the entry` · `S-4301 deleting the last set takes its rest, so a new set reads unlogged`, `S-4302 deleting the first set moves every rest down with the sets it keeps`, `S-4303 deleting a middle set drops its own rest and moves the rest above it down`, `S-4304 timed: the rest of the deleted interval closes over it`, `S-4304 round: the rest of the deleted round closes over it`, `S-4318 an edit-mode delete that is cancelled puts the rests back`) |
 | `markSetSkipped(effortId, entryIndex)` | Marks set as explicitly skipped with `valueInt: 0, valueBool: true`; survives reload via `_isSetLogged` check. Addresses entry *k* by the same rule as `updateEntryValue`. Verified by `test/entry_identity_test.dart` (`S-854`) |
 | `setEntryDistance(effortId, entryIndex, metres)` | Records a distance with source `entered` (zero removes it); an existing row keeps its id and `createdAtMs`, and earlier unpaired entries are filled first, numbered upward. A new row is numbered above every row the effort holds, so it never overwrites a stored one. Verified by `test/distance_source_test.dart` (`S-805`–`S-807`), `test/entry_identity_test.dart` (`S-845`, `S-856`, `S-864`) and `test/row_invariants_guard_test.dart` (`S-883`) |
 | `confirmEntryDistance(effortId, entryIndex)` | Re-records the metres an entry already holds, keeping them exactly, and flips the source to `entered`. Verified by `test/distance_source_test.dart` (`S-806`) |
@@ -194,7 +243,7 @@ Handles all round, timed-entry, and rest state machines (Cluster B of the origin
 | Method | Transition | Purpose |
 |--------|-----------|---------|
 | `addRound(effortId, {plannedDurationSecs})` | — | Creates new `RoundInstance` |
-| `startRound(effortId, roundIndex)` | notStarted → active | Starts timer |
+| `startRound(effortId, roundIndex)` | notStarted → active | Starts timer; the start closes every open rest of the session in memory and persists each rest it closed (plan 98 D-1). Verified by `test/timer_start_closes_session_rests_test.dart` (groups `Mock` and `Hive`, `S-9922 startRound on B closes the open rest on A`) |
 | `pauseRound(effortId, roundIndex)` | active → paused | Stamps `pausedAtMs` |
 | `resumeRound(effortId, roundIndex)` | paused → active | Folds pause into `totalPausedDurationMs` |
 | `endRoundEarly(effortId, roundIndex)` | active/paused → finished | Derives elapsed from timestamps |
@@ -208,12 +257,32 @@ Handles all round, timed-entry, and rest state machines (Cluster B of the origin
 | Method | Transition | Purpose |
 |--------|-----------|---------|
 | `addTimedEntry(effortId, {targetDurationSecs})` | — | Creates new `TimedInstance`; `targetDurationSecs` used as elapsed offset on first start. Its id never repeats one an existing instance already holds — an add that lands on the same millisecond as a held id takes the next free one instead (D-338). Verified by `test/distance_source_import_test.dart` (`S-880`) |
-| `startTimedEntry(effortId, entryIndex)` | notStarted → active | Back-dates `startedAtMs` by any pre-set `targetDurationSecs` offset; clears target after first start so entry is open-ended |
+| `startTimedEntry(effortId, entryIndex)` | notStarted → active | Back-dates `startedAtMs` by any pre-set `targetDurationSecs` offset; clears target after first start so entry is open-ended; the start closes every open rest of the session in memory and persists each rest it closed (plan 98 D-1). Verified by `test/timer_start_closes_session_rests_test.dart` (groups `Mock` and `Hive`, `S-9921 startTimedEntry on B closes the open rest on A`) |
 | `pauseTimedEntry(effortId, entryIndex)` | active → paused | Stamps `pausedAtMs` |
 | `resumeTimedEntry(effortId, entryIndex)` | paused → active | Folds pause duration into `totalPausedDurationMs`; clears `pausedAtMs` |
 | `finishTimedEntry(effortId, entryIndex)` | active/paused → finished | Derives `actualDurationSecs` from timestamps; folds final pause if paused |
 | `deleteTimedEntry(effortId, entryIndex)` | — | Removes the instance and its own rows — the *k*-th row of each companion metric, found before the instance goes (D-326) — and re-indexes subsequent entries. Verified by `test/entry_identity_test.dart` (`S-855`, `S-860`) |
 | `getTimedInstancesForEffort(effortId)` | — | Returns unmodifiable list of timed instances for an effort |
+
+The facade read `WorkoutState.inProgressWorkTimers()` (over
+`TimerManager.inProgressWorkTimers(efforts)`) lists the held session's active or
+paused work intervals, one per wire kind (`elapsed` for a `timed` effort, `hold`
+for a `drill`, `round` for a round), keeping the newest `startedAtMs` when
+several are in progress for one kind; not-started and finished instances, rests
+and `set` efforts contribute nothing, and a session that is not active lists
+nothing. Verified by `test/in_progress_work_timers_test.dart` (group
+`WorkoutState.inProgressWorkTimers (Mock)`, `S-6201 an active timed interval
+lists one elapsed timer` and its eight sibling tests).
+
+The facade write `WorkoutState.adoptRemoteWorkTimer(effortId, remote)`
+(`SessionCore.adoptRemoteWorkTimer` in `session_core_io.dart`, over
+`TimerManager.adoptRemoteTimer`) applies a work timer the wrist sent
+(`RemoteWorkTimer` in `lib/state/workout/timer_manager.dart`, built by
+`WatchTimerAdoption` from the mirror):
+
+| Method | Rule |
+|--------|------|
+| `adoptRemoteWorkTimer(effortId, remote)` | The target is the effort's in-progress (active or paused) interval, else its first not-finished interval in stored order (the order plan 43a's fill uses); the wire kind must pair with the effort kind (`elapsed`→`timed`, `hold`→`drill`, `round`→`round`), and an unknown effort id or a wrong pairing writes nothing and returns false, and so does a start the phone already logged: a remote whose start is within `TimerManager._sameStartToleranceMs` (inclusive) of an interval of the same effort that is already finished is that logged interval, whatever the other intervals' states, running or paused, and nothing is written, no rest is closed and no revision is bumped (plan 121b D-1). An effort with no unfinished interval left grows by one interval for a remote the phone has not logged (`needsIntervalFor` decides through the same check). A not-started target becomes active — or paused when the remote carries a pause stamp — with the remote's `startedAtMs`, `pausedAtMs` and `accumulatedPauseMs` (a timed target is open-ended, `targetDurationSecs: 0`, as `startTimedEntry` writes it; a round takes the remote's planned length when the frame carries one and keeps its own otherwise); an in-progress target is replaced when the remote started strictly earlier, and takes a newer pause or resume of the same start (a start within the same tolerance): a larger accumulated pause, or an equal one with the phone running and the remote paused, writes the state, `pausedAtMs` and `totalPausedDurationMs` only (the phone keeps its own start and length, no rest is closed); a paused copy against a paused phone, an older, identical or pre-pause copy, and any other later start change nothing (plan 126 D-1..D-4; `test/wrist_pause_resume_adoption_test.dart`, `S-12601`–`S-12615`). The session's open rests are closed in memory and persisted, as a phone start does (plan 98 D-1); a stopped timer is not applied (the wrist's logged entry fills and finishes the interval, plan 43a). The write bumps `_watchRefreshRevision` once and notifies once. Verified by `test/remote_work_timer_state_test.dart` (groups `Mock` and `Hive`, `S-6101`–`S-6106`), by `test/stale_watch_timer_adoption_test.dart` (groups `Mock` and `Hive`, `S-12151`–`S-12164`) and by `test/timer_start_closes_session_rests_test.dart` (groups `Mock` and `Hive`, `S-9923 a wrist timer adopted into B closes the open rest on A`, `S-9923b a wrist timer adopted into a round B closes the open rest on A`) |
 
 #### Rest Tracking Methods
 
@@ -260,8 +329,9 @@ Handles the exercise catalog, exercise notes, and coach-mark hint flags (Cluster
 | `loadMuscleGroups()` / `loadDisciplines()` | Loads filter options |
 | `searchExercises(query)` | Filters exercises by name |
 | `getExercisesRankedForModality(modality, {...})` | Returns exercises sorted by relevance score |
-| `createCustomExercise(name, {...})` | Creates exercise in repository and caches it |
-| `updateCustomExercise(exercise, {...})` | Updates exercise and refreshes cache |
+| `createCustomExercise(name, {...})` | Creates exercise in repository and caches it; takes `List<ExerciseMuscleLink> muscleLinks` (id + role) |
+| `updateCustomExercise(exercise, {...})` | Updates exercise and refreshes cache; takes `List<ExerciseMuscleLink> muscleLinks` (id + role) and replaces the stored set |
+| `getExerciseMuscleLinks(exerciseId)` | Returns the exercise's stored muscle links (id + role). Verified by `test/muscle_editor_state_test.dart` (group `S-2 state API` · `createCustomExercise stores the links normalised`) |
 | `loadExerciseNote(exerciseId)` | Loads note with in-flight guard |
 | `saveExerciseNote(exerciseId, note, {sessionId})` | Saves note with debounce queue |
 | `getExerciseNote(exerciseId)` | Returns cached note or null |

@@ -5,6 +5,10 @@
 //
 // Plan: `docs/plans/2026-10-01-04b2-stats-pr4b2-instruments-list-plan/`.
 //
+// Plan 24 (`docs/plans/2026-10-12-24-stats-clarity-plan/`) adds S-4010, S-4012
+// and S-4017…S-4020 to this file: the caption that explains the line and the
+// change, and the label each row's own figure carries.
+//
 // Every scenario runs on both repository implementations. The harness is
 // opened and seeded in `setUp` and never inside a `testWidgets` body: a widget
 // test body runs under `FakeAsync`, where Hive's real file I/O never settles
@@ -15,6 +19,7 @@
 // hand-copied into the test.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/models/exercise_metric.dart';
 import 'package:omnitrain/core/models/instrument_list.dart';
 import 'package:omnitrain/core/models/stats_progress.dart';
@@ -24,6 +29,7 @@ import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/features/stats/exercise_progress_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
+import 'package:omnitrain/features/stats/widgets/instrument_list.dart';
 import 'package:omnitrain/features/stats/widgets/native_value_format.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
@@ -41,8 +47,9 @@ const Size _kTallViewport = Size(400, 2400);
 /// The sparkline's drawn size when a row has a series to draw.
 const Size _kSparklineSize = Size(56, 24);
 
-/// What the change chip reads when there is nothing comparable to show.
-const String _kNoChange = '—';
+/// What the change chip reads when there is nothing comparable to show
+/// (D-17304). A change of exactly zero still reads the dash.
+const String _kNewLabel = 'new';
 
 // ─── finders and readers ────────────────────────────────────────────────────
 
@@ -102,10 +109,38 @@ List<InstrumentRow> _rowsOf(
 String _dayLabel(int daysAgo) =>
     OmniDateUtils.formatShort(DateTime.now().subtract(Duration(days: daysAgo)));
 
-/// The secondary line a row shows for [value], as the row composes it.
-String _secondaryLine(NativeValue value, SettingsState settings) =>
-    '${nativeSecondaryLabel(value.secondaryMetric)} '
-    '${formatNativeSecondary(value, settings)}';
+/// The secondary line a row shows for [value], as the row composes it: the
+/// primary metric's own label first (D-4008), then the labelled `Total hold
+/// 3:02`-style figure when the value carries one. A metric that labels to null
+/// contributes nothing, so the isometric and sports lines are unmoved.
+String _secondaryLine(NativeValue value, SettingsState settings) {
+  final parts = <String>[
+    if (nativePrimaryLabel(value.metric) != null) nativePrimaryLabel(value.metric)!,
+  ];
+  final label = nativeSecondaryLabel(value.secondaryMetric);
+  final secondary = formatNativeSecondary(value, settings);
+  if (label != null && secondary != null) parts.add('$label $secondary');
+  return parts.join(' · ');
+}
+
+/// The caption's own text (D-4006).
+String _caption(WidgetTester tester) =>
+    tester.widget<Text>(find.byKey(const Key('instrument_caption'))).data!;
+
+/// The style colour the `Text` keyed [key] carries (S-4020).
+Color? _textColorOf(WidgetTester tester, Key key) =>
+    tester.widget<Text>(find.byKey(key)).style?.color;
+
+/// The calendar-day length of a range `previousRangeFor` returned — the length
+/// `dayCount` must equal, measured the way the caption's number is measured.
+int _rangeDayCount(({int fromMs, int toMs}) range) {
+  final first = DateTime.fromMillisecondsSinceEpoch(range.fromMs);
+  final last = DateTime.fromMillisecondsSinceEpoch(range.toMs);
+  return DateTime.utc(last.year, last.month, last.day)
+          .difference(DateTime.utc(first.year, first.month, first.day))
+          .inDays +
+      1;
+}
 
 // ─── fixtures ───────────────────────────────────────────────────────────────
 
@@ -119,6 +154,58 @@ Future<void> _seedSetSession(
   required int reps,
 }) async {
   await seedSession(repo, sessionId: sessionId, daysAgo: daysAgo);
+  await seedSetEffort(
+    repo,
+    segmentId: 'seg-$sessionId',
+    effortId: 'eff-$sessionId',
+    exerciseId: exerciseId,
+    entryCount: 1,
+    hasExtraWeight: false,
+    weightFactor: weightKg,
+    repsBase: reps,
+  );
+}
+
+/// The same fixture, seeded at local noon of the day [daysAgo] back.
+///
+/// The shared `seedSession` subtracts whole 24-hour blocks from a fixture
+/// start, so across a DST transition a session can land on the neighbouring
+/// local day. Scenarios that count distinct training days need the calendar
+/// day, not the elapsed time.
+Future<void> _seedSetSessionOnDay(
+  WorkoutRepository repo, {
+  required String sessionId,
+  required int daysAgo,
+  required String exerciseId,
+  required double weightKg,
+  required int reps,
+}) async {
+  final now = DateTime.now();
+  final start = DateTime(now.year, now.month, now.day - daysAgo, 12)
+      .millisecondsSinceEpoch;
+  await repo.createSession(
+    TrainingSession(
+      id: sessionId,
+      ownerUserId: 'user-1',
+      startedAtMs: start,
+      endedAtMs: start + 3600000,
+      modality: null,
+      isRolling: false,
+      createdAtMs: start,
+      updatedAtMs: start,
+    ),
+  );
+  await repo.createSegment(
+    SessionSegment(
+      id: 'seg-$sessionId',
+      sessionId: sessionId,
+      orderIndex: 0,
+      segmentType: 'workout',
+      name: 'Main Workout',
+      createdAtMs: start,
+      updatedAtMs: start,
+    ),
+  );
   await seedSetEffort(
     repo,
     segmentId: 'seg-$sessionId',
@@ -167,9 +254,9 @@ Future<void> _seedEstimatedRun(WorkoutRepository repo) async {
 /// The flagship population: four kinds of work inside the window, a duplicate
 /// exercise name, and history outside it.
 ///
-/// Days 1–14 are the window (14 distinct training days, days 5–14 are empty
-/// filler sessions). `ex-squat` also has history 20 and 40 days back, so it has
-/// a comparable previous range and a history older than the window.
+/// The window is the 28 calendar days ending today: the day-20 squat session
+/// is inside it, the day-40 session is in the previous range the change
+/// compares against, and `ex-old`'s day-35 session is outside the window.
 Future<void> _seedFlagship(WorkoutRepository repo) async {
   await seedExercise(
     repo,
@@ -259,8 +346,9 @@ Future<void> _seedFlagship(WorkoutRepository repo) async {
     ],
   );
 
-  // History outside the window: 20 days back (also the previous range, so the
-  // change chip has something to compare against) and 40 days back.
+  // History: a second squat session 20 days back, inside the window, and a
+  // day-40 session in the previous range, so the change chip has something to
+  // compare against.
   await _seedSetSession(
     repo,
     sessionId: 's-squat-20',
@@ -280,17 +368,127 @@ Future<void> _seedFlagship(WorkoutRepository repo) async {
   await _seedSetSession(
     repo,
     sessionId: 's-old',
-    daysAgo: 20,
+    // 35 days back: outside the window, so `ex-old` gets no row.
+    daysAgo: 35,
     exerciseId: 'ex-old',
     weightKg: 140,
     reps: 5,
   );
+}
 
-  // Days 5–14: empty completed sessions, so the window's 14 most recent
-  // training days stop at day 14 and days 20 and 40 fall outside it.
-  for (var daysAgo = 5; daysAgo <= 14; daysAgo++) {
-    await seedSession(repo, sessionId: 's-f$daysAgo', daysAgo: daysAgo);
-  }
+/// One row for each primary metric D-4008 labels, plus the two it leaves alone
+/// (S-4012), all inside the 28-day window.
+Future<void> _seedLabelShapes(WorkoutRepository repo) async {
+  await seedExercise(
+    repo,
+    id: 'ex-reps',
+    name: 'Push-up',
+    capabilities: const ['reps'],
+  );
+  await seedExercise(
+    repo,
+    id: 'ex-e1rm',
+    name: 'Weighted Pull',
+    capabilities: const ['load', 'reps'],
+  );
+  await seedExercise(
+    repo,
+    id: 'ex-dur',
+    name: 'Row Machine',
+    capabilities: const ['time'],
+  );
+  await seedExercise(
+    repo,
+    id: 'ex-plank',
+    name: 'Plank',
+    capabilities: const ['hold'],
+  );
+  await seedExercise(
+    repo,
+    id: 'ex-bjj',
+    name: 'BJJ',
+    capabilities: const ['rounds'],
+  );
+
+  // (a) A bodyweight set — reps and no load — puts the exercise on the reps
+  // axis, so its figure is a rep count.
+  await seedSession(repo, sessionId: 's-reps', daysAgo: 1);
+  await seedSetEffort(
+    repo,
+    segmentId: 'seg-s-reps',
+    effortId: 'eff-s-reps',
+    exerciseId: 'ex-reps',
+    entryCount: 1,
+    hasExtraWeight: false,
+    weightFactor: 0.0,
+    repsBase: 5,
+  );
+
+  // (b) A loaded set reads an estimated one-rep max.
+  await _seedSetSession(
+    repo,
+    sessionId: 's-e1rm',
+    daysAgo: 1,
+    exerciseId: 'ex-e1rm',
+    weightKg: 100,
+    reps: 5,
+  );
+
+  // (c) A finished timed effort with no distance reads total time, not pace.
+  await seedSession(
+    repo,
+    sessionId: 's-dur',
+    daysAgo: 1,
+    modality: 'cardio_endurance',
+  );
+  await seedHoldEffort(
+    repo,
+    segmentId: 'seg-s-dur',
+    effortId: 'eff-s-dur',
+    exerciseId: 'ex-dur',
+    entryCount: 1,
+    secondsPerEntry: 300,
+    effortKind: 'timed',
+  );
+
+  // (d) The estimated run reads pace, and its instance carries a heart rate, so
+  // the row composes two parts.
+  await _seedEstimatedRun(repo);
+  await seedSensorSummary(
+    repo,
+    sensorSummary(
+      sessionId: 's-card',
+      scope: SensorSummary.scopeTimedInstance,
+      targetId: 'ti-eff-s-card-0',
+      windowStartMs: fixtureStart,
+      windowEndMs: fixtureStart + 1000,
+      avgHeartRateBpm: 148,
+    ),
+  );
+
+  // (e) The two rows D-4008 leaves alone: a hold with its total, and rounds
+  // with their total minutes.
+  await seedSession(repo, sessionId: 's-iso', daysAgo: 2);
+  await seedHoldEffort(
+    repo,
+    segmentId: 'seg-s-iso',
+    effortId: 'eff-s-iso',
+    exerciseId: 'ex-plank',
+    entryCount: 1,
+    secondsPerEntry: 90,
+  );
+
+  await seedSession(repo, sessionId: 's-sport', daysAgo: 3, modality: 'sports');
+  await seedRoundEffort(
+    repo,
+    segmentId: 'seg-s-sport',
+    effortId: 'eff-s-sport',
+    exerciseId: 'ex-bjj',
+    rounds: [
+      roundInstance('eff-s-sport', 0),
+      roundInstance('eff-s-sport', 1),
+    ],
+  );
 }
 
 void main() {
@@ -315,12 +513,11 @@ void main() {
         await harness.close();
       });
 
-      /// The window and the sections the screen is about to compute, read from
-      /// the same service with the same arguments.
+      /// The window the screen describes and the sections it computes, read
+      /// from the same service with the same arguments.
       Future<void> readModel() async {
         final service = StatsProgressService(repo);
-        final data = await service.computeProgressData();
-        window = data.window;
+        window = StatsProgressService.statsWindow();
         sections = await service.computeInstrumentSections(window: window);
       }
 
@@ -359,19 +556,21 @@ void main() {
               ExerciseSection.sports,
             ],
           );
-          expect(find.text('Resistance'), findsOneWidget);
-          expect(find.text('Cardio'), findsOneWidget);
-          expect(find.text('Isometric'), findsOneWidget);
-          expect(find.text('Sports'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
+          expect(find.text('CARDIO'), findsOneWidget);
+          expect(find.text('ISOMETRIC'), findsOneWidget);
+          expect(find.text('SPORTS'), findsOneWidget);
         });
 
-        testWidgets('one row per exercise, in section order, id ascending '
-            'inside a section', (tester) async {
+        testWidgets('one row per exercise, in section order, sorted by '
+            'training days then name then id', (tester) async {
           await pumpStats(tester);
 
           expect(_instrumentRowKeys(), [
-            'instrument_row_ex-row',
+            // Resistance: `ex-squat` has two training days in the window (days
+            // 1 and 20), `ex-row` one; the names tie, so the day count leads.
             'instrument_row_ex-squat',
+            'instrument_row_ex-row',
             'instrument_row_ex-run',
             'instrument_row_ex-plank',
             'instrument_row_ex-bjj',
@@ -443,8 +642,18 @@ void main() {
             'parts in order', (tester) async {
           await pumpStats(tester);
 
-          // Resistance has no secondary line at all: name, figure, change.
-          expect(_rowTexts('ex-squat'), hasLength(3));
+          // Resistance now labels its own figure: name, the label, the figure,
+          // the change. The label is the row's, read from the same table.
+          expect(
+            _rowTexts('ex-squat'),
+            hasLength(4),
+          );
+          expect(
+            _rowTexts('ex-squat')[1],
+            nativePrimaryLabel(
+              _rowOf(sections, 'ex-squat').summary.best.metric,
+            ),
+          );
 
           final plank = _rowOf(sections, 'ex-plank');
           expect(plank.summary.best.secondaryMetric, NativeMetric.duration);
@@ -470,7 +679,7 @@ void main() {
         });
 
         testWidgets('the change chip compares against the previous range, and '
-            'reads a dash when there is nothing to compare', (tester) async {
+            'reads new when there is nothing to compare', (tester) async {
           await pumpStats(tester);
 
           final squat = _rowOf(sections, 'ex-squat');
@@ -486,15 +695,16 @@ void main() {
 
           // No history in the preceding range → nothing to compare against.
           expect(_rowOf(sections, 'ex-row').previousValue, isNull);
-          expect(_changeLabel('ex-row'), _kNoChange);
-          expect(_changeLabel('ex-run'), _kNoChange);
+          expect(_changeLabel('ex-row'), _kNewLabel);
+          expect(_changeLabel('ex-run'), _kNewLabel);
         });
       });
 
-      // ─── S-1011: the window is the existing window ────────────────────────
+      // ─── S-1011: the window is the four weeks ending today ────────────────
 
       group('S-1011', () {
         setUp(() async {
+          // A training period exists, but it no longer scopes the window.
           final now = DateTime.now();
           final today = DateTime(now.year, now.month, now.day);
           await repo.createPeriod(
@@ -534,7 +744,8 @@ void main() {
           await _seedSetSession(
             repo,
             sessionId: 's-out',
-            daysAgo: 20,
+            // 35 days back: outside the window, so `ex-out` gets no row.
+            daysAgo: 35,
             exerciseId: 'ex-out',
             weightKg: 140,
             reps: 5,
@@ -542,12 +753,12 @@ void main() {
           await readModel();
         });
 
-        testWidgets('the Instruments list is the period window and the chip '
-            'says so', (tester) async {
+        testWidgets('the Instruments list is the four-week window, named in '
+            'words, whatever periods exist', (tester) async {
           await pumpStats(tester);
 
-          expect(window.isPeriodScoped, isTrue);
-          expect(window.label, 'Block A');
+          expect(window.isPeriodScoped, isFalse);
+          expect(window.label, 'Last 4 weeks');
 
           // The Instruments rows are the exercises the window yields.
           expect(
@@ -557,23 +768,10 @@ void main() {
           expect(_instrumentRowKeys(), ['instrument_row_ex-in']);
           expect(find.text('Deadlift'), findsNothing);
 
-          // Two chips: the Mix header's and the Instruments list's first
-          // header — both naming the same window.
-          final chips = find.byKey(const Key('stats_window_chip'));
-          expect(chips, findsNWidgets(2));
-          expect(_textsUnder(chips), everyElement('· ${window.label}'));
-          expect(
-            tester
-                .widgetList<OmniCardHeader>(
-                  find.ancestor(
-                    of: chips,
-                    matching: find.byType(OmniCardHeader),
-                  ),
-                )
-                .map((header) => header.title)
-                .toSet(),
-            {'TRAINING MIX', 'Resistance'},
-          );
+          // The window is named in words, not by a chip: the caption opens
+          // with the window's label, and no chip renders anywhere.
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
+          expect(_caption(tester), startsWith('${window.label}. '));
         });
       });
 
@@ -593,10 +791,10 @@ void main() {
           // Nothing is logged, so nothing is selectable.
           expect(sections, isEmpty);
 
-          expect(find.text('Resistance'), findsNothing);
-          expect(find.text('Cardio'), findsNothing);
-          expect(find.text('Isometric'), findsNothing);
-          expect(find.text('Sports'), findsNothing);
+          expect(find.text('RESISTANCE'), findsNothing);
+          expect(find.text('CARDIO'), findsNothing);
+          expect(find.text('ISOMETRIC'), findsNothing);
+          expect(find.text('SPORTS'), findsNothing);
           expect(
             find.byKey(const Key('instrument_show_all_resistance')),
             findsNothing,
@@ -605,7 +803,7 @@ void main() {
 
           // The legacy layout is gone; the screen keeps only its live chrome.
           expect(find.byKey(const Key('stats_legacy_sections')), findsNothing);
-          expect(find.text('ALL TIME'), findsOneWidget);
+          expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           expect(find.text('STRENGTH'), findsNothing);
           expect(find.text('CARDIO'), findsNothing);
           expect(find.text('ISOMETRIC'), findsNothing);
@@ -639,9 +837,9 @@ void main() {
                 .exerciseId,
             'ex-squat',
           );
-          // The pushed screen covers history older than the window: the
-          // day-40 and day-20 sessions are there, on the chart's axis and as
-          // history rows.
+          // The pushed screen covers the exercise's history beyond the
+          // window's rows: the day-40 and day-20 sessions are there, on the
+          // chart's axis and as history rows.
           expect(find.text(_dayLabel(40)), findsWidgets);
           expect(find.text(_dayLabel(20)), findsWidgets);
           expect(find.text(_dayLabel(1)), findsWidgets);
@@ -680,26 +878,36 @@ void main() {
           await readModel();
         });
 
-        testWidgets('the Instruments list follows ALL TIME and no legacy '
+        testWidgets('the Instruments list follows the Mix layer and no legacy '
             'section is present', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('Resistance'), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
           expect(find.byKey(const Key('stats_legacy_sections')), findsNothing);
-          // The live order: the `ALL TIME` eyebrow, then the list.
+          // The live order: the Mix layer, then the list.
           expect(
-            tester.getTopLeft(find.text('ALL TIME')).dy,
-            lessThan(tester.getTopLeft(find.text('Resistance')).dy),
+            tester.getTopLeft(find.byKey(const Key('mix_layer'))).dy,
+            lessThan(tester.getTopLeft(find.text('RESISTANCE')).dy),
           );
-          // No legacy header survives anywhere on the screen.
-          for (final title in const [
-            'STRENGTH',
-            'CARDIO',
-            'ISOMETRIC',
-            'SPORTS',
-            'NUTRITION',
-          ]) {
-            expect(find.text(title), findsNothing);
+          // D-18705: STRENGTH and NUTRITION never return; CARDIO, ISOMETRIC
+          // and SPORTS survive only as Instruments headings — at most once
+          // each, only as an OmniCardHeader title under Key('instrument_list').
+          expect(find.text('STRENGTH'), findsNothing);
+          expect(find.text('NUTRITION'), findsNothing);
+          for (final title in const <String>['CARDIO', 'ISOMETRIC', 'SPORTS']) {
+            final matches = find.text(title);
+            expect(matches, findsOneWidget);
+            expect(
+              find.ancestor(of: matches, matching: find.byType(OmniCardHeader)),
+              findsOneWidget,
+            );
+            expect(
+              find.ancestor(
+                of: matches,
+                matching: find.byKey(const Key('instrument_list')),
+              ),
+              findsOneWidget,
+            );
           }
         });
       });
@@ -811,7 +1019,7 @@ void main() {
           await seedExercise(repo, id: 'ex-zero', name: 'No Reading');
 
           for (var daysAgo = 1; daysAgo <= 3; daysAgo++) {
-            await _seedSetSession(
+            await _seedSetSessionOnDay(
               repo,
               sessionId: 's-spark3-$daysAgo',
               daysAgo: daysAgo,
@@ -882,6 +1090,314 @@ void main() {
                 settingsState,
               ),
             ),
+          );
+        });
+      });
+
+      // ─── Plan 24, P3: the caption and the per-row labels ─────────────────
+      //
+      // The Instruments list used to print a figure and a change with nothing
+      // saying what either measures. D-4006 adds one caption under the first
+      // header; D-4008 names each row's own figure. No value moves.
+
+      group('S-4010 the caption states the window\'s real span', () {
+        setUp(() async {
+          await _seedFlagship(repo);
+          await readModel();
+        });
+
+        testWidgets('the caption names the 4 weeks the window holds and the '
+            '4 weeks before it', (tester) async {
+          await pumpStats(tester);
+
+          // The window is the 28 calendar days ending today; periods and
+          // training-day counts no longer name it.
+          expect(window.isPeriodScoped, isFalse);
+          expect(window.dayCount, 28);
+          expect(
+            window.dayCount,
+            _rangeDayCount(StatsProgressService.previousRangeFor(window)),
+          );
+
+          expect(
+            _caption(tester),
+            'Last 4 weeks. Change is against the 4 weeks before.',
+          );
+          expect(
+            find.byKey(const Key('instrument_caption')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('a one-day window reads the day before it', (tester) async {
+          // The screen can no longer pass a one-day window (the Stats screen
+          // always describes the 28 days), but `InstrumentList` is generic
+          // over its window, so this pumps it directly with the smallest
+          // hand-built section.
+          await tester.binding.setSurfaceSize(_kTallViewport);
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          final day = DateTime(2026, 4, 20);
+          final oneDayWindow = StatsWindow(
+            fromMs: day,
+            toMs: day,
+            label: 'Test window',
+            isPeriodScoped: false,
+          );
+          expect(oneDayWindow.dayCount, 1);
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: InstrumentList(
+                    sections: [
+                      InstrumentSectionData(
+                        section: ExerciseSection.resistance,
+                        trainingDayCount: 1,
+                        rows: [
+                          InstrumentRow(
+                            summary: ExerciseMetricSummary(
+                              exerciseId: 'ex-one',
+                              name: 'Back Squat',
+                              section: ExerciseSection.resistance,
+                              best: const NativeValue(
+                                metric: NativeMetric.estimatedOneRepMax,
+                                value: 140,
+                              ),
+                              points: const [],
+                              lastTrainedMs: day.millisecondsSinceEpoch,
+                              sessionCount: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    window: oneDayWindow,
+                    themeColors: OmniTheme.colorsForTheme(
+                      settingsState.appTheme,
+                    ),
+                    workoutState: workoutState,
+                    settingsState: settingsState,
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(
+            _caption(tester),
+            'Test window. Change is against the 1 day before.',
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-4012 every row says what its number is', () {
+        setUp(() async {
+          await _seedLabelShapes(repo);
+          await readModel();
+        });
+
+        testWidgets('the labelled metrics name their figure, and the '
+            'unlabelled rows keep one line', (tester) async {
+          await pumpStats(tester);
+
+          // (a) A rep count is the best set of the window.
+          final reps = _rowOf(sections, 'ex-reps');
+          expect(reps.summary.best.metric, NativeMetric.reps);
+          expect(_rowTexts('ex-reps')[1], 'Best set');
+          expect(
+            _rowTexts('ex-reps'),
+            contains(_secondaryLine(reps.summary.best, settingsState)),
+          );
+
+          // (b) An estimated one-rep max.
+          final e1rm = _rowOf(sections, 'ex-e1rm');
+          expect(e1rm.summary.best.metric, NativeMetric.estimatedOneRepMax);
+          expect(_rowTexts('ex-e1rm')[1], 'Est. 1RM');
+          expect(
+            _rowTexts('ex-e1rm'),
+            contains(_secondaryLine(e1rm.summary.best, settingsState)),
+          );
+
+          // (c) A cardio effort with no distance is a total time.
+          final duration = _rowOf(sections, 'ex-dur');
+          expect(duration.summary.best.metric, NativeMetric.duration);
+          expect(_rowTexts('ex-dur')[1], 'Total time');
+          expect(
+            _rowTexts('ex-dur'),
+            contains(_secondaryLine(duration.summary.best, settingsState)),
+          );
+
+          // (d) A pace is the best pace, and the heart rate still joins it.
+          final pace = _rowOf(sections, 'ex-run');
+          expect(pace.summary.best.metric, NativeMetric.pace);
+          expect(pace.averageHeartRateBpm, 148);
+          expect(_rowTexts('ex-run')[1], 'Best pace · 148 bpm');
+
+          // (e) A hold and a round count are not labelled: their own line is
+          // the secondary figure's, with no label in front of it.
+          final plank = _rowOf(sections, 'ex-plank');
+          expect(plank.summary.best.metric, NativeMetric.hold);
+          expect(nativePrimaryLabel(NativeMetric.hold), isNull);
+          expect(_rowTexts('ex-plank')[1], startsWith('Total hold '));
+          expect(_rowTexts('ex-plank'), isNot(contains('Total time')));
+
+          final bjj = _rowOf(sections, 'ex-bjj');
+          expect(bjj.summary.best.metric, NativeMetric.rounds);
+          expect(nativePrimaryLabel(NativeMetric.rounds), isNull);
+          expect(_rowTexts('ex-bjj')[1], startsWith('Total time '));
+          expect(
+            _rowTexts('ex-bjj'),
+            contains(_secondaryLine(bjj.summary.best, settingsState)),
+          );
+
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-4017 the caption counts the comparison', () {
+        setUp(() async {
+          await _seedFlagship(repo);
+          await readModel();
+        });
+
+        testWidgets('the number is the previous range\'s span, and the '
+            'caption names the four weeks', (tester) async {
+          await pumpStats(tester);
+
+          expect(window.recentDays, isNull);
+          expect(window.label, 'Last 4 weeks');
+          expect(
+            window.dayCount,
+            _rangeDayCount(StatsProgressService.previousRangeFor(window)),
+          );
+          expect(window.dayCount, 28);
+
+          expect(
+            _caption(tester),
+            'Last 4 weeks. Change is against the 4 weeks before.',
+          );
+          // The window is named in words, not by a chip.
+          expect(find.byKey(const Key('stats_window_chip')), findsNothing);
+        });
+      });
+
+      group('S-4018 one caption, under the first header', () {
+        setUp(() async {
+          await _seedFlagship(repo);
+          await readModel();
+        });
+
+        testWidgets('the caption renders once, between the first header and '
+            'the first row', (tester) async {
+          await pumpStats(tester);
+
+          final caption = find.byKey(const Key('instrument_caption'));
+          expect(caption, findsOneWidget);
+          expect(find.textContaining('Change is against the'), findsOneWidget);
+
+          final captionTop = tester.getTopLeft(caption).dy;
+          expect(
+            tester.getTopLeft(find.text('RESISTANCE')).dy,
+            lessThan(captionTop),
+          );
+          expect(
+            captionTop,
+            lessThan(
+              tester
+                  .getTopLeft(find.byKey(const Key('instrument_row_ex-squat')))
+                  .dy,
+            ),
+          );
+          expect(
+            tester.getTopLeft(find.text('CARDIO')).dy,
+            greaterThan(captionTop),
+          );
+
+          // One `Text`, never a repeated section title: every header still
+          // renders exactly once.
+          for (final section in ExerciseSection.values) {
+            expect(find.text(section.label.toUpperCase()), findsOneWidget);
+          }
+          // The headers themselves carry no caption.
+          expect(
+            _textsUnder(
+              find.byType(OmniCardHeader),
+            ).where((text) => text.contains('Change is against')),
+            isEmpty,
+          );
+        });
+      });
+
+      group('S-4019 the figures are untouched', () {
+        setUp(() async {
+          await _seedFlagship(repo);
+          await readModel();
+        });
+
+        testWidgets('the labelled rows keep the service\'s figure and change, '
+            'and the unlabelled rows their exact lists', (tester) async {
+          await pumpStats(tester);
+
+          final squat = _rowOf(sections, 'ex-squat');
+          expect(squat.summary.best.metric, NativeMetric.estimatedOneRepMax);
+          expect(_rowTexts('ex-squat'), [
+            'Back Squat',
+            'Est. 1RM',
+            formatNativeValue(squat.summary.best, settingsState),
+            formatNativeChange(
+              squat.summary.best.metric,
+              squat.summary.best.value - squat.previousValue!.value,
+              settingsState,
+            ),
+          ]);
+
+          // Isometric and sports: their primary metric labels to null, so the
+          // list is the one they rendered before the label existed.
+          final plank = _rowOf(sections, 'ex-plank');
+          expect(_rowTexts('ex-plank'), [
+            'Plank',
+            'Total hold ${formatNativeSecondary(plank.summary.best, settingsState)}',
+            formatNativeValue(plank.summary.best, settingsState),
+            _kNewLabel,
+          ]);
+
+          final bjj = _rowOf(sections, 'ex-bjj');
+          expect(_rowTexts('ex-bjj'), [
+            'BJJ',
+            'Total time ${formatNativeSecondary(bjj.summary.best, settingsState)}',
+            formatNativeValue(bjj.summary.best, settingsState),
+            _kNewLabel,
+          ]);
+        });
+      });
+
+      group('S-4020 the new line uses the existing tokens', () {
+        setUp(() async {
+          await _seedFlagship(repo);
+          await readModel();
+        });
+
+        testWidgets('the caption draws in the theme\'s muted text', (
+          tester,
+        ) async {
+          await pumpStats(tester);
+
+          expect(
+            _textColorOf(tester, const Key('instrument_caption')),
+            OmniTheme.colorsForTheme(settingsState.appTheme).textMuted,
+          );
+          expect(
+            tester
+                .widget<Text>(find.byKey(const Key('instrument_caption')))
+                .style
+                ?.fontSize,
+            Theme.of(
+              tester.element(find.byKey(const Key('instrument_caption'))),
+            ).textTheme.labelSmall?.fontSize,
           );
         });
       });

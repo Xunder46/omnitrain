@@ -1,0 +1,19 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-water-unknown-change-1",
+  "sessionId": "nutrition-2026-11-01",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-11-01T12:00:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "w-1",
+        "entryId": "w-1",
+        "kind": "water_glass",
+        "loggedAt": "2026-11-01T09:00:00Z",
+        "glassChange": "double"
+      }
+    ]
+  }
+}

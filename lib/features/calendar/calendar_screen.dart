@@ -93,31 +93,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
       appBar: OmniBackHeader(
         title: 'Calendar',
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: OutlinedButton(
-              onPressed: () => _openPeriods(context),
-              style: ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                padding: const WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                shape: WidgetStatePropertyAll(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
-                    ),
-                  ),
-                ),
-                side: WidgetStatePropertyAll(
-                  BorderSide(color: Theme.of(context).colorScheme.primary),
-                ),
-                foregroundColor: WidgetStatePropertyAll(
-                  Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              child: const Text('+'),
-            ),
+          // Goes to the Training periods list, so it is an icon for that
+          // place, never a "+" (a header "+" only creates, plan 91 D-91.7).
+          // The tooltip is its one screen-reader label (no Semantics wrapper).
+          IconButton(
+            key: const Key('calendar_training_periods_button'),
+            icon: const Icon(Icons.date_range),
+            color: OmniTheme.colors.textDominant,
+            tooltip: 'Training periods',
+            onPressed: () => _openPeriods(context),
           ),
         ],
       ),
@@ -273,6 +257,7 @@ class _MonthHeader extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.chevron_left),
             color: OmniTheme.colors.textDominant,
+            tooltip: 'Previous month',
             onPressed: onPrevious,
           ),
           Expanded(
@@ -285,6 +270,7 @@ class _MonthHeader extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.chevron_right),
             color: OmniTheme.colors.textDominant,
+            tooltip: 'Next month',
             onPressed: onNext,
           ),
         ],
@@ -467,7 +453,7 @@ class _DayCell extends StatelessWidget {
         .where((p) => p.startDateMs <= dayMs && p.endDateMs >= dayMs)
         .firstOrNull;
     if (period == null) {
-      return Colors.grey.withOpacity(0.08);
+      return Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08);
     }
 
     if (period.colorHex == null || period.colorHex!.length != 7) {
@@ -721,7 +707,7 @@ class _MonthlyStatsStrip extends StatelessWidget {
                 Expanded(
                   child: _CompactStat(
                     label: isActiveStreak ? 'STREAK' : 'BEST RUN',
-                    value: completedSessions == 0
+                    value: completedSessions == 0 && !isActiveStreak
                         ? '—'
                         : (streakDays >= 3
                               ? '🔥 ${streakDays}d'

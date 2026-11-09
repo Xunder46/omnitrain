@@ -7,10 +7,15 @@
 //
 //  Append-only by construction (PROTOCOL.md, authority rule 1): a store offers
 //  no update, no delete and no remove. `append` is the only way anything enters,
-//  and there are exactly two ways anything leaves it — both of them prunes, both
-//  gated on the session being over: `pruneConfirmed` drops observations the
-//  phone has acknowledged, and `pruneSensorSamples` drops the raw sensor log of a
-//  session the phone has recorded in full.
+//  and there are exactly six ways anything leaves it — all of them prunes,
+//  each gated on nothing left to lose: `pruneConfirmed` drops observations the
+//  phone has acknowledged, `pruneSensorSamples` drops the raw sensor log of a
+//  session the phone has recorded in full, `pruneExerciseBatches` drops the
+//  stored exercise batches of every list version but the one that just became
+//  active, `pruneBests` drops the bests frames the wrist has replaced with the
+//  copy it holds as newest, `pruneWater` does the same for the water frames,
+//  and `pruneWaterTaps` drops the water taps the phone has acknowledged that
+//  are too old for any count to read.
 //
 //  `WatchSessionEngineTests` (S-004) fails the build if a mutating method is
 //  declared anywhere in this module or if the engine reaches for a store method
@@ -35,6 +40,10 @@ public struct WatchStoreContents {
     /// the catalog that applies.
     public let routineCatalogs: [WatchRoutineCatalogRecord]
 
+    /// The planned sessions the phone sent down, oldest first. The newest row
+    /// is the list that applies (plan 129).
+    public let plannedCatalogs: [WatchPlannedCatalogRecord]
+
     /// The food lists the phone sent down, oldest first. The newest row is the
     /// list that applies.
     public let foodCatalogs: [WatchFoodCatalogRecord]
@@ -47,6 +56,21 @@ public struct WatchStoreContents {
     /// session's prompt is answered by its rating, never by another row.
     public let ratingPrompts: [WatchRatingPromptRecord]
 
+    /// The exercise-list batches the phone sent down, oldest first, across
+    /// every version. A version is complete once its batches are all here and
+    /// all but the active version's are then pruned (D-3813, D-3814).
+    public let exerciseBatches: [WatchExerciseBatchRecord]
+
+    /// The standing bests each `bests_down` brought, oldest first. The newest
+    /// by `generatedAt` is the copy that applies, and the others are pruned
+    /// once it is written (D-11, D-17).
+    public let bests: [WatchBestsRecord]
+
+    /// The water counts each `water_down` brought, oldest first. The newest by
+    /// `generatedAt` is the frame the wrist holds, and the others are pruned
+    /// once it is written (plan 95 D-23, D-24).
+    public let water: [WatchWaterRecord]
+
     public init(
         sessions: [WatchSessionRecord] = [],
         observations: [WatchObservationRecord] = [],
@@ -54,9 +78,13 @@ public struct WatchStoreContents {
         confirmations: [WatchConfirmationRecord] = [],
         sensorSamples: [WatchSensorSampleRecord] = [],
         routineCatalogs: [WatchRoutineCatalogRecord] = [],
+        plannedCatalogs: [WatchPlannedCatalogRecord] = [],
         foodCatalogs: [WatchFoodCatalogRecord] = [],
         preferences: [WatchPreferencesRecord] = [],
-        ratingPrompts: [WatchRatingPromptRecord] = []
+        ratingPrompts: [WatchRatingPromptRecord] = [],
+        exerciseBatches: [WatchExerciseBatchRecord] = [],
+        bests: [WatchBestsRecord] = [],
+        water: [WatchWaterRecord] = []
     ) {
         self.sessions = sessions
         self.observations = observations
@@ -64,16 +92,21 @@ public struct WatchStoreContents {
         self.confirmations = confirmations
         self.sensorSamples = sensorSamples
         self.routineCatalogs = routineCatalogs
+        self.plannedCatalogs = plannedCatalogs
         self.foodCatalogs = foodCatalogs
         self.preferences = preferences
         self.ratingPrompts = ratingPrompts
+        self.exerciseBatches = exerciseBatches
+        self.bests = bests
+        self.water = water
     }
 
     public var isEmpty: Bool {
         sessions.isEmpty && observations.isEmpty && timers.isEmpty
             && confirmations.isEmpty && sensorSamples.isEmpty
-            && routineCatalogs.isEmpty && foodCatalogs.isEmpty
+            && routineCatalogs.isEmpty && plannedCatalogs.isEmpty && foodCatalogs.isEmpty
             && preferences.isEmpty && ratingPrompts.isEmpty
+            && exerciseBatches.isEmpty && bests.isEmpty && water.isEmpty
     }
 }
 
@@ -98,6 +131,67 @@ public protocol WatchSessionStore {
     /// keeps every reading it has taken, which is what makes the live readout
     /// kill-safe.
     func pruneSensorSamples(_ sessionIds: [String]) async -> [String]
+
+    /// Drops every exercise-batch row whose version is not `keepingVersion`,
+    /// returning the record ids that were dropped.
+    ///
+    /// The gate is the list, not the phone's receipt: the caller names a version
+    /// only once every batch of it is stored, i.e. once a complete list is
+    /// active, and the batches of every other version are then the ones nothing
+    /// reads any more. No other record kind is touched — a routine catalog row
+    /// stays where it is.
+    func pruneExerciseBatches(keepingVersion: String) async -> [String]
+
+    /// Drops every `bests` row whose record id is not `keepingRecordId`,
+    /// returning the record ids that were dropped.
+    ///
+    /// The gate is the frame, not the phone's receipt: the caller names the one
+    /// copy it holds as newest, having just written it, and every other frame
+    /// is a copy nothing reads any more (D-11, D-17). A tie in `generatedAt`
+    /// still leaves exactly one row, because the caller names the copy it keeps.
+    /// A record id that is not stored drops nothing — there is then no newest
+    /// copy to keep. No other record kind is touched.
+    func pruneBests(keepingRecordId: String) async -> [String]
+
+    /// Drops every `water` row whose record id is not `keepingRecordId`,
+    /// returning the record ids that were dropped.
+    ///
+    /// The gate is `pruneBests`' own: the caller names the one frame it holds
+    /// as newest, having just written it, and every other water frame is a
+    /// copy nothing reads any more (plan 95 D-23). A record id that is not
+    /// stored drops nothing, and a prune that drops nothing writes nothing.
+    /// No other record kind is touched — the wrist's taps are observations and
+    /// leave only through `pruneWaterTaps` (plan 96 D-43).
+    func pruneWater(keepingRecordId: String) async -> [String]
+
+    /// Drops every `water_glass` observation a receipt names whose `loggedAt`
+    /// is strictly earlier than `cutoff`, returning the record ids that were
+    /// dropped.
+    ///
+    /// The gate is the receipt plus the age: the phone holds the tap, and the
+    /// caller's cutoff lies before the start of any local today, so no count
+    /// can still read it (plan 96 D-43, D-44). An unconfirmed tap, a tap whose
+    /// `loggedAt` cannot be read, every other kind of row and the confirmation
+    /// rows themselves stay. A prune that drops nothing writes nothing.
+    func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String]
+}
+
+/// The record ids `pruneWaterTaps(loggedBefore:)` drops from `observations`
+/// (confirmations already folded in), in store order: water taps with a
+/// receipt and a readable `loggedAt` strictly earlier than `cutoff`. One rule
+/// for both stores, so they cannot drift apart.
+func confirmedWaterTapIds(
+    in observations: [WatchObservationRecord],
+    loggedBefore cutoff: Date
+) -> [String] {
+    observations.compactMap { observation -> String? in
+        guard observation.kind == WatchObservationKind.waterGlass,
+              observation.confirmedAt != nil,
+              let loggedAt = try? parseUtcIso(observation.payload["loggedAt"]),
+              loggedAt < cutoff
+        else { return nil }
+        return observation.recordId
+    }
 }
 
 /// Folds confirmations into observations as their `confirmedAt` receipt.
@@ -155,9 +249,13 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
         var confirmations: [WatchConfirmationRecord] = []
         var sensorSamples: [WatchSensorSampleRecord] = []
         var routineCatalogs: [WatchRoutineCatalogRecord] = []
+        var plannedCatalogs: [WatchPlannedCatalogRecord] = []
         var foodCatalogs: [WatchFoodCatalogRecord] = []
         var preferences: [WatchPreferencesRecord] = []
         var ratingPrompts: [WatchRatingPromptRecord] = []
+        var exerciseBatches: [WatchExerciseBatchRecord] = []
+        var bests: [WatchBestsRecord] = []
+        var water: [WatchWaterRecord] = []
 
         for row in rows {
             switch row {
@@ -167,9 +265,13 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             case .sensorSample(let value): sensorSamples.append(value)
             case .confirmation(let value): confirmations.append(value)
             case .routineCatalog(let value): routineCatalogs.append(value)
+            case .plannedCatalog(let value): plannedCatalogs.append(value)
             case .foodCatalog(let value): foodCatalogs.append(value)
             case .preferences(let value): preferences.append(value)
             case .ratingPrompt(let value): ratingPrompts.append(value)
+            case .exerciseBatch(let value): exerciseBatches.append(value)
+            case .bests(let value): bests.append(value)
+            case .water(let value): water.append(value)
             }
         }
 
@@ -180,9 +282,13 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             confirmations: confirmations,
             sensorSamples: sensorSamples,
             routineCatalogs: routineCatalogs,
+            plannedCatalogs: plannedCatalogs,
             foodCatalogs: foodCatalogs,
             preferences: preferences,
-            ratingPrompts: ratingPrompts
+            ratingPrompts: ratingPrompts,
+            exerciseBatches: exerciseBatches,
+            bests: bests,
+            water: water
         )
     }
 
@@ -212,6 +318,76 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             if case .sensorSample(let value) = row {
                 return sessions.contains(value.sessionId)
             }
+            return false
+        }
+        return dropped
+    }
+
+    public func pruneExerciseBatches(keepingVersion: String) async -> [String] {
+        let dropped = rows.compactMap { row -> String? in
+            if case .exerciseBatch(let value) = row,
+               value.catalogVersion != keepingVersion { return value.recordId }
+            return nil
+        }
+        let keep = Set(dropped)
+        rows.removeAll { row in
+            if case .exerciseBatch(let value) = row {
+                return keep.contains(value.recordId)
+            }
+            return false
+        }
+        return dropped
+    }
+
+    public func pruneBests(keepingRecordId: String) async -> [String] {
+        let stored = rows.contains { row in
+            if case .bests(let value) = row { return value.recordId == keepingRecordId }
+            return false
+        }
+        guard stored else { return [] }
+
+        let dropped = rows.compactMap { row -> String? in
+            if case .bests(let value) = row,
+               value.recordId != keepingRecordId { return value.recordId }
+            return nil
+        }
+        let drop = Set(dropped)
+        rows.removeAll { row in
+            if case .bests(let value) = row {
+                return drop.contains(value.recordId)
+            }
+            return false
+        }
+        return dropped
+    }
+
+    public func pruneWater(keepingRecordId: String) async -> [String] {
+        let stored = rows.contains { row in
+            if case .water(let value) = row { return value.recordId == keepingRecordId }
+            return false
+        }
+        guard stored else { return [] }
+
+        let dropped = rows.compactMap { row -> String? in
+            if case .water(let value) = row,
+               value.recordId != keepingRecordId { return value.recordId }
+            return nil
+        }
+        let drop = Set(dropped)
+        rows.removeAll { row in
+            if case .water(let value) = row {
+                return drop.contains(value.recordId)
+            }
+            return false
+        }
+        return dropped
+    }
+
+    public func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String] {
+        let dropped = confirmedWaterTapIds(in: await readAll().observations, loggedBefore: cutoff)
+        let drop = Set(dropped)
+        rows.removeAll { row in
+            if case .observation(let value) = row { return drop.contains(value.recordId) }
             return false
         }
         return dropped

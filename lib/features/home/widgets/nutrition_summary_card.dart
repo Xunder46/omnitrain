@@ -97,6 +97,19 @@ class NutritionSummaryCard extends StatelessWidget {
   /// Fat calorie contribution (D-4: `fat × 9`).
   final int fatKcal;
 
+  /// Grams eaten today (carbs are TOTAL carbs). Used only for the
+  /// `<eaten>/<target> g` captions of macros that have a target.
+  final int proteinGrams;
+  final int carbsGrams;
+  final int fatGrams;
+
+  /// Daily macro targets in grams, or null when that macro has none. A macro
+  /// with a target prints `<L> <eaten>/<target> g`; one without keeps its
+  /// share of what was eaten (`<L> N%`). Never both for one macro.
+  final int? targetProteinGrams;
+  final int? targetCarbsGrams;
+  final int? targetFatGrams;
+
   /// Tap handler. The card is always tappable; the empty state
   /// does NOT disable the surface.
   final VoidCallback onTap;
@@ -108,6 +121,12 @@ class NutritionSummaryCard extends StatelessWidget {
     required this.proteinKcal,
     required this.carbsKcal,
     required this.fatKcal,
+    this.proteinGrams = 0,
+    this.carbsGrams = 0,
+    this.fatGrams = 0,
+    this.targetProteinGrams,
+    this.targetCarbsGrams,
+    this.targetFatGrams,
     required this.onTap,
   });
 
@@ -218,6 +237,12 @@ class NutritionSummaryCard extends StatelessWidget {
                   proteinKcal: proteinKcal,
                   carbsKcal: carbsKcal,
                   fatKcal: fatKcal,
+                  proteinGrams: proteinGrams,
+                  carbsGrams: carbsGrams,
+                  fatGrams: fatGrams,
+                  targetProteinGrams: targetProteinGrams,
+                  targetCarbsGrams: targetCarbsGrams,
+                  targetFatGrams: targetFatGrams,
                   isEmpty: _captionEmpty,
                 ),
               ],
@@ -230,8 +255,9 @@ class NutritionSummaryCard extends StatelessWidget {
 }
 
 /// Headline row (S-100, S-104, S-105): small dining icon, the
-/// `{consumed} / {target} Cal` text (the brightest, largest
-/// text on the card), spacer, chevron-right navigation cue.
+/// `Nutrition` label, the `{consumed} / {target} Cal` text (the
+/// brightest, largest text on the card), spacer, chevron-right
+/// navigation cue.
 ///
 /// Color rules:
 ///   - Happy / empty: `themeColors.textDominant` (the only
@@ -268,17 +294,33 @@ class _Headline extends StatelessWidget {
       children: [
         Icon(Icons.local_dining_outlined, size: 18, color: headlineColor),
         const SizedBox(width: 8),
-        Expanded(
+        Flexible(
           child: Text(
-            _formatHeadline(consumedCalories, targetCalories),
-            key: const Key('nutrition_card_headline_text'),
+            'Nutrition',
+            key: const Key('nutrition_card_title'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: headlineColor,
-              fontWeight: FontWeight.w800,
-              fontFeatures: const [FontFeature.tabularFigures()],
-              letterSpacing: 0.4,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: themeColors.textSecondary),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          flex: 2,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              _formatHeadline(consumedCalories, targetCalories),
+              key: const Key('nutrition_card_headline_text'),
+              maxLines: 1,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: headlineColor,
+                fontWeight: FontWeight.w800,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                letterSpacing: 0.4,
+              ),
             ),
           ),
         ),
@@ -448,13 +490,20 @@ class _GaugeSegment extends StatelessWidget {
 /// card width. The macro percentages are the macro's share
 /// of CONSUMED calories (S-103). The empty state renders
 /// DASHES (`—`), NOT `0%` — we do not imply a real split
-/// when there is no data.
+/// when there is no data. A macro with a daily target prints
+/// `"<L> <eaten>/<target> g"` instead of its percentage.
 class _CaptionRow extends StatelessWidget {
   final int consumedCalories;
   final int? targetCalories;
   final int proteinKcal;
   final int carbsKcal;
   final int fatKcal;
+  final int proteinGrams;
+  final int carbsGrams;
+  final int fatGrams;
+  final int? targetProteinGrams;
+  final int? targetCarbsGrams;
+  final int? targetFatGrams;
   final bool isEmpty;
 
   const _CaptionRow({
@@ -463,6 +512,12 @@ class _CaptionRow extends StatelessWidget {
     required this.proteinKcal,
     required this.carbsKcal,
     required this.fatKcal,
+    required this.proteinGrams,
+    required this.carbsGrams,
+    required this.fatGrams,
+    required this.targetProteinGrams,
+    required this.targetCarbsGrams,
+    required this.targetFatGrams,
     required this.isEmpty,
   });
 
@@ -480,29 +535,47 @@ class _CaptionRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _CaptionEntry(
-          key: const Key('nutrition_card_caption_protein'),
-          color: macros.protein,
-          label: 'P',
-          percent: _macroPercent(proteinKcal, totalMacroKcal),
-          isEmpty: isEmpty,
-          textColor: themeColors.textSecondary,
+        // Flexible (loose) so each entry is capped at its share of
+        // the row when the captions are long — the entry's own
+        // `maxLines: 1, overflow: ellipsis` then engages instead of
+        // the row throwing a RenderFlex overflow. A Row with a
+        // flex child fills its allotted width, so each entry occupies
+        // one third of the row (the markers stay evenly spaced).
+        Flexible(
+          child: _CaptionEntry(
+            key: const Key('nutrition_card_caption_protein'),
+            color: macros.protein,
+            label: 'P',
+            percent: _macroPercent(proteinKcal, totalMacroKcal),
+            consumedGrams: proteinGrams,
+            targetGrams: targetProteinGrams,
+            isEmpty: isEmpty,
+            textColor: themeColors.textSecondary,
+          ),
         ),
-        _CaptionEntry(
-          key: const Key('nutrition_card_caption_carbs'),
-          color: macros.carbs,
-          label: 'C',
-          percent: _macroPercent(carbsKcal, totalMacroKcal),
-          isEmpty: isEmpty,
-          textColor: themeColors.textSecondary,
+        Flexible(
+          child: _CaptionEntry(
+            key: const Key('nutrition_card_caption_carbs'),
+            color: macros.carbs,
+            label: 'C',
+            percent: _macroPercent(carbsKcal, totalMacroKcal),
+            consumedGrams: carbsGrams,
+            targetGrams: targetCarbsGrams,
+            isEmpty: isEmpty,
+            textColor: themeColors.textSecondary,
+          ),
         ),
-        _CaptionEntry(
-          key: const Key('nutrition_card_caption_fat'),
-          color: macros.fat,
-          label: 'F',
-          percent: _macroPercent(fatKcal, totalMacroKcal),
-          isEmpty: isEmpty,
-          textColor: themeColors.textSecondary,
+        Flexible(
+          child: _CaptionEntry(
+            key: const Key('nutrition_card_caption_fat'),
+            color: macros.fat,
+            label: 'F',
+            percent: _macroPercent(fatKcal, totalMacroKcal),
+            consumedGrams: fatGrams,
+            targetGrams: targetFatGrams,
+            isEmpty: isEmpty,
+            textColor: themeColors.textSecondary,
+          ),
         ),
       ],
     );
@@ -520,11 +593,14 @@ class _CaptionRow extends StatelessWidget {
 
 /// Single caption entry: a small color marker dot, a 6-px
 /// gap, and the `"{M} {pct}%"` (or `"—"` for empty-state)
-/// label text in tabular figures.
+/// label text in tabular figures. A macro with a target
+/// prints `"{M} <eaten>/<target> g"` instead.
 class _CaptionEntry extends StatelessWidget {
   final Color color;
   final String label;
   final int? percent;
+  final int consumedGrams;
+  final int? targetGrams;
   final bool isEmpty;
   final Color textColor;
 
@@ -533,6 +609,8 @@ class _CaptionEntry extends StatelessWidget {
     required this.color,
     required this.label,
     required this.percent,
+    required this.consumedGrams,
+    required this.targetGrams,
     required this.isEmpty,
     required this.textColor,
   });
@@ -542,8 +620,15 @@ class _CaptionEntry extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Empty state: show the dash placeholder, NOT `0%`.
-    final captionText = isEmpty ? '—' : '$label ${percent ?? 0}%';
+    // A macro with a target reads "<L> <eaten>/<target> g" (also
+    // when nothing is logged); one without keeps the share or the
+    // empty-state dash.
+    final hasTarget = (targetGrams ?? 0) > 0;
+    final captionText = hasTarget
+        ? '$label $consumedGrams/$targetGrams g'
+        : isEmpty
+        ? '—'
+        : '$label ${percent ?? 0}%';
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -554,15 +639,21 @@ class _CaptionEntry extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
-        Text(
-          captionText,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: textColor,
-            fontWeight: FontWeight.w600,
-            fontFeatures: const [FontFeature.tabularFigures()],
-            letterSpacing: 0.4,
+        // Flexible so the text is width-bounded and the
+        // `maxLines: 1, overflow: ellipsis` below actually engages
+        // when the caption is longer than the entry's share of the
+        // row (a plain child of a Row gets unbounded width).
+        Flexible(
+          child: Text(
+            captionText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: textColor,
+              fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()],
+              letterSpacing: 0.4,
+            ),
           ),
         ),
       ],

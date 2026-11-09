@@ -182,4 +182,17 @@ class OmniDateUtils {
     final hours = minutes ~/ 60;
     return '$hours:${(minutes % 60).toString().padLeft(2, '0')}:$seconds';
   }
+
+  /// Formats a duration in seconds as timer digits: "mm:ss" (both padded)
+  /// below an hour, "h:mm:ss" (hour unpadded, minutes and seconds padded)
+  /// from one hour on. The readout a running or entered timer shows, where
+  /// the width must not jump as the value crosses the hour.
+  static String formatTimerDigits(int seconds) {
+    final total = seconds < 0 ? 0 : seconds;
+    final secs = (total % 60).toString().padLeft(2, '0');
+    final minutes = total ~/ 60;
+    if (minutes < 60) return '${minutes.toString().padLeft(2, '0')}:$secs';
+    final hours = minutes ~/ 60;
+    return '$hours:${(minutes % 60).toString().padLeft(2, '0')}:$secs';
+  }
 }

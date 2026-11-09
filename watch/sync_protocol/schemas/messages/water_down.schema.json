@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/water_down.schema.json",
+  "title": "water_down",
+  "description": "Phone → watch. The day's water as the phone counts it: its local calendar day, its own glass count, and which of the wrist's glass taps that count already includes, so the wrist can add only the taps the phone has not counted yet. One frame, never batched. The phone owns the day's water; the wrist sends taps, never a total.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "properties": {
+        "type": { "const": "water_down" },
+        "origin": { "const": "phone" },
+        "payload": {
+          "type": "object",
+          "required": ["generatedAt", "day", "glasses", "appliedTapIds"],
+          "additionalProperties": false,
+          "properties": {
+            "generatedAt": {
+              "$ref": "envelope.schema.json#/$defs/timestamp"
+            },
+            "day": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+              "description": "The phone's local calendar date at generatedAt, zero-padded. The wrist uses the count only when this equals its own local date."
+            },
+            "glasses": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Whole taps: the day's volume divided by one tap's step, rounded down — 250 ml per tap with kg, 237 ml per tap with lbs."
+            },
+            "appliedTapIds": {
+              "type": "array",
+              "description": "The ids of the wrist's water_glass taps already applied to this day, in the order the phone applied them. Each id appears once (a semantic rule); at most 500, the phone's per-day cap.",
+              "maxItems": 500,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -5,7 +5,9 @@ nor app state: `lib/core/services/`, `lib/core/utils/`, and the cross-cutting
 pieces those classes own, including the shared Stats formatters
 (`lib/features/stats/widgets/native_value_format.dart`). The watch↔phone live
 mirroring surface, the platform transport it rides on and the watch's own runtime
-and sensor layer are in [The Watch Surface](watch_surface.md).
+layer are in [The Watch Surface](watch_surface.md); the watch's sensor layer and
+platform workout are in
+[The Watch Sensors and the Platform Workout](watch_sensors.md).
 
 > Part of [State Management & Services](../state_management.md). Return to the
 > index for the full class list and dependency graph.
@@ -78,7 +80,11 @@ Post-workout analytics.
 Owns the two opt-in platform-health pipelines (Apple Health / Health Connect):
 writing a completed session out, and reading body weight back in. Constructed
 in `main.dart` and injected into `WorkoutState` (via `SessionCore`, which calls
-`onSessionCompleted` after a successful session save) and into the app-lifetime
+`onSessionCompleted` after a successful session save — except for a session the
+watch runs, whose workout the watch saves (plan 89c1) — and `onSessionDeleted`,
+un-awaited, after a successful discard, and `onSessionRated`, un-awaited, after
+a saved rating of a finished session; `WatchSessionInbox` also calls it for an
+import that applied a rating, plan 90) and into the app-lifetime
 `AppLifecycleListener` (which calls `syncOnForeground`).
 
 Layering rationale — the plugin boundary is deliberately narrow:
@@ -94,6 +100,8 @@ Layering rationale — the plugin boundary is deliberately narrow:
   `HealthActivityKind`; the io gateway translates a kind to a platform activity
   type **per platform**, because several types (e.g. strength, flexibility)
   exist on exactly one platform and crossing them throws.
+- `health_effort_mapper.dart` maps the 1 to 5 session rating to Apple's 1 to 10
+  Workout Effort (doubled; null off the scale).
 
 Invariants:
 
@@ -105,10 +113,44 @@ Invariants:
 - The write pipeline touches the platform at most once per session id, across
   restarts, via a JSON ledger preference key (`HealthPrefs.writtenSessionIdsKey`).
   Enforced in `onSessionCompleted`; verified by `test/health_platform_test.dart`.
+- Discarding a finished session (same Write workouts gate) drops its ledger
+  entry and asks the store to delete this app's workouts that *start* inside the
+  session's own `[startedAtMs, endedAtMs)` window — the `health` plugin's iOS
+  rule (`.strictStartDate`, own source only), so a back-to-back neighbour is
+  never hit. The discard never waits on it. Verified by the `S-89-4` / `S-89-5`
+  tests in `test/health_platform_test.dart` (plan 89).
+- A finished session's rating goes to its workout as Workout Effort through
+  `setWorkoutEffort` over the same span (same gate). Only a `noWorkout` answer is
+  retried, 20 s, 90 s and 5 min after the first try, in process only; a newer
+  rating or the delete drops pending retries, and the delete clears the effort
+  before the workout. On iOS the io gateway calls the native channel
+  `omnitrain/health_effort` (`ios/Runner/HealthEffortChannel.swift`, iOS 18+); every other platform answers `unavailable`. Verified by `test/health_effort_test.dart` (`S-90-2` to `S-90-6`).
 - Imported body-weight rows use deterministic ids derived from the platform
   sample, so a repeated foreground read upserts instead of duplicating.
 - Toggle state lives in the normal preference store (`HealthPrefs` keys), so a
   reinstall resets both toggles to off.
+
+### `ScreenAwakePort`
+
+**Files**: `lib/core/services/screen_awake_port.dart`,
+`lib/core/platform/screen_awake_channel.dart`
+
+The narrow port that keeps the phone screen from auto-locking (plan 120):
+`setKeepAwake(bool)` turns the hold on or off, and `ScreenAwakePort.noop()` is
+the do-nothing implementation. `createScreenAwakePort()` returns the
+`MethodChannelScreenAwakePort` on iOS and Android — method channel
+`omnitrain/screen_awake`, native side inline in `ios/Runner/AppDelegate.swift`
+(`isIdleTimerDisabled`) and in `android/.../MainActivity.kt`
+(`FLAG_KEEP_SCREEN_ON`) — and the no-op everywhere else, including web. Only
+`lib/main.dart` imports the channel file. Channel failures are logged and
+swallowed, never thrown to callers.
+
+Verified by `test/screen_awake_channel_test.dart` (group
+`MethodChannelScreenAwakePort (Mock)`: `S-19515a no handler:
+MissingPluginException is swallowed`; group `source scans`: `S-19518 the channel
+file is imported by lib/main.dart alone`, `S-19519 the iOS piece is inline in
+AppDelegate after the registrant`, `S-19519 the Android piece is in
+MainActivity.kt`).
 
 ---
 
@@ -131,8 +173,9 @@ Groups flat observation lists by effort kind into structured per-set maps. Used 
 
 **Key behaviors**:
 - `_restoreTimerStateFromPersisted`: populates `_inProgressKeys` for any persisted `active`/`paused` state on session restore.
-- `_toggleEffortTimer` (for `notStarted → active` transition): checks `_getAnotherInProgressKey`; if blocked, shows SnackBar `"Another set is still in progress. Pause or finish it before starting a new timer."` and returns early.
+- `_toggleEffortTimer` (for `notStarted → active` transition): checks `_getAnotherInProgressKey`; if blocked, shows a message through the shared `OmniMessage` (info look, no error icon), copy verbatim: `"Another set is still in progress. Pause or finish it before starting a new timer."` — and returns early. Verified by `test/session_message_test.dart` ("S-2702: the in-progress lock message keeps its copy on the shared look"); the same copy is asserted on the lock-clearing paths in `test/round_auto_expiry_test.dart`, group `Round Auto-Expiry Active-Round Lock Fix` · "S-BUG-001: auto-expired round clears active-round lock so next round can start" and "S-BUG-001b: round lock cleared by drain when user navigates before tick fires".
 - `_resetTimerState`: removes key from `_inProgressKeys` (called after manual set log/finish flows).
+- `_rekeyTimerStateAfterDelete`: after an entry delete, drops the deleted entry's timer UI state (and its ticker, and the effort-expiry notification if it was running) and moves every later entry's state and live ticker down one place, matching the re-indexing the state layer already applied to the persisted timed/round instances and rests. Verified by `test/delete_focused_timer_test.dart` (group `Delete the focused set — timers (plan 41)` · `S-4904: deleting a running interval asks first; cancel keeps it running; delete drops it and its timer; the next set is idle`; the stale started-marker guard is the end of S-4904; `S-4905: a running later interval keeps running and keeps its own time after a middle delete` checks the moved interval's own time only).
 - `_handleEffortTimerExpired` (round flow): removes the current round key from `_inProgressKeys` before calling `completeRound`, so the next round is immediately startable after auto-expiry.
 
 **Navigation and running timers** (in `workout_session_screen.dart`):
@@ -190,7 +233,11 @@ data backing a catalog refresh can be swapped (e.g. for a server-provided
 catalog) without touching the version-check logic. `BundledCatalogSource` is
 the default implementation: pure reads of the compile-time `SeedData` /
 `FoodCatalogSeed` constants plus the seeded demo routines. Its getters have
-no side effects and are safe to call repeatedly.
+no side effects and are safe to call repeatedly. The reference getters
+`sportCategories`, `disciplines`, `tags`, `units`, `metricDefinitions` and
+`metricEffortKinds` back the version-16 reference delivery;
+`test/catalog_delivery_contract_test.dart` pins every public `SeedData`
+member as delivered or excluded with a written reason.
 
 See [DB Integration](../db_integration.md) for the refresh/version flow.
 
@@ -265,6 +312,18 @@ they cannot drift:
 
 Verified by `test/exercise_metric_service_test.dart` (S-904 … S-911).
 
+`getAllTimeBestE1RM(exerciseId)` and `getAllTimeBestReps(exerciseId)` are the
+standing-best reads the PR surfaces compare a set against — the Epley estimate
+in kilograms for a loaded exercise, the rep count for a bodyweight one — and
+`getAllTimeBests()` is the same pair for every exercise in one pass over the
+cached history, which is what the wrist's `bests_down` frame is built from; a
+caller needing all of them would otherwise re-walk the whole history once per
+exercise. An exercise appears in the bulk map only when one of its axes is
+above zero, and an in-progress session contributes nothing, exactly as in the
+two per-exercise walks. Verified by `test/stats_bests_builder_test.dart`, group
+`StatsProgressService.getAllTimeBests`, the parity test `S-87a-5 parity: every
+exercise equals getAllTimeBestE1RM and getAllTimeBestReps`.
+
 `progressionSamples()` returns one sample per completed session and exercise that
 logged a `set` effort in it — whatever the session's modality, so a set logged in
 a Cardio session still counts — ordered by exercise and then by session start,
@@ -276,11 +335,27 @@ rate is the pure math's rule, not the walk's.
 
 Verified by `test/progression_samples_service_test.dart`.
 
+`completedSessionStarts({required DateTime now})` returns the start of every
+completed session at or before `now`, oldest first, served from the service's
+cached history snapshot, so it makes no repository read of its own. The
+Consistency and Training Gap adapters reach it through
+`completedSessionStarts(SignalContext)` in
+`lib/core/services/signals/session_history.dart`. Verified by
+`test/stats_load_single_read_test.dart` (groups `S-18103
+completedSessionStarts — Mock` and `S-18103 completedSessionStarts — Hive` ›
+`oldest first, no open session, no future one, the one at now in`).
+
 `computeInstrumentSections({required StatsWindow window})` returns the window's
 sections and rows, built from two `computeExerciseMetrics` calls — the window
 itself, and the immediately preceding range of the same calendar length, so a
 row's change compares like with like. It is the window's sections-and-rows read,
-and nothing it produces is persisted.
+and nothing it produces is persisted. One service instance builds a window's
+sections once:
+a second call for the same window returns the first call's sections
+and a caller needing fresh data constructs a new service. Verified by
+`test/stats_load_single_read_test.dart` (group `S-18104 the Instruments
+sections are built once per window` › `a second ask for the same window is the
+first list; a new window rebuilds`).
 
 - **Section order is by work done, not by declaration.** A section's rank is the
   number of distinct days in the window on which an effort of that kind was
@@ -317,14 +392,19 @@ S-1009, S-1010) and `test/instrument_change_format_test.dart`.
 
 `computeMixLayer({required StatsWindow window, required DateTime now, required
 String startOfWeek})` returns the Mix layer's whole payload — the measure, the
-window's bar, the baseline's segments, the two counts and the weekly strip — or
-`null` when the window holds no time at all. It is the only history walk behind
+window's bar, the baseline's segments, the two counts, the weekly strip and the
+last completed session's day (`lastSessionDay`, the day the empty-strip line
+names) — or `null` when the window holds no time at all. It is the only history walk behind
 those figures: the window, the baseline and the strip are all served from the
 one cached snapshot, so the surface pays for no extra repository read.
 
-- **The measure is load only when the baseline is rated enough and the window is
-  rated enough**; otherwise it is time. The baseline's segments are built in the
-  load measure only, and only when the baseline's total load is above zero.
+- **The measure is load only when the window has at least
+  `kTrainingLoadMinRatedWeeks` rated weeks and its unrated share of time is at
+  most `kTrainingLoadMaxUnratedShare`**; otherwise it is time. `ratedWeeks`
+  counts the 12 seven-day weeks ending at the payload's end day, current ones
+  included, that hold a rated completed session; the baseline's ratedness gates
+  nothing. The baseline's segments are built in the load measure only, and only
+  when the baseline's total load is above zero.
 - **The baseline is the 12 calendar blocks before the window's start day** and
   never uses the start-of-week setting; that setting moves the strip's weeks and
   nothing else. The blocks are calendar arithmetic, so a DST transition cannot
@@ -344,7 +424,8 @@ documented in [Training Load & Mix Definitions](../training_load.md).
 Verified by `test/mix_layer_service_test.dart` (S-1501, S-1502, S-1503, S-1505,
 S-1509, S-1510 A–E, S-1511 and its start-of-week twin, S-1513 and its
 Sunday-start twin, S-1514, S-1515, S-1516, S-1517, and the Mock/Hive
-value-for-value parity group).
+value-for-value parity group) and by `test/stats_rated_weeks_service_test.dart`
+(`S-17101 rated sessions in four different current weeks count 4`).
 
 `computeMixPeriod({required DateTime fromMs, required DateTime toMs})` returns
 the same payload shape for an arbitrary period rather than a `StatsWindow`, and
@@ -357,11 +438,16 @@ period is not anchored to a week.
   the `kTrainingLoadBaselineWeeks` calendar blocks before the period's start
   day, exactly as the window's is. The two reads therefore agree about the
   measure, the bar and the baseline for the same range.
-- **The measure gate is the same one** — load only when the baseline is rated
-  enough and the period is rated enough, otherwise time.
+- **The measure gate is the same one** — load only when the period has at least
+  `kTrainingLoadMinRatedWeeks` rated weeks and its unrated share of time is at
+  most `kTrainingLoadMaxUnratedShare`, otherwise time. The rated weeks are the
+  12 seven-day weeks ending at the period's end day, current ones included, that
+  hold a rated completed session; the baseline's ratedness gates nothing.
 
 Verified by `test/modality_mix_period_service_test.dart` (S-1904a, S-1907,
-S-1913, over both repository implementations).
+S-1913, over both repository implementations) and by
+`test/stats_rated_weeks_service_test.dart` (`S-17105 the period counts weeks
+anchored at its own end day`).
 
 `startOfWeekSetting()` is the saved start-of-week preference, normalized the way
 `SettingsState` normalizes it when it writes, so the weeks the service returns
@@ -495,8 +581,10 @@ Verified by `test/signals_service_test.dart`.
 ## The Watch Surface
 
 The watch↔phone live mirroring surface, the platform transport it rides on and
-the watch's own runtime and sensor layer are documented in
-[The Watch Surface](watch_surface.md).
+the watch's own runtime layer are documented in
+[The Watch Surface](watch_surface.md); the watch's sensor layer and platform
+workout are documented in
+[The Watch Sensors and the Platform Workout](watch_sensors.md).
 
 ---
 

@@ -255,9 +255,50 @@ extension SessionCoreIOMethods on SessionCore {
         }
       }
 
+      _watchRefreshRevision++;
       _notify();
     } catch (e) {
       _setError('Failed to refresh efforts: $e');
+    }
+  }
+
+  /// Adopts a running timer the watch sent into [effortId]'s target interval,
+  /// then bumps the watch refresh revision and notifies once when something
+  /// was written (43b2 D-2). A timer naming an effort this state does not
+  /// hold, or pairing with the wrong effort kind, writes nothing. The
+  /// [RemoteWorkTimer] itself is built by the adoption that read the mirror.
+  Future<bool> adoptRemoteWorkTimer(
+    String effortId,
+    RemoteWorkTimer remote,
+  ) async {
+    _clearError();
+
+    try {
+      final effort = _findEffort(effortId);
+      if (effort == null) return false;
+
+      // The watch started an interval the phone has no room for (a second
+      // one): the exercise grows by one, as if the phone had added it.
+      final grew = _timerManager.needsIntervalFor(
+        effortId,
+        effort.effortKind,
+        remote,
+      );
+      if (grew) await addEntry(effortId);
+
+      final changed = await _timerManager.adoptRemoteTimer(
+        effortId,
+        effort.effortKind,
+        remote,
+      );
+      if (changed || grew) {
+        _watchRefreshRevision++;
+        _notify();
+      }
+      return changed || grew;
+    } catch (e) {
+      _setError('Failed to adopt the remote timer: $e');
+      return false;
     }
   }
 

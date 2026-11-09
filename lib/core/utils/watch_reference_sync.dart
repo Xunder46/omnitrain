@@ -22,12 +22,18 @@
 
 library;
 
+import 'dart:ui' show Color;
+
 import '../constants/block_types.dart';
+import '../constants/capability.dart';
 import '../constants/metric_ids.dart';
+import '../constants/water_constants.dart';
 import '../sync_protocol/phone_envelope.dart';
 import '../sync_protocol/wire_timestamps.dart';
+import 'date_utils.dart';
 import 'food_helpers.dart';
 import 'foods_i_eat_order.dart';
+import 'modality_color_utils.dart' show ModalityColorUtils;
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 
@@ -44,6 +50,7 @@ typedef _SyncedExercise = ({
   String name,
   List<String> capabilities,
   int? defaultRoundDurationSecs,
+  String? healthActivity,
 });
 
 /// Resolves exercises to what the wire carries, reading each one's capabilities
@@ -55,6 +62,7 @@ class _ExerciseResolver {
   final Map<String, String> _names = {};
   final Map<String, int?> _defaultRoundSecs = {};
   final Map<String, List<String>> _capabilities = {};
+  final Map<String, String?> _disciplines = {};
 
   Future<_SyncedExercise?> resolve(String? exerciseId) async {
     if (exerciseId == null) return null;
@@ -63,6 +71,7 @@ class _ExerciseResolver {
       for (final exercise in await _repository.getExercises()) {
         _names[exercise.id] = exercise.name;
         _defaultRoundSecs[exercise.id] = exercise.defaultRoundDurationSecs;
+        _disciplines[exercise.id] = exercise.disciplineId;
       }
     }
     final name = _names[exerciseId];
@@ -77,12 +86,18 @@ class _ExerciseResolver {
       name: name,
       capabilities: capabilities,
       defaultRoundDurationSecs: _defaultRoundSecs[exerciseId],
+      healthActivity: WatchReferenceSync.healthActivityOf(
+        disciplineId: _disciplines[exerciseId],
+        exerciseId: exerciseId,
+        capabilities: capabilities,
+      ),
     );
   }
 }
 
 abstract final class WatchReferenceSync {
-  /// The phone's routines, as the `routines_down` message the wrist reads.
+  /// The phone's routines and the exercises they reference, as the
+  /// `routines_down` message the wrist reads.
   ///
   /// Assembled from storage when the wrist asks for them, not on a schedule of
   /// the phone's own: the watch is the one that knows when its user wants the
@@ -95,11 +110,14 @@ abstract final class WatchReferenceSync {
   /// only thing the payload's identity rests on, which is why the message id is
   /// derived from it.
   ///
-  /// Returns null when there is nothing the wrist could start: no routine, or
-  /// none whose exercises the phone still holds. An empty `routines` array is
-  /// not an option — the schema requires at least one — and a message the watch
-  /// must reject is worse than no message at all.
-  static Future<Map<String, Object?>?> buildRoutinesDown({
+  /// The message is built even by a phone holding no routine and nothing the
+  /// wrist could log: `routines: []` with `fallbackExercises: []` is what such a
+  /// phone sends, so a wrist whose user deleted the last routine is told the
+  /// list is empty instead of keeping the routines it had (D-3830). The
+  /// fallback list is the exercises the routines reference and nothing else —
+  /// the whole catalog travels separately, as [buildExercisesDown] batches
+  /// (D-3831).
+  static Future<Map<String, Object?>> buildRoutinesDown({
     required WorkoutRepository repository,
     required DateTime generatedAt,
   }) async {
@@ -116,6 +134,11 @@ abstract final class WatchReferenceSync {
       );
       if (segments.isEmpty) continue;
 
+      // D-12564: the Focus travels verbatim when the routine has one — no
+      // enum on the wire, no filtering toward the wrist's table. `''` is
+      // omitted (the schema's minLength:1 would otherwise reject the list)
+      // and a null Focus emits no key at all.
+      final focus = template.focusModality;
       routines.add({
         'routineId': template.id,
         'name': template.name,
@@ -125,11 +148,10 @@ abstract final class WatchReferenceSync {
             isUtc: true,
           ),
         ),
+        if (focus != null && focus.isNotEmpty) 'focusModality': focus,
         'segments': segments,
       });
     }
-
-    if (routines.isEmpty) return null;
 
     return phoneEnvelope(
       type: 'routines_down',
@@ -143,28 +165,235 @@ abstract final class WatchReferenceSync {
     );
   }
 
-  /// Every exercise the routines reference, in routine order.
+  /// The phone's startable plans, as the `planned_down` message the wrist reads
+  /// (plan 129, D-8960/D-8961/D-8962).
   ///
-  /// The fallback list is what lets the wrist run a routine with the phone
-  /// unreachable, so a routine this list does not cover is a routine the watch
-  /// must not hold (PROTOCOL.md, "Message families").
+  /// A plan is startable on the wrist only while nothing has happened to it:
+  /// it is sent when it is not completed yet and no session is linked to it
+  /// (`lib/state/calendar/calendar_state.dart` drops a linked plan from the
+  /// calendar for the same reason). The window is the phone's own local
+  /// calendar — from yesterday to thirteen days out, both ends read off
+  /// [generatedAt] at run time — and plans outside it say nothing the wrist
+  /// would act on: the wrist filters the list to its own today.
+  ///
+  /// Unlike `routines_down`, the frame carries no identity stamp: it is built
+  /// fresh on every request (D-8971), because a plan this phone starts writes
+  /// the plans store alone, and a frame the wrist cached from this payload
+  /// would keep showing a started plan.
+  ///
+  /// [generatedAt] stamps the frame; the day window does not depend on it.
+  static Future<Map<String, Object?>> buildPlannedDown({
+    required WorkoutRepository repository,
+    required DateTime generatedAt,
+  }) async {
+    final local = generatedAt.toLocal();
+    final windowStartMs = DateTime(
+      local.year,
+      local.month,
+      local.day - 1,
+    ).millisecondsSinceEpoch;
+    final windowEndMs = DateTime(
+      local.year,
+      local.month,
+      local.day + 14,
+    ).millisecondsSinceEpoch;
+
+    final templates = {
+      for (final template in await repository.getTemplates())
+        template.id: template,
+    };
+    final plans = <PlannedSession>[];
+    for (final plan in await repository.getPlannedSessions()) {
+      if (plan.isCompleted || plan.linkedSessionId != null) continue;
+      if (plan.scheduledDateMs < windowStartMs) continue;
+      if (plan.scheduledDateMs >= windowEndMs) continue;
+      plans.add(plan);
+    }
+    // The order the wrist starts a plan from: scheduled date first, ties by id.
+    plans.sort((a, b) {
+      final byDate = a.scheduledDateMs.compareTo(b.scheduledDateMs);
+      if (byDate != 0) return byDate;
+      return a.id.compareTo(b.id);
+    });
+
+    return phoneEnvelope(
+      type: 'planned_down',
+      messageId: 'msg-planned-${generatedAt.toUtc().millisecondsSinceEpoch}',
+      sentAt: generatedAt,
+      payload: {
+        'generatedAt': utcIso(generatedAt),
+        'plans': [
+          for (final plan in plans) _planJson(plan, templates),
+        ],
+      },
+    );
+  }
+
+  /// One plan as the wire carries it (D-8961). The name is never empty: the
+  /// plan's own title, then its routine template's name, then the phone's
+  /// modality label, then "Free Training". A nullable field is left out
+  /// entirely — the protocol does not send `null` where it can send absence.
+  static Map<String, Object?> _planJson(
+    PlannedSession plan,
+    Map<String, WorkoutTemplate> templates,
+  ) {
+    final name = (plan.title != null && plan.title!.isNotEmpty)
+        ? plan.title!
+        : (plan.routineTemplateId != null
+            ? templates[plan.routineTemplateId]?.name
+            : null) ??
+        ModalityColorUtils.labelForModality(plan.modality);
+    return {
+      'plannedSessionId': plan.id,
+      'name': name,
+      'scheduledDateMs': plan.scheduledDateMs,
+      if (plan.routineTemplateId != null)
+        'routineTemplateId': plan.routineTemplateId,
+      if (plan.modality != null) 'modality': plan.modality,
+      'createdAtMs': plan.createdAtMs,
+      'updatedAtMs': plan.updatedAtMs,
+    };
+  }
+
+  /// The exercises the routines reference, in the phone's name order.
+  ///
+  /// The fallback list is what lets the wrist log a routine's effort with the
+  /// phone unreachable, so it carries exactly what the routines use and nothing
+  /// else: the whole catalog travels as [buildExercisesDown] batches instead
+  /// (D-3830). The order is the phone's own, sorted by name case-insensitively
+  /// with ties by id, so the same routines are the same message whichever order
+  /// they were met in.
+  static List<Map<String, Object?>> _fallbackJson(
+    Map<String, _SyncedExercise> referenced,
+  ) => [
+    for (final exercise in _catalogOrder(referenced.values))
+      _catalogExerciseJson(exercise),
+  ];
+
+  /// The catalog's own order: by name case-insensitively, ties by id.
+  ///
+  /// Shared by both lists the phone sends, so the batch order and the fallback
+  /// order cannot drift apart.
+  static List<_SyncedExercise> _catalogOrder(
+    Iterable<_SyncedExercise> exercises,
+  ) => [...exercises]..sort((left, right) {
+    final byName = compareFoodNames(left.name, right.name);
+    return byName != 0 ? byName : left.id.compareTo(right.id);
+  });
+
+  /// One exercise in the shape the schema pins as `catalogExercise`.
   ///
   /// The exercise's own period length travels with it (D-1411) whenever it holds
   /// one: a catalog entry declares no effort kind, so the wrist decides at pick
   /// time whether the length applies (D-1404).
-  static List<Map<String, Object?>> _fallbackJson(
-    Map<String, _SyncedExercise> referenced,
-  ) => [
-    for (final exercise in referenced.values)
+  static Map<String, Object?> _catalogExerciseJson(_SyncedExercise exercise) =>
       {
         'exerciseId': exercise.id,
         'name': exercise.name,
         'capabilities': exercise.capabilities,
+        if (exercise.healthActivity != null)
+          'healthActivity': exercise.healthActivity,
         if (exercise.defaultRoundDurationSecs != null &&
             exercise.defaultRoundDurationSecs! >= 1)
           'roundDurationSecs': exercise.defaultRoundDurationSecs!,
-      },
-  ];
+      };
+
+  /// The phone's whole exercise list, as the `exercises_down` batches the wrist
+  /// assembles into its catalog (D-3831).
+  ///
+  /// Every exercise the phone can log travels — the ones with a capability, in
+  /// the same name order [_fallbackJson] uses — so a wrist can offer an exercise
+  /// no routine mentions (D-3601). An exercise with no capability is left out:
+  /// the wrist renders an effort from its capabilities, and an entry it cannot
+  /// render would make the batch non-conformant.
+  ///
+  /// The list is split into batches of at most [batchSize] and each batch names
+  /// the version of the whole list, so the wrist can tell "I already hold this"
+  /// from "this changed" and can tell a complete list from a half-arrived one.
+  /// A phone with nothing to send answers `[]` rather than an empty batch: the
+  /// schema wants at least one exercise in a batch, and nothing is what such a
+  /// phone has to say.
+  static Future<List<Map<String, Object?>>> buildExercisesDown({
+    required WorkoutRepository repository,
+    required DateTime generatedAt,
+    int batchSize = 100,
+  }) async {
+    if (batchSize < 1 || batchSize > 100) {
+      throw ArgumentError.value(
+        batchSize,
+        'batchSize',
+        'must be between 1 and 100, the most a batch may carry',
+      );
+    }
+
+    final resolver = _ExerciseResolver(repository);
+    final capable = <String, _SyncedExercise>{};
+    for (final exercise in await repository.getExercises()) {
+      final resolved = await resolver.resolve(exercise.id);
+      if (resolved != null) capable[resolved.id] = resolved;
+    }
+
+    final ordered = _catalogOrder(capable.values);
+    if (ordered.isEmpty) return const [];
+
+    final encoded = [
+      for (final exercise in ordered) _catalogExerciseJson(exercise),
+    ];
+    final version = exercisesVersionOf(encoded);
+    final batchCount = (ordered.length + batchSize - 1) ~/ batchSize;
+
+    return [
+      for (var index = 0; index < batchCount; index++)
+        phoneEnvelope(
+          type: 'exercises_down',
+          messageId: 'msg-exercises-$version-$index',
+          sentAt: generatedAt,
+          payload: {
+            'generatedAt': utcIso(generatedAt),
+            'catalogVersion': version,
+            'batchIndex': index,
+            'batchCount': batchCount,
+            'totalCount': ordered.length,
+            'exercises': encoded.sublist(
+              index * batchSize,
+              (index + 1) * batchSize < ordered.length
+                  ? (index + 1) * batchSize
+                  : ordered.length,
+            ),
+          },
+        ),
+    ];
+  }
+
+  /// The version of an exercise list: `v1-<count>-<h1><h2>`, a function of the
+  /// list's content only (D-3832).
+  ///
+  /// The canonical text is the wire objects in wire order, each as
+  /// `exerciseId|name|cap1,cap2|roundDurationSecs-or-empty`, joined by newlines.
+  /// Two hashes run over its UTF-16 code units, each kept below 2^32 after every
+  /// step, so the arithmetic also stays below 2^53 and the web build derives the
+  /// same version the phone does. The count leads the version so a longer list
+  /// cannot pass for a shorter one; a rename, an added or removed exercise, a
+  /// changed capability or a changed period length is another version, while the
+  /// same content in another order is not.
+  static String exercisesVersionOf(List<Map<String, Object?>> exercises) {
+    final canonical = [
+      for (final exercise in exercises)
+        '${exercise['exerciseId']}|${exercise['name']}|'
+            '${(exercise['capabilities']! as List).join(',')}|'
+            '${exercise['roundDurationSecs'] ?? ''}',
+    ].join('\n');
+
+    var first = 5381;
+    var second = 52711;
+    for (final unit in canonical.codeUnits) {
+      first = (first * 33 + unit) & 0xFFFFFFFF;
+      second = (second * 65599 + unit) & 0xFFFFFFFF;
+    }
+
+    String word(int value) => value.toRadixString(16).padLeft(8, '0');
+    return 'v1-${exercises.length}-${word(first)}${word(second)}';
+  }
 
   /// The routine's segments, with the efforts the wrist can actually log.
   ///
@@ -197,6 +426,8 @@ abstract final class WatchReferenceSync {
           'exerciseName': exercise.name,
           'effortKind': _wireEffortKind(effort.effortKind),
           'capabilities': exercise.capabilities,
+          if (exercise.healthActivity != null)
+            'healthActivity': exercise.healthActivity,
           'targets': _targetsJson(
             await repository.getTemplateTargets(effort.id),
             isHold: _isHold(effort),
@@ -309,34 +540,98 @@ abstract final class WatchReferenceSync {
 
   /// The phone's settings the wrist honours, as the `preferences_down` message
   /// it reads — today, whether a session ended on the wrist asks for the
-  /// session effort rating ([effortRatingPrompt]) and how often the wrist pings
-  /// while a rest of its own is open ([restPingSeconds], 0 for Off).
+  /// session effort rating ([effortRatingPrompt]), how often the wrist pings
+  /// while a rest of its own is open ([restPingSeconds], 0 for Off), and the
+  /// accent of the theme the phone is wearing ([accentColorHex], `#RRGGBB` from
+  /// [accentHexOf]), and the units the phone reads weight and distance in
+  /// ([weightUnit] `kg` or `lbs`, [distanceUnit] `km` or `miles`).
   ///
-  /// Its own message rather than a field on `routines_down`, because
-  /// [buildRoutinesDown] answers null for a phone with no routines, and a
-  /// setting riding on it would then never reach the wrist (D-113).
+  /// Its own message rather than a field on `routines_down`: the wrist is
+  /// answered with its settings at every sync, including one by a phone that
+  /// holds nothing else to send, and a setting riding on the reference data
+  /// would share the reference data's lifetime (D-113).
   ///
   /// The wrist keeps the copy with the latest [generatedAt], and on a tie the
   /// one it received later. The message id follows the content for that
   /// reason: a rebuild of the same setting is the same message, while a
   /// different setting stamped in the same millisecond is a different one
-  /// that must not be dropped as a redelivery.
+  /// that must not be dropped as a redelivery — a changed accent included.
+  ///
+  /// [accentColorHex] is optional: null leaves the field out, and the wrist
+  /// reads an absent accent as no accent (its default look) rather than as the
+  /// last accent it saw. The units are optional the same way: null leaves the
+  /// field out, and the wrist then reads kilograms and kilometres.
   static Map<String, Object?> buildPreferencesDown({
     required bool effortRatingPrompt,
     required int restPingSeconds,
     required DateTime generatedAt,
+    String? accentColorHex,
+    String? weightUnit,
+    String? distanceUnit,
   }) => phoneEnvelope(
     type: 'preferences_down',
     messageId:
         'msg-preferences-${generatedAt.toUtc().millisecondsSinceEpoch}-'
-        '${effortRatingPrompt ? 'on' : 'off'}-$restPingSeconds',
+        '${effortRatingPrompt ? 'on' : 'off'}-$restPingSeconds'
+        '${accentColorHex == null ? '' : '-${accentColorHex.replaceFirst('#', '')}'}'
+        '${weightUnit == null ? '' : '-$weightUnit'}'
+        '${distanceUnit == null ? '' : '-$distanceUnit'}',
     sentAt: generatedAt,
     payload: {
       'generatedAt': utcIso(generatedAt),
       'effortRatingPrompt': effortRatingPrompt,
       'restPingSeconds': restPingSeconds,
+      'accentColorHex': ?accentColorHex,
+      'weightUnit': ?weightUnit,
+      'distanceUnit': ?distanceUnit,
     },
   );
+
+  /// The Health workout kind a distance exercise records as on the wrist (plan
+  /// 75, D-3), from its discipline: running, cycling and rowing as themselves,
+  /// walking as walking (hiking for the built-in Hike and Rucking, which share
+  /// the walking discipline). Null for an exercise that cannot cover distance
+  /// or whose discipline has no kind of its own — the wrist then records it as
+  /// it always has, a run.
+  static String? healthActivityOf({
+    required String? disciplineId,
+    required String exerciseId,
+    required List<String> capabilities,
+  }) {
+    if (!capabilities.contains(ExerciseCapability.distance)) return null;
+    switch (disciplineId) {
+      case 'discipline-running':
+        return 'running';
+      case 'discipline-cycling':
+        return 'cycling';
+      case 'discipline-rowing':
+        return 'rowing';
+      case 'discipline-walking':
+        return exerciseId == 'exercise-hike' || exerciseId == 'exercise-rucking'
+            ? 'hiking'
+            : 'walking';
+      default:
+        return null;
+    }
+  }
+
+  /// [color] as the wire spells a theme accent: `#RRGGBB`, upper-case, no alpha.
+  ///
+  /// The channels are read the way the theme reads them (its own 8-bit
+  /// conversion), so what travels is the color the phone paints. The alpha is
+  /// dropped rather than carried: the wire's pattern is six hex digits, and a
+  /// blended or translucent primary would otherwise arrive as `#AARRGGBB` the
+  /// wrist cannot parse.
+  static String accentHexOf(Color color) {
+    String channel(double component) => (component * 255.0)
+        .round()
+        .clamp(0, 255)
+        .toRadixString(16)
+        .padLeft(2, '0');
+
+    final hex = '${channel(color.r)}${channel(color.g)}${channel(color.b)}';
+    return '#${hex.toUpperCase()}';
+  }
 
   /// The phone's foods, as the `foods_down` message the wrist reads.
   ///
@@ -374,21 +669,137 @@ abstract final class WatchReferenceSync {
     );
   }
 
+  /// Upper bound on the entries one `bests_down` frame carries (D-9).
+  ///
+  /// One frame, never batched: the wrist reads absence from the newest frame as
+  /// "no history", so a second batch would make it drop the first. Beyond the
+  /// cap the wrist treats the rest as it treats a wrist that has never synced.
+  static const int bestsFrameCap = 300;
+
+  /// Each exercise's standing best, as the `bests_down` message the wrist reads
+  /// so it can tell a set is a record without holding any history.
+  ///
+  /// [bests] is [StatsProgressService.getAllTimeBests]'s one-pass result — the
+  /// same e1RM and bodyweight-rep numbers the phone's own "New PR" verdict
+  /// holds a set against, so the wrist and the phone cannot disagree about what
+  /// a record is (D-1, D-5). An exercise whose axes are both zero appears
+  /// nowhere: the wrist's rule for "no history" is absence, and the phone has
+  /// no history for it.
+  ///
+  /// Entries are ordered by `exerciseId` ascending and the frame stops at
+  /// [bestsFrameCap] (D-9, D-12), which makes two frames built from the same
+  /// history identical. `e1rmKg` travels at the precision
+  /// [StatsProgressService.epley1RM] computes — never rounded, so the wrist's
+  /// strict comparison lands on the same side the phone's does (D-10).
+  ///
+  /// [generatedAt] is the request's own clock reading: bests change with every
+  /// completed workout, so the frame is rebuilt (and re-stamped) per request
+  /// rather than cached ahead of one (D-4, D-13).
+  static Map<String, Object?> buildBestsDown({
+    required Map<String, ({double e1rm, int reps})> bests,
+    required DateTime generatedAt,
+  }) {
+    final ids = bests.keys.toList()
+      ..sort((left, right) => left.compareTo(right));
+
+    final entries = <Map<String, Object?>>[];
+    for (final id in ids) {
+      if (entries.length >= bestsFrameCap) break;
+      final best = bests[id]!;
+      final entry = <String, Object?>{
+        'exerciseId': id,
+        if (best.e1rm > 0) 'e1rmKg': best.e1rm,
+        if (best.reps > 0) 'repsBest': best.reps,
+      };
+      // Neither axis is not an entry the schema admits; it is no history.
+      if (entry.length == 1) continue;
+      entries.add(entry);
+    }
+
+    return phoneEnvelope(
+      type: 'bests_down',
+      messageId: 'msg-bests-${generatedAt.toUtc().millisecondsSinceEpoch}',
+      sentAt: generatedAt,
+      payload: {'generatedAt': utcIso(generatedAt), 'bests': entries},
+    );
+  }
+
+  /// The day's water, as the `water_down` message the wrist reads (plan 94
+  /// D-6; 132 D-13229): the day's volume as whole taps of [stepMl] — the
+  /// phone's current per-tap step — and the wrist taps that count already
+  /// includes, so the wrist can add only the taps it has not had counted.
+  /// [localDay] is the phone's local calendar day the frame describes;
+  /// [generatedAt] stamps it and names it.
+  static Map<String, Object?> buildWaterDown({
+    required int volumeMl,
+    required List<String> appliedTapIds,
+    required int stepMl,
+    required DateTime localDay,
+    required DateTime generatedAt,
+  }) {
+    final glasses = waterGlassesFor(volumeMl, stepMl);
+    return phoneEnvelope(
+      type: 'water_down',
+      messageId:
+          'msg-water-${generatedAt.toUtc().millisecondsSinceEpoch}'
+          '-$glasses-${appliedTapIds.length}',
+      sentAt: generatedAt,
+      payload: {
+        'generatedAt': utcIso(generatedAt),
+        'day': _isoDay(localDay),
+        'glasses': glasses,
+        'appliedTapIds': List<String>.of(appliedTapIds),
+      },
+    );
+  }
+
+  /// [buildWaterDown] for the phone's today at [generatedAt], read from
+  /// storage now — the day's volume, its applied-tap ledger (D-8), and the
+  /// step the count is floored to (D-13229: the count is whole taps of the
+  /// phone's current step).
+  static Future<Map<String, Object?>> readWaterDown({
+    required WorkoutRepository repository,
+    required int stepMl,
+    required DateTime generatedAt,
+  }) async {
+    final today = generatedAt.toLocal();
+    final dayMs = OmniDateUtils.startOfDayMs(today);
+    final volumeMl = await repository.getWaterVolumeForDate(dayMs);
+    final appliedTapIds = await repository.getAppliedWaterTapIds(dayMs);
+    return buildWaterDown(
+      volumeMl: volumeMl,
+      appliedTapIds: appliedTapIds,
+      stepMl: stepMl,
+      localDay: today,
+      generatedAt: generatedAt,
+    );
+  }
+
+  /// A local calendar date as the wire's zero-padded `YYYY-MM-DD`.
+  static String _isoDay(DateTime local) =>
+      '${local.year.toString().padLeft(4, '0')}-'
+      '${local.month.toString().padLeft(2, '0')}-'
+      '${local.day.toString().padLeft(2, '0')}';
+
   /// One food, in the shape the schema pins. A food whose group the phone no
   /// longer holds has no category to name, which is a valid answer rather than
-  /// a reason to drop the food.
+  /// a reason to drop the food: the key is omitted, never nulled, because iOS's
+  /// WatchConnectivity refuses a message holding a null (`send_failed: Payload
+  /// contains unsupported type`) and the wrist reads an absent `categoryId` as
+  /// Uncategorized (`WatchFoodCatalog.swift`).
   static Map<String, Object?> _foodJson(
     Food food,
     Map<String, String> categoryNames,
   ) {
     final groupId = food.groupId;
+    final categoryId = groupId != null && categoryNames.containsKey(groupId)
+        ? groupId
+        : null;
     final amount = food.lastAmountConsumed;
     return {
       'foodId': food.id,
       'name': food.name,
-      'categoryId': groupId != null && categoryNames.containsKey(groupId)
-          ? groupId
-          : null,
+      'categoryId': ?categoryId,
       'referenceAmount': food.referenceAmount,
       'referenceLabel': food.referenceLabel,
       // One serving is one reference amount, so the energy per serving is the

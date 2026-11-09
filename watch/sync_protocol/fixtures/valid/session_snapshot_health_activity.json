@@ -1,0 +1,25 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-health-1",
+  "sessionId": "s-2026-07-13-health-1",
+  "type": "session_snapshot",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:21:00Z",
+  "payload": {
+    "sessionId": "s-2026-07-13-health-1",
+    "revision": 1,
+    "status": "active",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-hike",
+        "exerciseId": "ex-hike",
+        "name": "Hike",
+        "capabilities": ["time", "distance"],
+        "healthActivity": "hiking"
+      }
+    ],
+    "entries": [],
+    "timers": {}
+  }
+}

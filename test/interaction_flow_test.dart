@@ -45,6 +45,16 @@ Future<MockWorkoutRepository> _freshRepo() async {
   return repo;
 }
 
+/// A repository whose exercise write throws, so `WorkoutState` sets its error
+/// to a string carrying the exception (`Failed to create exercise: …`). The
+/// editor must surface plain copy (D-27.2), not that state text.
+class _ThrowingCreateExerciseRepo extends MockWorkoutRepository {
+  @override
+  Future<String> createExercise(Exercise exercise) async {
+    throw Exception('disk full');
+  }
+}
+
 /// In-memory `PreferencesService` for tests that exercise the settings state
 /// without touching `shared_preferences`. The real `SharedPreferences`-backed
 /// service is exercised separately in `settings_sounds_test.dart`.
@@ -979,7 +989,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Save exercise'));
+      await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
       expect(find.text('Exercise name required.'), findsOneWidget);
@@ -1008,7 +1018,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilterChip, 'Reps'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Save exercise'));
+      await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
       final exercises = await repo.getExercises();
@@ -1020,6 +1030,43 @@ void main() {
         ),
         isTrue,
       );
+    });
+
+    testWidgets('a failed save shows plain copy, never the exception text', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = _ThrowingCreateExerciseRepo();
+      await repo.initialize();
+      final workoutState = WorkoutState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(home: ExerciseEditorScreen(workoutState: workoutState)),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Exercise name'),
+        'Power Clean',
+      );
+      await tester.tap(find.text('Resistance / Lifting'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Reps'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // The state's own error text carries the exception
+      // (`Failed to create exercise: Exception: disk full`); it must not
+      // reach the screen.
+      expect(workoutState.error, isNotNull);
+      expect(
+        find.text('Could not save the exercise. Try again.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Exception'), findsNothing);
+      expect(find.textContaining('Failed to create exercise'), findsNothing);
     });
 
     testWidgets('tapping capability chip toggles after selecting modality', (
@@ -1463,6 +1510,33 @@ void main() {
       expect(find.text('3.1 mi'), findsOneWidget);
     });
 
+    testWidgets('S-13219 the Settings screen has no Volume row', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final settingsState = SettingsState(repo, _fakePrefs());
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Volume'), findsNothing);
+      expect(find.text('Used for water'), findsNothing);
+
+      await tester.tap(find.text('lbs').first);
+      await tester.pumpAndSettle();
+
+      expect(settingsState.preferredWeightUnit, 'lbs');
+    });
+
     testWidgets('Start of Week selector persists the selected value', (
       WidgetTester tester,
     ) async {
@@ -1487,7 +1561,7 @@ void main() {
 
       // Start of Week row is present with its subtitle.
       expect(find.text('Start of Week'), findsOneWidget);
-      expect(find.text('First day shown in the calendar'), findsOneWidget);
+      expect(find.text('Week start in the calendar and on Stats'), findsOneWidget);
 
       // Default is Monday.
       expect(settingsState.startOfWeek, 'monday');

@@ -506,13 +506,13 @@ final class WatchLoggingTimersTests: XCTestCase {
         var reps = model.state.fields.first { $0.metricKey == WatchMetricKey.reps }!.value
 
         // A turn smaller than a detent moves nothing; the next one tops it up.
-        model.turn(WatchMetricKey.reps, to: WatchLoggingModel.pointsPerDetent / 2)
+        model.turn(to: WatchLoggingModel.pointsPerDetent / 2)
         XCTAssertEqual(
             model.state.fields.first { $0.metricKey == WatchMetricKey.reps }!.value,
             reps
         )
 
-        model.turn(WatchMetricKey.reps, to: WatchLoggingModel.pointsPerDetent)
+        model.turn(to: WatchLoggingModel.pointsPerDetent)
         reps = model.state.fields.first { $0.metricKey == WatchMetricKey.reps }!.value
         XCTAssertEqual(reps, 11)
     }
@@ -785,6 +785,25 @@ final class WatchLoggingTimersTests: XCTestCase {
         ]
     }
 
+    /// A timer object the phone names in a `timer_state`, with the slot when the
+    /// case has one and an ending when it is a stopped row.
+    private func phoneTimer(
+        _ kind: String,
+        startedAt: String,
+        sessionExerciseId: String? = nil,
+        stoppedAt: String? = nil
+    ) -> [String: Any] {
+        var timer: [String: Any] = [
+            "kind": kind,
+            "state": stoppedAt == nil ? WatchTimerState.running : WatchTimerState.stopped,
+            "startedAt": startedAt,
+            "accumulatedPauseMs": 0,
+        ]
+        if let stoppedAt { timer["stoppedAt"] = stoppedAt }
+        if let sessionExerciseId { timer["sessionExerciseId"] = sessionExerciseId }
+        return timer
+    }
+
     func testS79ASnapshotLeavesTheWristsCountdownRunningAndStopsThePhones() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
@@ -875,5 +894,366 @@ final class WatchLoggingTimersTests: XCTestCase {
             t0.addingTimeInterval(45),
             "the window ends at the instant the new entry's own frame reports (D-223)"
         )
+    }
+
+    // MARK: - S-6003 a timer row keeps its slot across the store
+
+    func testS6003ATimerRowWithItsSlotSurvivesTheStoreRoundTrip() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+
+        let relaunched = await harness.runningEngine()
+        XCTAssertEqual(
+            relaunched.timerFor(WatchTimerKind.elapsed)?.sessionExerciseId,
+            "sx-run",
+            "the slot is part of the stored row, not of the frame only"
+        )
+    }
+
+    func testS6003ATimerRowWrittenWithoutTheSlotRestoresWithNone() throws {
+        let row = try WatchTimerRecord.fromJson([
+            "recordId": "rec-old",
+            "sessionId": "s-watch-1",
+            "recordedAt": "2026-07-13T06:00:00Z",
+            "sequence": 1,
+            "kind": WatchTimerKind.elapsed,
+            "startedAt": "2026-07-13T06:00:00Z",
+            "accumulatedPauseMs": 0,
+        ])
+
+        XCTAssertNil(row.sessionExerciseId, "a row from an older build carries no slot")
+    }
+
+    func testS6003AStoredTimerRowRestoresItsSlotThroughJSON() throws {
+        let row = WatchTimerRecord(
+            recordId: "rec-slot",
+            sessionId: "s-watch-1",
+            recordedAt: testInstant(),
+            kind: WatchTimerKind.elapsed,
+            startedAt: testInstant(),
+            sessionExerciseId: "sx-run"
+        )
+
+        let restored = try WatchTimerRecord.fromJson(row.toJson())
+        XCTAssertEqual(
+            restored.sessionExerciseId,
+            "sx-run",
+            "the slot survives the row's own JSON, not only the in-memory store"
+        )
+
+        let withoutSlot = WatchTimerRecord(
+            recordId: "rec-no-slot",
+            sessionId: "s-watch-1",
+            recordedAt: testInstant(),
+            kind: WatchTimerKind.elapsed,
+            startedAt: testInstant()
+        )
+        let json = withoutSlot.toJson()
+        XCTAssertTrue(
+            json["sessionExerciseId"] is NSNull,
+            "a row with no slot writes the field as null, so a store round trip has a shape"
+        )
+        XCTAssertNil(try WatchTimerRecord.fromJson(json).sessionExerciseId)
+    }
+
+    // MARK: - S-6005 the earlier start wins at adoption
+
+    func testS6005AnEarlierPhoneStartReplacesTheWristsRunningTimer() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+        let t0 = harness.clock.now
+
+        harness.clock.advance(10)
+        await surface.startWork()
+
+        _ = try await engine.applyMessage(
+            phoneFrame("timer_state", sessionId: harness.sessionId, messageId: "m-6005-early", payload: [
+                "timers": [
+                    WatchTimerKind.elapsed: phoneTimer(
+                        WatchTimerKind.elapsed,
+                        startedAt: utcIso(t0),
+                        sessionExerciseId: "sx-run"
+                    )
+                ]
+            ])
+        )
+
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.elapsed)?.startedAt,
+            t0,
+            "the phone's earlier start is the one the work began at"
+        )
+    }
+
+    func testS6005ALaterPhoneStartLeavesTheWristsTimerAlone() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        harness.clock.advance(10)
+        await surface.startWork()
+        let wristStartedAt = harness.clock.now
+        let rows = engine.timerRows(WatchTimerKind.elapsed).count
+
+        harness.clock.advance(10)
+        _ = try await engine.applyMessage(
+            phoneFrame("timer_state", sessionId: harness.sessionId, messageId: "m-6005-late", payload: [
+                "timers": [
+                    WatchTimerKind.elapsed: phoneTimer(
+                        WatchTimerKind.elapsed,
+                        startedAt: utcIso(harness.clock.now),
+                        sessionExerciseId: "sx-run"
+                    )
+                ]
+            ])
+        )
+
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.elapsed)?.startedAt,
+            wristStartedAt,
+            "a later start does not push the wrist's own start out"
+        )
+        XCTAssertEqual(
+            engine.timerRows(WatchTimerKind.elapsed).count,
+            rows,
+            "the row that lost is stored nowhere"
+        )
+    }
+
+    func testS6005AStoppedPhoneRowWithALaterStartStillStopsTheTimer() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        harness.clock.advance(10)
+        let stoppedAt = harness.clock.now
+
+        _ = try await engine.applyMessage(
+            phoneFrame("timer_state", sessionId: harness.sessionId, messageId: "m-6005-stop", payload: [
+                "timers": [
+                    WatchTimerKind.elapsed: phoneTimer(
+                        WatchTimerKind.elapsed,
+                        startedAt: utcIso(stoppedAt),
+                        sessionExerciseId: "sx-run",
+                        stoppedAt: utcIso(stoppedAt)
+                    )
+                ]
+            ])
+        )
+
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.elapsed)?.state,
+            WatchTimerState.stopped,
+            "an ending always applies (D-4)"
+        )
+        XCTAssertFalse(surface.isWorkRunning)
+    }
+
+    func testS6005AnEarlierPhoneStartForAnotherSlotIsStored() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+        let t0 = harness.clock.now
+
+        harness.clock.advance(10)
+        await surface.startWork()
+
+        _ = try await engine.applyMessage(
+            phoneFrame("timer_state", sessionId: harness.sessionId, messageId: "m-6005-other", payload: [
+                "timers": [
+                    WatchTimerKind.elapsed: phoneTimer(
+                        WatchTimerKind.elapsed,
+                        startedAt: utcIso(t0),
+                        sessionExerciseId: "sx-other"
+                    )
+                ]
+            ])
+        )
+
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.elapsed)?.sessionExerciseId,
+            "sx-other",
+            "another slot's timer is stored beside the wrist's own (D-3 hides it)"
+        )
+    }
+
+    func testS6005ALaterTimerForAnotherSlotIsStoredNotIgnored() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [
+                slot("sx-run", capabilities: ["time", "distance"]),
+                slot("sx-other", capabilities: ["time", "distance"]),
+            ]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        let rows = engine.timerRows(WatchTimerKind.elapsed).count
+
+        harness.clock.advance(20)
+        _ = try await engine.applyMessage(
+            phoneFrame("timer_state", sessionId: harness.sessionId, messageId: "m-6005-other-late", payload: [
+                "timers": [
+                    WatchTimerKind.elapsed: phoneTimer(
+                        WatchTimerKind.elapsed,
+                        startedAt: utcIso(harness.clock.now),
+                        sessionExerciseId: "sx-other"
+                    )
+                ]
+            ])
+        )
+
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.elapsed)?.sessionExerciseId,
+            "sx-other",
+            "a later start for another slot is a different timer, so it is adopted"
+        )
+        XCTAssertEqual(
+            engine.timerRows(WatchTimerKind.elapsed).count,
+            rows + 1,
+            "the phone's row for the other slot is stored, not ignored"
+        )
+    }
+
+    func testS6005AStartAfterThePreviousTimerStoppedIsStored() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        harness.clock.advance(30)
+        _ = await engine.stopTimer(kind: WatchTimerKind.elapsed)
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.elapsed)?.state,
+            WatchTimerState.stopped,
+            "the wrist's own timer stopped before the phone's start arrives"
+        )
+        let rows = engine.timerRows(WatchTimerKind.elapsed).count
+
+        harness.clock.advance(30)
+        let restartedAt = harness.clock.now
+        _ = try await engine.applyMessage(
+            phoneFrame("timer_state", sessionId: harness.sessionId, messageId: "m-6005-after-stop", payload: [
+                "timers": [
+                    WatchTimerKind.elapsed: phoneTimer(
+                        WatchTimerKind.elapsed,
+                        startedAt: utcIso(restartedAt),
+                        sessionExerciseId: "sx-run"
+                    )
+                ]
+            ])
+        )
+
+        let timer = try XCTUnwrap(engine.timerFor(WatchTimerKind.elapsed))
+        XCTAssertEqual(
+            timer.startedAt,
+            restartedAt,
+            "the start after the previous timer stopped is the timer that applies"
+        )
+        XCTAssertEqual(timer.state, WatchTimerState.running)
+        XCTAssertEqual(
+            engine.timerRows(WatchTimerKind.elapsed).count,
+            rows + 1,
+            "the restarted timer is stored as its own row"
+        )
+    }
+
+    /// D-4 applies to the work kinds only: a rest has no owner slot, and the
+    /// phone's newer rest still supersedes the wrist's own (S-336).
+    func testS6005RestIsNotAnEarlierStartWinsKind() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        let surface = surface(harness, engine: engine)
+
+        try await surface.log()
+
+        harness.clock.advance(8)
+        let phoneStartedAt = harness.clock.now
+        _ = try await engine.applyMessage(
+            phoneFrame("timer_state", sessionId: harness.sessionId, messageId: "m-6005-rest", payload: [
+                "timers": [
+                    WatchTimerKind.rest: phoneTimer(
+                        WatchTimerKind.rest,
+                        startedAt: utcIso(phoneStartedAt)
+                    )
+                ]
+            ])
+        )
+
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.startedAt,
+            phoneStartedAt,
+            "a later rest from the phone still supersedes the wrist's own"
+        )
+    }
+
+    // MARK: - S-6003 pause, resume and stop keep the slot
+
+    func testS6003PauseResumeAndStopKeepTheSlot() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        harness.clearEmitted()
+
+        _ = try await engine.startTimer(WatchTimerKind.elapsed, sessionExerciseId: "sx-run")
+        _ = await engine.pauseTimer(kind: WatchTimerKind.elapsed)
+        _ = await engine.resumeTimer(kind: WatchTimerKind.elapsed)
+        _ = await engine.stopTimer(kind: WatchTimerKind.elapsed)
+
+        let rows = engine.timerRows(WatchTimerKind.elapsed)
+        XCTAssertEqual(rows.count, 4, "start, pause, resume and stop are four rows")
+        XCTAssertEqual(
+            rows.map(\.sessionExerciseId),
+            Array(repeating: "sx-run", count: 4),
+            "every row the wrist writes after Start carries the slot it was started on"
+        )
+
+        let frames = harness.emitted.filter { $0["type"] as? String == "timer_state" }
+        XCTAssertEqual(frames.count, 4, "one frame per row")
+        for frame in frames {
+            let payload = try XCTUnwrap(frame["payload"] as? [String: Any])
+            let timers = try XCTUnwrap(payload["timers"] as? [String: Any])
+            let elapsed = try XCTUnwrap(timers[WatchTimerKind.elapsed] as? [String: Any])
+            XCTAssertEqual(
+                elapsed["sessionExerciseId"] as? String,
+                "sx-run",
+                "the frame names the same slot the row does"
+            )
+        }
     }
 }

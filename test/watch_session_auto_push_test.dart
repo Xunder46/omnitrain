@@ -57,6 +57,11 @@
 //   S-217 the phone's own end is not owed (D-197)      → `S-217 ...`
 //   S-218 ten changes while the wrist is apart are one owed frame → `S-218 ...`
 //
+// Plan 64 (`docs/plans/2026-10-23-64-lost-phone-edit-plan/`): a phone edit the
+// wrist has not been told about survives a wrist frame.
+//   S-9400 an edit the phone has not pushed survives a wrist frame
+//                                                     → `S-9400 ...`
+//
 // The delete half is 17c Phase 1 (D-110…D-114, S-120…S-126); S-124, S-125 and
 // S-126's dedupe half are the engine's and live in `watch_session_engine_test.dart`.
 //
@@ -74,6 +79,7 @@ import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/sync_protocol/phone_envelope.dart';
+import 'package:omnitrain/core/utils/entry_rows.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -97,6 +103,17 @@ import 'helpers/fake_preferences_service.dart';
 import 'helpers/watch_capture_import_harness.dart' show seedExercise;
 
 final DateTime _now = DateTime.utc(2026, 10, 6, 9);
+
+/// Real time, but strictly increasing by at least a millisecond per read, so a
+/// timer finished right after it started always ends after it began.
+DateTime Function() _tickingClock() {
+  var lastMs = 0;
+  return () {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    lastMs = nowMs > lastMs ? nowMs : lastMs + 1;
+    return DateTime.fromMillisecondsSinceEpoch(lastMs);
+  };
+}
 
 Map<String, Object?> _asObject(Object? value) =>
     (value as Map).cast<String, Object?>();
@@ -328,12 +345,41 @@ void main() {
   late List<Map<String, Object?>> wristFrames;
   late List<Object> failures;
 
+  /// Records a rest at the index after [effortId]'s last group, which is what
+  /// makes that set a logged set (D-1, I-1). A no-op for a slot holding no set
+  /// row at all (a `timed` slot logs no group when it is added).
+  Future<void> markLastSetLogged(String effortId) async {
+    final groups = EntryRows.setGroups(
+      await repository.getEffortObservations(effortId),
+    );
+    if (groups.isEmpty) return;
+    await phoneState.recordRestStart(effortId, groups.last.number + 1);
+  }
+
   /// One catalog exercise added to the phone's running session through the
   /// regular session path. Answers the effort id it was given, which is also
   /// the slot id the wrist sees (D-3).
+  ///
+  /// The session path writes a default row when an exercise is added; a row
+  /// nothing logged is a planned value and rides no frame (A1). The callers
+  /// here mean the logged set, so the rest that makes it one is written too.
   Future<String> add(String exerciseId) async {
     final exercise = (await repository.getExerciseById(exerciseId))!;
-    return phoneState.addExerciseToSession(exercise);
+    final effortId = await phoneState.addExerciseToSession(exercise);
+    await markLastSetLogged(effortId);
+    return effortId;
+  }
+
+  /// The phone logs one set on [effortId] — the entry the session screen's Log
+  /// writes, and then the rest that follows it (D-1, I-1): a set with no rest
+  /// after it is a planned value and rides no frame (A1). The rest is at the
+  /// index of the set, which is what `WorkoutSessionScreen._isSetLogged` reads.
+  Future<void> logSet(
+    String effortId, {
+    Map<String, dynamic>? previousValues,
+  }) async {
+    await phoneState.addEntry(effortId, previousValues: previousValues);
+    await markLastSetLogged(effortId);
   }
 
   /// How many sets the phone's own session holds on [effortId]. A set is two
@@ -436,7 +482,7 @@ void main() {
   /// The phone logs one of its own sets and pushes it: S-70's whole flow, which
   /// the later scenarios continue from. Answers the frame the phone sent.
   Future<Map<String, Object?>> pushPhoneSet() async {
-    await phoneState.addEntry(
+    await logSet(
       _firstSlot,
       previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
     );
@@ -454,7 +500,7 @@ void main() {
     final before = [
       if (snapshots.isNotEmpty) ..._entryIds(_payload(snapshots.last)),
     ];
-    await phoneState.addEntry(
+    await logSet(
       _firstSlot,
       previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
     );
@@ -474,7 +520,7 @@ void main() {
     await repository.initialize();
     await _seedCatalog(repository);
 
-    phoneState = WorkoutState(repository);
+    phoneState = WorkoutState(repository, clock: _tickingClock());
     phoneSettings = SettingsState(repository, fakePreferencesService());
     await phoneSettings.initialize();
 
@@ -759,7 +805,7 @@ void main() {
 
       final deadlift = await add('ex-deadlift');
       final row = await add('ex-row');
-      await phoneState.addEntry(_firstSlot);
+      await logSet(_firstSlot);
 
       expect(
         radio.ofType('session_snapshot'),
@@ -803,7 +849,7 @@ void main() {
       )..bindWorkoutState(phoneState);
       addTearDown(push.dispose);
 
-      await phoneState.addEntry(_firstSlot);
+      await logSet(_firstSlot);
 
       final deadline = DateTime.now().add(const Duration(seconds: 10));
       while (radio.ofType('session_snapshot').isEmpty &&
@@ -890,7 +936,7 @@ void main() {
         );
 
         // The phone's own next change is pushed, carrying the converged place.
-        await phoneState.addEntry(_firstSlot);
+        await logSet(_firstSlot);
         await graph.autoPush.flush();
         final pushes = radio.ofType('session_snapshot');
         expect(pushes, hasLength(afterFrame + 1));
@@ -1028,7 +1074,7 @@ void main() {
         graph.autoPush.bindWorkoutState(phoneState);
 
         radio.failing = true;
-        await phoneState.addEntry(_firstSlot);
+        await logSet(_firstSlot);
         await graph.autoPush.flush();
 
         expect(
@@ -1193,7 +1239,7 @@ void main() {
         await phoneState.createNewSession();
         final second = await add('ex-bench');
         final secondId = phoneState.currentSession!.id;
-        await phoneState.addEntry(
+        await logSet(
           second,
           previousValues: <String, dynamic>{'reps': 5, 'weight': 40},
         );
@@ -1223,7 +1269,7 @@ void main() {
         await phoneState.createNewSession();
         final third = await add('ex-deadlift');
         final thirdId = phoneState.currentSession!.id;
-        await phoneState.addEntry(third);
+        await logSet(third);
         await graph.autoPush.flush();
         await phoneState.discardCurrentSession();
         await graph.autoPush.flush();
@@ -1344,7 +1390,7 @@ void main() {
         radio.sent.clear();
 
         graph.autoPush.bindWorkoutState(phoneState);
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -1592,7 +1638,7 @@ void main() {
         )..bindWorkoutState(phoneState);
         addTearDown(push.dispose);
 
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -1659,7 +1705,7 @@ void main() {
       )..bindWorkoutState(phoneState);
       addTearDown(push.dispose);
 
-      await phoneState.addEntry(
+      await logSet(
         _firstSlot,
         previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
       );
@@ -1693,7 +1739,7 @@ void main() {
         addTearDown(push.dispose);
 
         radio.hangNext = true;
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -1706,7 +1752,7 @@ void main() {
         // A second change while that send is still hung: its flush joins the
         // running drain and asks for one more pass, which is the branch a
         // wedged drain used to swallow for the rest of the app run.
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 65.0},
         );
@@ -1771,7 +1817,7 @@ void main() {
         addTearDown(push.dispose);
 
         radio.throwing = true;
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -1788,7 +1834,7 @@ void main() {
         expect(radio.ofType('session_snapshot'), isEmpty);
 
         radio.throwing = false;
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 65.0},
         );
@@ -1835,7 +1881,7 @@ void main() {
 
         final unhandled = <Object>[];
         final body = runZonedGuarded(() async {
-          await phoneState.addEntry(
+          await logSet(
             _firstSlot,
             previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
           );
@@ -2042,11 +2088,11 @@ void main() {
 
         // Both changes land inside one debounce window: the set the user
         // dropped never left the phone, so the wrist was never told to hold it.
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -2561,7 +2607,7 @@ void main() {
         await dropping;
         await switching;
         final other = await add('ex-bench');
-        await phoneState.addEntry(other);
+        await logSet(other);
         await graph.autoPush.flush();
 
         expect(
@@ -2637,7 +2683,7 @@ void main() {
         // stated again with a later stamp, which is the wrist's own rule for a
         // re-created row (D-113.3).
         await Future<void>.delayed(const Duration(milliseconds: 5));
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -2713,7 +2759,7 @@ void main() {
         );
 
         graph.autoPush.bindWorkoutState(phoneState);
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -2940,7 +2986,7 @@ void main() {
       await phoneState.createNewSession();
       final own = await add('ex-squat');
       final sessionId = phoneState.currentSession!.id;
-      await phoneState.addEntry(
+      await logSet(
         own,
         previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
       );
@@ -3282,7 +3328,7 @@ void main() {
 
         await phoneState.createNewSession();
         final own = await add('ex-squat');
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -3360,7 +3406,7 @@ void main() {
         radio.attempted.clear();
 
         radio.unreachable = true;
-        await phoneState.addEntry(
+        await logSet(
           _secondSlot,
           previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
         );
@@ -3483,7 +3529,7 @@ void main() {
         await phoneState.createNewSession();
         final own = await add('ex-squat');
         final sessionId = phoneState.currentSession!.id;
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -3581,7 +3627,7 @@ void main() {
         await phoneState.createNewSession();
         final own = await add('ex-squat');
         final sessionId = phoneState.currentSession!.id;
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -3671,8 +3717,9 @@ void main() {
 
   group('S-205 a frame from the wrist re-offers what is owed, never itself', () {
     test(
-      'S-205 (S-209) the wrist\'s own set arrives while a deletion is owed: it '
-      'is applied, never echoed, and the deletion leaves after it',
+      'S-205 (S-209) the wrist\'s own set arrives while a deletion is owed: '
+      'the owed state is re-offered after it (plan 64), and the wrist\'s own '
+      'row is still not echoed',
       () async {
         await wristStartsSession();
         graph.autoPush.bindWorkoutState(phoneState);
@@ -3739,11 +3786,14 @@ void main() {
           reason: 'S-205 and it names the entry that vanished',
         );
         expect(
-          radio.ofType('session_snapshot'),
+          [
+            for (final frame in radio.ofType('session_snapshot'))
+              if (_entryIds(_payload(frame)).contains(doomed)) frame,
+          ],
           isEmpty,
           reason:
-              'S-205 the frame the wrist sent is the new baseline, not news '
-              'back to it: an applied frame is not echoed (D-82, D-198)',
+              'S-205 (plan 64) the owed snapshot is re-offered after the frame '
+              'and carries the deletion\'s result, not the deleted entry',
         );
         expect(
           [
@@ -3791,7 +3841,7 @@ void main() {
         );
         expect(radio.sent, isEmpty, reason: 'S-207 and no channel call');
 
-        await phoneState.addEntry(
+        await logSet(
           _secondSlot,
           previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
         );
@@ -3830,7 +3880,7 @@ void main() {
           heldWristEntryIds: graph.adoption.heldWristEntryIds,
         );
         push.bindWorkoutState(phoneState);
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -3865,7 +3915,7 @@ void main() {
         );
 
         passes = 0;
-        await phoneState.addEntry(
+        await logSet(
           _secondSlot,
           previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
         );
@@ -3910,7 +3960,7 @@ void main() {
         await phoneState.createNewSession();
         final own = await add('ex-squat');
         final sessionId = phoneState.currentSession!.id;
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -4074,7 +4124,7 @@ void main() {
 
         radio.unreachable = true;
         radio.carriesWhileApart = true;
-        await phoneState.addEntry(
+        await logSet(
           _secondSlot,
           previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
         );
@@ -4241,7 +4291,7 @@ void main() {
 
         radio.unreachable = true;
         for (var i = 0; i < 10; i++) {
-          await phoneState.addEntry(
+          await logSet(
             _firstSlot,
             previousValues: <String, dynamic>{'reps': 11 + i, 'weight': 60.0},
           );
@@ -4306,6 +4356,340 @@ void main() {
           radio.ofType('session_snapshot'),
           hasLength(landed),
           reason: 'S-218 delivered once, owed never again',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-9400 an edit the phone has not pushed survives a wrist frame', () {
+    test(
+      'S-9401 the phone\'s own set, logged before the wrist\'s frame, rides '
+      'the snapshot sent after the frame is handled',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await logSet(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        expect(radio.ofType('session_snapshot'), isEmpty);
+        await engine.appendObservation(<String, Object?>{
+          'entryId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'eventId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-bench',
+          'reps': 5,
+          'loadKg': 40.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+        await graph.autoPush.flush();
+        final carried = [
+          for (final f in radio.ofType('session_snapshot'))
+            ..._entryIds(_payload(f)),
+        ];
+        expect(
+          carried,
+          contains('entry-$_firstSlot-1'),
+          reason: 'the phone\'s own set never reached the wrist',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-9402 the phone\'s own set survives a ROUTINES request from the wrist',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await logSet(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        expect(radio.ofType('session_snapshot'), isEmpty);
+        // A request, not an observation: a `snapshotFrame()` request would be
+        // answered with the phone's own snapshot and pass without the fix.
+        await radio.fromWrist(WatchTransportRequest.routinesFrame(since: null));
+        await _settle();
+        await graph.autoPush.flush();
+        final carried = [
+          for (final f in radio.ofType('session_snapshot'))
+            ..._entryIds(_payload(f)),
+        ];
+        expect(
+          carried,
+          contains('entry-$_firstSlot-1'),
+          reason: 'the phone\'s own set never reached the wrist',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-9403 nothing owed before the frame: the wrist\'s own set is not '
+      'echoed back',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        final pushesBefore = radio.ofType('session_snapshot').length;
+
+        await engine.appendObservation(<String, Object?>{
+          'entryId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'eventId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-bench',
+          'reps': 5,
+          'loadKg': 40.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(pushesBefore),
+          reason:
+              'S-9403 the rows the wrist just brought in are not news (D-82): '
+              'the frame baselined them rather than sending them back',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-9404 no baseline and no edit: the wrist\'s frame pushes nothing back',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        // The graph baselines every frame it handles, so the harness cannot
+        // reach "never baselined" through the fixture alone; clearing the
+        // baseline stands in for the very first frame of a session.
+        graph.autoPush.forgetBaseline();
+
+        await engine.appendObservation(<String, Object?>{
+          'entryId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'eventId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-bench',
+          'reps': 5,
+          'loadKg': 40.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason:
+              'S-9404 the phone has pushed nothing and edited nothing: the '
+              'wrist\'s frame is not answered with a push (S-80, D-82)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-9405 a push the radio did not carry is offered again once the '
+      'wrist\'s frame proves the link',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        radio.unreachable = true;
+        await logSet(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason: 'the fixture: the set was attempted but never carried',
+        );
+        radio.unreachable = false;
+
+        await engine.appendObservation(<String, Object?>{
+          'entryId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'eventId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-bench',
+          'reps': 5,
+          'loadKg': 40.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+        await graph.autoPush.flush();
+        final carried = [
+          for (final f in radio.ofType('session_snapshot'))
+            ..._entryIds(_payload(f)),
+        ];
+        expect(
+          carried,
+          contains('entry-$_firstSlot-1'),
+          reason:
+              'S-9405 the state owed from the failed push is an unsent change: '
+              'the wrist\'s frame proves the radio works, so it goes out now',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-9406a a phone set logged before the frame rides the snapshot after '
+      'it, beside the deletion arm',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await logSet(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        expect(radio.ofType('session_snapshot'), isEmpty);
+        await engine.appendObservation(<String, Object?>{
+          'entryId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'eventId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-bench',
+          'reps': 5,
+          'loadKg': 40.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+        await graph.autoPush.flush();
+        final carried = [
+          for (final f in radio.ofType('session_snapshot'))
+            ..._entryIds(_payload(f)),
+        ];
+        expect(
+          carried,
+          contains('entry-$_firstSlot-1'),
+          reason: 'the phone\'s own set never reached the wrist',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-9406b a phone set the wrist holds, deleted before the frame, is '
+      'announced after the frame is handled',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        final first = await pushPhoneSet();
+        await engine.applyMessage(first);
+        final doomed = await logSetHeldByBoth();
+        expect(
+          wristEntryIds(),
+          contains(doomed),
+          reason: 'the fixture: the wrist holds the set the phone will drop',
+        );
+
+        await phoneState.deleteEntry(_firstSlot, 2);
+        await engine.appendObservation(<String, Object?>{
+          'entryId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'eventId': 'bbbbbbbb-3b4a-4c5d-8e6f-7a8b9c0d1e2f',
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-bench',
+          'reps': 5,
+          'loadKg': 40.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+        await graph.autoPush.flush();
+
+        final deletions = radio.ofType('structure_change');
+        expect(
+          deletions,
+          hasLength(1),
+          reason: 'S-9406b one deletion frame for the set the phone dropped',
+        );
+        expect(
+          _payload(deletions.single)['changes'],
+          [
+            {'kind': 'delete_entry', 'entryId': doomed},
+          ],
+          reason:
+              'S-9406b the deletion survives the wrist\'s frame: a '
+              '`structure_change` names the dropped set (D-110)',
+        );
+        expect(
+          _entryIds(_payload(radio.ofType('session_snapshot').last)),
+          ['entry-$_firstSlot-1'],
+          reason:
+              'S-9406b the snapshot sent after the frame carries the survivors '
+              'only — the deleted set is not announced as still held',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-9407 hasUnsentChange answers the phone\'s owed state directly',
+      () async {
+        expect(
+          await graph.autoPush.hasUnsentChange(),
+          isFalse,
+          reason: 'S-9407 no session: nothing to be owed',
+        );
+
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        expect(
+          await graph.autoPush.hasUnsentChange(),
+          isFalse,
+          reason:
+              'S-9407 the phone has pushed nothing and edited nothing: the '
+              'fixture\'s frames baselined the state it holds',
+        );
+
+        await logSet(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 7, 'weight': 41.5},
+        );
+        expect(
+          await graph.autoPush.hasUnsentChange(),
+          isTrue,
+          reason: 'S-9407 the phone\'s edit has not been told to the wrist',
+        );
+
+        await graph.autoPush.flush();
+        expect(
+          await graph.autoPush.hasUnsentChange(),
+          isFalse,
+          reason: 'S-9407 the delivered push baselined what it carried',
+        );
+
+        await logSet(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 7, 'weight': 41.5},
+        );
+        expect(await graph.autoPush.hasUnsentChange(), isTrue);
+        await graph.autoPush.rebaseline();
+        expect(
+          await graph.autoPush.hasUnsentChange(),
+          isFalse,
+          reason: 'S-9407 a baseline taken over the edit marks it sent',
+        );
+
+        // No baseline at all (the phone has never pushed): the first payload
+        // after a wrist frame is not pushed back.
+        graph.autoPush.forgetBaseline();
+        expect(
+          await graph.autoPush.hasUnsentChange(),
+          isFalse,
+          reason: 'S-9407 before the first baseline nothing is owed',
         );
         expect(failures, isEmpty);
       },

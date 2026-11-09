@@ -13,6 +13,7 @@ import 'package:omnitrain/core/models/signals.dart';
 import 'package:omnitrain/core/models/stats_progress.dart';
 import 'package:omnitrain/core/models/training_load.dart';
 import 'package:omnitrain/core/services/signals/signal.dart';
+import 'package:omnitrain/core/services/signals/signal_registry.dart';
 import 'package:omnitrain/core/services/signals_service.dart';
 import 'package:omnitrain/core/services/stats_progress_service.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -27,6 +28,7 @@ class _StubSignal implements Signal {
     required this.id,
     required this.kind,
     required this.priority,
+    this.needsRatedWeeks = true,
     this.abstains = false,
   });
 
@@ -36,6 +38,8 @@ class _StubSignal implements Signal {
   final SignalKind kind;
   @override
   final int priority;
+  @override
+  final bool needsRatedWeeks;
   final bool abstains;
 
   int evaluations = 0;
@@ -53,6 +57,39 @@ class _StubSignal implements Signal {
       suggestion: 'suggestion $id',
     );
   }
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async => null;
+}
+
+/// A signal that records the start-of-week it was handed.
+class _RecordingSignal implements Signal {
+  String? evaluatedWith;
+  String? waitedWith;
+
+  @override
+  String get id => 'recording';
+
+  @override
+  SignalKind get kind => SignalKind.caution;
+
+  @override
+  int get priority => 1;
+
+  @override
+  bool get needsRatedWeeks => false;
+
+  @override
+  Future<SignalCard?> evaluate(SignalContext context) async {
+    evaluatedWith = context.startOfWeek;
+    return null;
+  }
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async {
+    waitedWith = context.startOfWeek;
+    return null;
+  }
 }
 
 final StatsWindow _window = StatsWindow(
@@ -63,20 +100,20 @@ final StatsWindow _window = StatsWindow(
   recentDays: 30,
 );
 
-MixLayerData _mix({required int ratedBaselineWeeks}) => MixLayerData(
+MixLayerData _mix({required int ratedWeeks}) => MixLayerData(
   measure: MixMeasure.time,
   segments: const [],
   baselineSegments: const [],
   unratedSessionCount: 0,
-  ratedBaselineWeeks: ratedBaselineWeeks,
+  ratedWeeks: ratedWeeks,
   weeks: const [],
 );
 
 MixLayerData get _mixReady =>
-    _mix(ratedBaselineWeeks: kTrainingLoadMinRatedWeeks);
+    _mix(ratedWeeks: kTrainingLoadMinRatedWeeks);
 
 MixLayerData get _mixUnmet =>
-    _mix(ratedBaselineWeeks: kTrainingLoadMinRatedWeeks - 1);
+    _mix(ratedWeeks: kTrainingLoadMinRatedWeeks - 1);
 
 SignalsService _service(WorkoutRepository repo, List<Signal> signals) =>
     SignalsService(
@@ -123,6 +160,36 @@ void main() {
       expect(positive.evaluations, 0);
       expect(caution.evaluations, 0);
     });
+
+    test(
+      'S-17501 an unmet gate evaluates only the signals that need no rated weeks',
+      () async {
+        final unlocked = _StubSignal(
+          id: 'u',
+          kind: SignalKind.positive,
+          priority: 10,
+          needsRatedWeeks: false,
+        );
+        final locked = _StubSignal(
+          id: 'l',
+          kind: SignalKind.caution,
+          priority: 20,
+        );
+        final service = _service(repo, [unlocked, locked]);
+        final now = DateTime(2026, 3, 10, 12);
+
+        for (final mix in <MixLayerData?>[_mixUnmet, null]) {
+          final cards = await service.evaluateCandidates(
+            now: now,
+            window: _window,
+            mix: mix,
+          );
+          expect(cards.map((card) => card.id), ['u']);
+        }
+        expect(unlocked.evaluations, 2);
+        expect(locked.evaluations, 0);
+      },
+    );
 
     test('a met gate evaluates each signal once and returns its cards', () async {
       final positive = _StubSignal(
@@ -294,6 +361,77 @@ void main() {
       final decoded = jsonDecode(hiveRaw!) as Map<String, dynamic>;
       expect(decoded['sig-positive'], isA<int>());
       expect(decoded['sig-positive'], now.millisecondsSinceEpoch);
+    });
+  });
+
+  group('S-17503 which registered signals need rated weeks', () {
+    test('only Progression Rate, Protein Consistency and Cardio Efficiency '
+        'Drift speak before the gate', () {
+      final byId = {
+        for (final signal in buildSignalRegistry())
+          signal.id: signal.needsRatedWeeks,
+      };
+      expect(byId, {
+        'training-gap': false,
+        'consistency': false,
+        'hold-progress': false,
+        'cardio-efficiency-drift': false,
+        'progression-rate': false,
+        'protein-consistency': false,
+        'fuel-vs-load': true,
+        'sustained-high-load': true,
+        'modality-mix-shift': true,
+        'cross-modality-interference': true,
+      });
+    });
+  });
+
+  group('S-17811 the start of week reaches the signals', () {
+    late MockWorkoutRepository repo;
+
+    setUp(() async {
+      repo = MockWorkoutRepository();
+      await repo.initialize();
+    });
+
+    test('Monday by default, in both methods', () async {
+      final signal = _RecordingSignal();
+      final service = _service(repo, [signal]);
+
+      await service.evaluateCandidates(
+        now: DateTime(2026, 3, 18, 12),
+        window: _window,
+        mix: _mixReady,
+      );
+      await service.waitingLines(
+        now: DateTime(2026, 3, 18, 12),
+        window: _window,
+        mix: _mixReady,
+      );
+
+      expect(signal.evaluatedWith, 'monday');
+      expect(signal.waitedWith, 'monday');
+    });
+
+    test('the given value, in both methods', () async {
+      final signal = _RecordingSignal();
+      final service = _service(repo, [signal]);
+
+      await service.evaluateCandidates(
+        now: DateTime(2026, 3, 18, 12),
+        window: _window,
+        mix: _mixReady,
+        startOfWeek: 'sunday',
+      );
+      await service.waitingLines(
+        now: DateTime(2026, 3, 18, 12),
+        window: _window,
+        mix: _mixReady,
+        startOfWeek: 'sunday',
+      );
+
+      expect(signal.evaluatedWith, 'sunday');
+      expect(signal.waitedWith, 'sunday');
     });
   });
 }
