@@ -55,7 +55,7 @@ beat
 `…testS3101EndStopsAndClearsTheRecordingSessionId`,
 `…testS3102AReplacedSessionStopsOneAndStartsTheOther`,
 `…testS3108TheLiveLabelShowsTheNewestBeat`); the feed reduces the builder's
-statistics to beats per minute and cumulative steps, and delegates its two
+statistics to beats per minute, cumulative steps and cumulative active energy, and delegates its two
 location members to the `WatchTrackedLocation` it is given — it never prompts
 for location itself
 (`WatchSensorSourceSourceTests.testS3109TheFeedIsTheRealSourceAndTheStoreReadsBothTypes`,
@@ -259,6 +259,53 @@ states; the session's heart rate and each set block's are computed into the
 `session_end`, because a set has no window of its own — it carries only the moment
 it was logged. Nothing is recomputed afterwards: the stored event is what is re-sent,
 so the phone never sees one entry with two sets of values.
+
+**Active energy is a stored cumulative reading.** The platform workout's
+cumulative active energy — kilocalories, sample kind `energy` in
+`watch/contract/watch_sensor_contract.json` — is recorded like every reading:
+`WatchSensorRecorder.startActiveEnergy()` subscribes when the energy permission
+is granted and appends each count the feed yields from the builder's
+`activeEnergyBurned` statistics (`HealthKitSensorFeed.activeEnergy()`), and a
+repeated read is never a second row's value — each sample supersedes the one
+before it. `WatchSensorSummaries.activeEnergy(samples, from:through:)` sums the
+cumulative chain the way the steps summary does: the chain starts at the last
+count before the window, a smaller value than its predecessor is a restart whose
+new value is itself the energy since the restart, and the total is rounded to one
+decimal — nil when no sample lies inside the window, and nil when the total rounds
+to zero, because a zero total is never sent. The session's total rides the
+`session_end` as `activeEnergyKcal`, for a wrist-created end and a followed end
+alike, and on nothing else — never on an entry or a set block. The live readout
+reads the newest stored sample as `WatchSensorReadings.activeEnergyKcal`. Verified
+by watchOS `WatchActiveEnergyTests.swift`
+(`testS13470TheTotalIsTheLastCumulativeValueRoundedToOneDecimal`,
+`testS13471AChainThatStartedBeforeTheWindowCountsOnlyWhatCameAfterIt`,
+`testS13471ASmallerValueIsARestartAndIsItselfTheEnergySinceIt`,
+`testS13471InvalidValuesAreIgnored`,
+`testS13472NoSampleInsideTheWindowIsNoTotal`,
+`testS13472AMeasuredZeroIsNotSent`,
+`testS13472ATotalThatRoundsToZeroIsNotSent`,
+`testS13473AWristEndedSessionCarriesItsEnergyTotalAndValidates`,
+`testS13474ASessionWithNoEnergySampleSendsNoEnergyKey`,
+`testS13475AFollowedSessionCarriesBothItsMarkAndItsEnergyTotal`,
+`testS13476TheRecorderStoresTheEnergyCountsItIsYielded`) and by
+`WatchRestEnergyTests.swift`
+(`testS13480TheNewestStoredEnergyCountIsTheReading`).
+
+Plan 135 gives this a live twin, never durable: `WatchSensorRecorder.recordEnergy`
+(`watch/watchos/Sources/WatchSessionEngine/WatchSensorRecording.swift`) hands every
+count it records to `WatchSessionEngine.announceEnergy(kilocalories:at:)`
+(`watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`), which sends
+`energy_live` on the cadence the first reading of a session, a fall at once, and a
+rise of at least 0.5 kcal when at least 5 seconds passed since the last frame
+(`WatchEnergyLiveTests.swift`
+`testS13511TheCadenceIsFirstThenHalfAKilocalorieInFiveSecondsThenAFall`,
+`testS13514TheRecorderStoresAndAnnouncesEachCount`). The reads a missed callback
+leaves behind are taken on the 3-second heart-rate pull and the wrist's raise:
+`HealthKitSensorFeed.refreshActiveEnergy` and `yieldEnergyIfChanged`
+(`ios/OmniTrain Watch App/HealthKitSensorFeed.swift`), called from the pull loop
+and from `HealthKitWorkoutStore.refreshHeartRate`'s wake
+(`WatchSensorSourceSourceTests.swift`
+`testS13515ThePullAndTheWakeReadTheEnergyTheBuilderHolds`).
 
 **One writer.** Every sensor streams on a task of its own — with steps recorded
 in every session the user allows it for, at least two run at once — and the

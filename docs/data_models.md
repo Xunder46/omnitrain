@@ -490,7 +490,9 @@ split covers the same logged days the overall average does.
 
 The summary carries the window's logged-day count; the window's calories,
 protein, carbs and fat averages and the preceding range's; the training and
-rest split of each; and the day's calorie, protein, carbs and fat targets, with
+rest split of each; the mean active kcal per finished session in the window
+(`burnedKcalAverage`, `burnedSessionCount`, `burnedIsEstimate`); and the day's
+calorie, protein, carbs and fat targets, with
 `hasCalorieTarget` / `hasProteinTarget` / `hasCarbsTarget` / `hasFatTarget`
 reporting which are set. It also carries `showsAverages`, the gate over
 `kFuelMinLoggedDays` (declared beside the class) that tells the row whether the
@@ -646,6 +648,23 @@ Invariants:
 - **Kind follows origin.** A phone kind with origin `watch`, a wrist kind with
   origin `phone`, a kind outside both vocabularies, or a phone id not minted by
   the helpers is refused (`D-132 WatchInboxEntry refuses a kind outside …`).
+
+---
+
+## Session Energy Model
+
+`SessionEnergy` (`lib/data/models/models.dart`) is the active energy, above
+resting, that one stored session burned. One row per session, keyed by
+`sessionId`: `activeKcal` (double, unrounded), `source` (`estimated` or
+`measured`), `bodyWeightKg` (double ?); an estimate stores the body weight it
+used, required finite and above 0, a `measured` row carries none. The
+constructor refuses a source outside the two, negative or non-finite kcal, a
+`measured` row with a weight and an `estimated` row without one. Not a
+`SensorSummary`: a summary is put-if-absent per target and needs a heart rate
+or steps. A measured row is written by the watch importer from the end's
+`activeEnergyKcal`. Storage: [DB Integration](db_integration.md#session-energy-storage).
+Verified by `test/session_energy_repository_test.dart` (group
+`D-13401 SessionEnergy refuses what the contract refuses`).
 
 ---
 

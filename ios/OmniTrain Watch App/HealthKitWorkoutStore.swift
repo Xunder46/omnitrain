@@ -240,6 +240,7 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// this store currently holds, and nothing at all once `end` cleared it.
     func refreshHeartRate() {
         sensorFeed.refreshHeartRate(from: builder)
+        sensorFeed.refreshActiveEnergy(from: builder)
     }
 
     func inProgressActivityTypes() async -> [String] {

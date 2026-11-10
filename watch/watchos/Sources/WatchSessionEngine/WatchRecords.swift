@@ -152,7 +152,12 @@ public enum WatchSensorKind {
     /// predecessor means the counter restarted.
     public static let steps = "steps"
 
-    public static let all = [heartRate, gps, distance, steps]
+    /// The platform workout's active energy since it began, in kilocalories,
+    /// cumulative: each sample supersedes the one before, and a smaller value
+    /// than its predecessor means the counter restarted.
+    public static let activeEnergy = "energy"
+
+    public static let all = [heartRate, gps, distance, steps, activeEnergy]
 }
 
 /// A UTC timestamp in the protocol's wire shape: `YYYY-MM-DDTHH:MM:SS(.sss)Z`.

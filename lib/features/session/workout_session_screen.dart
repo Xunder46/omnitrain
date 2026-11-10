@@ -19,6 +19,7 @@ import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
 import '../../core/services/stats_progress_service.dart';
+import '../../core/services/active_energy_service.dart';
 import '../../data/models/models.dart';
 import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/session/inline_metric_editor.dart';
@@ -160,9 +161,34 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   Timer? _ticker;
   String _elapsedFormatted = '00:00';
 
+  /// Live-energy inputs and figure (plan 134d): the elapsed seconds the
+  /// ticker last counted, the latest body weight, the running kcal estimate
+  /// and the tick counter that re-reads the weight every minute.
+  int _elapsedSecs = 0;
+  double? _liveWeightKg;
+  double? _liveKcal;
+  int _liveTicks = 0;
+
+  /// plan 135 (D-13523): the wrist's running kcal, once it has sent one for
+  /// the session this screen is open on. Null until then and for any other
+  /// session id: the chip then falls back to `_liveKcal` (the estimate).
+  double? _wristKcal;
+
   void _updateUi(VoidCallback callback) {
     if (!mounted) return;
     setState(callback);
+  }
+
+  /// plan 135: the wrist reported an energy total. It lights the chip only
+  /// while it names the session this screen is open on (D-13523).
+  void _onWristEnergy() {
+    final latest = widget.workoutState.wristEnergy?.value;
+    double? kcal;
+    if (latest != null &&
+        latest.sessionId == widget.workoutState.currentSession?.id) {
+      kcal = latest.kcal;
+    }
+    _updateUi(() => _wristKcal = kcal);
   }
 
   void _beginSetTransition(int direction) {
@@ -246,6 +272,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.settingsState.addListener(_onSettingsChanged);
+    widget.workoutState.wristEnergy?.addListener(_onWristEnergy);
+    // One initial read without setState: a wrist total already held when the
+    // screen mounts shows on the first frame (plan 135 D-13523).
+    final wrist = widget.workoutState.wristEnergy?.value;
+    if (wrist != null &&
+        wrist.sessionId == widget.workoutState.currentSession?.id) {
+      _wristKcal = wrist.kcal;
+    }
     if (!widget.editMode) {
       widget.workoutState.screenAwake.attach();
       _screenAwakeAttached = true;
@@ -256,6 +290,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     if (!widget.editMode) {
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
       _tick();
+      unawaited(_loadLiveWeight());
     } else {
       _computeStaticElapsed();
     }
@@ -1851,6 +1886,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     WidgetsBinding.instance.removeObserver(this);
     widget.settingsState.removeListener(_onSettingsChanged);
     widget.workoutState.removeListener(_onWorkoutStateChanged);
+    widget.workoutState.wristEnergy?.removeListener(_onWristEnergy);
     _setTransitionResetTimer?.cancel();
     _ticker?.cancel();
     // Cancel all effort timers

@@ -227,7 +227,7 @@ session end, summary or effort rating.
 |---|---|
 | The `session_end` of a session the wrist created, whichever path ends it | `WatchSessionEngine`, before the row that records the new status |
 | An entry's heart rate, a timed entry's steps and a round's `pausedMs`, at log time | `WatchLoggingState.log`, over `WatchSensorSummaries` |
-| The session's and each set block's heart rate | `WatchSessionEngine`, into the `session_end` |
+| The session's active energy total, its heart rate and each set block's heart rate | `WatchSessionEngine`, into the `session_end` |
 | Re-sending what the phone has not acknowledged | `WatchSessionEngine.pendingObservations`, every session's, in store order |
 | The session's ids for its two session-scoped observations | `WatchSessionCapture` |
 | The phone's preferences, as the newest `preferences_down` brought them | `WatchPhonePreferences`, fed by `WatchSyncOrchestrator` |
@@ -241,9 +241,26 @@ So the wrist appends one for each session it created — at its own End or
 abandon, or when the phone's lifecycle message or snapshot ends it — and none for
 a session it joined from the phone, which the phone already holds. Since plan 71
 a session the wrist joined from the phone sends its `session_end` too, marked
-`followed: true`: the phone stores only the heart-rate summary the end carries
+`followed: true`: the phone stores only the heart-rate summary and the measured active energy the end carries
 from it — no session row and no effort rows — and never turns the end into
 history.
+
+**Measured active energy.** A `completed` wrist `session_end` may carry
+`activeEnergyKcal` — the active energy the workout measured over the whole
+session, a number sent only when something was measured and never a zero total.
+The phone's importer stores it as a `measured` `SessionEnergy` row, only for a
+`completed` end and only for a positive finite value; the measured row replaces
+the session's estimate and is never replaced by one, and a re-delivered end
+changes nothing. An abandoned end stores nothing. Verified by
+`test/watch_energy_import_test.dart` (group `measured energy through the watch
+importer (${harness.name})`: `S-13460 a wrist-created session whose end carries
+the measured energy stores it and reports the summary attached`,
+`S-13461 a held session with an estimate: the wrist end replaces it with the
+measured row`, `S-13462 absent (no key) on a session with an estimate keeps the
+estimate`, `S-13464 the same end delivered twice stores one row and the second
+pass reports no summary`) and by the same file (`S-13463 a followed completed
+end replaces the estimate with the measured row`, `S-13463 a followed abandoned
+end stores nothing and keeps the estimate`).
 
 **Why the end is stored before the row that ends the session.** A kill between
 the two then leaves a session still running with its end already owed, rather

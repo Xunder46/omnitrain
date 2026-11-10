@@ -146,9 +146,9 @@ public enum WatchPersonalRecordCopy {
 }
 
 /// What the sensors are reading, as the wrist prints it: the beat, the distance
-/// in the saved unit, and the pace it is being covered at.
+/// in the saved unit, the pace it is being covered at, and the energy burned.
 ///
-/// Three strings ready to render, not measurements — the raw values are
+/// Strings ready to render, not measurements — the raw values are
 /// `WatchSensorReadings`, which the sensors layer owns.
 public struct WatchSensorLabels {
     /// Nothing to show — what a session with no sensors stays at.
@@ -163,10 +163,20 @@ public struct WatchSensorLabels {
     /// Minutes per display unit of distance.
     public let pace: String?
 
-    public init(heartRate: String? = nil, distance: String? = nil, pace: String? = nil) {
+    /// The workout's active-energy running total, or nil when nothing has been
+    /// measured (plan 134e D-13481).
+    public let activeEnergy: String?
+
+    public init(
+        heartRate: String? = nil,
+        distance: String? = nil,
+        pace: String? = nil,
+        activeEnergy: String? = nil
+    ) {
         self.heartRate = heartRate
         self.distance = distance
         self.pace = pace
+        self.activeEnergy = activeEnergy
     }
 }
 
@@ -368,13 +378,15 @@ public final class WatchLoggingState {
     public var readings: WatchSensorReadings { sensors?.readings ?? .none }
 
     /// The readout as the wrist prints it, resolved once — one pass
-    /// over the stored rows for the beat, the distance and the pace together.
+    /// over the stored rows for the beat, the distance, the pace and the
+    /// energy together.
     public var sensorLabels: WatchSensorLabels {
         let readings = self.readings
         return WatchSensorLabels(
             heartRate: readings.heartRate.map { String(Int($0.rounded())) },
             distance: distanceLabel(for: readings.distanceMeters),
-            pace: paceLabel(for: readings.distanceMeters)
+            pace: paceLabel(for: readings.distanceMeters),
+            activeEnergy: activeEnergyLabel(for: readings.activeEnergyKcal)
         )
     }
 
@@ -402,6 +414,10 @@ public final class WatchLoggingState {
     /// it says what the number is.
     public var heartRateLabel: String? { sensorLabels.heartRate }
 
+    /// The calories burned so far, as the wrist prints it, or nil until the
+    /// workout has measured at least half a kilocalorie (plan 134e D-13481).
+    public var activeEnergyLabel: String? { sensorLabels.activeEnergy }
+
     /// The measured distance in the saved unit, or nil when nothing has been
     /// measured.
     public var liveDistanceLabel: String? { sensorLabels.distance }
@@ -419,6 +435,13 @@ public final class WatchLoggingState {
         guard let metres else { return nil }
         let converted = metres / WatchMetricStepping.metresPerUnit(units.distanceUnit)
         return String(format: "%.1f", converted)
+    }
+
+    /// The burned total, as the wrist prints it, and only once at least half a
+    /// kilocalorie has been measured (plan 134e D-13481).
+    private func activeEnergyLabel(for kilocalories: Double?) -> String? {
+        guard let kilocalories, kilocalories >= 0.5 else { return nil }
+        return "\(Int(kilocalories.rounded())) kcal burned"
     }
 
     /// The pace `metres` has been covered at, or nil when there is not yet a

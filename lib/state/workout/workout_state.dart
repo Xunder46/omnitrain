@@ -4,6 +4,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
+import '../../core/services/active_energy_service.dart';
 import '../../core/services/health_sync_service.dart';
 import '../../core/services/screen_awake_port.dart';
 import '../../core/utils/entry_rows.dart';
@@ -24,6 +25,14 @@ class WorkoutState extends ChangeNotifier {
   late final ExerciseLibrary _exerciseLibrary;
   late final SessionScreenAwake _screenAwake;
 
+  /// plan 134d: kept for the open session screen's live estimate.
+  final ActiveEnergyService? _activeEnergy;
+
+  /// plan 135 (D-13522): the wrist's running active-energy total, as the last
+  /// `energy_live` frame said. Null without a watch.
+  final ValueListenable<({String sessionId, double kcal, DateTime at})?>?
+  _wristEnergy;
+
   String? _error;
 
   /// [healthSync] is optional so existing construction sites (tests stand
@@ -40,6 +49,12 @@ class WorkoutState extends ChangeNotifier {
   /// watch: the phone's end then writes as it always has.
   ///
   /// [screenAwake] is plan 120: null means no-op.
+  ///
+  /// [activeEnergy] is plan 134: the estimate of a finished session is stored
+  /// when it ends or its duration is edited. Null means no energy is stored.
+  ///
+  /// [wristEnergy] is plan 135: the wrist's running active-energy total while
+  /// it runs a session. Null means the chip stays the phone's own estimate.
   WorkoutState(
     this._repository, {
     HealthSyncService? healthSync,
@@ -47,7 +62,11 @@ class WorkoutState extends ChangeNotifier {
     DateTime Function()? clock,
     bool Function(String sessionId)? wristRunsSession,
     ScreenAwakePort? screenAwake,
-  }) {
+    ActiveEnergyService? activeEnergy,
+    ValueListenable<({String sessionId, double kcal, DateTime at})?>?
+    wristEnergy,
+  }) : _activeEnergy = activeEnergy,
+       _wristEnergy = wristEnergy {
     _timerManager = TimerManager(
       _repository,
       notify: notifyListeners,
@@ -72,6 +91,7 @@ class WorkoutState extends ChangeNotifier {
       healthSync: healthSync,
       lateEntryRecovery: watchLateEntryRecovery,
       wristRunsSession: wristRunsSession,
+      activeEnergy: activeEnergy,
     );
     _timerManager.bindObservations(_sessionCore.observationsMap);
     _screenAwake = SessionScreenAwake(
@@ -82,6 +102,15 @@ class WorkoutState extends ChangeNotifier {
   }
 
   WorkoutRepository get repository => _repository;
+
+  /// plan 134d: the open session screen reads the weight through here.
+  Future<double?> latestBodyWeightKg() async => _activeEnergy?.latestWeightKg();
+
+  /// plan 135 (D-13522): the wrist's running active-energy total for the
+  /// session it runs, or null once nothing is held.
+  ValueListenable<({String sessionId, double kcal, DateTime at})?>?
+  get wristEnergy => _wristEnergy;
+
   SessionScreenAwake get screenAwake => _screenAwake;
   String? get error => _error;
   TrainingSession? get currentSession => _sessionCore.currentSession;

@@ -167,6 +167,10 @@ class HiveWorkoutRepository implements WorkoutRepository {
   // value = SensorSummary.toMap(). Deleted together with their target.
   late Box<Map> _sensorSummariesBox;
 
+  // A session's stored active energy (D-13401): key = sessionId,
+  // value = SessionEnergy.toMap(). Deleted together with its session.
+  late Box<Map> _sessionEnergyBox;
+
   late Box<List> _exerciseMuscleGroupsBox;
   late Box<List> _exerciseEquipmentBox;
   late Box<List> _exerciseTagsBox;
@@ -239,6 +243,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     // derived data, so no data-migration step is needed.
     _watchInboxBox = await Hive.openBox<Map>('watch_inbox');
     _sensorSummariesBox = await Hive.openBox<Map>('sensor_summaries');
+    _sessionEnergyBox = await Hive.openBox<Map>('session_energy');
 
     _exerciseMuscleGroupsBox = await Hive.openBox<List>(
       'exercise_muscle_groups',
@@ -1273,6 +1278,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
     await _sessionBlocksBox.deleteAll(blockIds);
     await _deleteSensorSummariesForSession(id);
+    await _sessionEnergyBox.delete(id);
     await _sessionsBox.delete(id);
   }
 
@@ -2742,6 +2748,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _waterLogBox.clear();
     await _watchInboxBox.clear();
     await _sensorSummariesBox.clear();
+    await _sessionEnergyBox.clear();
     await _metaBox.delete(_seedLoadedKey);
     _initialized = false;
   }
@@ -3434,6 +3441,30 @@ class HiveWorkoutRepository implements WorkoutRepository {
       summaries.sort(_compareSensorSummaries);
     }
     return grouped;
+  }
+
+  @override
+  Future<bool> putSessionEnergy(SessionEnergy energy) async {
+    // Check-then-put with no await between the read and the write, so a
+    // measured row cannot land between them and be overwritten by an estimate
+    // (D-13402); see createSensorSummary for the same shape.
+    final existing = _sessionEnergyBox.get(energy.sessionId);
+    if (existing != null) {
+      final stored = _asStringMap(existing);
+      if (stored['source'] == SessionEnergy.sourceMeasured &&
+          energy.source == SessionEnergy.sourceEstimated) {
+        return false;
+      }
+    }
+    await _sessionEnergyBox.put(energy.sessionId, energy.toMap());
+    return true;
+  }
+
+  @override
+  Future<SessionEnergy?> getSessionEnergy(String sessionId) async {
+    final raw = _sessionEnergyBox.get(sessionId);
+    if (raw == null) return null;
+    return SessionEnergy.fromMap(_asStringMap(raw));
   }
 
   /// D-131: every summary carries its session, so none outlives it.

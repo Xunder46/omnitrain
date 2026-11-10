@@ -1626,6 +1626,54 @@ CREATE INDEX IF NOT EXISTS IX_watch_inbox_unapplied_end
   WHERE kind = 'session_end' AND applied_at_ms IS NULL;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- SESSION ENERGY — THE ACTIVE ENERGY A SESSION BURNED (November 2026)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Plan 134a, D-13401 and D-13402 in
+-- `docs/plans/2026-11-08-134-calories-burned-plan/`.
+-- Model: `SessionEnergy` in `lib/data/models/models.dart`.
+-- Hive box: `session_energy` (key = session_id). The table is new and starts
+-- empty on every install, so it needs no data migration.
+--
+-- app_session_energy: one row per finished session — the active energy (above
+-- resting) that session burned. source 'measured' is the watch's own number;
+-- source 'estimated' is the phone's, computed from the session's duration, its
+-- modality and the body weight it stores in body_weight_kg. A measured row
+-- carries no body weight, and a measured row is never replaced by an estimate.
+--
+-- The CHECK constraints mirror what `SessionEnergy` refuses at construction:
+-- source is one of the two; active_kcal is >= 0; a measured row has no body
+-- weight; an estimated row has one, above 0.
+--
+-- Cascades: session_id carries ON DELETE CASCADE, so deleting the session
+-- removes its row.
+--
+-- Repository → SQL contract (WorkoutRepository method: equivalent SQL):
+--   putSessionEnergy(energy):  -- upsert; stored = (changes() = 1)
+--     INSERT INTO app_session_energy (...) VALUES (...)
+--       ON CONFLICT(session_id) DO UPDATE SET
+--         active_kcal = excluded.active_kcal,
+--         source = excluded.source,
+--         body_weight_kg = excluded.body_weight_kg,
+--         updated_at_ms = excluded.updated_at_ms
+--       WHERE NOT (app_session_energy.source = 'measured'
+--                  AND excluded.source = 'estimated');
+--   getSessionEnergy(sessionId):
+--     SELECT * FROM app_session_energy WHERE session_id = ?;
+--   deleteSession(id):
+--     DELETE FROM app_session_energy WHERE session_id = ?;  (the FK cascades)
+CREATE TABLE IF NOT EXISTS app_session_energy (
+  session_id     TEXT    NOT NULL PRIMARY KEY,
+  active_kcal    REAL    NOT NULL,
+  source         TEXT    NOT NULL CHECK (source IN ('estimated', 'measured')),
+  body_weight_kg REAL,
+  updated_at_ms  INTEGER NOT NULL,
+  CHECK (active_kcal >= 0),
+  CHECK (source <> 'measured' OR body_weight_kg IS NULL),
+  CHECK (source <> 'estimated' OR (body_weight_kg IS NOT NULL AND body_weight_kg > 0)),
+  FOREIGN KEY(session_id) REFERENCES app_training_session(id) ON DELETE CASCADE
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- CATALOG VERSION + SEED-ENTRY TOMBSTONES (July 2026)
 -- ─────────────────────────────────────────────────────────────────────────────
 -- The bundled app-authored catalog (sport categories, disciplines, units,

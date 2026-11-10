@@ -516,10 +516,10 @@ Presentation-only: it renders the name, value text and unit label it is given, a
 marker is a suffix of the unit label rather than a flag of its own. An entry with no distance is
 rendered as `absentValue`, never as a zero. Rows are tap-to-edit — the callback is the caller's —
 and the card says so: a hint above the rows reads `Tap a row to enter or correct it.` and each row
-ends with a pencil. Hides itself when its row list is empty, so the hint cannot appear without rows.
+ends with an outlined pencil button (`OmniUtilityIconButton`, key `session_distance_edit_button_<row>`) that opens the same editor as the row. Hides itself when its row list is empty, so the hint cannot appear without rows.
 Verified by `test/session_summary_distance_test.dart` (`S-3213 the card says how to edit a row,
 above the rows`, `S-3213 a session with no distance rows shows neither the card nor the hint`,
-`S-3214 every row ends with a pencil, and the row still opens the editor`, and the narrow-width
+`S-3214 every row ends with an outlined pencil button, and the row still opens the editor`, and the narrow-width
 fit guard `S-3215`).
 
 See [Session Summary](../session_summary.md#distance) for what the section lists and

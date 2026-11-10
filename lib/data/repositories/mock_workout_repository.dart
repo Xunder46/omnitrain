@@ -25,7 +25,7 @@ const _mockUuid = Uuid();
 /// no-ops and exist only so the [DataMigrationService] can advance the
 /// device's `data_version` through the sequence in the same order as
 /// the Hive-backed runtime. A step that rewrites already-stored rows
-/// (steps 15, 16, 17 and 18) carries the same bodies the runtime runs, so
+/// (steps 15, 16, 17, 18 and 19) carries the same bodies the runtime runs, so
 /// the two stores converge to the same value.
 class _MockMigrationStep extends DataMigrationStep {
   _MockMigrationStep(this.targetVersion, this.name, [this._body]);
@@ -139,6 +139,10 @@ class MockWorkoutRepository implements WorkoutRepository {
   // Deleted together with their target. Mirrors the Hive
   // `sensor_summaries` box.
   final Map<String, SensorSummary> _sensorSummaries = {};
+
+  // A session's stored active energy (D-13401): sessionId -> SessionEnergy.
+  // Deleted together with its session. Mirrors the Hive `session_energy` box.
+  final Map<String, SessionEnergy> _sessionEnergy = {};
 
   bool _initialized = false;
 
@@ -550,6 +554,7 @@ class MockWorkoutRepository implements WorkoutRepository {
     _sessionBlocks.removeWhere((_, block) => block.sessionId == id);
     // D-131: every summary carries its session, so none outlives it.
     _sensorSummaries.removeWhere((_, summary) => summary.sessionId == id);
+    _sessionEnergy.remove(id);
     _sessions.remove(id);
   }
 
@@ -1769,6 +1774,7 @@ class MockWorkoutRepository implements WorkoutRepository {
     _waterTapIdsByDate.clear();
     _watchInbox.clear();
     _sensorSummaries.clear();
+    _sessionEnergy.clear();
     _initialized = false;
   }
 
@@ -2538,6 +2544,22 @@ class MockWorkoutRepository implements WorkoutRepository {
     }
     return grouped;
   }
+
+  @override
+  Future<bool> putSessionEnergy(SessionEnergy energy) async {
+    final existing = _sessionEnergy[energy.sessionId];
+    if (existing != null &&
+        existing.source == SessionEnergy.sourceMeasured &&
+        energy.source == SessionEnergy.sourceEstimated) {
+      return false;
+    }
+    _sessionEnergy[energy.sessionId] = energy;
+    return true;
+  }
+
+  @override
+  Future<SessionEnergy?> getSessionEnergy(String sessionId) async =>
+      _sessionEnergy[sessionId];
 
   /// D-131: a summary is deleted together with its target. Removes every
   /// summary of [scope] whose target is one of [targetIds].

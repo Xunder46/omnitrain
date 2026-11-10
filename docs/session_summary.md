@@ -7,7 +7,7 @@ The Session Summary screen appears after workout completion and focuses on sessi
 Current hierarchy:
 
 1. Header
-2. Session info card (Duration and Rest Time for standard sessions; the EFFORT row for every session)
+2. Session info card (Duration and Rest Time for standard sessions; the EFFORT row with its Calories pill for every session)
 3. Context-aware modality group cards (Strength, Cardio, Sports, Isometric)
 4. Session note
 5. Calendar card
@@ -30,7 +30,7 @@ The **session effort rating** is how hard the whole session was: 1 is the easies
 - **A change reaches the calendar.** On a calendar-opened summary a saved rating refreshes the originating `CalendarState` — the same path Discard uses — so the day list shows the new tint on return.
 - **The rating is never drawn as ramp-colored text.** The lower ramp steps sit below the text-contrast floor, so the EFFORT value uses the stat pills' shared value color and the intensity is carried by a non-text marker in the rating's ramp step (D-15 in `docs/plans/2026-09-24-01-stats-pr1-effort-rating-plan.md`).
 - **Rolling sessions can still be rated.** They have no session clock, so their info card drops Duration and Rest Time but keeps the EFFORT row.
-- **The EFFORT row explains itself.** Under the value a muted caption reads `How hard the session felt`, and the row's button — an outlined Utility button with an edit/plus icon, so it reads as a control — reads `Change rating` once a rating exists and `Add rating` before one. Verified by `test/session_summary_effort_row_test.dart` (group `S-3211 the EFFORT pill carries its own caption`: `S-3211 a rated session shows the caption under the value`, `S-3211 an unrated session shows it too`, `S-3211 a rolling session shows it too`; group `S-3212 the button names what it does`: `S-3212 an unrated session reads Add rating, then Change rating after the sheet rates it`, `S-3212 a rated session reads Change rating, and tapping it opens the sheet on the stored rating`).
+- **The EFFORT row explains itself.** Under the value a muted caption reads `How hard the session felt`, and the pen button with the tooltip — an outlined rounded-square icon-only `OmniUtilityIconButton` on the same line as the value, right after it rather than at the column's far edge — reads `Change rating` once a rating exists, and `Add rating` before one (key `omni_session_effort_rating_button`, icon `Icons.edit_outlined` when rated and `Icons.add` before one). The same test also checks the outline, the tap size and that the pen sits right after the value. Verified by `test/session_summary_calories_test.dart` (group `S-13411 an unrated session`: `the pen reads Add rating with a plus icon`; group `S-13402/S-13411 a rated session with an estimated energy row`: `the pen is icon-only and the Calories pill sits to its right`) and by `test/session_summary_effort_row_test.dart` (group `S-3211 the EFFORT pill carries its own caption`: `S-3211 a rated session shows the caption under the value`, `S-3211 an unrated session shows it too`, `S-3211 a rolling session shows it too`; group `S-3212 the button names what it does`: `S-3212 an unrated session reads Add rating, then Change rating after the sheet rates it`, `S-3212 a rated session reads Change rating, and tapping it opens the sheet on the stored rating`).
 - **A watch session in history is rated like any other.** An imported watch session is an ordinary `TrainingSession`, so its summary shows the rating the wrist recorded, or offers to add one, through the same control. Verified by `test/watch_session_summary_integration_test.dart` (`S-285`, `S-286`).
 - **The phone's rating is final.** A rating written here is never replaced by one the wrist sends later: the import applies a wrist rating only while the session has none (D-138 of `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). Verified by `test/watch_session_import_test.dart` (`S-264`).
 - **Both devices ask the same question.** The sheet's question, scale and end labels are the ones `watch/contract/watch_effort_rating_contract.json` gives the wrist. Verified by `test/watch_effort_rating_copy_parity_test.dart` (`S-287`).
@@ -54,7 +54,7 @@ The screen renders a CustomScrollView over OmniGradientBackground with this orde
 | Section | Content |
 |---------|---------|
 | Header | Session title only (the app bar shows no date or modality badge) |
-| Session info card | Duration and Rest Time, then the heart-rate row when the session has one ([Heart rate](#heart-rate)), then the EFFORT row (rolling sessions: no Duration / Rest Time row — see [Effort Rating Capture](#effort-rating-capture)); the formatted start date/time and the modality chip sit in this card's header |
+| Session info card | Duration and Rest Time, then the heart-rate row when the session has one ([Heart rate](#heart-rate)), then the EFFORT row with its Calories pill (rolling sessions: no Duration / Rest Time row — see [Effort Rating Capture](#effort-rating-capture)); the formatted start date/time and the modality chip sit in this card's header |
 | Group Cards | One card per group that has data in this session |
 | Session Note | Inline TextField with debounce save |
 | Calendar | Month grid and Open Calendar navigation button |
@@ -87,6 +87,88 @@ unchanged, no row`, `S-9656 a rolling session shows the heart-rate row too`,
 Notes:
 
 - Group cards are conditional by data presence; empty groups are hidden.
+
+### Calories
+
+The EFFORT row is two halves side by side: the rating pill on the left with the
+outlined pen edit button right beside the rating value, and the Calories pill
+(`omni_session_calories_pill`, label CALORIES) on the right. The pill shows on
+every session, rolling ones included.
+
+- **An estimate is marked with a tilde, a measured value is not.** An estimated
+  row reads `~32 kcal`; a row the watch measured reads `250 kcal` with no
+  estimate mark; and with nothing stored the pill reads `—`. Verified by
+  `test/session_summary_calories_test.dart` (group `S-13402/S-13411 a rated
+  session with an estimated energy row`: `the pen is icon-only and the Calories
+  pill sits to its right`; group `S-13407 a measured energy row`: `reads plain
+  kilocalories, no estimate mark`; group `S-13412 every session shows the
+  Calories pill`: `a session with no energy row reads an em dash`).
+- **The watch sends its measured energy.** A session the watch ran or followed
+  carries the wrist workout's active-energy total on its end, and the pill reads
+  that number plain, no tilde; a session with no watch, or with Health refused,
+  stays on the `~` estimate (see
+  [Watch Session Capture](watch_session_capture.md)). Verified by
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchActiveEnergyTests.swift`
+  (`testS13473AWristEndedSessionCarriesItsEnergyTotalAndValidates`,
+  `testS13475AFollowedSessionCarriesBothItsMarkAndItsEnergyTotal`).
+- **Every session carries the pill.** A rolling session — which has no
+  Duration / Rest Time row — shows the Calories pill too, and a measured row
+  the watch writes later lands on an already-open summary through
+  `noteWristSummary`. Verified by `test/session_summary_calories_test.dart`
+  (group `S-13412 every session shows the Calories pill`: `a rolling session
+  shows the pill and no Duration/Rest row`, `a late measured row lands through
+  noteWristSummary`).
+- **Where the number comes from.** `ActiveEnergyService.settle(sessionId)`
+  stores the estimate when a session ends and again when its duration is
+  edited; ending a session never fails on it — every failure is caught (see
+  [State Management & Services](state_management/services_and_utils.md),
+  `ActiveEnergyService`).
+- **The formula is active energy = (MET − 1) × body weight in kg × hours**, with
+  the MET per section in `kActiveEnergyMets`
+  (`lib/core/constants/active_energy.dart`): resistance 3.5, cardio 6.0,
+  isometric 3.0, sports 6.0. A session with one of the four modality ids uses
+  its whole duration at that section's MET; Free Training, an unknown modality
+  id or a rolling session uses the per-section time split the Mix view already
+  computes (`StatsProgressService.sessionTimeBySectionFor`). Verified by
+  `test/active_energy_service_test.dart` (groups `Mock —
+  ActiveEnergyService.settle` and `Hive — ActiveEnergyService.settle`:
+  `S-13401 resistance 3600 s at 80 kg stores 200.0`,
+  `S-13403 cardio 1800 s at 80 kg stores 240.0`,
+  `S-13402 isometric 1102 s at 80 kg stores 31.8355… unrounded`,
+  `S-13403 sports 5400 s at 70 kg stores 525.0`,
+  `S-13404 Free Training 3600 s with measured cardio and isometric`,
+  `S-13414 an unknown modality id takes the Free Training branch`,
+  `S-13416 Free Training with only set work: resistance remainder`,
+  `S-13409 a finished rolling session with measured isometric seconds`,
+  `S-13409 a rolling session counts its measured seconds even when it carries
+  a modality id`, `S-13409 a finished rolling session with nothing measured
+  writes no row`, `S-13409 an unfinished session writes no row`,
+  `S-13409 a session with a modality and no duration writes no row`).
+- **The weight is the latest `bodyweight` measurement on file, in kilograms and
+  above zero.** With no usable weight the app stores nothing and the pill reads
+  `—`; a latest weight of zero or less writes no row too. An estimate stores
+  the weight it used and a later settle reuses it, so logging a new weight
+  never rewrites an old session, and a duration edit recomputes at that stored
+  weight. Verified by `test/active_energy_service_test.dart` (same groups:
+  `S-13405 no weight, then a lbs weight, then a kg weight`,
+  `S-13415 a latest weight of 0 kg writes no row`,
+  `S-13415 a latest weight of −5 kg writes no row`,
+  `S-13406 a re-estimate reuses the stored weight; an edit recomputes`) and by
+  `test/active_energy_lifecycle_test.dart` (`S-13406: a duration edit
+  recomputes an estimated row at its stored weight`).
+- **A measured row is never overwritten by an estimate.** A row the watch
+  writes survives both a settle at end and a settle at a duration edit.
+  Verified by `test/active_energy_service_test.dart` (same groups:
+  `S-13407 a measured row survives a settle untouched`) and by
+  `test/active_energy_lifecycle_test.dart` (`S-13407: a measured row survives
+  an end and a duration edit`).
+- **The read-out rounds once, here.**
+  `SessionSummaryService.getSessionEnergy(sessionId)` returns
+  `({int kcal, bool measured})?` — kilocalories rounded to whole numbers, the
+  one rounding on the figure — and null when nothing is stored. Verified by
+  `test/active_energy_service_test.dart` (same groups: `read-out: estimated
+  31.8355 reads (32, not measured)`, `read-out: a measured 250.4 row reads
+  (250, measured)`, `read-out: no row reads null`).
 
 ---
 
@@ -157,15 +239,15 @@ the answer goes through `WorkoutState.setEntryDistance` or
 - **The section is hidden when it has no rows**, as the group cards are.
 - **A row carries a name, a distance and a unit, and nothing else.** No pace,
   total, change indicator or duration is added anywhere on the Summary: the
-  values belong to Stats. The pencil that ends each row marks it editable; it
-  is decoration, not data.
+  values belong to Stats. The outlined pencil button that ends each row marks it
+  editable and opens the same editor as the row; it is not data.
 - **The card says how to edit a row.** A hint above the rows reads
-  `Tap a row to enter or correct it.`, and each row ends with a pencil; a row
-  with no distance keeps its em dash. Verified by
+  `Tap a row to enter or correct it.`, and each row ends with an outlined pencil button
+  (`OmniUtilityIconButton`); a row with no distance keeps its em dash. Verified by
   `test/session_summary_distance_test.dart` (`S-3213 the card says how to edit
   a row, above the rows`, `S-3213 a session with no distance rows shows neither
-  the card nor the hint`, `S-3214 every row ends with a pencil, and the row
-  still opens the editor`, `S-3215 the card fits 280 dp with a 60-character
+  the card nor the hint`, `S-3214 every row ends with an outlined pencil
+  button, and the row still opens the editor`, `S-3215 the card fits 280 dp with a 60-character
   name`).
 - **Confirming the pre-filled value keeps the stored metres**, which is what
   confirms an estimate; any other value is stored as entered, and zero removes

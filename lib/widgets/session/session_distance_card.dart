@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../buttons/omni_utility_button.dart';
 import '../layout/omni_surface.dart';
 
 /// One row of the Session Summary's DISTANCE card.
@@ -34,8 +35,9 @@ class DistanceRowModel {
 /// carries a distance.
 ///
 /// The card says so itself: a hint above the rows explains the tap, and each
-/// row ends with a pencil. Both are decoration — the row's own `InkWell` and
-/// its semantics label remain the control.
+/// row ends with an outlined pencil button. The button opens the same editor as
+/// the row; the row's own `InkWell` and its semantics label stay the one
+/// control a screen reader meets.
 ///
 /// Reads no state. It is hidden by its caller when it has no rows, and it
 /// renders nothing itself in that case so a stale empty card can never show.
@@ -97,7 +99,9 @@ class SessionDistanceCard extends StatelessWidget {
         button: true,
         label: '${row.name}, ${row.value} ${row.unitLabel}',
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          // The 48 dp pencil button sets the row height, so the row's own
+          // padding is small.
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
             children: [
               Expanded(
@@ -117,15 +121,16 @@ class SessionDistanceCard extends StatelessWidget {
               const SizedBox(width: 6),
               Text(row.unitLabel.toUpperCase(), style: unitStyle),
               const SizedBox(width: 12),
-              // The pencil marks the row as editable; the row's own
-              // Semantics(button: true) already names the action, so the
-              // icon says nothing to a screen reader.
+              // The outlined pencil marks the row as editable and is tappable
+              // itself; the row's own Semantics(button: true) already names
+              // the action, so the button says nothing more to a screen
+              // reader.
               ExcludeSemantics(
-                child: Icon(
-                  Icons.edit_outlined,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
-                  key: Key('session_distance_edit_icon_$index'),
+                child: OmniUtilityIconButton(
+                  buttonKey: Key('session_distance_edit_button_$index'),
+                  tooltip: 'Edit distance',
+                  icon: Icons.edit_outlined,
+                  onPressed: row.onTap,
                 ),
               ),
             ],

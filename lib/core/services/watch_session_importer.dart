@@ -57,7 +57,8 @@ class WatchSessionImport {
   final int? appliedRating;
 
   /// Whether this pass stored the wrist's session-scope heart-rate summary
-  /// (plan 71, D-5): a screen showing the session can re-read it.
+  /// (plan 71, D-5), or the end's measured active energy (plan 134c,
+  /// D-13463): a screen showing the session can re-read it.
   final bool sensorSummaryAttached;
 }
 
@@ -1726,6 +1727,39 @@ class _Pass {
       when: end.avgHeartRateBpm != null || end.maxHeartRateBpm != null,
     );
     if (writes > before) summaryWritten = true;
+    await _attachMeasuredEnergy();
+  }
+
+  /// The wrist's measured active energy replaces any estimate and is never
+  /// replaced by one (plan 134c, D-13463). Nothing is stored for an end that
+  /// is not completed or carries no positive finite figure.
+  Future<void> _attachMeasuredEnergy() async {
+    final end = this.end!;
+    final kcal = end.activeEnergyKcal;
+    if (end.status != WatchSessionImporter._completed) return;
+    if (kcal == null || !kcal.isFinite || kcal <= 0) return;
+    final existing = await _repository.getSessionEnergy(sessionId);
+    if (existing != null &&
+        existing.source == SessionEnergy.sourceMeasured &&
+        existing.activeKcal == kcal) {
+      return;
+    }
+    final SessionEnergy energy;
+    try {
+      energy = SessionEnergy(
+        sessionId: sessionId,
+        activeKcal: kcal,
+        source: SessionEnergy.sourceMeasured,
+        bodyWeightKg: null,
+        updatedAtMs: end.loggedAtMs,
+      );
+    } on ArgumentError {
+      return;
+    }
+    if (await _repository.putSessionEnergy(energy)) {
+      changed = true;
+      summaryWritten = true;
+    }
   }
 
   Future<void> _attachSetBlockSummary(_Key key, String effortId) async {
@@ -2201,6 +2235,7 @@ class _End {
     required this.followed,
     required this.avgHeartRateBpm,
     required this.maxHeartRateBpm,
+    required this.activeEnergyKcal,
     required this.setBlocks,
   });
 
@@ -2217,6 +2252,10 @@ class _End {
   final double? avgHeartRateBpm;
   final double? maxHeartRateBpm;
   final List<_SetBlock> setBlocks;
+
+  /// The active energy the wrist's workout measured over the whole session,
+  /// in kilocalories, when it carried one (plan 134c, D-13463).
+  final double? activeEnergyKcal;
 
   static _End? parse(WatchInboxEntry row) {
     final payload = row.payload;
@@ -2242,6 +2281,7 @@ class _End {
       followed: payload['followed'] == true,
       avgHeartRateBpm: _real(payload['avgHeartRateBpm']),
       maxHeartRateBpm: _real(payload['maxHeartRateBpm']),
+      activeEnergyKcal: _real(payload['activeEnergyKcal']),
       setBlocks: [
         if (blocks is List)
           for (final block in blocks)

@@ -278,6 +278,17 @@ paused with its pause bookkeeping, and a rest the phone no longer holds open
 goes out as `{rest: null}`; a wrist rest started within the push's rest
 tolerance (`_restStartToleranceMs`) of the phone's is the same rest and is not
 echoed back, while one outside that tolerance is a different rest and is sent.
+plan 136, S-13601 a rest the wrist is running is cleared when the phone starts a timer: the push also sends one `{rest: null}` when the mirror holds a wrist rest (running or paused), the phone holds none, and a phone work timer starts later than that rest — sent once, re-offered like every clear; a newer wrist rest and a rest the phone itself holds are untouched.
+See the wrist's own rest and its guards in
+`test/watch_rest_cleared_on_phone_timer_test.dart` (group
+`S-13601 a phone work timer stops the wrist's own running rest`,
+`S-13602 no frame clears the newer wrist rest`, group
+`S-13603 a wrist rest already stopped is not cleared`,
+`S-13603 no frame clears the ended rest`, group
+`S-13604 the wrist rest is cleared once`, group
+`S-13606 a paused wrist rest is cleared the same way` ·
+`S-13606 the clear is sent for a paused mirror rest`,
+`S-13607 exactly one rest:null frame travels`).
 Built in
 `createWatchSync` and returned as `WatchSyncGraph.timerPush`. Its own trigger
 is a change of the bound `WorkoutState`; the inbound-frame handler that flushes
@@ -405,138 +416,10 @@ Verified by `test/watch_reference_sync_test.dart` (S-003, S-004, S-007, S-253,
 S-3840..S-3846) and `test/watch_nutrition_quick_log_test.dart` (S-003, for the
 foods half).
 
-### The watch transport
+### The watch transport and the phone's link
 
-**Files**: `lib/core/platform/watch_transport.dart`,
-`lib/core/platform/watch_connectivity_channel.dart`,
-`lib/core/platform/no_watch_transport.dart`,
-`lib/core/utils/platform_watch_transport_factory.dart`
-
-One object is both the watch's `WatchSyncTransport` and the phone's
-`WatchMirrorTransport`, because they are one radio: `WatchTransport` extends both
-and adds `onIncoming`, the single handler every arriving frame is handed to.
-
-**The package boundary is `WatchMessageChannel` and nothing else.**
-`omnitrain_watch_link` is imported in exactly one file
-(`watch_connectivity_channel.dart`); `WatchConnectivityTransport` is written
-against the `WatchMessageChannel` interface, which is what lets a hand-rolled
-`MethodChannel` + `WCSession` layer, or a Wear OS data-layer one, replace it
-without touching a caller.
-
-**Nothing is queued in the app layer.** A queue here would be a second source of
-truth about what has been delivered (PROTOCOL.md, "Idempotency and
-reconciliation").
-
-**A request is not a message.** PROTOCOL.md says so normatively, and
-`WatchTransportRequest` is where that lives: a frame with no `type` is a request
-(`routines` or `snapshot`), and a frame with one is a protocol message.
-`WatchConnectivityTransport` implements the request calls over that one
-vocabulary, so adding a request does not add a wire type.
-
-**Platform choice happens once**, in `createPlatformWatchTransport`: iOS gets
-`WatchConnectivityTransport`, and web, desktop, and Android get `null` — Android
-until the Wear OS client is built. It reads `defaultTargetPlatform` rather than
-`dart:io`'s `Platform`, because this file is compiled for web too, and a failure
-to construct answers null rather than refusing to start the app.
-
-Verified by `test/watch_transport_test.dart` (S-001, S-002, S-003, S-006, S-009;
-group `S-206 a send answers whether the frame was handed over`,
-`S-206 a reachable counterpart means delivered, and the radio carried the frame`,
-`S-206 an unreachable counterpart is undelivered, unsent and unreported`,
-`S-206 a send reads reachability again rather than trusting the last answer`,
-`S-206 a radio that refuses the frame is undelivered and reported once`,
-`S-218 a transport that cannot carry a frame is undelivered and quiet`) over an
-in-memory two-ended channel.
-
-**Frames are handled one at a time, and a stale snapshot is ignored.**
-`WatchConnectivityTransport._dispatch` chains each incoming frame after the
-previous frame's handling and counts the frame as heard on arrival; a handler
-that does not finish within its handler timeout is reported and given up on, so
-later frames are not stuck behind it. On the mirror,
-`LiveSessionMirrorState.isStaleSnapshot` answers a `session_snapshot` whose
-`sentAt` is earlier than the newest snapshot stamp the mirror has applied — one
-stamp across all workouts — with `MirrorOutcome.ignored`: nothing applied,
-nothing notified; an equal or later stamp applies, and an unreadable `sentAt` is
-not stale, while the inbox still stages the entries of a stale snapshot.
-Verified by `test/watch_message_order_test.dart` (`S-9301`..`S-9307`).
-
-The wrist's half of this area — the Swift bridge over the same radio, the wrist's start surface and the wrist's logging surface (the Crown and the per-exercise dialled numbers included) — has its own page: [The Watch Surface — the Wrist's Half](watch_surface_wrist.md).
-
-### The phone's link: the plugin, the channel, the queue and the status
-
-**Files**: `packages/omnitrain_watch_link/` (a local path dependency, iOS
-only), `lib/core/platform/watch_connectivity_channel.dart`,
-`lib/core/platform/watch_link_info.dart`,
-`lib/state/watch/watch_link_state.dart`
-
-The radio under `WatchConnectivityTransport` is the local plugin
-`packages/omnitrain_watch_link`, which replaced the `watch_connectivity`
-dependency. Its Dart API is `WatchLink`: `status()`; `sendMessage`, which
-completes on the watch's reply and fails with a `WatchLinkException` —
-`not_supported`, `not_activated`, `not_reachable`, `send_failed`, or `timeout`
-when no reply arrives within the call's `timeout`; `transferUserInfo`, which
-answers `queued` or `already_queued` by the frame's `messageId`; and one
-broadcast `events` stream of the sealed `WatchLinkEvent` kinds
-(`WatchLinkMessage`, `WatchLinkUserInfo`, `WatchLinkReachability`,
-`WatchLinkStateChanged`); `outstandingTransfers()`, which lists the transfers
-the OS still holds as `WatchLinkTransfer` values (`messageId`, `type`,
-`sessionId?`, `changeId?`); and `cancelTransfers(messageIds)`, which cancels
-them and answers how many. The native half (`OmniTrainWatchLinkPlugin.swift`)
-is one `WCSession` delegate that buffers events until Dart listens (bounded by
-its `bufferCap`, oldest dropped past it), answers every incoming message so
-the sender's send completes, and emits state and reachability; the buffer and
-the reply are verified on the paired simulators (plan 47d), not by a unit
-test; the two queue methods' native part is compiled by the iOS build but
-verified against real queued transfers only by the owner device checks of
-plan 67a. Verified by `test/watch_link_package_test.dart` (groups `S-6801` to
-`S-6805`, `S-9701`, `S-9702`).
-
-The app's seam is `WatchConnectivityChannel(link:)`, the implementer of the
-seven-member `WatchMessageChannel` (`isPaired`, `isReachable`, `messages` —
-message and userInfo frames merged into one stream — `send`, `queue`,
-`reachability`, `info`); `WatchLinkInfo` is the core value type, so no plugin
-type escapes the channel. The channel also implements the core
-`WatchQueueControl`, so `WatchMessageChannel` keeps its seven members and no
-plugin type escapes. Verified by
-`test/watch_connectivity_channel_test.dart` (group `S-6816 the channel over
-the plugin`, `S-9703`).
-
-**A frame the OS may carry can be queued, not only delivered.** `WatchDelivery`
-gained `queued` — handed to the OS queue (`transferUserInfo`); it arrives when
-the devices meet — and `WatchConnectivityTransport.isDurable` is true for
-`receipt` and the four workout messages `session_snapshot`, `session_lifecycle`,
-`structure_change` and `exercise_push`: a durable frame the radio cannot reach
-or refuses is queued instead of reported, while every other frame stays
-live-only and is re-offered at its next trigger. Before it queues — and after
-it delivers one live — the transport cancels the outstanding transfers the new
-frame replaces: same type and `sessionId` for a snapshot or a lifecycle, same
-`sessionId` and payload `changeId` for a `structure_change`; a `receipt` and an
-`exercise_push` are never withdrawn, and a frame's own `messageId` is never
-cancelled. The cancelling goes through `WatchQueueControl`
-(`lib/core/platform/watch_queue_control.dart`: `outstandingTransfers()`,
-`cancelTransfers(ids)`), which `WatchConnectivityChannel` implements; a channel
-without the capability withdraws nothing, and the queue work (withdraw, then
-queue) runs one call at a time. `timer_state`, requests and the static `*_down`
-frames are never queued. A queued copy is a carrier, not a delivery: callers
-advance bookkeeping only on `delivered`. Verified by
-`test/watch_transport_test.dart` (S-9710..S-9719, S-9724),
-`test/watch_session_queue_test.dart` (S-9720..S-9723),
-`test/watch_link_package_test.dart` (S-9701, S-9702) and
-`test/watch_connectivity_channel_test.dart` (S-9703).
-
-**The listener order is load-bearing.** `onIncoming` attaches the message and
-the reachability listener together, because listening is what makes the
-native side flush its buffer: the message listener must attach first or in
-the same turn. Verified by `test/watch_transport_test.dart` (group `S-6817
-the transport attaches its listeners when it starts receiving`).
-
-`WatchLinkState` (`lib/state/watch/watch_link_state.dart`) is the status
-Settings shows: a `ChangeNotifier` over `WatchLinkSource` — implemented by
-the transport — whose `phase` is `connected`, `notReachable`, `notPaired` or
-`appNotInstalled`, whose `lastSyncedLabel` says when the phone last heard a
-frame, and which persists that instant under the repository key
-`watch_last_heard_ms` at most once per `persistEvery`. Verified by
-`test/watch_link_state_test.dart` (groups `S-6901` to `S-6905`).
+Moved to [The Watch Surface — the Transport and the Link](watch_surface_transport.md): `WatchTransport`, `WatchMessageChannel`,
+`createPlatformWatchTransport`, the platform plugin and the channel, the queue, and `WatchLinkState`.
 
 ### `WatchSyncRequestHandler`
 
@@ -673,6 +556,18 @@ A session an import rated also goes to `HealthSyncService.onSessionRated`, which
 `main.dart` passes to `createWatchSync` (plan 90; `S-90-5` in
 `test/health_effort_test.dart`).
 
+Plan 135's `energy_live` frames land here too: the wiring routes them to
+`WatchLiveEnergy` (`lib/state/watch/watch_live_energy.dart`), which keeps the
+newest valid frame by `at` per session and exposes it as
+`WatchSyncGraph.liveEnergy`; `main.dart` hands `liveEnergy.latest` to
+`WorkoutState(wristEnergy:)` for the open session screen's Calories chip.
+Verified by `test/watch_live_energy_test.dart` (group
+`S-13503/S-13504/S-13505 the holder` ·
+`S-13503 a valid frame sets latest`; group
+`S-13506/S-13507 the graph routes energy_live in the wiring` ·
+`S-13507 an energy frame on the transport reaches the holder and gets no
+answer`).
+
 Two construction details are load-bearing:
 
 - The mirror starts from `watchSessionPlaceholder` — a **valid but unheld**
@@ -694,7 +589,11 @@ why the id is valid rather than empty.
 The one place a message arriving from a wrist is handed to its owners:
 `WatchSessionInbox`, `LiveSessionMirrorState`, `WatchNutritionLogBridge` and
 `WatchWaterLogBridge` (a water tap never reaches workout history:
-`test/watch_water_log_test.dart`, S-94a-18). Each is asked about every message, and each answers for itself which messages
+`test/watch_water_log_test.dart`, S-94a-18) — the routing the router itself
+owns; an `energy_live` frame never reaches it, because `createWatchSync`'s
+inbound handler intercepts the type first for `WatchLiveEnergy` (plan 135,
+`S-13507 an energy frame on the transport reaches the holder and gets no
+answer`). Each is asked about every message, and each answers for itself which messages
 are its own — the inbox by entry kind, the mirror by session identity, the day
 log by observation kind — so a message that belongs to several is not forced to
 pick one, and a caller does not have to know that a quick-log can be session

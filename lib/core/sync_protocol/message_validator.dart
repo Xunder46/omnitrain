@@ -119,6 +119,7 @@ class SyncProtocolValidator {
     'session_started',
     'session_snapshot',
     'timer_state',
+    'energy_live',
   ];
 
   static const List<String> timerKinds = ['rest', 'round', 'hold', 'elapsed'];
@@ -142,6 +143,7 @@ class SyncProtocolValidator {
     'distanceSource': ['timed'],
     'avgHeartRateBpm': ['timed', 'round', 'hold', 'session_end'],
     'maxHeartRateBpm': ['timed', 'round', 'hold', 'session_end'],
+    'activeEnergyKcal': ['session_end'],
     'pausedMs': ['round'],
     'setBlockHeartRates': ['session_end'],
     'rating': ['effort_rating'],

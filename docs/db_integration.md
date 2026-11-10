@@ -798,6 +798,51 @@ Rationale:
 
 ---
 
+## Session Energy Storage
+
+Covers `SessionEnergy`, the energy methods of `WorkoutRepository`, and the
+`app_session_energy` table in `scripts/sqlite_schema.sql`. The model is in
+[Data Models](data_models.md#session-energy-model).
+
+Structure:
+- Hive keeps one row per session in its own `session_energy` box, keyed by the
+  session id, each value the model's `toMap()`; `MockWorkoutRepository` keeps
+  an in-memory map beside its `_sensorSummaries` map and a `clear()` empties
+  it with the rest.
+- Deleting a session deletes its energy row on both stores and a full wipe of
+  either store removes every row (`test/session_energy_repository_test.dart`,
+  group `Session energy — Mock` and group `Session energy — Hive`:
+  `S-13408 deleteSession removes the session's energy row`,
+  `S-13408 a full wipe of the repository removes the energy rows`).
+
+Methods:
+- `putSessionEnergy(SessionEnergy) -> Future<bool>`: an upsert named by the
+  row's `sessionId`. A `measured` row always replaces; an `estimated` put over
+  a `measured` row returns `false` and writes nothing — Hive reads the stored
+  row and puts with no await in between, so a measured row cannot land between
+  the read and the write. Parity is one test body over both factories:
+  `S-13410 putSessionEnergy stores an estimated row and getSessionEnergy reads
+  it back unrounded`, `S-13410 a measured row replaces an estimated one`,
+  `S-13410 an estimated put over a measured row returns false and writes
+  nothing`, `S-13410 getSessionEnergy of a session with no row is null`.
+- `getSessionEnergy(String) -> Future<SessionEnergy?>`: the stored row, or
+  null when none.
+
+SQL: `app_session_energy` in `scripts/sqlite_schema.sql`, columns `session_id`
+(its primary key), `active_kcal`, `source`, `body_weight_kg`, `updated_at_ms`,
+a `FOREIGN KEY (session_id)` to `app_training_session` `ON DELETE CASCADE`
+and CHECKs that refuse a source outside the two, negative kcal, a `measured`
+row with a weight and an `estimated` row without one. The contract group is
+`test/db_seed_test.dart`, group `app_session_energy contract (D-13401 /
+D-13402)`.
+
+Why it is not a `SensorSummary`: a summary is put-if-absent per (scope,
+target), its `source` allows only `watch`, and it needs a heart rate or steps,
+so an estimate stored as a summary would block the wrist's later session
+summary.
+
+---
+
 ## Sub-Holder Architecture and Repository Access
 
 After the `workout-state-and-screen-refactor`, `WorkoutState` is a thin `ChangeNotifier` facade that constructs three sub-holders. Each sub-holder independently holds a `WorkoutRepository` reference — they do **not** share a single repository reference through the facade.

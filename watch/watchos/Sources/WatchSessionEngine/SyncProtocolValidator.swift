@@ -63,6 +63,7 @@ public final class SyncProtocolValidator {
         "session_started",
         "session_snapshot",
         "timer_state",
+        "energy_live",
     ]
 
     public static let timerKinds = ["rest", "round", "hold", "elapsed"]
@@ -86,6 +87,7 @@ public final class SyncProtocolValidator {
         ("distanceSource", ["timed"]),
         ("avgHeartRateBpm", ["timed", "round", "hold", "session_end"]),
         ("maxHeartRateBpm", ["timed", "round", "hold", "session_end"]),
+        ("activeEnergyKcal", ["session_end"]),
         ("pausedMs", ["round"]),
         ("setBlockHeartRates", ["session_end"]),
         ("rating", ["effort_rating"]),

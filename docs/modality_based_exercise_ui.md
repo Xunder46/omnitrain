@@ -368,6 +368,42 @@ Transitions are validated by `_isValidRoundTransition()` in `WorkoutState`. Rapi
   mode shows the length row and no ring`).
 - Actual duration capped at `plannedDurationSecs * WorkoutConstants.roundActualDurationCapFactor` on persist
 
+**Live calories.** The bar under the header — on the non-rolling session screen
+outside edit mode, the same bar that carries the `Session Time` chip — shows a
+`Calories` chip (`omni_session_live_calories`) opposite the time chip, reading the
+running estimate `~N kcal`, or `—` with no usable body weight, until an
+`energy_live` frame replaces it. The estimate is
+`ActiveEnergyService.liveKcal(modality:elapsedSecs:weightKg:)` — (MET − 1) × kg ×
+elapsed seconds / 3600, at the session's modality section MET, the resistance MET
+for Free Training or an unknown modality id — computed from the session clock's own
+elapsed seconds, so the estimate and the clock cannot disagree: the clock holds `00:00` until the first
+exercise exists, and the estimate holds `~0 kcal` then. The weight is read once when
+the screen opens and again on every 60th tick through
+`WorkoutState.latestBodyWeightKg()`, so a weight logged while the screen is open
+appears within a minute. The live figure is the watch's own number once the wrist has sent one (plan 135, no `~`), otherwise an estimate: a Free Training
+session is priced at the resistance MET for the whole elapsed time (the exact
+per-section split needs the full history index and runs only when the session ends,
+so a Free Training session with timed cardio or holds can step at the end), and the
+chip shows the wrist's running total as soon as an `energy_live` frame arrives, and the Summary's figure arrives with the session end, on the Summary. The chip sits in a `FittedBox`, so on the narrowest
+phone it scales down a few percent instead of overflowing. Verified by
+`test/session_live_calories_test.dart` (`S-13445: resistance session, 80 kg,
+1800 s reads ~100 kcal`, `S-13445b a weight logged while the screen is open is read
+again on the 60th tick`, `S-13446: no body weight on file reads —`, group
+`S-13447: geometry at 390x844` · `the chip sits right of the time chip, flush to
+the padding`, `S-13448: Free Training session (null modality) reads ~100 kcal`,
+group `S-13449: no exercise yet and the edit-mode screen` · `no exercise yet: ~0
+kcal with the clock at 00:00`, `edit mode: no Calories chip, Session Time present`,
+and group `plan 135: the wrist kcal on the chip (S-13508..S-13510)` ·
+`S-13508 a wrist frame for the open session replaces the estimate`,
+`S-13509 the chip stays at the wrist kcal while the clock ticks`,
+`S-13510 a wrist kcal shows with no body weight, and only for the open session`,
+`S-13510b a total the phone already holds when the screen opens shows only if it
+names this session`, `S-13510c a total the phone already holds for this session
+shows when the screen opens`)
+and `test/active_energy_live_test.dart` (groups `S-13440 — liveKcal figures`,
+`S-13441 — liveKcal guards`, `Mock — S-13442 final equals live` and its Hive twin,
+`S-13444 — WorkoutState passthrough`).
+
 ### 5. Rest Count-Up Overlay
 
 **Purpose**: Passive rest tracking between sets without requiring user action. Rest is a count-up

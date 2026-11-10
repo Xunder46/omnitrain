@@ -34,6 +34,15 @@ public enum WatchSpokenText {
         "Rating \(value) of \(highest)"
     }
 
+    /// The calories burned so far the way VoiceOver speaks it (plan 134e
+    /// D-13482): the count, then the unit. Never negative, and one speaks the
+    /// singular.
+    public static func activeEnergy(kilocalories: Int) -> String {
+        let kilocalories = max(kilocalories, 0)
+        let unit = kilocalories == 1 ? "kilocalorie" : "kilocalories"
+        return "\(kilocalories) \(unit) burned"
+    }
+
     /// The wrist's "New PR" banner the way VoiceOver speaks it (plan 87b D-7,
     /// D-19). The banner shows two words and no number, so the spoken form is
     /// the whole sentence, not a reading of what is on screen.

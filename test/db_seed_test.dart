@@ -125,10 +125,24 @@ Future<Set<String>> _columnsOf(Database db, String table) async {
 }
 
 const _sqlSession = 's-sql-1';
+const _sqlSecondSession = 's-sql-2';
 
 Future<void> _insertSession(Database db) async {
   await db.insert('app_training_session', {
     'id': _sqlSession,
+    'owner_user_id': 'user-1',
+    'started_at_ms': 1000,
+    'ended_at_ms': 5000,
+    'created_at_ms': 1000,
+    'updated_at_ms': 5000,
+  });
+}
+
+/// A second session, so one estimated and one measured energy row can both
+/// exist.
+Future<void> _insertSecondSession(Database db) async {
+  await db.insert('app_training_session', {
+    'id': _sqlSecondSession,
     'owner_user_id': 'user-1',
     'started_at_ms': 1000,
     'ended_at_ms': 5000,
@@ -252,6 +266,23 @@ List<SensorSummary> _sampleSummaries() => [
     avgHeartRateBpm: 160,
     maxHeartRateBpm: 170,
     createdAtMs: 6000,
+  ),
+];
+
+/// One estimated row and one measured row, over two sessions.
+List<SessionEnergy> _sampleSessionEnergy() => [
+  SessionEnergy(
+    sessionId: _sqlSession,
+    activeKcal: 31.835555555555555,
+    source: SessionEnergy.sourceEstimated,
+    bodyWeightKg: 80.0,
+    updatedAtMs: 6000,
+  ),
+  SessionEnergy(
+    sessionId: _sqlSecondSession,
+    activeKcal: 250.4,
+    source: SessionEnergy.sourceMeasured,
+    updatedAtMs: 6000,
   ),
 ];
 
@@ -772,6 +803,146 @@ void main() {
         expect(await db.query('app_watch_inbox_entry'), hasLength(1));
       },
     );
+  });
+
+  // Plan 134a, Phase P1 (D-13401 / D-13402): a session's stored active energy
+  // belongs to the contract, and its model cannot drift away from it.
+  group('app_session_energy contract (D-13401 / D-13402)', () {
+    late Database db;
+
+    setUp(() async {
+      db = await _openSchemaDatabase();
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test(
+      'D-13401 app_session_energy exists and every SessionEnergy.toMap key is '
+      'one of its columns',
+      () async {
+        final rows = await db.query(
+          'sqlite_master',
+          where: 'type = ? AND name = ?',
+          whereArgs: ['table', 'app_session_energy'],
+        );
+        expect(
+          rows,
+          isNotEmpty,
+          reason: 'app_session_energy missing from schema',
+        );
+
+        final columns = await _columnsOf(db, 'app_session_energy');
+        for (final energy in _sampleSessionEnergy()) {
+          expect(
+            energy.toMap().keys.toSet().difference(columns),
+            isEmpty,
+            reason:
+                'D-13401: SessionEnergy.toMap writes keys '
+                'app_session_energy lacks',
+          );
+        }
+      },
+    );
+
+    test(
+      'D-13401 every model row inserts as toMap writes it and reads back as '
+      'the same model',
+      () async {
+        await _insertSession(db);
+        await _insertSecondSession(db);
+        final energy = _sampleSessionEnergy();
+        for (final row in energy) {
+          expect(
+            await _insertRefusal(db, 'app_session_energy', row.toMap()),
+            isNull,
+            reason: 'D-13401: app_session_energy accepts ${row.sessionId}',
+          );
+        }
+
+        final stored = await db.query(
+          'app_session_energy',
+          orderBy: 'session_id',
+        );
+        final sorted = energy
+          ..sort((a, b) => a.sessionId.compareTo(b.sessionId));
+        expect(
+          [
+            for (final row in stored) {...row},
+          ],
+          [for (final row in sorted) row.toMap()],
+          reason: 'D-13401: app_session_energy stores what toMap writes',
+        );
+        expect(
+          [
+            for (final row in stored)
+              SessionEnergy.fromMap({...row}).toMap(),
+          ],
+          [for (final row in sorted) row.toMap()],
+          reason: 'D-13401: model ↔ app_session_energy round trip',
+        );
+      },
+    );
+
+    test(
+      'D-13401 the CHECK constraints refuse a source outside the two, '
+      'negative kcal, a measured row with a weight and an estimated row '
+      'without one',
+      () async {
+        await _insertSession(db);
+        final estimated = _sampleSessionEnergy()
+            .firstWhere((row) => row.source == SessionEnergy.sourceEstimated)
+            .toMap();
+        final measured = {
+          ...estimated,
+          'source': SessionEnergy.sourceMeasured,
+          'body_weight_kg': null,
+        };
+        Future<void> refused(Map<String, Object?> row, String rule) async {
+          await expectLater(
+            db.insert('app_session_energy', row),
+            throwsA(isA<DatabaseException>()),
+            reason: 'D-13401: app_session_energy refuses $rule',
+          );
+        }
+
+        await refused({...estimated, 'source': 'phone'}, 'an unknown source');
+        await refused({
+          ...estimated,
+          'active_kcal': -1.0,
+        }, 'negative active kcal');
+        await refused(
+          {...measured, 'body_weight_kg': 80.0},
+          'a measured row carrying a body weight',
+        );
+        await refused(
+          {...estimated, 'body_weight_kg': null},
+          'an estimated row without a body weight',
+        );
+
+        expect(await db.insert('app_session_energy', estimated), 1);
+        expect(await db.query('app_session_energy'), hasLength(1));
+      },
+    );
+
+    test('D-13401 deleting the session cascades its energy row', () async {
+      await _insertSession(db);
+      await _insertSecondSession(db);
+      for (final row in _sampleSessionEnergy()) {
+        await db.insert('app_session_energy', row.toMap());
+      }
+
+      await db.delete(
+        'app_training_session',
+        where: 'id = ?',
+        whereArgs: [_sqlSession],
+      );
+
+      final rows = await db.query('app_session_energy');
+      expect(rows, hasLength(1), reason: 'D-13401: ON DELETE CASCADE');
+      expect(rows.single['session_id'], _sqlSecondSession);
+    });
   });
 
   // Plan 94 (PR 94a) Phase 2, D-4: the water tap ledger lives in the water row.

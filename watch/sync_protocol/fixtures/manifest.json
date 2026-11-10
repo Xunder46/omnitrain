@@ -228,6 +228,18 @@
       "type": "session_started",
       "scenario": "S-8974",
       "note": "The durable report: `w-1` names the plan and routine it started from, its own id and instant, and the message id derived from the record `msg-session-started-w-1` (plan 129 D-8966, D-8974)."
+    },
+    {
+      "path": "valid/energy_live.json",
+      "type": "energy_live",
+      "scenario": "S-13501",
+      "note": "The live frame: the wrist's running active-energy total in kilocalories at one instant, never durable, latest wins (plan 135 D-13501)."
+    },
+    {
+      "path": "valid/observations_up_session_end_energy.json",
+      "type": "observations_up",
+      "scenario": "S-13466",
+      "note": "A completed wrist end carries the session's heart-rate summary and the measured active energy, 412.6 kcal (plan 134c1 D-13460, D-13462)."
     }
   ],
   "invalid": [
@@ -904,6 +916,38 @@
       "expectedCode": "missing_required_field",
       "expectedReasonContains": "sessionId",
       "note": "A start report without its own session id names nothing to adopt or link, so the frame is refused."
+    },
+    {
+      "path": "invalid/energy_live_negative.json",
+      "type": "energy_live",
+      "scenario": "S-13502",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 0, found -1",
+      "note": "The schema's `minimum: 0` on `activeEnergyKcal` refuses a negative live total; both validators phrase the minimum as this message, so the reason names it verbatim."
+    },
+    {
+      "path": "invalid/energy_live_phone_origin.json",
+      "type": "energy_live",
+      "scenario": "S-13502",
+      "expectedCode": "invalid_const_value",
+      "expectedReasonContains": "expected \"watch\", found \"phone\"",
+      "note": "The wrist is the only writer of the live energy, so a phone-originated copy is refused."
+    },
+    {
+      "path": "invalid/observations_up_energy_on_set.json",
+      "type": "observations_up",
+      "scenario": "S-13467",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "activeEnergyKcal",
+      "note": "The measured active energy summarises the whole session, so a set may not carry it: the kind gate refuses it the way `status` is refused (plan 134c1 D-13461, D-13462)."
+    },
+    {
+      "path": "invalid/observations_up_energy_negative.json",
+      "type": "observations_up",
+      "scenario": "S-13468",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 0, found -1",
+      "note": "The schema's `minimum: 0` on `activeEnergyKcal` refuses a negative total; a zero total is never sent because the receiver treats it as absent (plan D-13460, D-13462). Both validators phrase the minimum as this message, so the reason names it verbatim."
     }
   ],
   "scenarios": [

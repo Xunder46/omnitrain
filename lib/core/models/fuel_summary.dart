@@ -68,6 +68,18 @@ class FuelSummary {
   /// when the window logged nothing on a rest day.
   final double? restProteinAverage;
 
+  /// Mean stored active kcal over the window's finished sessions that carry
+  /// an energy row — the burned-per-session average — or null when no such
+  /// session has one.
+  final double? burnedKcalAverage;
+
+  /// How many window sessions contributed to [burnedKcalAverage].
+  final int burnedSessionCount;
+
+  /// Whether at least one row feeding [burnedKcalAverage] is an estimate, so
+  /// the average carries a `~` on screen.
+  final bool burnedIsEstimate;
+
   /// The day's calorie target, or `0` when none is set.
   final double targetCalories;
 
@@ -94,6 +106,9 @@ class FuelSummary {
     required this.trainingProteinAverage,
     required this.restCaloriesAverage,
     required this.restProteinAverage,
+    this.burnedKcalAverage,
+    this.burnedSessionCount = 0,
+    this.burnedIsEstimate = false,
     required this.targetCalories,
     required this.targetProtein,
     required this.targetCarbs,

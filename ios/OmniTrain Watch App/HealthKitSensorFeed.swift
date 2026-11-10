@@ -41,10 +41,10 @@
 //  * the builder's push — `workoutBuilder(_:didCollectDataOf:)`, which is the
 //    only path while the app runs in the foreground, and
 //  * a pull — while at least one heart-rate listener is live, the feed re-reads
-//    the builder's newest beat every `heartRatePullSeconds` and whenever the app
-//    becomes active. HealthKit's callback can be missed while the app is
-//    suspended with the wrist down, and nothing else re-reads the builder on
-//    wake.
+//    the builder's newest beat and energy total every `heartRatePullSeconds`
+//    and whenever the app becomes active. HealthKit's callback can be missed
+//    while the app is suspended with the wrist down, and nothing else re-reads
+//    the builder on wake.
 //
 
 #if os(watchOS)
@@ -56,7 +56,8 @@ import WatchSessionEngine
 /// `HKLiveWorkoutBuilderDelegate` and `WatchSensorSource`, over the store's own
 /// workout builder.
 ///
-/// One feed per store, and one subscription per `heartRate()` / `steps()` call:
+/// One feed per store, and one subscription per `heartRate()` / `steps()` /
+/// `activeEnergy()` call:
 /// a caller that stops consuming terminates its stream, and the continuation is
 /// dropped with it. Nothing here survives a session — the package starts and
 /// stops subscriptions, this object only carries them (D-2103).
@@ -76,6 +77,7 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
     private let lock = NSLock()
     private var heartRateContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
     private var stepContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
+    private var energyContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
 
     /// How often the pull re-reads the builder's newest beat. Three seconds is
     /// short enough for a readout that follows the wrist and long enough that a
@@ -88,7 +90,9 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
 
     /// The end instant of the last beat this feed yielded, from either path. A
     /// read of a beat that is not strictly newer than this is a repeat, and a
-    /// repeat is never a second row (D-3113).
+    /// repeat is never a second row (D-3113). The energy total goes through its
+    /// own gate (`yieldEnergyIfChanged`): whatever read it, the total is yielded
+    /// only when it differs from the last one the session yielded (D-13513).
     private var lastHeartRateEnd: Date?
 
     /// The live pull, while at least one heart-rate listener is held. nil when
@@ -112,6 +116,11 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
     }
 
     func stepsPermission() async -> WatchSensorPermission {
+        guard HKHealthStore.isHealthDataAvailable() else { return .unavailable }
+        return await authorization() ? .granted : .denied
+    }
+
+    func activeEnergyPermission() async -> WatchSensorPermission {
         guard HKHealthStore.isHealthDataAvailable() else { return .unavailable }
         return await authorization() ? .granted : .denied
     }
@@ -162,14 +171,34 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
         }
     }
 
+    /// The builder's cumulative active energy since it began, in kilocalories;
+    /// each value supersedes the one before.
+    func activeEnergy() -> AsyncStream<Double> {
+        AsyncStream { continuation in
+            let id = UUID()
+            lock.lock()
+            energyContinuations[id] = continuation
+            // A new subscription is a new workout: the pull dedupes against its
+            // own last reading, which the session before it must not count for.
+            lastYieldedEnergy = nil
+            lock.unlock()
+
+            continuation.onTermination = { [weak self] _ in
+                self?.forgetEnergy(id)
+            }
+        }
+    }
+
     // MARK: - HKLiveWorkoutBuilderDelegate
 
-    /// Reduces what the builder collected to the two things the wire carries.
+    /// Reduces what the builder collected to the three things the wire carries.
     ///
     /// Heart rate is the newest quantity in beats per minute; a beat that is not
     /// finite or is below the wire's minimum of 1 is dropped rather than stored
     /// (`WatchSensorSummaries.lowestHeartRateBpm`). Steps are the builder's sum
-    /// since it began, which the package treats as cumulative.
+    /// since it began, which the package treats as cumulative. Active energy is
+    /// the builder's cumulative energy since it began, in kilocalories, which
+    /// the package also treats as cumulative.
     ///
     /// A pushed beat is yielded as it arrives: the builder has just collected it,
     /// so it is no repeat of an earlier read, and it is handed over without a
@@ -203,6 +232,13 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
                 else { continue }
 
                 yieldSteps(quantity.doubleValue(for: HKUnit.count()))
+            } else if type == HKQuantityType(.activeEnergyBurned) {
+                guard let quantity = workoutBuilder
+                    .statistics(for: type)?
+                    .sumQuantity()
+                else { continue }
+
+                yieldEnergyIfChanged(quantity.doubleValue(for: HKUnit.kilocalorie()))
             }
         }
     }
@@ -255,6 +291,41 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
         yieldHeartRateIfNewer(bpm, end: end)
     }
 
+    /// Reads the workout's energy total now (plan 135 D-13513), through the feed's
+    /// one gate: a callback missed while the wrist was down becomes a reading when
+    /// the pull or the raise reads the builder.
+    func refreshActiveEnergy(from builder: HKLiveWorkoutBuilder?) {
+        guard let builder,
+              let quantity = builder
+                  .statistics(for: HKQuantityType(.activeEnergyBurned))?
+                  .sumQuantity()
+        else { return }
+
+        let kcal = quantity.doubleValue(for: HKUnit.kilocalorie())
+        guard kcal.isFinite, kcal >= 0 else { return }
+        yieldEnergyIfChanged(kcal)
+    }
+
+    /// The pull's read: the builder the heart-rate pull already holds.
+    func refreshActiveEnergy() {
+        lock.lock()
+        let builder = heartRateBuilder
+        lock.unlock()
+        refreshActiveEnergy(from: builder)
+    }
+
+    private var lastYieldedEnergy: Double?
+
+    /// Yields only a value that differs from the last one yielded, so a 3 s pull
+    /// does not store a sample every 3 s.
+    private func yieldEnergyIfChanged(_ kcal: Double) {
+        lock.lock()
+        let changed = lastYieldedEnergy != kcal
+        if changed { lastYieldedEnergy = kcal }
+        lock.unlock()
+        if changed { yieldEnergy(kcal) }
+    }
+
     /// The pull's task: one read every `heartRatePullSeconds`, until the last
     /// listener's termination cancels it. A `Task` loop rather than a timer, so
     /// nothing has to be invalidated on a run loop HealthKit's queues do not own
@@ -266,6 +337,7 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
                 try? await Task.sleep(nanoseconds: interval)
                 guard let self else { return }
                 self.refreshHeartRate()
+                self.refreshActiveEnergy()
             }
         }
     }
@@ -285,6 +357,12 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
     private func forgetSteps(_ id: UUID) {
         lock.lock()
         stepContinuations[id] = nil
+        lock.unlock()
+    }
+
+    private func forgetEnergy(_ id: UUID) {
+        lock.lock()
+        energyContinuations[id] = nil
         lock.unlock()
     }
 
@@ -319,6 +397,14 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
         lock.unlock()
 
         for listener in listeners { listener.yield(count) }
+    }
+
+    private func yieldEnergy(_ kcal: Double) {
+        lock.lock()
+        let listeners = Array(energyContinuations.values)
+        lock.unlock()
+
+        for listener in listeners { listener.yield(kcal) }
     }
 }
 

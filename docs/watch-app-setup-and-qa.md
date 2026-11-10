@@ -787,6 +787,28 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     `test/wrist_rest_ping_rule_test.dart`; the service gate and queue,
     `test/rest_ping_gate_test.dart` S-15602..S-15606).
 
+35. **A wrist-measured session shows its calories without a tilde — (owner).**
+    Finish a session the watch ran (or followed from the phone), then open its
+    Session Summary on the phone: the Calories pill reads a plain `N kcal` with
+    no tilde. During the session, while the watch runs it, the wrist's rest
+    screen shows `N kcal burned` under the rest clock. A session with no watch
+    — or with Health refused — still reads `~N kcal` on the phone, and the
+    iOS simulator shows no energy at all: it has no workout sensors, so the
+    real numbers are this device check
+    (`WatchActiveEnergyTests.swift` S-13473, S-13475; `WatchRestEnergyTests.swift`
+    S-13480, S-13481, S-13484). The rest screen's burned line fitting a 40 mm
+    watch — scaling down instead of pushing the screen's other lines off — is
+    part of this check.
+36. **Live calories on the phone — (owner).** Start a session on the phone
+    with the watch worn: once the watch has a reading the session screen's
+    Calories chip reads a plain `N kcal` with no tilde, and it stays put while
+    you rest. At the end, the Summary's calories equal the Fitness app's
+    active calories for that workout. On the wrist, raise it during a rest:
+    the `N kcal burned` line matches the Fitness workout (Health's early total
+    for a stationary hold can genuinely be 1 kcal). And with a rest running on
+    the watch (plan 136), start a timer on the phone: the watch's rest ends
+    within a second or two.
+
 ### The wrist's own logging (PR 2b)
 
 The wrist-logging walkthrough, with every later watch plan's steps, lives in

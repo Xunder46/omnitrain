@@ -98,6 +98,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Map<String, SessionGroupMetrics> _groupMetrics = {};
   int _restTimeMs = 0;
   ({int avgBpm, int maxBpm})? _heartRate;
+
+  /// The active-energy row for the loaded session, if one is stored.
+  ({int kcal, bool measured})? _energy;
   String _preferredWeightUnit = 'kg';
   Set<int> _workoutDays = {};
   int _daysInMonth = 30;
@@ -217,6 +220,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       final heartRate = await widget.sessionSummaryService.getSessionHeartRate(
         currentSession.id,
       );
+      final energy = await widget.sessionSummaryService.getSessionEnergy(
+        currentSession.id,
+      );
       final preferredWeightUnit = await widget.sessionSummaryService
           .getPreferredWeightUnit();
       await _loadCalendarData();
@@ -229,6 +235,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _groupMetrics = groupMetrics;
         _restTimeMs = restTimeMs;
         _heartRate = heartRate;
+        _energy = energy;
         _preferredWeightUnit = preferredWeightUnit;
         _isLoading = false;
       });
@@ -236,7 +243,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   /// The wrist's heart-rate summary landed after this screen opened (plan 72):
-  /// re-read the heart rate alone, so nothing else on the screen reloads.
+  /// re-read the heart rate and the energy alone, so nothing else on the
+  /// screen reloads.
   Future<void> _reloadHeartRateOnWristSummary() async {
     final arrived = widget.workoutState.wristSummary.value;
     final session = widget.workoutState.currentSession;
@@ -246,8 +254,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final heartRate = await widget.sessionSummaryService.getSessionHeartRate(
       session.id,
     );
+    final energy = await widget.sessionSummaryService.getSessionEnergy(
+      session.id,
+    );
     if (!mounted) return;
-    setState(() => _heartRate = heartRate);
+    setState(() {
+      _heartRate = heartRate;
+      _energy = energy;
+    });
   }
 
   Future<void> _loadCalendarData() async {
@@ -852,13 +866,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// [OmniBackHeader]; the date and modality chip live in
   /// [_buildSessionInfoHeader] above this card. The card body is
   /// content-only. The EFFORT row is always shown (even if toggle is off),
-  /// with an "Add rating" or "Change rating" button to modify the rating. Its
-  /// own caption explains what the value means. The value
+  /// as two halves: the rating pill carries a pen (icon-only) button whose
+  /// tooltip reads "Add rating" or "Change rating", and the right half is a
+  /// CALORIES pill. The rating pill's own caption explains what the value
+  /// means. The value
   /// text uses the pills' shared value color; the rating's intensity is a
   /// non-text marker in its ramp step, because low ramp steps are below the
   /// text contrast floor (D-15 in the Stats PR 1 plan).
   ///
-  /// For rolling sessions, Duration/Rest Time are hidden, but EFFORT row
+  /// For rolling sessions, Duration/Rest Time are hidden, but the EFFORT row
   /// remains visible so the user can rate the session.
   Widget _buildSessionInfoCard(ThemeData theme) {
     final session = widget.workoutState.currentSession;
@@ -918,8 +934,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             ),
             const SizedBox(height: 16),
           ],
-          // Effort rating row: always visible (even for rolling sessions)
+          // Effort + calories row: always visible (even for rolling
+          // sessions). LEFT half: the rating pill with its outlined pen
+          // button right beside the value; RIGHT half: the Calories pill.
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: _StatPill(
@@ -938,20 +957,34 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                           ),
                         )
                       : null,
+                  trailing: OmniUtilityIconButton(
+                    buttonKey: const Key('omni_session_effort_rating_button'),
+                    tooltip: feeling != null ? 'Change rating' : 'Add rating',
+                    icon: feeling != null ? Icons.edit_outlined : Icons.add,
+                    onPressed: _openEffortRatingSheet,
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
-              OmniUtilityButton(
-                buttonKey: const Key('omni_session_effort_rating_button'),
-                onPressed: _openEffortRatingSheet,
-                icon: feeling != null ? Icons.edit_outlined : Icons.add,
-                label: feeling != null ? 'Change rating' : 'Add rating',
+              const SizedBox(width: 16),
+              Expanded(
+                child: KeyedSubtree(
+                  key: const Key('omni_session_calories_pill'),
+                  child: _StatPill(label: 'Calories', value: _energyLabel()),
+                ),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  /// The label of the CALORIES pill: a measured row reads plain, an
+  /// estimated row carries a `~`, and no stored row reads `—`.
+  String _energyLabel() {
+    final e = _energy;
+    if (e == null) return '—';
+    return e.measured ? '${e.kcal} kcal' : '~${e.kcal} kcal';
   }
 
   /// Small modality pill rendered in the top-right of the first card's
@@ -1485,6 +1518,10 @@ class _StatPill extends StatelessWidget {
   /// row's intensity marker).
   final Widget? leading;
 
+  /// Optional control drawn right after [value] on the same line (the EFFORT
+  /// row's pen button). It wraps under the value on a very narrow pill.
+  final Widget? trailing;
+
   /// Optional muted line under the value, inside the pill's own column (the
   /// EFFORT row's "How hard the session felt").
   final String? caption;
@@ -1497,6 +1534,7 @@ class _StatPill extends StatelessWidget {
     required this.label,
     required this.value,
     this.leading,
+    this.trailing,
     this.caption,
     this.captionKey,
   });
@@ -1521,12 +1559,17 @@ class _StatPill extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        if (leading == null)
+        if (leading == null && trailing == null)
           valueText
         else
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [leading!, const SizedBox(width: 8), valueText],
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              ?leading,
+              valueText,
+              ?trailing,
+            ],
           ),
         if (caption != null) ...[
           const SizedBox(height: 4),

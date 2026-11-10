@@ -35,7 +35,8 @@
         "session_lifecycle",
         "session_started",
         "session_snapshot",
-        "timer_state"
+        "timer_state",
+        "energy_live"
       ]
     },
     "origin": {
@@ -311,6 +312,11 @@
         "maxHeartRateBpm": {
           "$ref": "#/$defs/heartRateBpm",
           "description": "Maximum heart rate over the entry's active window. Travels with avgHeartRateBpm or not at all."
+        },
+        "activeEnergyKcal": {
+          "type": "number",
+          "minimum": 0,
+          "description": "On a session_end entry only: the active energy, in kilocalories, the wrist's workout measured over the whole session, above resting and without pauses, as the platform counts it. Absent when nothing was measured; a total of zero is never sent."
         },
         "steps": {
           "type": "integer",

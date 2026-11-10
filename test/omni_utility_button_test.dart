@@ -70,4 +70,41 @@ void main() {
       isFalse,
     );
   });
+
+  testWidgets(
+    'the icon-only form is an outlined rounded square with a tooltip',
+    (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: OmniUtilityIconButton(
+                buttonKey: const Key('i'),
+                tooltip: 'Change rating',
+                icon: Icons.edit_outlined,
+                onPressed: () => taps++,
+              ),
+            ),
+          ),
+        ),
+      );
+      final finder = find.byKey(const Key('i'));
+      final button = tester.widget<OutlinedButton>(finder);
+      final shape =
+          button.style!.shape!.resolve(<WidgetState>{})
+              as RoundedRectangleBorder;
+      expect(
+        shape.borderRadius,
+        BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+      );
+      expect(tester.getSize(finder), const Size.square(48));
+      expect(find.byTooltip('Change rating'), findsOneWidget);
+      expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+
+      await tester.tap(finder);
+      expect(taps, 1);
+    },
+  );
 }

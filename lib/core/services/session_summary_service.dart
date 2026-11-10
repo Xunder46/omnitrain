@@ -80,6 +80,17 @@ class SessionSummaryService {
     return null;
   }
 
+  /// The session's stored active energy, rounded to whole kcal here and
+  /// nowhere else (D-13409, D-13412); null when no row exists.
+  Future<({int kcal, bool measured})?> getSessionEnergy(String sessionId) async {
+    final energy = await _repository.getSessionEnergy(sessionId);
+    if (energy == null) return null;
+    return (
+      kcal: energy.activeKcal.round(),
+      measured: energy.source == SessionEnergy.sourceMeasured,
+    );
+  }
+
   /// [modality] is the session's modality; it names the round group ("Periods"
   /// in sports, "Rounds" otherwise).
   Future<Map<String, SessionGroupMetrics>> buildGroupMetrics(

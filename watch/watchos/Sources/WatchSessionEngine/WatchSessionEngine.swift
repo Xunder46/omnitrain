@@ -1568,6 +1568,43 @@ public final class WatchSessionEngine: ObservableObject {
         return stored.sensorSampleRow ?? record
     }
 
+    // MARK: - Live energy (plan 135)
+
+    private var energyAnnouncedSession: String?
+    private var energyAnnouncedKcal: Double?
+    private var energyAnnouncedAt: Date?
+
+    /// Tells the phone the wrist's running active-energy total (plan 135 D-13510,
+    /// D-13511): live only, stored nowhere, sent through the same `emit` path as a
+    /// timer. A frame goes out the first time for a session, when the value fell
+    /// (a restarted counter), or when it rose by at least half a kilocalorie and
+    /// at least five seconds have passed since the last one; anything else, and
+    /// any value that is not a finite number of at least zero, sends nothing.
+    public func announceEnergy(kilocalories: Double, at: Date) {
+        guard let row = current, row.status == WatchSessionStatus.active else { return }
+        guard kilocalories.isFinite, kilocalories >= 0 else { return }
+        if energyAnnouncedSession == row.sessionId,
+           let lastKcal = energyAnnouncedKcal,
+           let lastAt = energyAnnouncedAt,
+           kilocalories >= lastKcal {
+            guard kilocalories - lastKcal >= 0.5, at.timeIntervalSince(lastAt) >= 5 else { return }
+        }
+        let envelope: [String: Any] = [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-energy-\(row.sessionId)-\(Int((at.timeIntervalSince1970 * 1000).rounded()))",
+            "sessionId": row.sessionId,
+            "type": "energy_live",
+            "origin": "watch",
+            "sentAt": utcIso(at),
+            "payload": ["activeEnergyKcal": kilocalories, "at": utcIso(at)],
+        ]
+        if let validator, !validator.validateEnvelope(envelope).isEmpty { return }
+        energyAnnouncedSession = row.sessionId
+        energyAnnouncedKcal = kilocalories
+        energyAnnouncedAt = at
+        emit(envelope)
+    }
+
     /// Drops the raw sensor log of every session that is over and whose entries
     /// the phone has recorded in full.
     ///
@@ -1719,6 +1756,12 @@ public final class WatchSessionEngine: ObservableObject {
         // whole session (D-122 g).
         if let session = WatchSensorSummaries.heartRate(samples, from: startedAt, through: end) {
             event.merge(session.fields) { _, measured in measured }
+        }
+
+        // The wrist's measured energy total for the whole session (D-13473),
+        // wrist-created end and followed end alike.
+        if let kcal = WatchSensorSummaries.activeEnergy(samples, from: startedAt, through: end) {
+            event["activeEnergyKcal"] = kcal
         }
 
         let blocks = WatchSensorSummaries

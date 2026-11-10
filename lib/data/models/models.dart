@@ -2684,6 +2684,115 @@ class SensorSummary {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Session energy — the active energy a session burned (plan 134a, D-13401)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The active energy (above resting) one session burned, and where the number
+/// came from: the watch's measurement or the phone's estimate.
+///
+/// It is one row per session, keyed by [sessionId], in its own `session_energy`
+/// Hive box and mirrored by the SQL table `app_session_energy` in
+/// `scripts/sqlite_schema.sql`. It is not a [SensorSummary]: a summary is
+/// put-if-absent per (scope, target) and needs a heart rate or steps, where a
+/// stored estimate would block the wrist's later summary.
+///
+/// Invariants, enforced here at construction (a violation throws
+/// [ArgumentError]) and mirrored by CHECK constraints on `app_session_energy`:
+///   - [source] is [sourceEstimated] or [sourceMeasured].
+///   - [activeKcal] is finite and not negative; a measured 0 is a value.
+///   - A [sourceMeasured] row carries no body weight; an [sourceEstimated] row
+///     stores the weight its estimate used, finite and above 0.
+///
+/// An estimate never replaces a measured row: the repository's
+/// `putSessionEnergy` returns false and writes nothing (D-13402).
+/// Verified by `test/session_energy_repository_test.dart`.
+class SessionEnergy {
+  static const String sourceEstimated = 'estimated';
+  static const String sourceMeasured = 'measured';
+
+  /// Every source a row may come from.
+  static const List<String> sources = [sourceEstimated, sourceMeasured];
+
+  /// The [TrainingSession] the row belongs to; it is also the storage key.
+  final String sessionId;
+
+  /// Active energy above resting, unrounded kilocalories.
+  final double activeKcal;
+
+  /// [sourceEstimated] or [sourceMeasured].
+  final String source;
+
+  /// The body weight an estimate used; null on a measured row.
+  final double? bodyWeightKg;
+  final int updatedAtMs;
+
+  SessionEnergy({
+    required this.sessionId,
+    required this.activeKcal,
+    required this.source,
+    this.bodyWeightKg,
+    required this.updatedAtMs,
+  }) {
+    _checkInvariants();
+  }
+
+  void _checkInvariants() {
+    if (sessionId.isEmpty) {
+      throw ArgumentError('D-13401: a session energy row names its session');
+    }
+    if (!sources.contains(source)) {
+      throw ArgumentError.value(source, 'source', 'D-13401: unknown source');
+    }
+    if (!activeKcal.isFinite || activeKcal < 0) {
+      throw ArgumentError.value(
+        activeKcal,
+        'activeKcal',
+        'D-13401: active energy is finite and not negative',
+      );
+    }
+    final weight = bodyWeightKg;
+    if (source == sourceMeasured) {
+      if (weight != null) {
+        throw ArgumentError.value(
+          weight,
+          'bodyWeightKg',
+          'D-13401: a measured row carries no body weight',
+        );
+      }
+      return;
+    }
+    if (weight == null) {
+      throw ArgumentError(
+        'D-13401: an estimated row stores the body weight it used',
+      );
+    }
+    if (!weight.isFinite || weight <= 0) {
+      throw ArgumentError.value(
+        weight,
+        'bodyWeightKg',
+        'D-13401: the estimate\'s body weight is finite and above 0',
+      );
+    }
+  }
+
+  factory SessionEnergy.fromMap(Map<String, dynamic> m) => SessionEnergy(
+    sessionId: m['session_id'] as String,
+    activeKcal: (m['active_kcal'] as num).toDouble(),
+    source: m['source'] as String,
+    bodyWeightKg: (m['body_weight_kg'] as num?)?.toDouble(),
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'session_id': sessionId,
+    'active_kcal': activeKcal,
+    'source': source,
+    'body_weight_kg': bodyWeightKg,
+    'updated_at_ms': updatedAtMs,
+  };
+}
+
 /// One thing the phone learned about a wrist session before it became
 /// history: a wrist event, or one of the phone's own annotations on that
 /// session.

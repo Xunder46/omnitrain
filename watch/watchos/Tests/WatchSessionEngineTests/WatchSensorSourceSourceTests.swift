@@ -271,6 +271,135 @@ final class WatchSensorSourceSourceTests: XCTestCase {
         )
     }
 
+    // MARK: - S-13474: the feed carries the active-energy stream and its branch
+
+    func testS13474TheFeedCarriesTheActiveEnergyStreamAndItsBranch() throws {
+        let feed = try feedSource()
+
+        XCTAssertTrue(
+            feed.contains("} else if type == HKQuantityType(.activeEnergyBurned) {"),
+            "the builder's active energy reaches the feed through a third "
+                + "delegate branch, beside heart rate and steps (D-13474)"
+        )
+        XCTAssertTrue(
+            feed.contains("func activeEnergy() -> AsyncStream<Double> {"),
+            "the wrist's cumulative active energy is its own stream, "
+                + "registered like the steps one (D-13474)"
+        )
+        XCTAssertTrue(
+            feed.contains("func activeEnergyPermission() async -> WatchSensorPermission {"),
+            "the feed answers the energy probe the way the steps probe is "
+                + "answered, with no new authorization request (D-13474)"
+        )
+        XCTAssertTrue(
+            feed.contains("energyContinuations[id] = continuation"),
+            "the energy stream's continuation is registered under its own "
+                + "key, as the other streams' are (D-13474)"
+        )
+        XCTAssertTrue(
+            feed.contains("private func forgetEnergy(_ id: UUID) {"),
+            "the energy stream ends with its last listener, as the steps "
+                + "stream does (D-13474)"
+        )
+        XCTAssertTrue(
+            feed.contains("private func yieldEnergy(_ kcal: Double) {"),
+            "the energy reading is yielded once per builder callback, never "
+                + "kept (D-13474)"
+        )
+
+        let energyRead = "guard let quantity = workoutBuilder"
+            + "\n                    .statistics(for: type)?"
+            + "\n                    .sumQuantity()"
+            + "\n                else { continue }"
+        XCTAssertTrue(
+            feed.contains(energyRead),
+            "the energy branch reads the builder's sum quantity, the way the "
+                + "step branch does (D-13474)"
+        )
+        XCTAssertTrue(
+            feed.contains("yieldEnergyIfChanged(quantity.doubleValue(for: HKUnit.kilocalorie()))"),
+            "the branch converts the sum in kilocalories and hands it to the "
+                + "one gate, which dedupes pushes and pulls (D-13474, D-13513)"
+        )
+    }
+
+    func testS13474bTheEnergyPermissionIsTheStoresAnswer() throws {
+        let feed = try feedSource()
+
+        let permissionBody = "    func activeEnergyPermission() async -> WatchSensorPermission {"
+            + "\n        guard HKHealthStore.isHealthDataAvailable() else { return .unavailable }"
+            + "\n        return await authorization() ? .granted : .denied"
+            + "\n    }"
+        XCTAssertTrue(
+            feed.contains(permissionBody),
+            "the energy probe is health-data gate first, then the store's own "
+                + "authorization outcome — the feed never claims a grant the "
+                + "store did not give (D-13474)"
+        )
+    }
+
+    // MARK: - S-13515: the pull and the wake read the energy the builder holds
+
+    func testS13515ThePullAndTheWakeReadTheEnergyTheBuilderHolds() throws {
+        let feed = try feedSource()
+
+        XCTAssertTrue(
+            feed.contains("func refreshActiveEnergy(from builder: HKLiveWorkoutBuilder?) {"),
+            "the feed's one gate has an energy twin: a callback missed while "
+                + "the wrist was down becomes a reading on the pull and wake (D-13513)"
+        )
+        let refresherBody = try XCTUnwrap(
+            functionBody(named: "refreshActiveEnergy", in: feed),
+            "the energy read exists and closes over its own braces"
+        )
+        XCTAssertTrue(
+            refresherBody.contains(".sumQuantity()"),
+            "the energy read sums the builder's statistics, the way the "
+                + "delegate branch does (D-13513)"
+        )
+        XCTAssertTrue(
+            refresherBody.contains("HKUnit.kilocalorie()"),
+            "the reading converts to kilocalories, as the wire's unit (D-13513)"
+        )
+        XCTAssertTrue(
+            feed.contains("func yieldEnergyIfChanged("),
+            "the push path and the pull path cannot make two rows of one "
+                + "reading (D-13513)"
+        )
+        let gateBody = try XCTUnwrap(
+            functionBody(named: "yieldEnergyIfChanged", in: feed),
+            "the energy gate exists and closes over its own braces"
+        )
+        XCTAssertTrue(
+            gateBody.contains("let changed = lastYieldedEnergy != kcal"),
+            "the gate yields only a value that differs from the last one, so "
+                + "a 3 s pull does not store a row every 3 s (D-13513)"
+        )
+        XCTAssertTrue(
+            gateBody.contains("if changed { yieldEnergy(kcal) }"),
+            "the gate yields only when the total changed (D-13513)"
+        )
+
+        let pullBody = try XCTUnwrap(
+            functionBody(named: "startPull", in: feed),
+            "the pull exists"
+        )
+        XCTAssertTrue(
+            pullBody.contains("refreshActiveEnergy()"),
+            "each pull tick reads the energy beside the beat (D-13513)"
+        )
+
+        let store = try storeSource()
+        let wakeBody = try XCTUnwrap(
+            functionBody(named: "refreshHeartRate", in: store),
+            "the wake read exists"
+        )
+        XCTAssertTrue(
+            wakeBody.contains("sensorFeed.refreshActiveEnergy(from: builder)"),
+            "a wake reads the energy the held builder carries (D-13513)"
+        )
+    }
+
     // MARK: - S-3110: the host wires the sensors and refreshes the workout first
 
     func testS3110TheHostWiresTheSensorsAndRefreshesTheWorkoutFirst() throws {

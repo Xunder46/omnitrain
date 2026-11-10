@@ -342,7 +342,7 @@ void main() {
         reason: 'S-285 a calendar-opened summary asks nothing on its own',
       );
       expect(
-        find.text('Add rating'),
+        find.byTooltip('Add rating'),
         findsOneWidget,
         reason: 'S-285 PR 1’s add-rating control',
       );
@@ -352,7 +352,7 @@ void main() {
         reason: 'S-285 no rating, no marker',
       );
 
-      await tester.tap(find.text('Add rating'));
+      await tester.tap(find.byTooltip('Add rating'));
       await tester.pumpAndSettle();
       await _tapTile(tester, 4);
 
@@ -377,7 +377,7 @@ void main() {
         findsOneWidget,
         reason: 'S-285 the rating survives reopening',
       );
-      expect(find.text('Change rating'), findsOneWidget, reason: 'S-285');
+      expect(find.byTooltip('Change rating'), findsOneWidget, reason: 'S-285');
       expect(_markerColor(tester), _ramp.step4, reason: 'S-285');
     });
   });
@@ -412,7 +412,7 @@ void main() {
         reason: 'S-286 its intensity marker is the rating’s ramp step',
       );
       expect(
-        find.text('Change rating'),
+        find.byTooltip('Change rating'),
         findsOneWidget,
         reason: 'S-286 a rated session offers PR 1’s Change rating control',
       );

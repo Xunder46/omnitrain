@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/energy_live.schema.json",
+  "title": "energy_live",
+  "description": "Watch → phone. The wrist's running active-energy total for the session in kilocalories, cumulative since its workout began, at the instant `at`. Live only: never durable, never queued; a frame the radio cannot carry is dropped and the next reading replaces it.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    { "required": ["sessionId"] },
+    {
+      "properties": {
+        "type": { "const": "energy_live" },
+        "origin": { "const": "watch" },
+        "payload": {
+          "type": "object",
+          "required": ["activeEnergyKcal", "at"],
+          "additionalProperties": false,
+          "properties": {
+            "activeEnergyKcal": { "type": "number", "minimum": 0 },
+            "at": { "$ref": "envelope.schema.json#/$defs/timestamp" }
+          }
+        }
+      }
+    }
+  ]
+}

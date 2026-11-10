@@ -564,6 +564,17 @@ in place, resending the structure as a snapshot and no new started lifecycle
   the phone has already logged is cleared by a live `timer_state` clear.
   Verified by `test/watch_logged_hold_stays_stopped_test.dart`
   (`S-12101`, `S-12103`, `S-12107`).
+- **The wrist's running energy is a live frame, never durable.** While a session
+  runs, the wrist announces its cumulative active energy as an `energy_live`
+  message (plan 135): never durable (a refused send is dropped), the newest
+  frame by `at` per session wins, an invalid frame is ignored without a sound,
+  and the phone answers nothing to it. Verified by
+  `test/watch_live_energy_test.dart` (group
+  `S-13506/S-13507 the graph routes energy_live in the wiring` ·
+  `S-13507 an energy frame on the transport reaches the holder and gets no
+  answer`; the older-frame rule, `S-13505 an older frame for the same session
+  is ignored, another session replaces`) and watchOS
+  `WatchEnergyLiveTests.swift` (`testS13516EnergyLiveIsNeverDurable`).
 - **An end the phone made is owed to the wrist until it confirms it or the
   bounds pass.** The end is re-offered at most once per 30 s per session, at
   most three times (an offer counts once its send returned: a send that threw

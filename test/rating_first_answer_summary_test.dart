@@ -120,7 +120,7 @@ void main() {
           findsOneWidget,
           reason: 'the EFFORT row shows the watch answer',
         );
-        expect(find.text('Change rating'), findsOneWidget);
+        expect(find.byTooltip('Change rating'), findsOneWidget);
         expect(
           find.byType(SessionSummaryScreen),
           findsOneWidget,
@@ -167,7 +167,7 @@ void main() {
           reason: 'the user answer must not pop the Summary behind it',
         );
         expect(find.text('4 / 5'), findsOneWidget);
-        expect(find.text('Change rating'), findsOneWidget);
+        expect(find.byTooltip('Change rating'), findsOneWidget);
 
         final stored = await repo.getSession(sessionId);
         expect(stored?.sessionFeeling, 4);

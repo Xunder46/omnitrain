@@ -301,19 +301,29 @@ Buttons use a **slightly-rounded rectangle**, never a pill (StadiumBorder). Mate
 | Row-pair | `FilledButton` / `OutlinedButton` | `OmniTheme.buttonBorderRadius` | `Expanded` (50/50 split) |
 | Secondary bottom action | `OmniBottomCTA` (`secondaryLabel`) | `OmniTheme.buttonBorderRadius` | Full-width, same height and margins as the primary CTA |
 | Utility | `OmniUtilityButton` (an `OutlinedButton.icon`) | `OmniTheme.buttonUtilityRadius` | Content-width |
+| Icon-only inline | `OmniUtilityIconButton` (an `OutlinedButton`) | `OmniTheme.buttonUtilityRadius` | Square at the minimum tap size |
 | Icon-only | `FilledButton` + icon | `OmniTheme.buttonIconRadius` | Square (`OmniTheme.buttonIconSize`) |
 | Dialog | `TextButton` / `FilledButton` | `OmniTheme.buttonUtilityRadius` | Content-width |
 | Header add | `OmniHeaderAddButton` (an `IconButton`) | none (icon only) | The `IconButton` default |
 
 ### Utility button — inline actions (MANDATORY)
 
-An inline action that sits among other controls (Change rating on the Session
-Summary, the package-serving switch on the food form) is the shared
+An inline action that sits among other controls (the package-serving switch on the food form)
+is the shared
 [`OmniUtilityButton`](widget_catalog/layout_and_inputs.md#omniutilitybutton):
 outlined in the primary colour, a small leading icon, the utility radius,
 content-width. It must read as a control, so a bare `TextButton` is not used
 for an inline action: a text-only link looks like a caption and users do not
-find it.
+find it. An inline action whose icon is enough to name it uses the icon-only form of
+the same piece, `OmniUtilityIconButton`: the same outline and radius on a square
+at the minimum tap size, with a required tooltip, so a bare icon never stands
+in for a button. The Session Summary uses it for the Change rating pen (tooltip
+`Change rating` / `Add rating`), drawn right beside the rating value, and for
+the pencil at the end of each distance row. Verified by
+`test/session_summary_calories_test.dart` (groups
+`S-13402/S-13411 a rated session with an estimated energy row`:
+`the pen is icon-only and the Calories pill sits to its right`; group
+`S-13411 an unrated session`: `the pen reads Add rating with a plus icon`).
 
 * ❌ `TextButton(...)` for an inline action in a form or card
 * ❌ a hand-built `OutlinedButton.icon` with its own padding / icon size
@@ -323,9 +333,14 @@ buttons, and dialog buttons. The older hand-built utility buttons (Nutrition
 "Set target", exercise picker "New Exercise", exercise detail Edit / Remove,
 routine setup) predate the piece and move to it as their files are touched.
 
-*Guarded* by `test/omni_utility_button_test.dart` (group `S-94.1..2`), and the
-two migrated sites keep their keys (`omni_session_effort_rating_button`,
-`food_form_package_link`).
+*Guarded* by `test/omni_utility_button_test.dart` (tests `S-94.1: it is an
+outlined button with an icon, the utility radius and content width` and
+`S-94.2: a null onPressed disables it`). Both sites keep the key they migrated
+with: the food form keeps its key (`food_form_package_link`); the pen keeps `omni_session_effort_rating_button`. The food form key is found and tapped by
+`test/food_form_serving_test.dart` (group `FoodForm serving (S-92b)`:
+`S-95.1 what the toggle opens sits clear of it, and the package button reads
+on one line`); the pen key by the `session_summary_calories_test.dart` groups
+cited above.
 
 ### Shape Rule (MANDATORY)
 

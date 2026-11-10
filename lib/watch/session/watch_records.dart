@@ -131,7 +131,18 @@ abstract final class WatchSensorKind {
   /// and nothing here records it.
   static const String steps = 'steps';
 
-  static const List<String> all = [heartRate, gps, distance, steps];
+  /// The platform workout's active energy since it began, in kilocalories,
+  /// cumulative. Vocabulary only on this client: it keeps the kind list equal
+  /// to the shared contract, and nothing here records it.
+  static const String activeEnergy = 'energy';
+
+  static const List<String> all = [
+    heartRate,
+    gps,
+    distance,
+    steps,
+    activeEnergy,
+  ];
 }
 
 /// Base of every stored record — the single shape the store accepts.

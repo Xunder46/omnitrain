@@ -157,6 +157,45 @@ public enum WatchSensorSummaries {
         return Int(total.rounded())
     }
 
+    /// The active energy burned inside `[start, end]`, from the platform's
+    /// cumulative kilocalorie counter, or nil when no count was sampled inside
+    /// the window (D-13472).
+    ///
+    /// The chain is the steps one: it starts at the last count before the
+    /// window — or zero when there is none — and adds each step forward. A
+    /// count smaller than the one before it means the counter restarted (a
+    /// recovered workout), so the new count is itself the energy since the
+    /// restart. A total that rounds to zero is never sent.
+    public static func activeEnergy(
+        _ samples: [WatchSensorSampleRecord],
+        from start: Date,
+        through end: Date
+    ) -> Double? {
+        let first = wholeMilliseconds(start)
+        let last = wholeMilliseconds(end)
+
+        let counts = samples
+            .filter { $0.kind == WatchSensorKind.activeEnergy && $0.value.isFinite && $0.value >= 0 }
+            .sorted {
+                (wholeMilliseconds($0.recordedAt), $0.sequence)
+                    < (wholeMilliseconds($1.recordedAt), $1.sequence)
+            }
+        let inside = counts.filter {
+            let at = wholeMilliseconds($0.recordedAt)
+            return at >= first && at <= last
+        }
+        guard !inside.isEmpty else { return nil }
+
+        var previous = counts.last { wholeMilliseconds($0.recordedAt) < first }?.value ?? 0
+        var total = 0.0
+        for sample in inside {
+            total += sample.value >= previous ? sample.value - previous : sample.value
+            previous = sample.value
+        }
+        let rounded = (total * 10).rounded() / 10
+        return rounded > 0 ? rounded : nil
+    }
+
     /// The pauses of the timer that started at `startedAt`, read from its
     /// stored rows (D-122 c).
     ///

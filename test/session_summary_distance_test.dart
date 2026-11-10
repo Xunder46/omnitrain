@@ -995,8 +995,8 @@ void main() {
     expect(find.byKey(const Key('session_distance_hint')), findsNothing);
   });
 
-  testWidgets('S-3214 every row ends with a pencil, and the row still opens '
-      'the editor', (tester) async {
+  testWidgets('S-3214 every row ends with an outlined pencil button, and the '
+      'row still opens the editor', (tester) async {
     final repo = await _freshRepo();
     await _seedCardio(repo);
     final settings = await _settings(repo);
@@ -1004,11 +1004,14 @@ void main() {
 
     const names = ['Treadmill Run · 1', 'Treadmill Run · 2', 'Easy Run'];
     for (var i = 0; i < names.length; i++) {
-      final icon = find.byKey(Key('session_distance_edit_icon_$i'));
+      final icon = find.byKey(Key('session_distance_edit_button_$i'));
       expect(icon, findsOneWidget, reason: 'D-3210: row $i has a pencil');
-      final widget = tester.widget<Icon>(icon);
-      expect(widget.icon, Icons.edit_outlined);
-      expect(widget.size, 16);
+      expect(tester.widget(icon), isA<OutlinedButton>());
+      expect(
+        find.descendant(of: icon, matching: find.byIcon(Icons.edit_outlined)),
+        findsOneWidget,
+      );
+      expect(tester.getSize(icon), const Size.square(48));
       expect(
         tester.getRect(icon).left,
         greaterThanOrEqualTo(tester.getRect(find.text(names[i])).right),
@@ -1016,7 +1019,7 @@ void main() {
       );
     }
     expect(
-      find.byKey(const Key('session_distance_edit_icon_3')),
+      find.byKey(const Key('session_distance_edit_button_3')),
       findsNothing,
       reason: 'there are only three rows',
     );
@@ -1073,16 +1076,19 @@ void main() {
     expect(tester.takeException(), isNull);
     final name = find.text(longName);
     expect(tester.widget<Text>(name).overflow, TextOverflow.ellipsis);
-    final icon = find.byKey(const Key('session_distance_edit_icon_0'));
+    final icon = find.byKey(const Key('session_distance_edit_button_0'));
     expect(icon, findsOneWidget, reason: 'the pencil stays visible');
     expect(find.text('KM'), findsOneWidget, reason: 'the unit stays visible');
     final iconRect = tester.getRect(icon);
     expect(iconRect.left, greaterThanOrEqualTo(tester.getRect(name).right));
     expect(iconRect.right, lessThanOrEqualTo(280));
 
-    // The pencil is a marking of a row that is itself still the control.
+    // The row itself still opens the editor, and so does the pencil button.
     await tester.tap(name);
     await tester.pump();
     expect(taps, 1);
+    await tester.tap(icon);
+    await tester.pump();
+    expect(taps, 2);
   });
 }

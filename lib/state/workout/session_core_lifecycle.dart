@@ -44,6 +44,13 @@ extension SessionCoreLifecycleMethods on SessionCore {
       await _repository.updateSession(updatedSession);
       _currentSession = updatedSession;
 
+      // D-13408: store the active-energy estimate before listeners hear the
+      // session ended, so the summary reads it. Shielded twice (settle never
+      // throws; a throw here must not flip the end into an error).
+      try {
+        await _activeEnergy?.settle(updatedSession.id);
+      } catch (_) {}
+
       _notify();
     } catch (e) {
       _setError('Failed to end session: $e');
@@ -188,6 +195,12 @@ extension SessionCoreLifecycleMethods on SessionCore {
       );
       await _repository.updateSession(updatedSession);
       _currentSession = updatedSession;
+
+      // D-13408: an edited duration changes an estimate; a measured row stays.
+      try {
+        await _activeEnergy?.settle(updatedSession.id);
+      } catch (_) {}
+
       _notify();
     } catch (e) {
       _setError('Failed to update session end time: $e');

@@ -865,4 +865,25 @@ abstract class WorkoutRepository {
   /// scope (in `SensorSummary.scopes` order), then `windowStartMs`, then
   /// `targetId`. A session with no summaries has no key.
   Future<Map<String, List<SensorSummary>>> getSensorSummariesBySession();
+
+  // ─── Session Energy: a session's stored active energy ────────────────────
+  //
+  // D-13401 / D-13402 in
+  // `docs/plans/2026-11-08-134-calories-burned-plan/`. One row per session,
+  // keyed by its session id, in its own `session_energy` Hive box, mirrored by
+  // `app_session_energy` in `scripts/sqlite_schema.sql`. `deleteSession`
+  // removes the row.
+  //
+  // Hive ↔ Mock parity: `test/session_energy_repository_test.dart`.
+
+  /// Store [energy] for its session, replacing an existing row — unless that
+  /// row is `measured` and [energy] is `estimated`.
+  ///
+  /// Returns `true` when [energy] was stored. Returns `false` when a measured
+  /// row exists and [energy] is an estimate: that row is left exactly as it
+  /// was and nothing is written. A measured row always replaces.
+  Future<bool> putSessionEnergy(SessionEnergy energy);
+
+  /// The energy row stored for [sessionId], or `null` when none is stored.
+  Future<SessionEnergy?> getSessionEnergy(String sessionId);
 }

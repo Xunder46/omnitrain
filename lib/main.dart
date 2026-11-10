@@ -10,6 +10,7 @@ import 'core/platform/screen_awake_channel.dart';
 import 'core/services/bundled_catalog_source.dart';
 import 'core/services/catalog_refresh_service.dart';
 import 'core/services/exercise_library_service.dart';
+import 'core/services/active_energy_service.dart';
 import 'core/services/health_platform_gateway.dart';
 import 'core/services/health_platform_service.dart';
 import 'core/services/health_sync_service.dart';
@@ -18,6 +19,7 @@ import 'core/services/preferences_service.dart';
 import 'core/services/routine_session_service.dart';
 import 'core/services/session_summary_service.dart';
 import 'core/services/startup_failure_diagnostic_writer.dart';
+import 'core/services/stats_progress_service.dart';
 import 'data/repositories/hive_workout_repository.dart';
 import 'data/repositories/workout_repository.dart';
 import 'state/workout/workout_state.dart';
@@ -359,6 +361,8 @@ Future<Widget> runStartup({
         createRestNotificationService: createRestNotificationService,
         onNonFatalStartupIssue: onNonFatalStartupIssue,
       );
+  // Plan 134: one estimate store for the phone's own end and the watch import.
+  final activeEnergy = ActiveEnergyService(repository, () => StatsProgressService(repository));
 
   // Create service with repository
   final routineSessionService = RoutineSessionService(repository);
@@ -381,6 +385,7 @@ Future<Widget> runStartup({
     onPlanStarted: calendarState.completePlannedSession,
     // A wrist rating becomes the Fitness workout's effort (plan 90 D-4).
     healthSync: healthSyncService,
+    activeEnergy: activeEnergy,
     onFailure: (error, stackTrace) {
       debugPrint('Watch transport unavailable: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -397,6 +402,10 @@ Future<Widget> runStartup({
     // Plan 89c1 D-2: a session the wrist is running gets its Fitness workout
     // from the watch, so the phone's own end does not write a second one.
     wristRunsSession: watchSync?.mirror.wristRunsSession,
+    activeEnergy: activeEnergy,
+    // Plan 135 (D-13522): the wrist's running energy total fills the open
+    // session screen's Calories chip while the wrist reports it.
+    wristEnergy: watchSync?.liveEnergy.latest,
     // Plan 120: the phone screen stays awake while a live session runs.
     screenAwake: createScreenAwakePort(),
   );

@@ -86,6 +86,16 @@ public struct WatchRestView: View {
                     .accessibilityLabel("Rest time")
                     .accessibilityValue(WatchSpokenText.duration(seconds: state.restElapsedSeconds() ?? 0))
                     .accessibilityAddTraits(.updatesFrequently)
+                if let burned = state.activeEnergyLabel {
+                    Text(burned)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .accessibilityLabel("Calories burned")
+                        .accessibilityValue(WatchSpokenText.activeEnergy(kilocalories: Int(state.readings.activeEnergyKcal?.rounded() ?? 0)))
+                }
                 Spacer(minLength: 0)
                 Text(labels.next)
                     .font(.caption2)

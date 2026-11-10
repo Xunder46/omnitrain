@@ -117,6 +117,7 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     onSessionRowsChanged,
     Future<void> Function(String sessionId, int rating)? onSessionRated,
     Future<void> Function(String sessionId)? onSensorSummaryAttached,
+    Future<void> Function(String sessionId)? onSessionHistoryChanged,
     HealthSyncService? healthSync,
   }) : _repository = repository,
        _transport = transport,
@@ -129,6 +130,7 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
        _onSessionRowsChanged = onSessionRowsChanged,
        _onSessionRated = onSessionRated,
        _onSensorSummaryAttached = onSensorSummaryAttached,
+       _onSessionHistoryChanged = onSessionHistoryChanged,
        _healthSync = healthSync,
        _importer = WatchSessionImporter(
          repository: repository,
@@ -181,6 +183,12 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
   /// summary (plan 72): a screen showing that session can re-read it. Null
   /// (a test, a build with no session state) tells nobody.
   final Future<void> Function(String sessionId)? _onSensorSummaryAttached;
+
+  /// Called after an import pass changed a session's history (plan 134
+  /// D-13420): the active-energy estimate reads the session's end and the
+  /// wrist's timed and round instances, which this pass may have just created.
+  /// Null without an energy store.
+  final Future<void> Function(String sessionId)? _onSessionHistoryChanged;
 
   /// Told once per settled session whose import wrote a rating, so the rating
   /// reaches the session's workout in Fitness (plan 90 D-4). Null (a test, a
@@ -486,6 +494,14 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
       }
       if (pass.sensorSummaryAttached) {
         await _onSensorSummaryAttached?.call(sessionId);
+      }
+      // D-13420: this pass may have created the session finished or landed
+      // the wrist's timed and round instances, so settle its energy again
+      // (idempotent; a failure never fails the pass).
+      if (pass.historyChanged) {
+        try {
+          await _onSessionHistoryChanged?.call(sessionId);
+        } catch (_) {}
       }
     }
     for (final entryId in redelivered) {

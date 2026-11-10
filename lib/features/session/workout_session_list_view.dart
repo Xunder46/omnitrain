@@ -57,6 +57,56 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     return GestureDetector(onTap: _editSessionDuration, child: chip);
   }
 
+  /// The live Calories chip (plan 134d): mirrors the time chip's label/value
+  /// stack, aligned to the bar's trailing edge. Hidden in edit mode.
+  ///
+  /// The [FittedBox] only matters on the narrowest supported surface, where
+  /// the bar cannot fit both chips at their natural width (test-font metrics
+  /// put the two labels ~2 dp over the 280 dp bar): the chip scales down
+  /// instead of overflowing. At 390x844 both chips fit and nothing scales.
+  Widget _buildSessionCaloriesWidget(ThemeData theme) {
+    return Container(
+      key: const Key('omni_session_live_calories'),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerRight,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              'Calories',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: OmniTheme.colors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.local_fire_department_outlined,
+                  size: 16,
+                  color: OmniTheme.colors.textSecondary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _liveCaloriesLabel(),
+                  key: const Key('omni_session_live_calories_value'),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: OmniTheme.colors.textDominant,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── List view dispatcher ──────────────────────────────────────────────────
 
   Widget _buildListView(ThemeData theme) {
@@ -451,7 +501,22 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                     const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Row(children: [_buildSessionTimeWidget(theme)]),
+                      child: Row(
+                        children: [
+                          _buildSessionTimeWidget(theme),
+                          const Spacer(),
+                          if (!widget.editMode)
+                            // The chip must own almost the whole remaining
+                            // width so its content (a FittedBox) can shrink to
+                            // the tight bar instead of overflowing it; the
+                            // Spacer keeps only a leading gap (plan 134d).
+                            Flexible(
+                              fit: FlexFit.tight,
+                              flex: 20,
+                              child: _buildSessionCaloriesWidget(theme),
+                            ),
+                        ],
+                      ),
                     ),
                     Expanded(
                       child: Center(
@@ -504,7 +569,20 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(children: [_buildSessionTimeWidget(theme)]),
+                  child: Row(
+                    children: [
+                      _buildSessionTimeWidget(theme),
+                      const Spacer(),
+                      if (!widget.editMode)
+                        // See _buildSessionCaloriesWidget: the chip owns almost
+                        // the whole remaining width and shrinks when too tight.
+                        Flexible(
+                          fit: FlexFit.tight,
+                          flex: 20,
+                          child: _buildSessionCaloriesWidget(theme),
+                        ),
+                    ],
+                  ),
                 ),
                 Expanded(
                   child: ListView(

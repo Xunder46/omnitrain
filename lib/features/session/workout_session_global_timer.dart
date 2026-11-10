@@ -16,7 +16,11 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
 
     // Hold at 00:00 until the first exercise is added.
     if (_exercises.isEmpty) {
-      _updateUi(() => _elapsedFormatted = '00:00');
+      _updateUi(() {
+        _elapsedFormatted = '00:00';
+        _elapsedSecs = 0;
+        _liveKcal = _computeLiveKcal();
+      });
       return;
     }
 
@@ -25,8 +29,34 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
     final elapsedSeconds = (elapsedMs / 1000).toInt();
     _updateUi(() {
       _elapsedFormatted = OmniDateUtils.formatTimerDigits(elapsedSeconds);
+      _elapsedSecs = elapsedSeconds;
+      _liveKcal = _computeLiveKcal();
     });
+    if (++_liveTicks % 60 == 0) unawaited(_loadLiveWeight());
     _checkRestPings();
+  }
+
+  double? _computeLiveKcal() => ActiveEnergyService.liveKcal(
+    modality: widget.workoutState.currentSession?.modality,
+    elapsedSecs: _elapsedSecs,
+    weightKg: _liveWeightKg,
+  );
+
+  /// Reads the latest body weight (plan 134d) and refreshes the live figure.
+  Future<void> _loadLiveWeight() async {
+    final kg = await widget.workoutState.latestBodyWeightKg();
+    if (!mounted) return;
+    _updateUi(() {
+      _liveWeightKg = kg;
+      _liveKcal = _computeLiveKcal();
+    });
+  }
+
+  String _liveCaloriesLabel() {
+    final wrist = _wristKcal;
+    if (wrist != null) return '${wrist.round()} kcal';
+    final kcal = _liveKcal;
+    return kcal == null ? '—' : '~${kcal.round()} kcal';
   }
 
   void _checkRestPings() {

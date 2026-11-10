@@ -934,6 +934,21 @@ class StatsProgressService {
     );
   }
 
+  /// One finished session's time per section, in seconds (D-13405): the split
+  /// the Mix view uses, for the active-energy estimate of a Free Training
+  /// session. An unknown or unfinished session returns an empty map.
+  Future<Map<ExerciseSection, double>> sessionTimeBySectionFor(
+    String sessionId,
+  ) async {
+    final history = await _loadHistory();
+    for (final session in history.sessions) {
+      if (session.id != sessionId) continue;
+      if (session.endedAtMs == null) return const {};
+      return _sessionSplit(history, session).timeBySection;
+    }
+    return const {};
+  }
+
   /// The measured active seconds of [session] per modality (D-903).
   ///
   /// The effort's kind decides which instance store to read — never a literal
@@ -2150,6 +2165,7 @@ class StatsProgressService {
     }
 
     final target = await _repository.getNutritionTargetForDate(todayMs);
+    final burned = await _burnedInWindow(windowStart, yesterday);
 
     return FuelSummary(
       loggedDays: window.length,
@@ -2171,6 +2187,9 @@ class StatsProgressService {
       trainingProteinAverage: _averageOf(training, (p) => p.protein.toDouble()),
       restCaloriesAverage: _averageOf(rest, (p) => p.calories.toDouble()),
       restProteinAverage: _averageOf(rest, (p) => p.protein.toDouble()),
+      burnedKcalAverage: burned.average,
+      burnedSessionCount: burned.count,
+      burnedIsEstimate: burned.estimated,
       targetCalories: target?.calories ?? 0,
       targetProtein: target?.protein ?? 0,
       targetCarbs: target?.carbs ?? 0,
@@ -2191,6 +2210,39 @@ class StatsProgressService {
       total += pick(p);
     }
     return total / points.length;
+  }
+
+  /// The completed sessions that started on a day in `[from, to]` and carry an
+  /// energy row: their mean active kcal, how many that is, and whether any of
+  /// them is an estimate. A session without a row (no body weight was logged
+  /// when it ended) is in neither the mean nor the count.
+  Future<({double? average, int count, bool estimated})> _burnedInWindow(
+    DateTime from,
+    DateTime to,
+  ) async {
+    final sessions = (await _loadHistory()).sessions;
+    final fromDay = OmniDateUtils.startOfDayMs(from);
+    final toDay = OmniDateUtils.startOfDayMs(to);
+    var total = 0.0;
+    var count = 0;
+    var estimated = false;
+    for (final s in sessions) {
+      if (s.endedAtMs == null) continue;
+      final day = OmniDateUtils.startOfDayMs(
+        DateTime.fromMillisecondsSinceEpoch(s.startedAtMs),
+      );
+      if (day < fromDay || day > toDay) continue;
+      final row = await _repository.getSessionEnergy(s.id);
+      if (row == null) continue;
+      total += row.activeKcal;
+      count++;
+      if (row.source == SessionEnergy.sourceEstimated) estimated = true;
+    }
+    return (
+      average: count == 0 ? null : total / count,
+      count: count,
+      estimated: estimated,
+    );
   }
 
   /// Epoch-ms of every day in `[from, to]` on which a completed session

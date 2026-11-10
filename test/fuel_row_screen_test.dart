@@ -484,8 +484,8 @@ void main() {
 
           await pumpStats(tester);
 
-          expect(_fuelText('fuel_split_training'), 'Training 300 kcal · 30 g');
-          expect(_fuelText('fuel_split_rest'), 'Rest 580 kcal · 58 g');
+          expect(_fuelText('fuel_split_training'), 'Training days: 300 kcal · 30 g protein');
+          expect(_fuelText('fuel_split_rest'), 'Rest days: 580 kcal · 58 g protein');
         });
       });
 
@@ -536,9 +536,9 @@ void main() {
 
             expect(
               _fuelText('fuel_split_training'),
-              'Training 300 kcal · 30 g',
+              'Training days: 300 kcal · 30 g protein',
             );
-            expect(_fuelText('fuel_split_rest'), 'Rest $_kAbsent');
+            expect(_fuelText('fuel_split_rest'), 'Rest days: $_kAbsent');
           });
         });
 
@@ -580,10 +580,10 @@ void main() {
 
             await pumpStats(tester);
 
-            expect(_fuelText('fuel_split_training'), 'Training $_kAbsent');
+            expect(_fuelText('fuel_split_training'), 'Training days: $_kAbsent');
             // Rest days 1, 3 and 5: (100 + 300 + 500) / 3 = 300 kcal,
             // (10 + 30 + 50) / 3 = 30 g.
-            expect(_fuelText('fuel_split_rest'), 'Rest 300 kcal · 30 g');
+            expect(_fuelText('fuel_split_rest'), 'Rest days: 300 kcal · 30 g protein');
           });
         });
       });

@@ -7,10 +7,10 @@ import '../../../widgets/layout/omni_card_header.dart';
 import '../../../widgets/layout/omni_surface.dart';
 
 /// The name the split's training side reads under.
-const String kFuelTrainingLabel = 'Training';
+const String kFuelTrainingLabel = 'Training days';
 
 /// The name the split's rest side reads under.
-const String kFuelRestLabel = 'Rest';
+const String kFuelRestLabel = 'Rest days';
 
 /// What a figure reads when there is nothing to show.
 ///
@@ -21,7 +21,8 @@ const String kFuelAbsent = '—';
 
 /// The Fuel row: intake averaged over the 7 finished days ending yesterday,
 /// split by training and rest days, against the day's target — and the entry
-/// point to the full-history nutrition trend.
+/// point to the full-history nutrition trend. The row also shows the mean
+/// calories burned per finished session over the same window.
 ///
 /// The averages are means over **logged** days only, so a week with three
 /// logged days is a three-day mean; the row states how many days it averaged
@@ -63,8 +64,17 @@ class FuelSection extends StatelessWidget {
   }
 
   static String _split(String label, double? calories, double? protein) {
-    if (calories == null || protein == null) return '$label $kFuelAbsent';
-    return '$label ${_whole(calories)} kcal · ${_whole(protein)} g';
+    if (calories == null || protein == null) return '$label: $kFuelAbsent';
+    return '$label: ${_whole(calories)} kcal · ${_whole(protein)} g protein';
+  }
+
+  /// The mean active calories burned per finished window session: tilde-
+  /// marked when any of the rows behind the average is an estimate, and
+  /// [kFuelAbsent] when no session in the window carries one.
+  static String _burned(double? average, int count, bool estimated) {
+    if (average == null) return 'Burned per session: $kFuelAbsent';
+    return 'Burned per session: ${estimated ? '~' : ''}${_whole(average)} kcal'
+        ' · $count ${count == 1 ? 'session' : 'sessions'}';
   }
 
   /// The reference a field is compared against: its target when one is set,
@@ -246,6 +256,7 @@ class FuelSection extends StatelessWidget {
                           summary.trainingCaloriesAverage,
                           summary.trainingProteinAverage,
                         ),
+                        maxLines: 2,
                       ),
                       _caption(
                         theme,
@@ -255,6 +266,17 @@ class FuelSection extends StatelessWidget {
                           summary.restCaloriesAverage,
                           summary.restProteinAverage,
                         ),
+                        maxLines: 2,
+                      ),
+                      _caption(
+                        theme,
+                        key: const Key('fuel_burned'),
+                        text: _burned(
+                          summary.burnedKcalAverage,
+                          summary.burnedSessionCount,
+                          summary.burnedIsEstimate,
+                        ),
+                        maxLines: 2,
                       ),
                     ],
                   ],
@@ -336,12 +358,17 @@ class FuelSection extends StatelessWidget {
     return themeColors.textSecondary;
   }
 
-  Widget _caption(ThemeData theme, {required Key key, required String text}) {
+  Widget _caption(
+    ThemeData theme, {
+    required Key key,
+    required String text,
+    int maxLines = 1,
+  }) {
     return Text(
       text,
       key: key,
       style: theme.textTheme.labelSmall?.copyWith(color: themeColors.textMuted),
-      maxLines: 1,
+      maxLines: maxLines,
       overflow: TextOverflow.ellipsis,
     );
   }

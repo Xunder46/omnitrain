@@ -151,8 +151,7 @@ everywhere. A header action that goes somewhere else uses an icon for that place
 **File**: `lib/widgets/buttons/omni_utility_button.dart`
 
 The one inline action control: an outlined, content-width button with a leading icon, so an
-action among other controls reads as a button and not as a caption. Used by Change rating /
-Add rating on the Session Summary and the package-serving switch on the food form. The look is
+action among other controls reads as a button and not as a caption. Used by the package-serving switch on the food form. Its icon-only form, `OmniUtilityIconButton` (same file), is the same outlined rounded square without a label and with a required tooltip; the Session Summary uses it for the rating pen and for the pencil at the end of each distance row. The look is
 defined in [Design System](../design_system.md) ("Utility button — inline actions").
 
 | Prop | Type | Default | Description |
@@ -162,7 +161,13 @@ defined in [Design System](../design_system.md) ("Utility button — inline acti
 | `onPressed` | `VoidCallback?` | required | Tap handler; `null` disables it |
 | `buttonKey` | `Key?` | `null` | Placed on the inner `OutlinedButton` |
 
-Verified by `test/omni_utility_button_test.dart` (group `S-94.1..2`).
+Verified by `test/omni_utility_button_test.dart` (tests `S-94.1` and `S-94.2`).
+
+`OmniUtilityIconButton` props: `icon` (`IconData`, required), `tooltip` (`String`, required —
+tooltip and screen-reader label), `onPressed` (`VoidCallback?`, required; `null` disables it),
+`buttonKey` (`Key?`, placed on the inner `OutlinedButton`). It is a square at the minimum tap
+size. Verified by `test/omni_utility_button_test.dart` (test `the icon-only form is an outlined
+rounded square with a tooltip`).
 
 ### `NoiseOverlayPainter`
 

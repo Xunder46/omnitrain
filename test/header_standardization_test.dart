@@ -1420,7 +1420,7 @@ void main() {
           reason: 'EFFORT value must show the rating for rolling sessions',
         );
         expect(
-          find.text('Change rating'),
+          find.byTooltip('Change rating'),
           findsOneWidget,
           reason: 'Change rating button must be visible when a rating exists',
         );

@@ -188,6 +188,8 @@ When a timed, round, or drill effort timer starts (`startTimedEntry`, `startRoun
 
 Verified by `test/timer_start_closes_session_rests_test.dart` (groups `Mock` and `Hive`; `S-9921 startTimedEntry on B closes the open rest on A`, `S-9921b an already-closed rest on A is left untouched`, `S-9921c the rest on B itself still closes`, `S-9922 startRound on B closes the open rest on A`, `S-9923 a wrist timer adopted into B closes the open rest on A`, `S-9923b a wrist timer adopted into a round B closes the open rest on A`), and on the wire by `test/watch_timer_push_test.dart` (group `S-9924 a rest open on one exercise is cleared when a timer starts on another`).
 
+Since plan 136 a rest the wrist is running ends too when the phone starts a work timer after it: the push tells the wrist with one `{rest: null}` frame, sent once and re-offered when the radio refused it. Verified by `test/watch_rest_cleared_on_phone_timer_test.dart` (group `S-13601 a phone work timer stops the wrist's own running rest`; its guards, group `S-13603 a wrist rest already stopped is not cleared`, group `S-13604 the wrist rest is cleared once`, group `S-13606 a paused wrist rest is cleared the same way`, `S-13607 exactly one rest:null frame travels`).
+
 **Critical invariant**: The rest close happens in **two phases**:
 
 1. **Synchronous in-memory close** (`closeAllOpenRestsInSessionInMemory()`): All open `EntryRest` records of the session have their `restEndMs` set to the current wall-clock instant. The in-memory cache in `TimerManager._entryRests` is updated immediately. This happens **before the timer UI starts rendering**.
@@ -316,6 +318,22 @@ next set, exercise or period
 (`watch/watchos/Tests/WatchSessionEngineTests/WatchRestLabelsTests.swift`,
 S-7601..S-7611).
 
+**Calories so far.** Under the rest clock, above the what-is-next line, the rest
+screen shows the Health workout's running total as `N kcal burned` — a measured
+number, never `~`, whole kilocalories rounded from the newest stored energy sample
+of the session (`WatchSensorReadings.activeEnergyKcal`). The line is hidden until
+the first reading exists: no sample, or less than half a kilocalorie, shows
+nothing. It is re-read on the screen's own tick — every second, once a minute
+while dimmed, inside the `TimelineView` the rest already repaints with. VoiceOver
+reads the line as "Calories burned" with the value "N kilocalories burned". After
+a recovered workout the Health counter restarts, so the on-screen line restarts
+from the new counter, while the total sent on the session end keeps the whole
+chain. Verified by watchOS `WatchRestEnergyTests.swift`
+(`testS13480TheNewestStoredEnergyCountIsTheReading`,
+`testS13481TheEnergyLabelRoundsTheHalfKilocalorieUpAndHidesBelowIt`,
+`testS13483TheSpokenEnergyNeverSpeaksANegative`,
+`testS13484TheRestViewShowsTheBurnedLineUnderTheClock`).
+
 A rest's timer is device-local: no length or countdown is shared between the devices — only the
 count-up's start and its pause travel — but the rest itself travels both ways while it runs. The
 phone pushes its open rest to the wrist as a `rest`
@@ -334,8 +352,11 @@ sent and a rest the phone counted, over the same window, total the same`; Swift 
 `WatchSessionEngineTests.testS320TheRestTheWristEndsTravelsAsARestEvent`).
 
 Across the two devices, then: a set logged on either device starts the rest on both, counting from
-the moment it was logged; Next on the watch, or the next set on either device, ends it on both;
-pausing the phone's rest chip freezes the watch's rest; and both devices ping per the one Rest Ping
+the moment it was logged; Next on the watch, or the next set on either device, ends it on both; and
+since plan 136 a work timer started on the phone ends a rest the wrist is running as well
+(`test/watch_rest_cleared_on_phone_timer_test.dart`, group
+`S-13601 a phone work timer stops the wrist's own running rest`); pausing the phone's rest chip
+freezes the watch's rest; and both devices ping per the one Rest Ping
 setting (the ping rule and its settings key: `test/watch_rest_ping_test.dart`, S-241..S-245 and
 S-221..S-224; the wrist's side: `watch/watchos/Tests/WatchSessionEngineTests/WatchRestPingTests.swift`,
 `testS241AnIntervalTapsAtItsMultiplesAndNowhereElse` and `testS242WithTheIntervalOffNothingTaps`) —

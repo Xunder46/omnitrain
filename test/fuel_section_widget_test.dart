@@ -37,6 +37,9 @@ FuelSummary _summary({
   double? trainingProteinAverage,
   double? restCaloriesAverage,
   double? restProteinAverage,
+  double? burnedKcalAverage,
+  int burnedSessionCount = 0,
+  bool burnedIsEstimate = false,
   double targetCalories = 0,
   double targetProtein = 0,
   double targetCarbs = 0,
@@ -56,6 +59,9 @@ FuelSummary _summary({
     trainingProteinAverage: trainingProteinAverage,
     restCaloriesAverage: restCaloriesAverage,
     restProteinAverage: restProteinAverage,
+    burnedKcalAverage: burnedKcalAverage,
+    burnedSessionCount: burnedSessionCount,
+    burnedIsEstimate: burnedIsEstimate,
     targetCalories: targetCalories,
     targetProtein: targetProtein,
     targetCarbs: targetCarbs,
@@ -223,6 +229,154 @@ void main() {
 
       expect(_text(tester, 'fuel_protein_change'), '↓ -50 g');
       expect(_textColor(tester, 'fuel_protein_change'), _themeColors.textSecondary);
+    },
+  );
+
+  testWidgets(
+    'S-13434 the split and burned captions read the window averages in words',
+    (tester) async {
+      await _pumpFuel(
+        tester,
+        _summary(
+          loggedDays: 5,
+          trainingCaloriesAverage: 1950,
+          trainingProteinAverage: 123,
+          restCaloriesAverage: 1652,
+          restProteinAverage: 118,
+          burnedKcalAverage: 310.4,
+          burnedSessionCount: 5,
+          burnedIsEstimate: true,
+        ),
+      );
+
+      expect(
+        _text(tester, 'fuel_split_training'),
+        'Training days: 1950 kcal · 123 g protein',
+      );
+      expect(
+        _text(tester, 'fuel_split_rest'),
+        'Rest days: 1652 kcal · 118 g protein',
+      );
+      expect(
+        _text(tester, 'fuel_burned'),
+        'Burned per session: ~310 kcal · 5 sessions',
+      );
+    },
+  );
+
+  testWidgets(
+    'S-13434 the burned line rounds, drops the tilde when measured, and '
+    'singles one session',
+    (tester) async {
+      await _pumpFuel(
+        tester,
+        _summary(
+          loggedDays: 5,
+          trainingCaloriesAverage: 1950,
+          trainingProteinAverage: 123,
+          restCaloriesAverage: 1652,
+          restProteinAverage: 118,
+          burnedKcalAverage: 310.4,
+          burnedSessionCount: 1,
+        ),
+      );
+
+      expect(
+        _text(tester, 'fuel_burned'),
+        'Burned per session: 310 kcal · 1 session',
+      );
+    },
+  );
+
+  testWidgets(
+    'S-13434 a burned average with no row in the window reads a dash',
+    (tester) async {
+      await _pumpFuel(
+        tester,
+        _summary(
+          loggedDays: 5,
+          trainingCaloriesAverage: 1950,
+          trainingProteinAverage: 123,
+          restCaloriesAverage: 1652,
+          restProteinAverage: 118,
+        ),
+      );
+
+      expect(_text(tester, 'fuel_burned'), 'Burned per session: —');
+    },
+  );
+
+  testWidgets(
+    'S-13434 a rest side with no logged days reads a dash after the label',
+    (tester) async {
+      await _pumpFuel(
+        tester,
+        _summary(
+          loggedDays: 5,
+          trainingCaloriesAverage: 1950,
+          trainingProteinAverage: 123,
+        ),
+      );
+
+      expect(_text(tester, 'fuel_split_rest'), 'Rest days: —');
+    },
+  );
+
+  testWidgets(
+    'S-13434 with only 2 logged days none of the three lines exists',
+    (tester) async {
+      await _pumpFuel(
+        tester,
+        _summary(
+          loggedDays: 2,
+          trainingCaloriesAverage: 1950,
+          trainingProteinAverage: 123,
+          restCaloriesAverage: 1652,
+          restProteinAverage: 118,
+          burnedKcalAverage: 310.4,
+          burnedSessionCount: 5,
+        ),
+      );
+
+      expect(find.byKey(const Key('fuel_split_training')), findsNothing);
+      expect(find.byKey(const Key('fuel_split_rest')), findsNothing);
+      expect(find.byKey(const Key('fuel_burned')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    "S-13435 no text on the Fuel card says net, surplus, deficit or left to burn",
+    (tester) async {
+      await _pumpFuel(
+        tester,
+        _summary(
+          loggedDays: 5,
+          trainingCaloriesAverage: 1950,
+          trainingProteinAverage: 123,
+          restCaloriesAverage: 1652,
+          restProteinAverage: 118,
+          burnedKcalAverage: 310.4,
+          burnedSessionCount: 5,
+          burnedIsEstimate: true,
+        ),
+      );
+
+      final texts = tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byKey(const Key('fuel_section')),
+              matching: find.byType(Text),
+            ),
+          )
+          .toList();
+      expect(texts, isNotEmpty);
+      for (final text in texts) {
+        final lower = (text.data ?? '').toLowerCase();
+        expect(lower, isNot(contains('net')));
+        expect(lower, isNot(contains('surplus')));
+        expect(lower, isNot(contains('deficit')));
+        expect(lower, isNot(contains('left to burn')));
+      }
     },
   );
 

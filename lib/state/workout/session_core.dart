@@ -6,6 +6,7 @@ import '../../core/constants/workout_constants.dart';
 import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
+import '../../core/services/active_energy_service.dart';
 import '../../core/services/health_sync_service.dart';
 import '../../core/utils/entry_rows.dart';
 import '../../core/utils/logged_entry_rows.dart';
@@ -70,6 +71,11 @@ class SessionCore {
   /// without a watch; the phone's end then writes as it always has.
   final bool Function(String sessionId)? _wristRunsSession;
 
+  /// Optional store of a finished session's active-energy estimate (plan 134
+  /// D-13407/D-13408). Null in tests and in builds that do not store energy;
+  /// the lifecycle then ends a session exactly as it did before.
+  final ActiveEnergyService? _activeEnergy;
+
   late final SessionBlockManager _blockManager;
   late final SessionSummaryBuilder _summaryBuilder;
 
@@ -106,6 +112,7 @@ class SessionCore {
     HealthSyncService? healthSync,
     WatchLateEntryRecovery? lateEntryRecovery,
     bool Function(String sessionId)? wristRunsSession,
+    ActiveEnergyService? activeEnergy,
   }) : _notify = notify,
        _setErrorCallback = setError,
        _clearErrorCallback = clearError,
@@ -113,7 +120,8 @@ class SessionCore {
        _exerciseLibrary = exerciseLibrary,
        _healthSync = healthSync,
        _lateEntryRecovery = lateEntryRecovery,
-       _wristRunsSession = wristRunsSession {
+       _wristRunsSession = wristRunsSession,
+       _activeEnergy = activeEnergy {
     _blockManager = SessionBlockManager(
       _repository,
       notify: _notify,

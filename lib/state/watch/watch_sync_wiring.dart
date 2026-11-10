@@ -27,6 +27,7 @@ import '../../core/platform/no_watch_transport.dart';
 import '../../core/platform/watch_delivery.dart';
 import '../../core/platform/watch_link_source.dart';
 import '../../core/platform/watch_transport.dart';
+import '../../core/services/active_energy_service.dart';
 import '../../core/services/health_sync_service.dart';
 import '../../core/sync_protocol/message_validator.dart';
 import '../../core/utils/platform_watch_transport_factory.dart';
@@ -39,6 +40,7 @@ import '../workout/workout_state.dart';
 import 'live_session_mirror_state.dart';
 import 'watch_incoming_router.dart';
 import 'watch_link_state.dart';
+import 'watch_live_energy.dart';
 import 'watch_nutrition_log_bridge.dart';
 import 'watch_session_adoption_bridge.dart';
 import 'watch_session_auto_push.dart';
@@ -79,6 +81,7 @@ class WatchSyncGraph {
     required this.autoPush,
     required this.timerPush,
     required this.timerAdoption,
+    required this.liveEnergy,
     this.link,
   });
 
@@ -111,6 +114,10 @@ class WatchSyncGraph {
   /// The adoption that applies a timer the wrist started to the phone's own
   /// interval (plan 43b2 D-3). The app binds the same `WorkoutState` to it.
   final WatchTimerAdoption timerAdoption;
+
+  /// The wrist's running active-energy total, as its last `energy_live` frame
+  /// said (plan 135 D-13521); the session screen's Calories chip prefers it.
+  final WatchLiveEnergy liveEnergy;
 
   /// The status state Settings shows: where the watch stands and when the
   /// phone last heard from it (plan 47c D-3). Null when the transport cannot
@@ -221,6 +228,7 @@ Future<WatchSyncGraph?> createWatchSync({
   Future<void> Function(String plannedSessionId, String sessionId)?
       onPlanStarted,
   HealthSyncService? healthSync,
+  ActiveEnergyService? activeEnergy,
   SyncProtocolValidator? validator,
 }) async {
   final resolved =
@@ -263,6 +271,9 @@ Future<WatchSyncGraph?> createWatchSync({
     // The wrist's heart rate landing after the summary opened reaches that
     // screen (plan 72).
     onSensorSummaryAttached: adoption.noteSensorSummary,
+    // A pass that created the session finished or landed the wrist's timed and
+    // round instances re-settles the estimate (plan 134 D-13420).
+    onSessionHistoryChanged: activeEnergy?.settle,
     // A rating the import wrote reaches the session's Fitness workout as its
     // effort (plan 90 D-4).
     healthSync: healthSync,
@@ -360,7 +371,15 @@ Future<WatchSyncGraph?> createWatchSync({
     onFailure: onFailure,
   );
 
+  // The wrist's running energy total (plan 135 D-13521): routed right here,
+  // before every other wrist frame's work, so a heartbeat of energy frames
+  // never reaches the router, the inbox, the mirror or the push-side flushes.
+  final liveEnergy = WatchLiveEnergy();
   resolved.onIncoming((frame) async {
+    if (frame['type'] == 'energy_live') {
+      liveEnergy.receive(frame);
+      return;
+    }
     final owedBefore = await push.hasUnsentChange();
     final request = WatchTransportRequest.nameOf(frame);
     var answeredReset = false;
@@ -444,6 +463,7 @@ Future<WatchSyncGraph?> createWatchSync({
     autoPush: push,
     timerPush: timerPush,
     timerAdoption: timerAdoption,
+    liveEnergy: liveEnergy,
     link: link,
   );
 }

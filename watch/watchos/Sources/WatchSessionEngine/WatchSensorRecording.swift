@@ -71,6 +71,21 @@ public protocol WatchSensorSource {
     /// The platform's step count since its workout began, cumulative: each
     /// value supersedes the one before (`WatchSensorKind.steps`).
     func steps() -> AsyncStream<Double>
+
+    /// The platform workout's active energy since it began, cumulative
+    /// kilocalories (`WatchSensorKind.activeEnergy`).
+    func activeEnergyPermission() async -> WatchSensorPermission
+
+    /// The platform's cumulative active energy, as its workout reports it.
+    func activeEnergy() -> AsyncStream<Double>
+}
+
+/// The members the energy sensor adds are optional for the sources that
+/// predate it: a source that does not implement them has nothing to read, so
+/// the answer is `unavailable` and the stream carries no value (S-13476).
+public extension WatchSensorSource {
+    func activeEnergyPermission() async -> WatchSensorPermission { .unavailable }
+    func activeEnergy() -> AsyncStream<Double> { AsyncStream { $0.finish() } }
 }
 
 /// What the sensors are reading right now, resolved together because a readout
@@ -87,9 +102,18 @@ public struct WatchSensorReadings {
     /// latest fix while it runs.
     public let distanceMeters: Double?
 
-    public init(heartRate: Double? = nil, distanceMeters: Double? = nil) {
+    /// The platform workout's newest stored cumulative kilocalories, or nil
+    /// when none has been recorded (plan 134e D-13480).
+    public let activeEnergyKcal: Double?
+
+    public init(
+        heartRate: Double? = nil,
+        distanceMeters: Double? = nil,
+        activeEnergyKcal: Double? = nil
+    ) {
         self.heartRate = heartRate
         self.distanceMeters = distanceMeters
+        self.activeEnergyKcal = activeEnergyKcal
     }
 }
 
@@ -103,6 +127,7 @@ public final class WatchSensorRecorder {
     private var beatTask: Task<Void, Never>?
     private var fixTask: Task<Void, Never>?
     private var stepsTask: Task<Void, Never>?
+    private var energyTask: Task<Void, Never>?
 
     /// Every write this recorder makes, one at a time and in arrival order.
     private let writes = WatchSensorWrites()
@@ -139,7 +164,8 @@ public final class WatchSensorRecorder {
         return WatchSensorReadings(
             heartRate: newest[WatchSensorKind.heartRate]?.value,
             distanceMeters: newest[WatchSensorKind.distance]?.value
-                ?? newest[WatchSensorKind.gps]?.value
+                ?? newest[WatchSensorKind.gps]?.value,
+            activeEnergyKcal: newest[WatchSensorKind.activeEnergy]?.value
         )
     }
 
@@ -152,6 +178,7 @@ public final class WatchSensorRecorder {
     public func start(_ session: WatchSessionRecord) async {
         await startHeartRate()
         await startSteps()
+        await startActiveEnergy()
         await startLocationIfNeeded(for: session)
     }
 
@@ -190,9 +217,11 @@ public final class WatchSensorRecorder {
         beatTask?.cancel()
         fixTask?.cancel()
         stepsTask?.cancel()
+        energyTask?.cancel()
         beatTask = nil
         fixTask = nil
         stepsTask = nil
+        energyTask = nil
         locationAnswered = false
         heartRateAccess = nil
         locationAccess = nil
@@ -230,6 +259,17 @@ public final class WatchSensorRecorder {
         }
     }
 
+    /// Active energy is counted for every session the user allows it for,
+    /// whatever its modality, and stored like steps (D-13471). The live readout
+    /// reads the newest stored sample (D-13480); the session's total rides the
+    /// end event too (D-13473).
+    private func startActiveEnergy() async {
+        guard await source.activeEnergyPermission() == .granted else { return }
+        energyTask = consume(source.activeEnergy()) { [weak self] kilocalories in
+            await self?.recordEnergy(kilocalories)
+        }
+    }
+
     /// Consumes `stream`, handing each element to `onElement`; the returned task
     /// is what `stop` cancels.
     private func consume<T>(
@@ -239,12 +279,22 @@ public final class WatchSensorRecorder {
         Task { for await element in stream { await onElement(element) } }
     }
 
-    /// Stores one reading, stamped when it arrived.
-    private func record(kind: String, value: Double) async {
-        let recordedAt = clock()
+    /// Stores one reading, stamped when it arrived (or at `at`, when the caller
+    /// already picked the instant).
+    private func record(kind: String, value: Double, at instant: Date? = nil) async {
+        let recordedAt = instant ?? clock()
         await writes.enqueue { [engine] in
             await engine.appendSensorSample(kind: kind, value: value, recordedAt: recordedAt)
         }.value
+    }
+
+    /// Stores the energy count at the instant it arrived and announces the same
+    /// reading with that instant (plan 135 D-13511), so the frame the phone gets
+    /// is stamped with the row it sits beside.
+    private func recordEnergy(_ kilocalories: Double) async {
+        let instant = clock()
+        await record(kind: WatchSensorKind.activeEnergy, value: kilocalories, at: instant)
+        engine.announceEnergy(kilocalories: kilocalories, at: instant)
     }
 }
 
