@@ -544,41 +544,51 @@ void main() {
   // S-156: a stored inverted session window is repaired once, in both stores
   // ─────────────────────────────────────────────────────────────────────
   test(
-    'S-156: steps 15, 16, 17 and 18 are appended to both migration sequences',
+    'S-156: steps 15 to 19 are appended to both migration sequences',
     () async {
-      expect(currentDataVersion, equals(18));
+      expect(currentDataVersion, equals(19));
 
       final mockSteps = MockWorkoutRepository().dataMigrationStepsForTest();
       final hiveSteps = HiveWorkoutRepository().dataMigrationStepsForTest();
 
-      expect(mockSteps[mockSteps.length - 4].targetVersion, equals(15));
+      expect(mockSteps[mockSteps.length - 5].targetVersion, equals(15));
       expect(
-        mockSteps[mockSteps.length - 4].name,
+        mockSteps[mockSteps.length - 5].name,
         equals('clampInvertedSessionWindows'),
       );
-      expect(hiveSteps[hiveSteps.length - 4].targetVersion, equals(15));
+      expect(hiveSteps[hiveSteps.length - 5].targetVersion, equals(15));
       expect(
-        hiveSteps[hiveSteps.length - 4].name,
+        hiveSteps[hiveSteps.length - 5].name,
         equals('clampInvertedSessionWindows'),
       );
-      expect(mockSteps[mockSteps.length - 3].targetVersion, equals(16));
-      expect(mockSteps[mockSteps.length - 3].name, equals('muscleLinkRoles'));
-      expect(hiveSteps[hiveSteps.length - 3].targetVersion, equals(16));
-      expect(hiveSteps[hiveSteps.length - 3].name, equals('muscleLinkRoles'));
-      expect(mockSteps[mockSteps.length - 2].targetVersion, equals(17));
+      expect(mockSteps[mockSteps.length - 4].targetVersion, equals(16));
+      expect(mockSteps[mockSteps.length - 4].name, equals('muscleLinkRoles'));
+      expect(hiveSteps[hiveSteps.length - 4].targetVersion, equals(16));
+      expect(hiveSteps[hiveSteps.length - 4].name, equals('muscleLinkRoles'));
+      expect(mockSteps[mockSteps.length - 3].targetVersion, equals(17));
+      expect(
+        mockSteps[mockSteps.length - 3].name,
+        equals('retireOrphanTemplateRows'),
+      );
+      expect(hiveSteps[hiveSteps.length - 3].targetVersion, equals(17));
+      expect(
+        hiveSteps[hiveSteps.length - 3].name,
+        equals('retireOrphanTemplateRows'),
+      );
+      expect(mockSteps[mockSteps.length - 2].targetVersion, equals(18));
       expect(
         mockSteps[mockSteps.length - 2].name,
-        equals('retireOrphanTemplateRows'),
+        equals('backfillRoutineSessionModality'),
       );
-      expect(hiveSteps[hiveSteps.length - 2].targetVersion, equals(17));
+      expect(hiveSteps[hiveSteps.length - 2].targetVersion, equals(18));
       expect(
         hiveSteps[hiveSteps.length - 2].name,
-        equals('retireOrphanTemplateRows'),
+        equals('backfillRoutineSessionModality'),
       );
-      expect(mockSteps.last.targetVersion, equals(18));
-      expect(mockSteps.last.name, equals('backfillRoutineSessionModality'));
-      expect(hiveSteps.last.targetVersion, equals(18));
-      expect(hiveSteps.last.name, equals('backfillRoutineSessionModality'));
+      expect(mockSteps.last.targetVersion, equals(19));
+      expect(mockSteps.last.name, equals('restoreShippedFoodGroups'));
+      expect(hiveSteps.last.targetVersion, equals(19));
+      expect(hiveSteps.last.name, equals('restoreShippedFoodGroups'));
       expect(
         mockSteps.map((step) => '${step.targetVersion}:${step.name}').toList(),
         equals(
@@ -635,6 +645,7 @@ void main() {
           'muscleLinkRoles',
           'retireOrphanTemplateRows',
           'backfillRoutineSessionModality',
+          'restoreShippedFoodGroups',
         ]),
       );
       expect(await mock.getDataVersion(), equals(currentDataVersion));
@@ -710,6 +721,7 @@ void main() {
           'muscleLinkRoles',
           'retireOrphanTemplateRows',
           'backfillRoutineSessionModality',
+          'restoreShippedFoodGroups',
         ]),
       );
       expect(await repo.getDataVersion(), equals(currentDataVersion));
@@ -753,24 +765,34 @@ void main() {
       final mockSteps = MockWorkoutRepository().dataMigrationStepsForTest();
       final hiveSteps = HiveWorkoutRepository().dataMigrationStepsForTest();
 
-      expect(mockSteps.last.targetVersion, equals(18));
-      expect(mockSteps.last.name, equals('backfillRoutineSessionModality'));
-      expect(hiveSteps.last.targetVersion, equals(18));
-      expect(hiveSteps.last.name, equals('backfillRoutineSessionModality'));
-      expect(mockSteps[mockSteps.length - 2].targetVersion, equals(17));
+      expect(mockSteps.last.targetVersion, equals(19));
+      expect(mockSteps.last.name, equals('restoreShippedFoodGroups'));
+      expect(hiveSteps.last.targetVersion, equals(19));
+      expect(hiveSteps.last.name, equals('restoreShippedFoodGroups'));
+      expect(mockSteps[mockSteps.length - 2].targetVersion, equals(18));
       expect(
         mockSteps[mockSteps.length - 2].name,
-        equals('retireOrphanTemplateRows'),
+        equals('backfillRoutineSessionModality'),
       );
-      expect(hiveSteps[hiveSteps.length - 2].targetVersion, equals(17));
+      expect(hiveSteps[hiveSteps.length - 2].targetVersion, equals(18));
       expect(
         hiveSteps[hiveSteps.length - 2].name,
+        equals('backfillRoutineSessionModality'),
+      );
+      expect(mockSteps[mockSteps.length - 3].targetVersion, equals(17));
+      expect(
+        mockSteps[mockSteps.length - 3].name,
         equals('retireOrphanTemplateRows'),
       );
-      expect(mockSteps[mockSteps.length - 3].targetVersion, equals(16));
-      expect(mockSteps[mockSteps.length - 3].name, equals('muscleLinkRoles'));
-      expect(hiveSteps[hiveSteps.length - 3].targetVersion, equals(16));
-      expect(hiveSteps[hiveSteps.length - 3].name, equals('muscleLinkRoles'));
+      expect(hiveSteps[hiveSteps.length - 3].targetVersion, equals(17));
+      expect(
+        hiveSteps[hiveSteps.length - 3].name,
+        equals('retireOrphanTemplateRows'),
+      );
+      expect(mockSteps[mockSteps.length - 4].targetVersion, equals(16));
+      expect(mockSteps[mockSteps.length - 4].name, equals('muscleLinkRoles'));
+      expect(hiveSteps[hiveSteps.length - 4].targetVersion, equals(16));
+      expect(hiveSteps[hiveSteps.length - 4].name, equals('muscleLinkRoles'));
       expect(
         mockSteps.map((step) => '${step.targetVersion}:${step.name}').toList(),
         equals(

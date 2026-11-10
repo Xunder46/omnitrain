@@ -63,7 +63,7 @@ void main() {
         var refused = false;
         try {
           await state.deleteFoodGroupReassigningFoods('food-group-dairy', null);
-        } on FoodGroupHasBundledFoodsError {
+        } on ShippedFoodGroupError {
           refused = true;
         }
         expect(refused, isTrue);

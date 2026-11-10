@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
+import '../../core/constants/shipped_food_groups.dart';
 import '../../core/navigation/navigation.dart';
 import '../../core/utils/food_helpers.dart';
 import '../../core/utils/foods_i_eat_order.dart';
@@ -1456,6 +1457,7 @@ class _CatalogRowState extends State<_CatalogRow> {
 ///
 /// The synthetic "Uncategorized" row at the bottom of the list is
 /// informational (food count) and cannot be renamed or deleted.
+/// The nine shipped categories show no trash control (plan 137).
 class _GroupsTab extends StatefulWidget {
   final FoodLibraryState foodLibraryState;
   final String? newlyCreatedGroupId;
@@ -1596,6 +1598,7 @@ class _GroupsTabState extends State<_GroupsTab> {
                 controller: _controllerFor(g.id, g.name),
                 focusNode: _focusNodeFor(g.id),
                 foodCount: foodsByGroup[g.id] ?? 0,
+                canDelete: !isShippedFoodGroupId(g.id),
                 onNameSubmitted: (newName) => _saveGroupName(g.id, newName),
                 onDelete: () => _confirmAndDeleteGroup(
                   context,
@@ -1623,10 +1626,7 @@ class _GroupsTabState extends State<_GroupsTab> {
       // D-29.4: an empty category is still a destructive, one-tap-away
       // action, so it asks before archiving. There is no destination
       // dropdown — `foodCount` is already 0, so the reassignment is a
-      // no-op. The bundled-food guard can still fire here (a category
-      // can have zero *library* foods but still be referenced by
-      // bundled catalog foods), so we run the typed catch the same way
-      // as the non-empty path.
+      // no-op.
       final confirmed = await ConfirmationDialog.showTwoChoice(
         context: context,
         title: 'Delete category ${group.name}?',
@@ -1643,9 +1643,6 @@ class _GroupsTabState extends State<_GroupsTab> {
           group.id,
           null,
         );
-      } on FoodGroupHasBundledFoodsError catch (e) {
-        if (!context.mounted) return;
-        OmniMessage.error(context, _bundledMessage(e));
       } catch (_) {
         if (!context.mounted) return;
         OmniMessage.error(context, 'Could not delete ${group.name}');
@@ -1679,12 +1676,6 @@ class _GroupsTabState extends State<_GroupsTab> {
         group.id,
         destination,
       );
-    } on FoodGroupHasBundledFoodsError catch (e) {
-      // S-006 / S-009: deletion is refused when bundled catalog
-      // foods still point at the group. The catalog refresh
-      // restores bundled categories on every launch, so rewriting
-      // them would silently revert — we surface the block instead.
-      OmniMessage.errorOn(messenger, theme, _bundledMessage(e));
     } catch (_) {
       OmniMessage.errorOn(
         messenger,
@@ -1692,18 +1683,6 @@ class _GroupsTabState extends State<_GroupsTab> {
         'Could not delete ${group.name}',
       );
     }
-  }
-
-  /// Message copy for a refused deletion. Surfaces the category
-  /// name and the count of bundled catalog foods that would be
-  /// stranded, so the user understands why the action was blocked
-  /// and can pick a different category to delete first.
-  String _bundledMessage(FoodGroupHasBundledFoodsError e) {
-    final count = e.bundledFoodIds.length;
-    final noun = count == 1 ? 'food' : 'foods';
-    return 'Cannot delete "${e.groupName}" — $count bundled catalog '
-        '$noun still reference it. Move those $noun to another '
-        'category first, or delete the foods you don\'t need.';
   }
 
   /// Sorts groups alphabetically, but keeps the newly created group
@@ -1737,12 +1716,14 @@ class _GroupRow extends StatelessWidget {
   final int foodCount;
   final Future<void> Function(String newName) onNameSubmitted;
   final Future<void> Function() onDelete;
+  final bool canDelete;
 
   const _GroupRow({
     required this.group,
     required this.controller,
     required this.focusNode,
     required this.foodCount,
+    required this.canDelete,
     required this.onNameSubmitted,
     required this.onDelete,
   });
@@ -1778,12 +1759,14 @@ class _GroupRow extends StatelessWidget {
           SizedBox(
             width: OmniTheme.buttonIconSize / 2,
             height: OmniTheme.buttonIconSize / 2,
-            child: IconButton(
-              key: Key('group_delete_${group.id}'),
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Delete category',
-              onPressed: onDelete,
-            ),
+            child: canDelete
+                ? IconButton(
+                    key: Key('group_delete_${group.id}'),
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'Delete category',
+                    onPressed: onDelete,
+                  )
+                : null,
           ),
         ],
       ),

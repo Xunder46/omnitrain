@@ -206,9 +206,19 @@ opens EditFoodScreen (S-001)`), and by `test/nutrition_test.dart` (group
 keeps the food in the library (S-2903)`; the Library add/remove groups also
 assert the check icon and the absence of `Icons.delete_outline`).
 
-Group deletion refuses to strand a shipped food: moving a group's foods to the
-ungrouped bucket would silently orphan a bundled catalog food, so that case raises
-`FoodGroupHasBundledFoodsError` instead. Cancel and "move to uncategorised" are
+The categories the app ships with can never be deleted or archived
+(`shippedFoodGroupIds`, plan 137): the state refuses both operations with a
+`ShippedFoodGroupError` before anything is written. A shipped row
+has no trash control in the Categories tab (renaming still works). A category the
+user created still deletes with the existing dialogs. Verified by
+`test/shipped_food_groups_lock_test.dart` (group
+`<Mock|Hive> — shipped food categories locked (plan 137)`: `S-13702 delete of a
+shipped category is refused, no food moves`, `S-13703 archive of a shipped
+category is refused; a custom one archives`) and by
+`test/shipped_food_groups_ui_test.dart` (group
+`Categories tab — shipped categories (plan 137)`: `S-13705: no trash on any
+shipped category, trash on a custom one`, `S-13705: a shipped category can
+still be renamed`). Cancel and "move to uncategorised" are
 distinct outcomes of the group dialog. Deleting an **empty** category asks
 first too: the trash control on an empty category opens a two-choice
 confirmation (`Delete category ${group.name}?`), and confirming it archives
@@ -506,8 +516,7 @@ self-heals a food whose stored photograph path no longer resolves and deletes a
 photograph it has replaced.
 
 It is also the feature's guard rail: `deleteFoodGroupReassigningFoods` is the only
-group-deletion path, and it refuses the bundled-food case described above rather
-than reassigning. `createOwnCopyOfDefault` is a state method; the copy flow's log
+group-deletion path, and it refuses a shipped category rather than reassigning. `createOwnCopyOfDefault` is a state method; the copy flow's log
 carry is the screen helper `saveDefaultAsOwnFood`
 (`lib/features/nutrition/widgets/save_default_as_own_food.dart`), and
 `libraryFoodFor` resolves the in-list row (their contracts are in
@@ -724,7 +733,7 @@ contract, not a live persistence path.
 | The primer's help affordance reopens it without marking it seen | `test/nutrition_primer_test.dart` |
 | The home summary card opens the feature | `test/home_nutrition_summary_card_test.dart` |
 | Adding a catalog row copies it into the library instead of logging it | `test/nutrition_log_from_library_test.dart` |
-| Group deletion refuses to strand a bundled food | `test/food_library_state_delete_guard_test.dart` |
+| A shipped category cannot be deleted or archived | `test/food_library_state_delete_guard_test.dart`, `test/shipped_food_groups_lock_test.dart` |
 | The target form carries the calorie target and the three macro targets | `test/daily_targets_screen_test.dart`, `test/nutrition_test.dart`, `test/nutrition_target_button_test.dart` |
 | The trend screen plots the repository's full food history | `test/nutrition_trend_screen_test.dart` |
 | Foods I Eat ordering is shared with the watch quick-log | `test/watch_nutrition_quick_log_test.dart` |

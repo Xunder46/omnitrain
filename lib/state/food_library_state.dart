@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import '../core/constants/catalog_version.dart';
+import '../core/constants/shipped_food_groups.dart';
 import '../core/models/food_draft.dart';
 import '../core/services/food_photo_service.dart';
 import '../core/services/image_storage_service.dart';
@@ -16,47 +17,20 @@ import '../data/repositories/workout_repository.dart';
 /// All operations route through the injected WorkoutRepository interface,
 /// allowing environment-agnostic persistence (Hive web, SQLite native).
 
-/// Thrown by [FoodLibraryState.deleteFoodGroupReassigningFoods] when
-/// the deletion would strand at least one bundled catalog food —
-/// i.e. a food whose id is in [FoodLibraryState._bundledCatalogFoodIds]
-/// still has `groupId` equal to the category being deleted.
-///
-/// The constraint (see
-/// `docs/plans/2026-08-08-food-edit-orphan-category-plan.md`):
-/// we cannot rewrite a bundled catalog food's `groupId` to "fix" the
-/// stranded-ness, because the catalog refresh restores the bundled
-/// food's category on every launch — so any such rewrite would
-/// silently revert and the user would watch their action undo
-/// itself. The honest answer is to refuse the deletion and tell the
-/// user which category is blocking it; the UI catches this error and
-/// surfaces it as a snackbar.
-///
-/// Subclass of [StateError] so the existing
-/// `try { ... } catch (_) { snackbar }` handlers in
-/// `add_food_screen.dart` continue to treat it as a soft failure
-/// (no rethrow, no rollback); a typed `catch` is preferred so a
-/// future migration to surface specific copy can discriminate.
-class FoodGroupHasBundledFoodsError extends StateError {
-  /// The id of the category the user tried to delete. Surfaced so the
-  /// UI can build copy that names the category.
+/// Thrown by [FoodLibraryState.archiveFoodGroup] and
+/// [FoodLibraryState.deleteFoodGroupReassigningFoods] when the category is one
+/// the app ships with (`shippedFoodGroupIds`). Nothing is written. The Categories
+/// tab never offers the control for such a row, so this is the state layer's own
+/// refusal for any other caller.
+class ShippedFoodGroupError extends StateError {
+  /// The id of the shipped category the caller tried to remove.
   final String groupId;
 
-  /// The display name of the category, captured at throw time.
+  /// Its display name, captured at throw time.
   final String groupName;
 
-  /// The bundled food ids that currently reference [groupId] and
-  /// would be stranded if the deletion proceeded. Surfaced so the
-  /// UI can list the first few names in the snackbar.
-  final List<String> bundledFoodIds;
-
-  FoodGroupHasBundledFoodsError({
-    required this.groupId,
-    required this.groupName,
-    required this.bundledFoodIds,
-  }) : super(
-         'Cannot delete category "$groupName" ($groupId): ${bundledFoodIds.length} '
-         'bundled catalog food(s) still reference it.',
-       );
+  ShippedFoodGroupError({required this.groupId, required this.groupName})
+    : super('Cannot remove shipped category "$groupName" ($groupId).');
 }
 
 class FoodLibraryState extends ChangeNotifier {
@@ -248,7 +222,13 @@ class FoodLibraryState extends ChangeNotifier {
   /// Update an existing food group and persist changes.
   ///
   /// Notifies listeners after update.
+  ///
+  /// A shipped category cannot be stored archived (plan 137): the same
+  /// [ShippedFoodGroupError] as [archiveFoodGroup].
   Future<void> updateFoodGroup(FoodGroup group) async {
+    if (group.isArchived && isShippedFoodGroupId(group.id)) {
+      throw ShippedFoodGroupError(groupId: group.id, groupName: group.name);
+    }
     final updated = FoodGroup(
       id: group.id,
       name: group.name,
@@ -270,6 +250,9 @@ class FoodLibraryState extends ChangeNotifier {
     final group = _foodGroups[id];
     if (group == null) {
       throw Exception('Food group not found: $id');
+    }
+    if (isShippedFoodGroupId(id)) {
+      throw ShippedFoodGroupError(groupId: id, groupName: group.name);
     }
 
     await _repository.archiveFoodGroup(id);
@@ -327,19 +310,9 @@ class FoodLibraryState extends ChangeNotifier {
   /// group's row is `isArchived = true` and the cache reflects the
   /// reassignment.
   ///
-  /// **Bundled-food guard (S-006)**: refuses the deletion when
-  /// at least one bundled catalog food — a food whose id is in
-  /// [_bundledCatalogFoodIds] — still has `groupId == id`. We
-  /// cannot rewrite a bundled catalog food's `groupId` because
-  /// the catalog refresh restores the bundled category on every
-  /// launch, so any such rewrite would silently revert and the
-  /// user would watch their action undo itself. The honest answer
-  /// is to refuse the deletion and surface the reason via a
-  /// [FoodGroupHasBundledFoodsError] (caught by
-  /// `add_food_screen.dart`'s `_confirmAndDeleteGroup` and shown
-  /// as a snackbar). Library foods and user-created catalog foods
-  /// in the category are reassigned and the category is archived
-  /// exactly as before — only the bundled case is blocked.
+  /// **Shipped categories (plan 137)**: a category the app ships
+  /// with (`shippedFoodGroupIds`) is refused with
+  /// [ShippedFoodGroupError] before anything is read or written.
   Future<void> deleteFoodGroupReassigningFoods(
     String id,
     String? toGroupId,
@@ -348,31 +321,16 @@ class FoodLibraryState extends ChangeNotifier {
     if (group == null) {
       throw Exception('Food group not found: $id');
     }
+    if (isShippedFoodGroupId(id)) {
+      throw ShippedFoodGroupError(groupId: id, groupName: group.name);
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
-    // The guard below reads the in-memory catalog cache. A cold
-    // cache would make it see zero bundled foods and wave the
-    // deletion through, stranding every bundled food in the
-    // category — the exact outcome the guard exists to prevent.
-    // Load the catalog first when it has never been populated.
+    // The user-created catalog foods below are read from the in-memory
+    // catalog cache. A cold cache would see none of them and leave them
+    // pointing at the archived category, so load the catalog first when it
+    // has never been populated.
     if (_catalogFoods.isEmpty) {
       await loadCatalogFoods();
-    }
-    // Bundled-food guard (S-006): if any bundled catalog food
-    // currently points at this group, refuse the deletion. Run
-    // this BEFORE the library/user-catalog reassignment so a
-    // refused deletion is a true no-op (no row was touched).
-    final strandedBundled = _catalogFoods.values
-        .where(
-          (f) => !f.isArchived && f.groupId == id && isBundledCatalogFood(f.id),
-        )
-        .map((f) => f.id)
-        .toList();
-    if (strandedBundled.isNotEmpty) {
-      throw FoodGroupHasBundledFoodsError(
-        groupId: id,
-        groupName: group.name,
-        bundledFoodIds: strandedBundled,
-      );
     }
     // Reassign library foods first (existing behaviour).
     final foodIds = _foods.values
@@ -396,9 +354,9 @@ class FoodLibraryState extends ChangeNotifier {
       }
     }
     // Reassign user-owned catalog foods (those created via **+ New
-    // Item**) too. The bundled guard above guarantees we never see a
-    // bundled id here; the filter on `isBundledCatalogFood == false`
-    // is belt-and-suspenders.
+    // Item**) too. The shipped lock above means a bundled id never
+    // reaches here (a shipped category is refused first); the filter
+    // on `isBundledCatalogFood == false` is belt-and-suspenders.
     final userCatalogIds = _catalogFoods.values
         .where(
           (f) =>

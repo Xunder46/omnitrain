@@ -282,6 +282,8 @@ Verified by `test/retire_orphan_template_rows_test.dart`.
 
 **Step 18 `backfillRoutineSessionModality` — ONE-OFF (plan 122) — retire after launch.** Runs once per device: for every past session with `intent == 'routine'`, no modality, and a `routineTemplateId` whose routine still exists and has a Focus, it writes that Focus into the session's `modality` (only that field; `updated_at_ms` and every other field unchanged). In-progress sessions are included; planned (calendar) entries are never read or written; a routine that was deleted, or has no Focus, leaves its sessions untouched. The Focus used is the routine's value at update time. Rows are written one at a time and a failure leaves `data_version` at 17, so the next launch retries; stamped rows no longer match, so a rerun writes nothing. The logic is `RoutineSessionModalityBackfill` ([`lib/core/services/routine_session_modality_backfill.dart`](../lib/core/services/routine_session_modality_backfill.dart)), shared by both stores. Retirement (not yet done): replace the step's run body in both repositories with a no-op that keeps version 18 and the name, delete the service and `test/routine_session_modality_backfill_test.dart`, update this section; never renumber or remove a version. Verified by tests S-12207, S-12210..S-12216 in `test/routine_session_modality_backfill_test.dart`.
 
+**Step 19 `restoreShippedFoodGroups` — ONE-OFF (plan 137) — retire after launch.** Runs once per device: rule 1 un-archives every archived shipped category (name, color and creation time unchanged); rule 2 puts every active library copy that has no category and a `catalogId` back under its catalog row's category when that category is a shipped one (copies with any category, library foods without a `catalogId`, and copies of user-created catalog foods are untouched). A second successful run writes nothing; a failed write propagates so `data_version` stays 18 and the next launch re-runs the step. The logic is `ShippedFoodGroupsRepair` ([`lib/core/services/shipped_food_groups_repair.dart`](../lib/core/services/shipped_food_groups_repair.dart)), shared by both stores. Retirement (not yet done): replace the step's run body in both repositories with a no-op that keeps version 19 and the name, delete the service and `test/shipped_food_groups_repair_test.dart`, update this section; never renumber or remove a version. Verified by tests S-13706, S-13707, S-13708 and S-13709 in `test/shipped_food_groups_repair_test.dart` and by S-156 in `test/data_migration_test.dart` (steps 15 to 19 appended to both sequences).
+
 The previous step is `muscleLinkRoles` (target version 16): it rewrites
 every stored exercise→muscle link row into the role-aware shape — a legacy
 all-primary row keeps its ids as primaries, and a region tag sitting next to
@@ -500,7 +502,7 @@ the existing `updateFood`).
 | `getCatalogFoods({includeArchived})` | Returns catalog foods (`isCatalog == true`). |
 | `getCatalogFoodById(id)` | Returns a catalog food by ID. |
 | `addCatalogFoodToLibrary(catalogFoodId)` | Copies a catalog food to the library with a new ID and `isCatalog = false`. The original catalog food remains unchanged. || `reassignFoodsToGroup(foodIds, targetGroupId)` | Moves a list of library foods to a new group (or `null` for "Ungrouped") in place. Used by the Groups tab when deleting a non-empty group; foods are never deleted. Catalog foods are excluded. Empty list is a no-op. |
-| `reassignCatalogFoodsToGroup(catalogFoodIds, targetGroupId)` | Parallel to `reassignFoodsToGroup` but targets the catalog box. Used by `FoodLibraryState.deleteFoodGroupReassigningFoods` so user-created catalog foods (those created via the header **+ New Food**) are moved off a deleted category. Bundled catalog foods are never passed here — the bundled-food guard at the state layer rejects them. Empty list is a no-op. || `getConsumedFoodsForDate(dateMs)` | Returns consumed food entries for a specific day (matching `dateMs`). |
+| `reassignCatalogFoodsToGroup(catalogFoodIds, targetGroupId)` | Parallel to `reassignFoodsToGroup` but targets the catalog box. Used by `FoodLibraryState.deleteFoodGroupReassigningFoods` so user-created catalog foods (those created via the header **+ New Food**) are moved off a deleted category. Bundled catalog foods are never passed here — the state layer filters them out before the call. Empty list is a no-op. || `getConsumedFoodsForDate(dateMs)` | Returns consumed food entries for a specific day (matching `dateMs`). |
 | `createConsumedFood(entry)` | Creates a new consumed food log entry. |
 | `updateConsumedFood(entry)` | Updates an existing consumed food entry by `id`. Throws `StateError` if the id is not present. Used by the day-uniqueness update path in `NutritionState.logConsumedFoodAt`. |
 | `getConsumedFoodById(id)` | Returns a single consumed food entry by id, or `null` if not found. Used as a cache-miss fallback by `NutritionState.findLoggedTodayForFood`. |
@@ -714,9 +716,11 @@ for the data model:
 
 Runtime **data** migrations (the ones that actually execute today) are a
 separate mechanism keyed on `currentDataVersion` — see
-[Constants Reference](constants_reference.md#data_versiondart). Their latest step is `backfillRoutineSessionModality` (version 18), a one-off
-back-fill of past routine sessions' modality, preceded by step 17
-`retireOrphanTemplateRows`, which removes the retired first-install template
+[Constants Reference](constants_reference.md#data_versiondart). Their latest step is `restoreShippedFoodGroups` (version 19), a one-off
+restore of the shipped food categories, preceded by step 18
+`backfillRoutineSessionModality`, a one-off back-fill of past routine
+sessions' modality; step 17
+`retireOrphanTemplateRows` removes the retired first-install template
 rows; see the data-migration sequence above.
 
 ---

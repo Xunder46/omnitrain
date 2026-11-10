@@ -14,6 +14,7 @@ import '../../core/constants/water_constants.dart';
 import '../../core/services/data_migration_service.dart';
 import '../../core/services/retired_template_rows_cleanup.dart';
 import '../../core/services/routine_session_modality_backfill.dart';
+import '../../core/services/shipped_food_groups_repair.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../core/utils/entry_rows.dart';
@@ -409,6 +410,13 @@ class HiveWorkoutRepository implements WorkoutRepository {
         18,
         'backfillRoutineSessionModality',
         () => RoutineSessionModalityBackfill(repo).run(),
+      ),
+      // ONE-OFF (plan 137) — retire after launch. See
+      // ShippedFoodGroupsRepair and docs/db_integration.md.
+      _MethodStep(
+        19,
+        'restoreShippedFoodGroups',
+        () => ShippedFoodGroupsRepair(repo).run(),
       ),
     ];
   }
