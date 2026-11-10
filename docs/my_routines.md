@@ -380,9 +380,28 @@ lose its set`) and `test/screen_widget_test.dart` (group
 `RoutineSetupScreen` · `sets can be added in detail view`,
 `tapping exercise card opens detail view`).
 
-**Set arrows**: the Previous Set / Next Set arrow row is unchanged. Verified
-by `test/routine_detail_screen_test.dart` (group `S-4512 set arrows (A8)` ·
-`Previous and Next Set walk the sets and stop at the ends`).
+**Set arrows**: the Previous Set / Next Set arrow row walks every set of
+every exercise, in the order the list shows (block by block). **Next on the
+last set opens the next exercise** on its first set; it **never adds a set**
+(the `+` in the sets control is the only way to add one).
+**Previous on the first set opens the previous exercise on its last set**.
+Each arrow is **dimmed on the last set of the last exercise** (Next) and on
+the first set of the first exercise (Previous). The exercises are visited in
+the **same order as the list**, also after blocks are reordered. The tooltips stay
+`Previous Set` and `Next Set`. Verified by
+`test/routine_detail_screen_test.dart` (groups `S-4514 Next crosses to the
+next exercise` · `Next on the last set opens the next exercise on its first
+set`; `S-4515 Previous crosses to the previous exercise` · `Previous on the
+first set opens the previous exercise on its last set`; `S-4516 the arrows
+dim at the ends of the routine` · `Previous is dimmed on the first set of
+the first exercise`, `Next is dimmed on the last set of the last exercise`;
+`S-4517 Next never adds a set` · `walking past the end leaves every set
+count as it was`; `S-4518 the walk follows the list order` · `Next visits
+the exercises block by block`, `Previous walks back block by block, landing
+on last sets`, `after Block Two is moved to the top the walk follows it`;
+group `S-4512 set arrows (A8)` · `Previous and Next Set walk the sets and
+stop at the ends` covers the one-exercise case, where its ends are the
+routine's ends).
 
 #### Smart Defaults for Targets
 When adding a set, targets auto-fill from the previous set:

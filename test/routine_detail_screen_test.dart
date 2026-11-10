@@ -18,6 +18,11 @@
 //   S-4511 A7 remove set applies only to the focused last set; disabled else
 //   S-4512 A8 the Previous Set / Next Set arrows still navigate
 //   S-4513 a long block name does not overflow the header subtitle
+//   S-4514 the Next arrow on the last set opens the next exercise on its first set
+//   S-4515 the Previous arrow on the first set opens the previous exercise on its last set
+//   S-4516 the arrows dim at the very first and the very last set of the routine
+//   S-4517 Next never adds a set, not even at the end
+//   S-4518 the arrows walk the exercises in the order the list shows, across blocks and after a reorder
 //
 // Mock repository only, no timers and no real delays (FakeAsync).
 
@@ -161,6 +166,94 @@ Future<void> _seedSets(_Routine routine, String effortId, int count) async {
       targetInt: 10,
     );
   }
+}
+
+/// The `onTap` of the arrow whose tooltip is [label]; null means dimmed.
+VoidCallback? _arrowOnTap(WidgetTester tester, String label) {
+  return tester
+      .widget<InkWell>(
+        find.descendant(
+          of: find.byTooltip(label),
+          matching: find.byType(InkWell),
+        ),
+      )
+      .onTap;
+}
+
+/// The highest set index stored for [effortId], plus one (its set count).
+int _storedSetCount(_Routine routine, String effortId) {
+  var highest = 0;
+  for (final target in routine.routineState.getEffortTargets(effortId)) {
+    final index = target.setIndex ?? 0;
+    if (index > highest) highest = index;
+  }
+  return highest + 1;
+}
+
+/// Taps `Next Set` [times] times, settling after each tap.
+Future<void> _tapNext(WidgetTester tester, int times) async {
+  for (var i = 0; i < times; i++) {
+    await tester.tap(find.byTooltip('Next Set'));
+    await tester.pumpAndSettle();
+  }
+}
+
+/// One block `Main Block` holding `A` (2 sets) and `B` (3 sets).
+typedef _Pair = ({
+  _Routine routine,
+  Exercise a,
+  Exercise b,
+  String aId,
+  String bId,
+});
+
+Future<_Pair> _pairRoutine() async {
+  final routine = await _newRoutine('Cross Routine');
+  final a = await _resistanceExercise(routine.repo);
+  final b = await _otherExercise(routine.repo, a.id);
+  final aId = await routine.routineState.addExerciseToRoutine(a, 'set');
+  final bId = await routine.routineState.addExerciseToRoutine(b, 'set');
+  await _seedSets(routine, aId, 2);
+  await _seedSets(routine, bId, 3);
+  return (routine: routine, a: a, b: b, aId: aId, bId: bId);
+}
+
+/// `Block One` holds `A` (1 set); `Block Two` holds `B` (2 sets) and `C` (1 set).
+typedef _Blocks = ({
+  _Routine routine,
+  Exercise a,
+  Exercise b,
+  Exercise c,
+});
+
+Future<_Blocks> _blocksRoutine() async {
+  final routine = await _newRoutine('Blocks Routine');
+  final a = await _resistanceExercise(routine.repo);
+  final b = await _otherExercise(routine.repo, a.id);
+  final all = await routine.repo.getExercises();
+  final c = all.firstWhere((e) => e.id != a.id && e.id != b.id);
+  final blockOneId = routine.routineState.currentSegments.first.id;
+  await routine.routineState.updateSegment(blockOneId, name: 'Block One');
+  final blockTwoId = await routine.routineState.addSegment(name: 'Block Two');
+  final aId = await routine.routineState.addExerciseToRoutine(
+    a,
+    'set',
+    segmentId: blockOneId,
+  );
+  final bId = await routine.routineState.addExerciseToRoutine(
+    b,
+    'set',
+    segmentId: blockTwoId,
+  );
+  final cId = await routine.routineState.addExerciseToRoutine(
+    c,
+    'set',
+    segmentId: blockTwoId,
+  );
+  await _seedSets(routine, aId, 1);
+  await _seedSets(routine, bId, 2);
+  await _seedSets(routine, cId, 1);
+  return (routine: routine, a: a, b: b, c: c);
 }
 
 Finder _segment(int index) => find.byKey(Key('set-segment-$index'));
@@ -829,6 +922,185 @@ void main() {
 
       expect(find.text('Set 1 of 2'), findsOneWidget);
       expect(find.byKey(ValueKey('$effortId-0-reps')), findsOneWidget);
+    });
+  });
+
+  group('S-4514 Next crosses to the next exercise', () {
+    testWidgets('Next on the last set opens the next exercise on its first set', (
+      tester,
+    ) async {
+      final p = await _pairRoutine();
+      await _openDetail(tester, p.routine, exerciseName: p.a.name);
+
+      expect(find.text('Exercise 1 / 2 · Main Block'), findsOneWidget);
+      await _tapNext(tester, 1);
+      expect(find.text('Set 2 of 2'), findsOneWidget);
+      expect(find.byKey(ValueKey('${p.aId}-1-reps')), findsOneWidget);
+
+      await _tapNext(tester, 1);
+
+      expect(find.text('Exercise 2 / 2 · Main Block'), findsOneWidget);
+      expect(find.text('Set 1 of 3'), findsOneWidget);
+      expect(find.byKey(ValueKey('${p.bId}-0-reps')), findsOneWidget);
+      expect(find.byKey(ValueKey('${p.aId}-1-reps')), findsNothing);
+    });
+  });
+
+  group('S-4515 Previous crosses to the previous exercise', () {
+    testWidgets(
+      'Previous on the first set opens the previous exercise on its last set',
+      (tester) async {
+        final p = await _pairRoutine();
+        await _openDetail(tester, p.routine, exerciseName: p.b.name);
+
+        expect(find.text('Exercise 2 / 2 · Main Block'), findsOneWidget);
+        expect(find.text('Set 1 of 3'), findsOneWidget);
+        expect(
+          _arrowOnTap(tester, 'Previous Set'),
+          isNotNull,
+          reason: 'set 1 of the second exercise still has somewhere to go',
+        );
+
+        await tester.tap(find.byTooltip('Previous Set'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Exercise 1 / 2 · Main Block'), findsOneWidget);
+        expect(
+          find.text('Set 2 of 2'),
+          findsOneWidget,
+          reason: 'it lands on the LAST set of the previous exercise',
+        );
+        expect(find.byKey(ValueKey('${p.aId}-1-reps')), findsOneWidget);
+      },
+    );
+  });
+
+  group('S-4516 the arrows dim at the ends of the routine', () {
+    testWidgets('Previous is dimmed on the first set of the first exercise', (
+      tester,
+    ) async {
+      final p = await _pairRoutine();
+      await _openDetail(tester, p.routine, exerciseName: p.a.name);
+
+      expect(_arrowOnTap(tester, 'Previous Set'), isNull);
+      expect(
+        _arrowOnTap(tester, 'Next Set'),
+        isNotNull,
+        reason: 'the first exercise still has somewhere to go',
+      );
+
+      await tester.tap(find.byTooltip('Previous Set'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Exercise 1 / 2 · Main Block'), findsOneWidget);
+      expect(find.text('Set 1 of 2'), findsOneWidget);
+    });
+
+    testWidgets('Next is dimmed on the last set of the last exercise', (
+      tester,
+    ) async {
+      final p = await _pairRoutine();
+      await _openDetail(tester, p.routine, exerciseName: p.a.name);
+
+      // A set 1 -> A set 2 -> B set 1 -> B set 2 -> B set 3.
+      await _tapNext(tester, 4);
+
+      expect(find.text('Exercise 2 / 2 · Main Block'), findsOneWidget);
+      expect(find.text('Set 3 of 3'), findsOneWidget);
+      expect(_arrowOnTap(tester, 'Next Set'), isNull);
+      expect(_arrowOnTap(tester, 'Previous Set'), isNotNull);
+
+      await tester.tap(find.byTooltip('Next Set'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Exercise 2 / 2 · Main Block'), findsOneWidget);
+      expect(find.text('Set 3 of 3'), findsOneWidget);
+    });
+  });
+
+  group('S-4517 Next never adds a set', () {
+    testWidgets('walking past the end leaves every set count as it was', (
+      tester,
+    ) async {
+      final p = await _pairRoutine();
+      await _openDetail(tester, p.routine, exerciseName: p.a.name);
+
+      // Four taps reach the end; two more must not grow anything.
+      await _tapNext(tester, 6);
+
+      expect(find.text('Set 3 of 3'), findsOneWidget);
+      expect(
+        tester.widget<SetSegmentBar>(find.byType(SetSegmentBar)).count,
+        3,
+      );
+      expect(_storedSetCount(p.routine, p.bId), 3);
+      expect(_storedSetCount(p.routine, p.aId), 2);
+    });
+  });
+
+  group('S-4518 the walk follows the list order', () {
+    testWidgets('Next visits the exercises block by block', (tester) async {
+      final blocks = await _blocksRoutine();
+      await _openDetail(tester, blocks.routine, exerciseName: blocks.a.name);
+
+      expect(find.text('Exercise 1 / 3 · Block One'), findsOneWidget);
+      expect(find.text('Set 1 of 1'), findsOneWidget);
+
+      await _tapNext(tester, 1);
+      expect(find.text('Exercise 2 / 3 · Block Two'), findsOneWidget);
+      expect(find.text('Set 1 of 2'), findsOneWidget);
+
+      await _tapNext(tester, 2);
+      expect(find.text('Exercise 3 / 3 · Block Two'), findsOneWidget);
+      expect(find.text('Set 1 of 1'), findsOneWidget);
+      expect(_arrowOnTap(tester, 'Next Set'), isNull);
+    });
+
+    testWidgets('Previous walks back block by block, landing on last sets', (
+      tester,
+    ) async {
+      // A has 1 set, B has 2, C has 1: from C, the previous exercise (B) has
+      // MORE sets than the current one, so a Previous that used the wrong
+      // exercise or the wrong set count lands on the wrong header or set.
+      final blocks = await _blocksRoutine();
+      await _openDetail(tester, blocks.routine, exerciseName: blocks.c.name);
+
+      expect(find.text('Exercise 3 / 3 · Block Two'), findsOneWidget);
+      expect(find.text('Set 1 of 1'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Previous Set'));
+      await tester.pumpAndSettle();
+      expect(find.text('Exercise 2 / 3 · Block Two'), findsOneWidget);
+      expect(find.text('Set 2 of 2'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Previous Set'));
+      await tester.pumpAndSettle();
+      expect(find.text('Exercise 2 / 3 · Block Two'), findsOneWidget);
+      expect(find.text('Set 1 of 2'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Previous Set'));
+      await tester.pumpAndSettle();
+      expect(find.text('Exercise 1 / 3 · Block One'), findsOneWidget);
+      expect(find.text('Set 1 of 1'), findsOneWidget);
+      expect(_arrowOnTap(tester, 'Previous Set'), isNull);
+    });
+
+    testWidgets('after Block Two is moved to the top the walk follows it', (
+      tester,
+    ) async {
+      final blocks = await _blocksRoutine();
+      // Move Block Two (index 1) to the top. `(0, 1)` would be a no-op.
+      await blocks.routine.routineState.reorderSegments(1, 0);
+      await _openDetail(tester, blocks.routine, exerciseName: blocks.b.name);
+
+      expect(find.text('Exercise 1 / 3 · Block Two'), findsOneWidget);
+      expect(find.text('Set 1 of 2'), findsOneWidget);
+
+      await _tapNext(tester, 2);
+      expect(find.text('Exercise 2 / 3 · Block Two'), findsOneWidget);
+
+      await _tapNext(tester, 1);
+      expect(find.text('Exercise 3 / 3 · Block One'), findsOneWidget);
     });
   });
 

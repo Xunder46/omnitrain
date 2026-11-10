@@ -1398,38 +1398,68 @@ extension on _RoutineSetupScreenState {
   }
 
   Widget _buildSetControls(int totalEntries, TemplateEffort effort) {
+    // The arrows walk every set of every exercise, in the order the list
+    // shows (plan 138): they dim only at the very first and very last set.
+    final exerciseCount = widget.routineState.currentEfforts.length;
+    final canGoBack = _currentSet > 1 || _currentExerciseIndex > 0;
+    final canGoForward =
+        _currentSet < totalEntries || _currentExerciseIndex < exerciseCount - 1;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         _buildArrowButton(
           icon: Icons.arrow_back,
           label: 'Previous Set',
-          isEnabled: _currentSet > 1,
-          onPressed: _currentSet > 1 ? _previousSet : null,
+          isEnabled: canGoBack,
+          onPressed: canGoBack ? _previousSet : null,
         ),
         _buildArrowButton(
           icon: Icons.arrow_forward,
           label: 'Next Set',
-          isEnabled: _currentSet < totalEntries,
-          onPressed: _currentSet < totalEntries ? _nextSet : null,
+          isEnabled: canGoForward,
+          onPressed: canGoForward ? _nextSet : null,
         ),
       ],
     );
   }
 
+  /// Previous set; on the first set it opens the previous exercise on its
+  /// last set. Does nothing on the first set of the first exercise.
   void _previousSet() {
-    if (_currentSet <= 1) return;
-    _updateUi(() => _currentSet--);
+    if (_currentSet > 1) {
+      _updateUi(() => _currentSet--);
+      return;
+    }
+    final efforts = widget.routineState.currentEfforts;
+    if (_currentExerciseIndex <= 0 || _currentExerciseIndex > efforts.length) {
+      return;
+    }
+    final previous = efforts[_currentExerciseIndex - 1];
+    final previousSetCount = _getSetCount(
+      previous,
+      widget.routineState.getEffortTargets(previous.id),
+    );
+    _updateUi(() {
+      _currentExerciseIndex--;
+      _currentSet = previousSetCount;
+    });
   }
 
+  /// Next set; on the last set it opens the next exercise on its first set.
+  /// Never adds a set. Does nothing on the last set of the last exercise.
   void _nextSet() {
     final efforts = widget.routineState.currentEfforts;
     if (efforts.isEmpty) return;
     final effort = efforts[_currentExerciseIndex];
     final targets = widget.routineState.getEffortTargets(effort.id);
     final setCount = _getSetCount(effort, targets);
-    if (_currentSet >= setCount) return;
-    _updateUi(() => _currentSet++);
+    if (_currentSet < setCount) {
+      _updateUi(() => _currentSet++);
+      return;
+    }
+    if (_currentExerciseIndex < efforts.length - 1) {
+      _openDetail(_currentExerciseIndex + 1);
+    }
   }
 
   void _jumpToSet(int setNumber) {
