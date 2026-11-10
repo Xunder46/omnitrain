@@ -269,12 +269,14 @@ remains out is listed below.
   (`WatchRestPingTests.testS241AnIntervalTapsAtItsMultiplesAndNowhereElse`;
   `test/watch_rest_ping_test.dart`). Two cuts the other way (plan 98): the
   phone ends a rest it holds open when any work timer starts on the phone or
-  is adopted from the wrist, and tells the wrist with a `{rest: null}` timer
+  is adopted from the wrist, and also stops the rest the wrist itself is running (plan 136), telling the wrist with a `{rest: null}` timer
   frame (`test/watch_timer_push_test.dart`, group `S-9924 a rest open on one
-  exercise is cleared when a timer starts on another`); and a phone timer
+  exercise is cleared when a timer starts on another`; the wrist's own rest,
+  `test/watch_rest_cleared_on_phone_timer_test.dart`, group
+  `S-13601 a phone work timer stops the wrist's own running rest`); and a phone timer
   start the radio refused is sent right after the wrist's next Sync request,
   or when the watch is reachable again, although the answer itself projects
-  no timers (groups `S-9925` and `S-9929`).
+  no timers (groups `S-9925` and `S-9929`). One residual (plan 136, review): the wrist's rest stop is re-sent from the phone's copy of the wrist's rest, so if the wrist ended that rest and began a newer one while the phone could not hear it, and the link comes back before any wrist frame updates the phone's copy, the newer rest is stopped early (its window still travels as an observation).
 - **The wrist labels load in kilograms.** The shell hands the surfaces no unit
   preferences, so the rows read kg whatever the phone's saved unit is, while the
   payload is always kilograms on the wire, which keeps the phone's history and

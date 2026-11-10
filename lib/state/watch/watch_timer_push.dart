@@ -387,6 +387,14 @@ class WatchTimerPush {
         clears[kind] = null;
         reconciled[kind] = held;
       }
+      // Plan 136 D-13601: the phone runs a work timer that started after a rest
+      // the wrist runs (or has paused) on its own. The phone holds no rest row
+      // for it, so nothing above names it: the wrist's rest ends with it.
+      final superseded = _wristRestSupersededBy(session.id, wanted);
+      if (superseded != null && !clears.containsKey('rest')) {
+        clears['rest'] = null;
+        reconciled['rest'] = superseded;
+      }
       // 54 D-1: the wrist's own frame triggers the debt, not the phone's news.
       // The debt includes a start the radio refused (plan 98 D-2): the wrist
       // never held it, so sending it cannot restart a timer the wrist ended.
@@ -662,6 +670,42 @@ class WatchTimerPush {
     }
     if (!finished || inProgress) return null;
     return (slotId: slot, startedAt: held['startedAt']);
+  }
+
+  /// The wrist's own open rest, as the mirror holds it, when the phone runs a
+  /// work timer that started after it and holds no rest of its own (plan 136
+  /// D-13601); else null. A rest this push already cleared (`_stale`) and a
+  /// rest that started at or after the phone's timer are not returned
+  /// (D-13602, D-13603).
+  _MirrorTimer? _wristRestSupersededBy(
+    String sessionId,
+    Map<String, Map<String, Object?>> wanted,
+  ) {
+    if (wanted.containsKey('rest')) return null;
+    if (_mirror.sessionId != sessionId) return null;
+    final timers = _mirror.state['timers'];
+    if (timers is! Map) return null;
+    final held = timers['rest'];
+    if (held is! Map || held['state'] == 'stopped') return null;
+    final stale = _stale['rest'];
+    if (stale != null &&
+        _restStartWithinTolerance(stale.startedAt, held['startedAt'])) {
+      return null;
+    }
+    final restStart = _instant(held['startedAt']);
+    if (restStart == null) return null;
+    for (final kind in _workKinds) {
+      final timer = wanted[kind];
+      if (timer == null) continue;
+      final workStart = _instant(timer['startedAt']);
+      if (workStart != null && workStart.isAfter(restStart)) {
+        return (
+          slotId: held['sessionExerciseId'],
+          startedAt: held['startedAt'],
+        );
+      }
+    }
+    return null;
   }
 
   /// True while the mirror holds exactly [timer] for [kind]: the same slot and
