@@ -809,6 +809,14 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     the watch (plan 136), start a timer on the phone: the watch's rest ends
     within a second or two.
 
+37. **One workout across a relaunch, and a phone finish reaches the watch —
+    (owner).** (Plan 140) Start a session on the watch, then force-quit the
+    watch app mid-session and reopen it after a minute: Apple Fitness shows ONE
+    workout for the session at the end (not two), and the calories on the
+    phone never drop. (Plan 141) Start a session on the watch, leave it on the
+    rest screen, and finish it on the phone: within about ten seconds the
+    watch goes back to Start by itself.
+
 ### The wrist's own logging (PR 2b)
 
 The wrist-logging walkthrough, with every later watch plan's steps, lives in

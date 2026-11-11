@@ -561,6 +561,10 @@ Plan 135's `energy_live` frames land here too: the wiring routes them to
 newest valid frame by `at` per session and exposes it as
 `WatchSyncGraph.liveEnergy`; `main.dart` hands `liveEnergy.latest` to
 `WorkoutState(wristEnergy:)` for the open session screen's Calories chip.
+Such a frame also re-offers an end the phone still owes that session (plan 141,
+`WatchIncomingRouter.onLiveEnergyFrame`; `test/watch_session_end_owed_test.dart`,
+`S-14101`): the wrist sends one every few seconds while its session runs, so a
+wrist that missed the phone's finish hears it again at its next frame.
 Verified by `test/watch_live_energy_test.dart` (group
 `S-13503/S-13504/S-13505 the holder` ·
 `S-13503 a valid frame sets latest`; group

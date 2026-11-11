@@ -223,18 +223,7 @@ class WatchIncomingRouter {
       if (type != 'session_lifecycle' &&
           type != 'session_snapshot' &&
           type != 'receipt') {
-        // A session the mirror holds needs no row read: the ledger already
-        // knows how the phone ended it, and a running one has no ended row.
-        final rowEnded = _isSessionEnded == null ||
-                sessionId == _mirror.sessionId
-            ? false
-            : (await _isSessionEnded(sessionId));
-        if (rowEnded) _mirror.adoptEndedFromRow(sessionId);
-        final owed = _mirror.takeOwedEnd(sessionId);
-        if (owed != null) {
-          await _mirror.reportLifecycleFor(sessionId, owed);
-          _mirror.noteOfferSent(sessionId);
-        }
+        await _reofferOwedEnd(sessionId);
       }
     }
 
@@ -245,6 +234,33 @@ class WatchIncomingRouter {
       answeredReset: answeredReset,
       water: water?.outcome ?? WatchWaterLogOutcome.ignored,
     );
+  }
+
+  /// Re-offers the end [sessionId] is still owed (plan 128 D-2a, D-3): once per
+  /// window from the ledger, or once from the stored row when a restart emptied
+  /// the ledger. A session the mirror holds needs no row read.
+  Future<void> _reofferOwedEnd(String sessionId) async {
+    // A session the mirror holds needs no row read: the ledger already knows
+    // how the phone ended it, and a running one has no ended row.
+    final rowEnded = _isSessionEnded == null || sessionId == _mirror.sessionId
+        ? false
+        : (await _isSessionEnded(sessionId));
+    if (rowEnded) _mirror.adoptEndedFromRow(sessionId);
+    final owed = _mirror.takeOwedEnd(sessionId);
+    if (owed != null) {
+      await _mirror.reportLifecycleFor(sessionId, owed);
+      _mirror.noteOfferSent(sessionId);
+    }
+  }
+
+  /// A wrist `energy_live` frame (plan 141): it names the session the wrist is
+  /// still running, so it re-offers an end that session is owed, exactly as any
+  /// other wrist frame does. Nothing else about the frame is handled here.
+  Future<void> onLiveEnergyFrame(Map<String, Object?> envelope) async {
+    if (envelope['origin'] != 'watch') return;
+    final sessionId = envelope['sessionId'];
+    if (sessionId is! String || sessionId.isEmpty) return;
+    await _reofferOwedEnd(sessionId);
   }
 
   static Object? _fieldOf(Object? payload, String field) =>

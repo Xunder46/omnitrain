@@ -64,6 +64,11 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// True while the workout held is one recovered from a previous process (D-9).
     private var recoveredSession = false
 
+    /// A recovered workout this store held because it was not live when
+    /// `adoptInProgress` reached it (plan 140): its name is answered once, by
+    /// `inProgressActivityTypes`, without asking Health a second time.
+    private var pendingRecoveryName: String?
+
     /// Whether the last `begin` failed at the platform (plan 82 D-1). A guard
     /// that returns early because Health is unavailable or access is off is not
     /// a failure, so it is set only in the `catch`.
@@ -199,6 +204,7 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         session = nil
         builder = nil
         recoveredSession = false
+        pendingRecoveryName = nil
 
         // The route closes before the workout does (plan 68 D-6): no point is handed to Health after this.
         let route = routeRecorder.close()
@@ -244,6 +250,7 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     }
 
     func inProgressActivityTypes() async -> [String] {
+        if let name = pendingRecoveryName { pendingRecoveryName = nil; return [name] }
         guard HKHealthStore.isHealthDataAvailable() else { return [] }
 
         do {
@@ -260,6 +267,40 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
             return [Self.name(for: recovered.workoutConfiguration.activityType)]
         } catch {
             return []
+        }
+    }
+
+    /// Takes over the workout a previous process left running so the session
+    /// continues it (plan 140): the builder keeps its collected totals, the feed
+    /// is pointed at it again, and nothing is saved or restarted. A recovered
+    /// workout that is not live (stopped, ended, not started) is held for the
+    /// ordinary recovery to close, and nil is answered.
+    func adoptInProgress() async -> String? {
+        guard HKHealthStore.isHealthDataAvailable() else { return nil }
+
+        do {
+            guard let recovered = try await healthStore.recoverActiveWorkoutSession() else {
+                return nil
+            }
+            let collection = recovered.associatedWorkoutBuilder()
+            let name = Self.name(for: recovered.workoutConfiguration.activityType)
+
+            session = recovered
+            builder = collection
+            recoveredSession = true
+
+            guard recovered.state == .running || recovered.state == .paused else {
+                pendingRecoveryName = name
+                return nil
+            }
+
+            collection.delegate = sensorFeed
+            collection.dataSource?.enableCollection(for: HKQuantityType(.stepCount), predicate: nil)
+            collection.dataSource?.enableCollection(for: HKQuantityType(.activeEnergyBurned), predicate: nil)
+            sensorFeed.refreshHeartRate(from: collection)
+            return name
+        } catch {
+            return nil
         }
     }
 

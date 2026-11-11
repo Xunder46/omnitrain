@@ -82,6 +82,25 @@ Map<String, Object?> _timerFrame(String messageId, {String sessionId = _sid}) =>
       'payload': <String, Object?>{'timers': <String, Object?>{}},
     };
 
+/// One `energy_live` frame as the wrist's live holder sends it (plan 141).
+Map<String, Object?> _energyFrame(
+  String id, {
+  String origin = 'watch',
+  String sessionId = _sid,
+}) =>
+    {
+      'protocolVersion': SyncProtocolValidator.protocolVersion,
+      'messageId': id,
+      'sessionId': sessionId,
+      'type': 'energy_live',
+      'origin': origin,
+      'sentAt': _iso(),
+      'payload': <String, Object?>{
+        'activeEnergyKcal': 12.5,
+        'at': _iso(),
+      },
+    };
+
 /// One `set` observation as the wrist's logging surface hands it to the
 /// engine, so the frame leaves the way a wrist `observations_up` leaves.
 Map<String, Object?> _setEvent({required String entryId}) => {
@@ -869,6 +888,79 @@ void main() {
         lifecyclesSent(),
         hasLength(3),
         reason: 'counting after the send still caps at three',
+      );
+    },
+  );
+
+  test(
+    'S-14101 the wrist sends energy_live after the phone ended: answered completed (D-2a, plan 141)',
+    () async {
+      await wristStarts();
+      await phoneEndsWhileAway();
+      radio.sent.clear();
+      await sendWristFrame(_energyFrame('m-e1'));
+      expectOneEndOffered(_sid, WatchLifecycleState.completed);
+      await applyPhoneAnswersTo(engine);
+      expect(engine.session?.status, WatchSessionStatus.completed);
+    },
+  );
+
+  test(
+    'S-14102 two energy frames in a row answer once, not a flood (D-1 iv, plan 141)',
+    () async {
+      await wristStarts();
+      await phoneEndsWhileAway();
+      radio.sent.clear();
+      await sendWristFrame(_energyFrame('m-e2'));
+      await sendWristFrame(_energyFrame('m-e3'));
+      expectOneEndOffered(_sid, WatchLifecycleState.completed);
+    },
+  );
+
+  test(
+    'S-14103 an energy frame from the phone offers nothing (plan 141)',
+    () async {
+      await wristStarts();
+      await phoneEndsWhileAway();
+      radio.sent.clear();
+      await sendWristFrame(_energyFrame('m-e4', origin: 'phone'));
+      expect(
+        lifecyclesSent(),
+        isEmpty,
+        reason: 'the phone does not re-offer its own end to itself',
+      );
+    },
+  );
+
+  test(
+    'S-14104 an energy frame naming another session offers nothing for the ended one (D-1 ii, plan 141)',
+    () async {
+      await wristStarts();
+      await phoneEndsWhileAway();
+      radio.sent.clear();
+      await sendWristFrame(_energyFrame('m-e5', sessionId: 's-other'));
+      expect(
+        [
+          for (final f in lifecyclesSent())
+            if (f['sessionId'] == _sid) f,
+        ],
+        isEmpty,
+        reason: 'a frame naming s-other never offers the end of $_sid',
+      );
+    },
+  );
+
+  test(
+    'S-14105 the energy frame still reaches the live holder (plan 141)',
+    () async {
+      await wristStarts();
+      await phoneEndsWhileAway();
+      radio.sent.clear();
+      await sendWristFrame(_energyFrame('m-e1'));
+      expect(
+        graph.liveEnergy.latest.value?.kcal,
+        12.5,
+        reason: 'the re-offer must not take the frame away from the holder',
       );
     },
   );

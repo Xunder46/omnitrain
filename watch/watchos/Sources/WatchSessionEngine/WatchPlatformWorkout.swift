@@ -272,6 +272,12 @@ public protocol WatchPlatformWorkoutStore {
     /// first. Anything here belongs to a process that is gone.
     func inProgressActivityTypes() async -> [String]
 
+    /// A workout a previous process left RUNNING, taken over so the session can
+    /// continue it (plan 140). Returns its activity type's `watchOs` name, or nil
+    /// when there is nothing live to continue. A store that cannot adopt answers
+    /// nil (the default), and the launch recovery ends the stranded workout as before.
+    func adoptInProgress() async -> String?
+
     /// Whether the last `begin` ended in a failure the store could not answer
     /// (plan 82 D-1). Declared here so a read through the existential dispatches
     /// to the conformer; the extension below gives every store that cannot fail
@@ -309,6 +315,10 @@ extension WatchPlatformWorkoutStore {
     public func end(saving: Bool) async {
         await end()
     }
+
+    /// A store that cannot adopt answers nil (plan 140): the launch recovery
+    /// then ends the stranded workout exactly as it did before.
+    public func adoptInProgress() async -> String? { nil }
 }
 
 /// The watch's platform workout, over whatever store the platform provides.
@@ -384,6 +394,15 @@ public final class WatchPlatformWorkout {
         running = nil
         return ended
     }
+
+    /// Keeps the workout a killed process left running instead of ending it
+    /// (plan 140): true when the store took one over, and `running` then names it.
+    public func continueInProgress() async -> Bool {
+        guard let name = await store.adoptInProgress() else { return false }
+        running = WatchActivityTypes.byModality.values.first { $0.watchOs == name }
+            ?? WatchActivityTypes.generic
+        return true
+    }
 }
 
 /// What the platform workout should be doing for a session.
@@ -458,8 +477,9 @@ public final class WatchWorkoutCoordinator {
     /// Closes whatever a previous process left open, before a session can open
     /// another. Called at launch, before anything starts, and by the system's
     /// workout-recovery relaunch. `storedSession` is the session the killed
-    /// process persisted: still active keeps the workout up to now (plan 89
-    /// OQ-1), anything else discards it (D-3).
+    /// process persisted: still active continues the workout when the store can
+    /// (plan 140), otherwise keeps it up to now (plan 89 OQ-1), anything else
+    /// discards it (D-3).
     public func recoverInProgress(
         storedSession: @escaping () async -> WatchSessionRecord?
     ) async {
@@ -495,7 +515,14 @@ public final class WatchWorkoutCoordinator {
     }
 
     private func recover(_ storedSession: () async -> WatchSessionRecord?) async {
-        let stillActive = await storedSession()?.status == WatchSessionStatus.active
+        let stored = await storedSession()
+        let stillActive = stored?.status == WatchSessionStatus.active
+        // Plan 140: a session that is still active continues the workout the
+        // killed process left running, one Fitness workout for one session.
+        if stillActive, let stored, await platform.continueInProgress() {
+            openedForSessionId = stored.sessionId
+            return
+        }
         await platform.recoverInProgress(saving: stillActive)
         openedForSessionId = nil
     }

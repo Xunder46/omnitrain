@@ -1576,18 +1576,28 @@ public final class WatchSessionEngine: ObservableObject {
 
     /// Tells the phone the wrist's running active-energy total (plan 135 D-13510,
     /// D-13511): live only, stored nowhere, sent through the same `emit` path as a
-    /// timer. A frame goes out the first time for a session, when the value fell
+    /// timer. The total is the restart-aware sum of the session's stored counts —
+    /// the same chain the session end sums — so a recovered workout's counter
+    /// falling to zero never pulls the phone's chip back down (S-13511 D). A frame
+    /// goes out the first time for a session, when the value fell
     /// (a restarted counter), or when it rose by at least half a kilocalorie and
     /// at least five seconds have passed since the last one; anything else, and
     /// any value that is not a finite number of at least zero, sends nothing.
     public func announceEnergy(kilocalories: Double, at: Date) {
         guard let row = current, row.status == WatchSessionStatus.active else { return }
         guard kilocalories.isFinite, kilocalories >= 0 else { return }
+        // The recorder stores the raw reading before it announces, so the stored
+        // samples already include `kilocalories`; a restarted counter (a recovered
+        // workout) is summed the way the session end sums it. With no stored
+        // sample inside the window (a caller that announces without recording) the
+        // raw value is the total.
+        let samples = storedSensorSamples.filter { $0.sessionId == row.sessionId }
+        let total = WatchSensorSummaries.activeEnergy(samples, from: row.startedAt, through: at) ?? kilocalories
         if energyAnnouncedSession == row.sessionId,
            let lastKcal = energyAnnouncedKcal,
            let lastAt = energyAnnouncedAt,
-           kilocalories >= lastKcal {
-            guard kilocalories - lastKcal >= 0.5, at.timeIntervalSince(lastAt) >= 5 else { return }
+           total >= lastKcal {
+            guard total - lastKcal >= 0.5, at.timeIntervalSince(lastAt) >= 5 else { return }
         }
         let envelope: [String: Any] = [
             "protocolVersion": SyncProtocolValidator.protocolVersion,
@@ -1596,11 +1606,11 @@ public final class WatchSessionEngine: ObservableObject {
             "type": "energy_live",
             "origin": "watch",
             "sentAt": utcIso(at),
-            "payload": ["activeEnergyKcal": kilocalories, "at": utcIso(at)],
+            "payload": ["activeEnergyKcal": total, "at": utcIso(at)],
         ]
         if let validator, !validator.validateEnvelope(envelope).isEmpty { return }
         energyAnnouncedSession = row.sessionId
-        energyAnnouncedKcal = kilocalories
+        energyAnnouncedKcal = total
         energyAnnouncedAt = at
         emit(envelope)
     }

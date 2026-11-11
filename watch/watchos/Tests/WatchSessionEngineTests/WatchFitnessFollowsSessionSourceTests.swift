@@ -152,4 +152,45 @@ final class WatchFitnessFollowsSessionSourceTests: XCTestCase {
             "S-89-3 no second, divergent recovery call in the host"
         )
     }
+
+    // MARK: - Plan 140: a workout left running is continued, not replaced
+
+    /// The package source the coordinator's half of plan 140 lives in, read the
+    /// same way the app sources are.
+    private func packageSource(_ name: String) throws -> String {
+        let url = Fixtures.repositoryRoot
+            .appendingPathComponent("watch/watchos/Sources/WatchSessionEngine/\(name)")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        return strippingCommentLines(text)
+    }
+
+    func testS140TheStoreTakesOverAWorkoutAProcessLeftRunning() throws {
+        let store = try appSource("HealthKitWorkoutStore.swift")
+
+        XCTAssertTrue(
+            store.contains("func adoptInProgress() async -> String? {"),
+            "S-140 the store answers the adoption seam"
+        )
+        XCTAssertTrue(
+            store.contains("recovered.state == .running || recovered.state == .paused"),
+            "S-140 a workout that is not live is held, not continued"
+        )
+        XCTAssertTrue(
+            store.contains("collection.delegate = sensorFeed"),
+            "S-140 the feed is pointed at the adopted builder again"
+        )
+        XCTAssertTrue(
+            store.contains("sensorFeed.refreshHeartRate(from: collection)"),
+            "S-140 the adopted workout's beat is read now"
+        )
+    }
+
+    func testS140TheCoordinatorContinuesAnAdoptedWorkout() throws {
+        let platform = try packageSource("WatchPlatformWorkout.swift")
+
+        XCTAssertTrue(
+            platform.contains("if stillActive, let stored, await platform.continueInProgress() {"),
+            "S-140 a still-active session continues the workout when the store adopts"
+        )
+    }
 }

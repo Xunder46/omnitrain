@@ -378,6 +378,7 @@ Future<WatchSyncGraph?> createWatchSync({
   resolved.onIncoming((frame) async {
     if (frame['type'] == 'energy_live') {
       liveEnergy.receive(frame);
+      await router.onLiveEnergyFrame(frame);
       return;
     }
     final owedBefore = await push.hasUnsentChange();

@@ -326,9 +326,10 @@ the first reading exists: no sample, or less than half a kilocalorie, shows
 nothing. It is re-read on the screen's own tick — every second, once a minute
 while dimmed, inside the `TimelineView` the rest already repaints with. VoiceOver
 reads the line as "Calories burned" with the value "N kilocalories burned". After
-a recovered workout the Health counter restarts, so the on-screen line restarts
-from the new counter, while the total sent on the session end keeps the whole
-chain. Verified by watchOS `WatchRestEnergyTests.swift`
+a workout the watch continues after a relaunch (plan 140) the Health counter
+carries on; when Health cannot continue it the counter restarts, so the on-screen
+line restarts from the new counter, while the total sent on the session end and
+the live total on the phone's chip keep the whole chain. Verified by watchOS `WatchRestEnergyTests.swift`
 (`testS13480TheNewestStoredEnergyCountIsTheReading`,
 `testS13481TheEnergyLabelRoundsTheHalfKilocalorieUpAndHidesBelowIt`,
 `testS13483TheSpokenEnergyNeverSpeaksANegative`,

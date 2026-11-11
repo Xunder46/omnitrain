@@ -105,6 +105,51 @@ final class WatchEnergyLiveTests: XCTestCase {
         )
     }
 
+    // MARK: - S-13511 D the live total survives a restarted counter
+
+    func testS13511DAFellCounterIsSummedAcrossARestart() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-bench")])
+
+        // The wrist's Health workout restarts mid-session (a recovered workout
+        // runs its cumulative counter from zero again): the raw counts fall
+        // from 22 to 1, and the session total must not.
+        let steps: [(value: Double, secondsAfterT: Double)] = [
+            (10, 0), (22, 10), (1, 20), (4, 30),
+        ]
+        for step in steps {
+            let at = t.addingTimeInterval(step.secondsAfterT)
+            _ = await engine.appendSensorSample(
+                kind: WatchSensorKind.activeEnergy,
+                value: step.value,
+                recordedAt: at
+            )
+            engine.announceEnergy(kilocalories: step.value, at: at)
+        }
+
+        XCTAssertEqual(
+            energyLiveFrames(harness).map(kcal),
+            [10.0, 22.0, 23.0, 26.0],
+            "S-13511 D the restart adds the 22 already reached: 22 + 1 = 23, "
+                + "then 22 + 4 = 26, so the live chip never falls"
+        )
+    }
+
+    func testS13511EAFrameBeforeAnySampleUsesTheRawValue() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-bench")])
+
+        engine.announceEnergy(kilocalories: 10, at: t)
+
+        XCTAssertEqual(
+            energyLiveFrames(harness).map(kcal),
+            [10.0],
+            "S-13511 E no stored sample inside the window, the raw value is the total"
+        )
+    }
+
     // MARK: - S-13512 no live session, nothing sent
 
     func testS13512WithNoSessionEnergyIsAnnouncedIntoNothing() async throws {
