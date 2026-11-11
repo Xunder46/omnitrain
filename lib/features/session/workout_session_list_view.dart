@@ -161,7 +161,17 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
   // ── Exercise tile ─────────────────────────────────────────────────────────
 
+  /// The tile of one exercise, registered so back from its detail can bring it
+  /// back into view (plan 139). Shared by the block cards and the standalone
+  /// rows of both the standard and the rolling list.
   Widget _buildExerciseTile(Map<String, dynamic> exercise, ThemeData theme) {
+    return _rowFocus.track(
+      exercise['id'] as String,
+      _buildExerciseTileCard(exercise, theme),
+    );
+  }
+
+  Widget _buildExerciseTileCard(Map<String, dynamic> exercise, ThemeData theme) {
     final subtitle = _buildExerciseSubtitle(exercise);
     final effortId = exercise['id'] as String;
     final idx = _exercises.indexWhere((e) => e['id'] == effortId);
@@ -419,6 +429,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                         )
                       : ListView(
                           controller: _listScrollController,
+                          cacheExtent: _rowFocus.cacheExtent,
                           padding: EdgeInsets.fromLTRB(
                             0,
                             0,
@@ -587,6 +598,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 Expanded(
                   child: ListView(
                     controller: _listScrollController,
+                    cacheExtent: _rowFocus.cacheExtent,
                     padding: EdgeInsets.fromLTRB(
                       0,
                       8,
@@ -1104,10 +1116,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               // Detail view → back to list view
               // List view   → exit (with unsaved-changes check in edit mode)
               if (!_showListView) {
-                _updateUi(() {
-                  _showListView = true;
-                });
-                _scrollListToBottom();
+                _returnToList();
               } else if (widget.editMode) {
                 _handleEditModeBack();
               } else {

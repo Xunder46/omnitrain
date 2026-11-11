@@ -589,7 +589,11 @@ logged set`, `S-4220: − on an all-logged effort drops the last set`,
 - Single exercise focus
 - Full metric editors
 - Set-by-set tracking
-- Back button returns to list view
+- Back returns to the list view with the exercise you left in view
+  (about a third of the way down the list; after walking to another exercise
+  with the arrows, the exercise you are on), in the standard, rolling and
+  session editor lists. Verified by `test/session_back_to_exercise_test.dart`
+  (group `S-13908 header back returns to the exercise left`).
 
 **State Management**:
 ```dart

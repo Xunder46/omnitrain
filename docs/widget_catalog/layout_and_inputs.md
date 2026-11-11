@@ -179,6 +179,22 @@ rounded square with a tooltip`).
 
 ---
 
+### `ListRowFocus`
+
+**File**: `lib/widgets/layout/list_row_focus.dart`
+
+Brings one row of a long list back into view after a detail screen (plan 139). Used
+by the routine editor (`lib/features/routine/routine_setup_screen.dart`) and the live
+session screen (`lib/features/session/workout_session_list_view.dart`; standard, rolling
+and session-editor lists).
+
+- `track(id, child)` registers a row (a keyed `Builder`, no `GlobalKey`, because a duplicated key clashes inside a `ReorderableListView`).
+- `request(id)` asks for a row.
+- `cacheExtent` is `100000` while a request is pending and `null` otherwise (pass it to the list). Why the raise: a lazy list builds only the rows near the viewport, so a far row has nothing to scroll to; the raise lasts one frame, and is finite on purpose (`double.infinity` trips a Flutter assertion).
+- `reveal()` scrolls the row to 0.3 of the free viewport space with no animation and returns false when the row is unknown or gone; the screens fall back to their existing bottom jump.
+
+Verified by `test/list_row_focus_test.dart` (groups `S-13901 reveal lands a far row`, `S-13902 reveal with nothing to do`).
+
 ## Feedback & Empty States
 
 ### `OmniMessage`

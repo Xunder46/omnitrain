@@ -19,6 +19,7 @@ import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../widgets/layout/list_row_focus.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
 import 'my_routines_screen.dart' show showDeleteRoutineDialog;
 import '../../widgets/dialogs/confirmation_dialog.dart'
@@ -73,6 +74,9 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   // Scroll controller for the exercise list view. Scrolled to the bottom
   // when returning from exercise detail so the user lands near 'Add Exercise'.
   final ScrollController _listScrollController = ScrollController();
+
+  // Brings the row of the exercise just left back into view (plan 139).
+  final ListRowFocus _rowFocus = ListRowFocus();
 
   static const List<String> _segmentTypes = [
     'warmup',
@@ -157,8 +161,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
             // the list view is already showing do we route through the
             // unsaved-changes guard.
             if (!_showListView) {
-              setState(() => _showListView = true);
-              _scrollListToBottom();
+              _returnToList();
               return;
             }
             _attemptExit();
@@ -210,6 +213,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                 Expanded(
                   child: ListView(
                     controller: _listScrollController,
+                    cacheExtent: _rowFocus.cacheExtent,
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
                     children: [
                       for (final entry in segments.asMap().entries)
@@ -499,17 +503,23 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                   );
                   final setCount = _getSetCount(effort, targets);
 
-                  return ExerciseCard(
-                    key: ValueKey(effort.id),
-                    index: effortIndex,
-                    effort: effort,
-                    exercise: exercise,
-                    restLabel: restLabel,
-                    setCount: setCount,
-                    onDelete: () => _removeExercise(effort.id),
-                    onChangeTracking: () =>
-                        _changeTracking(context, effort, exercise),
-                    onTap: () => _openDetailForEffort(effort.id),
+                  return KeyedSubtree(
+                    key: ValueKey('row-${effort.id}'),
+                    child: _rowFocus.track(
+                      effort.id,
+                      ExerciseCard(
+                        key: ValueKey(effort.id),
+                        index: effortIndex,
+                        effort: effort,
+                        exercise: exercise,
+                        restLabel: restLabel,
+                        setCount: setCount,
+                        onDelete: () => _removeExercise(effort.id),
+                        onChangeTracking: () =>
+                            _changeTracking(context, effort, exercise),
+                        onTap: () => _openDetailForEffort(effort.id),
+                      ),
+                    ),
                   );
                 },
               ),
@@ -633,10 +643,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
         subtitle:
             'Exercise ${_currentExerciseIndex + 1} / ${efforts.length}'
             ' · ${segment?.name ?? 'Block'}',
-        onBack: () {
-          setState(() => _showListView = true);
-          _scrollListToBottom();
-        },
+        onBack: _returnToList,
       ),
       body: SafeArea(
         child: Stack(
@@ -1034,6 +1041,27 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   void _updateUi(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
+  }
+
+  /// Back from an exercise: shows the list with the exercise just left in
+  /// view (plan 139). Falls back to the jump to the bottom when that row
+  /// cannot be found.
+  void _returnToList() {
+    final efforts = widget.routineState.currentEfforts;
+    final index = _currentExerciseIndex;
+    final focusedId = index >= 0 && index < efforts.length
+        ? efforts[index].id
+        : null;
+    setState(() {
+      _showListView = true;
+      if (focusedId != null) _rowFocus.request(focusedId);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_rowFocus.reveal()) _scrollListToBottom();
+      // Rebuild so the list drops the raised cache extent.
+      setState(() {});
+    });
   }
 
   /// Scrolls the exercise list to the bottom after the current frame renders.

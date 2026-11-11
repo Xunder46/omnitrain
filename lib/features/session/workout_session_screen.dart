@@ -39,6 +39,7 @@ import 'rest_timer_strip.dart';
 import 'session_summary_screen.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../widgets/feedback/omni_message.dart';
+import '../../widgets/layout/list_row_focus.dart';
 
 part 'workout_session_timer_mixin.dart';
 part 'workout_session_list_view.dart';
@@ -125,6 +126,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // Scroll controller for the exercise list view. Scrolled to the bottom
   // when returning from exercise detail so the user lands near 'Add Exercise'.
   final ScrollController _listScrollController = ScrollController();
+
+  // Brings the row of the exercise just left back into view (plan 139).
+  final ListRowFocus _rowFocus = ListRowFocus();
 
   // Track which set keys have been logged this session (effortId-entryIndex).
   // Prevents the rest timer from restarting when navigating back/forward
@@ -1903,6 +1907,26 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     super.dispose();
   }
 
+  /// Back from an exercise: shows the list with the exercise just left in
+  /// view (plan 139). Falls back to the jump to the bottom when that row
+  /// cannot be found.
+  void _returnToList() {
+    final index = _currentExerciseIndex;
+    final focusedId = index >= 0 && index < _exercises.length
+        ? _exercises[index]['id'] as String?
+        : null;
+    _updateUi(() {
+      _showListView = true;
+      if (focusedId != null) _rowFocus.request(focusedId);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_rowFocus.reveal()) _scrollListToBottom();
+      // Rebuild so the list drops the raised cache extent.
+      _updateUi(() {});
+    });
+  }
+
   /// Scrolls the exercise list to the bottom after the current frame renders.
   /// Called when navigating back from a detail view to the list view so the
   /// user lands near the 'Add Exercise' button at the bottom.
@@ -1961,8 +1985,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       onPopInvokedWithResult: (bool didPop, dynamic result) {
         if (didPop) return;
         if (!_showListView) {
-          setState(() => _showListView = true);
-          _scrollListToBottom();
+          _returnToList();
         } else {
           _handleEditModeBack();
         }

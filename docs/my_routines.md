@@ -403,6 +403,17 @@ group `S-4512 set arrows (A8)` · `Previous and Next Set walk the sets and
 stop at the ends` covers the one-exercise case, where its ends are the
 routine's ends).
 
+**Back to the list**: Back from an exercise returns to that exercise in the list
+(the header arrow and the system back gesture), about a third of the way down;
+after walking with the set arrows it is the exercise you are on; the last
+exercise lands as low as the list can scroll, and the list is not rebuilt with a
+larger cache afterwards. Verified by `test/routine_back_to_exercise_test.dart`
+(`S-13903 header back returns to the exercise left` · `an exercise in the middle of a long routine is in view`;
+`S-13904 system back returns to the exercise left` · `the PopScope path lands the same way`;
+`S-13905 back follows the arrows` · `after Next x3 back lands on the exercise reached`;
+`S-13906 the last exercise` · `lands as low as the list can scroll`; `S-13907 steady state` ·
+`the list is back to its default cache extent`).
+
 #### Smart Defaults for Targets
 When adding a set, targets auto-fill from the previous set:
 - `set`: Copy reps + weight from previous set
