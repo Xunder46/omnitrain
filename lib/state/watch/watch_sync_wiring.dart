@@ -28,6 +28,7 @@ import '../../core/platform/watch_delivery.dart';
 import '../../core/platform/watch_link_source.dart';
 import '../../core/platform/watch_transport.dart';
 import '../../core/services/active_energy_service.dart';
+import '../../core/services/diagnostics_log.dart';
 import '../../core/services/health_sync_service.dart';
 import '../../core/sync_protocol/message_validator.dart';
 import '../../core/utils/platform_watch_transport_factory.dart';
@@ -230,10 +231,16 @@ Future<WatchSyncGraph?> createWatchSync({
   HealthSyncService? healthSync,
   ActiveEnergyService? activeEnergy,
   SyncProtocolValidator? validator,
+
+  /// The phone's diagnostics log; null records nothing (plan 143).
+  DiagnosticsLog? diagnostics,
 }) async {
   final resolved =
       transport ??
-      await createPlatformWatchTransport(onFailure: onFailure);
+      await createPlatformWatchTransport(
+        onFailure: onFailure,
+        diagnostics: diagnostics,
+      );
   if (resolved == null || resolved is NoWatchTransport) return null;
 
   // Built first: the inbox asks the bridge whether a session is the phone's own

@@ -2,10 +2,12 @@ import 'dart:async';
 import 'package:app_settings/app_settings.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/constants/health_constants.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/models/app_version_info.dart';
+import '../../core/services/diagnostics_log.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
@@ -13,6 +15,7 @@ import '../../state/watch/watch_link_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../widgets/feedback/omni_message.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
@@ -35,6 +38,10 @@ class SettingsScreen extends StatefulWidget {
   /// watch graph, and the section is absent.
   final WatchLinkState? watchLinkState;
 
+  /// The phone's diagnostics log, for the copy row (plan 143, D-14306). Null
+  /// without a log, and the row is absent.
+  final DiagnosticsLog? diagnostics;
+
   SettingsScreen({
     super.key,
     required this.settingsState,
@@ -44,6 +51,7 @@ class SettingsScreen extends StatefulWidget {
     this.profileState,
     this.userHeightCm,
     this.watchLinkState,
+    this.diagnostics,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
 
@@ -150,6 +158,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   if (widget.watchLinkState != null) ...[
                     const OmniCardHeader(title: 'APPLE WATCH'),
                     _WatchSection(state: widget.watchLinkState!),
+                    if (widget.diagnostics != null) ...[
+                      const SizedBox(height: 12),
+                      _DiagnosticsRow(
+                        log: widget.diagnostics!,
+                        appVersionInfo: widget.appVersionInfo,
+                      ),
+                    ],
                     const SizedBox(height: 24),
                   ],
                   const OmniCardHeader(title: 'HEALTH'),
@@ -1003,6 +1018,69 @@ class _WatchSectionState extends State<_WatchSection> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Copies the phone's diagnostics log as text (plan 143, D-14306).
+class _DiagnosticsRow extends StatefulWidget {
+  final DiagnosticsLog log;
+  final AppVersionInfo appVersionInfo;
+
+  const _DiagnosticsRow({required this.log, required this.appVersionInfo});
+
+  @override
+  State<_DiagnosticsRow> createState() => _DiagnosticsRowState();
+}
+
+class _DiagnosticsRowState extends State<_DiagnosticsRow> {
+  late int _count = widget.log.events().length;
+
+  Future<void> _copy() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
+    final events = widget.log.events().length;
+    final text = widget.log.shareText(
+      header: [
+        'OmniTrain phone diagnostics',
+        'App ${widget.appVersionInfo.version} (${widget.appVersionInfo.build})',
+        'Platform ${defaultTargetPlatform.name}',
+        'Events $events',
+        'Copied ${DateTime.now().toUtc().toIso8601String()}',
+      ],
+    );
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+    } catch (_) {
+      // A clipboard that refuses is not worth a crash: nothing is announced.
+      return;
+    }
+    if (!mounted) return;
+    OmniMessage.showOn(messenger, theme, 'Diagnostics copied');
+    setState(() => _count = widget.log.events().length);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final empty = _count == 0;
+    return OmniSurface(
+      padding: EdgeInsets.zero,
+      child: _SettingsRow(
+        label: 'Diagnostics',
+        subtitle: empty
+            ? 'Nothing recorded yet'
+            : '$_count event${_count == 1 ? '' : 's'}',
+        trailing: Text(
+          'Copy',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: empty
+                ? OmniTheme.colors.textMuted
+                : theme.colorScheme.primary,
+          ),
+        ),
+        onTap: empty ? null : _copy,
       ),
     );
   }

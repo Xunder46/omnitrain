@@ -113,13 +113,19 @@ rules matter beyond the row list:
 There is no setting for the Weight block on Stats: it shows whenever the
 weigh-in rule is met (see [Stats Screen](stats_screen.md#weight-block)).
 
-The APPLE WATCH section is the one read-only status readout, built only when the platform's
+The APPLE WATCH section is the watch's status readout (one read-only row, plus the diagnostics row below it), built only when the platform's
 transport can report a link: one `Apple Watch` row, not tappable, with the link phase on the
 right — `Connected`, `Not reachable`, `Not paired` or `Watch app not installed` — and the
 last-synced line under the label (`Never synced` until the phone first hears a frame). Verified
 by `test/settings_watch_status_test.dart` (S-6910 no section without a link state; S-6911 the
 row per phase; S-6912 the row offers no tap target; S-6913 the section sits between WORKOUT and
 HEALTH; S-6914 a heard frame updates the line while the screen is open).
+
+Under that row, when the app built a diagnostics log, a `Diagnostics` row shows the number of events
+and a `Copy` label; tapping it copies the log as text (app version, platform, event count, then one line per
+event) and says `Diagnostics copied`; with nothing recorded it reads `Nothing recorded yet` and does nothing.
+Copy diagnostics is verified by `test/settings_diagnostics_test.dart` (S-14315). See
+[The Watch Diagnostics Log](state_management/watch_diagnostics.md).
 
 ### Version Footer
 

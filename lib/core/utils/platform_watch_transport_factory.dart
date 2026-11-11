@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 
 import '../platform/watch_connectivity_channel.dart';
 import '../platform/watch_transport.dart';
+import '../services/diagnostics_log.dart';
 
 /// Builds the channel to use. Overridden by a test that wants a fake.
 typedef WatchMessageChannelFactory = WatchMessageChannel Function();
@@ -33,6 +34,7 @@ Future<WatchTransport?> createPlatformWatchTransport({
   TargetPlatform? platform,
   WatchMessageChannelFactory? channelFactory,
   void Function(Object error, StackTrace stack)? onFailure,
+  DiagnosticsLog? diagnostics,
 }) async {
   final target = platform ?? defaultTargetPlatform;
   if (kIsWeb || target != TargetPlatform.iOS) return null;
@@ -41,6 +43,7 @@ Future<WatchTransport?> createPlatformWatchTransport({
     final transport = WatchConnectivityTransport(
       channel: (channelFactory ?? _watchConnectivityChannel)(),
       onFailure: onFailure,
+      diagnostics: diagnostics,
     );
     await transport.refreshReachability();
     return transport;

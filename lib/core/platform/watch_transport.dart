@@ -24,6 +24,9 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/services.dart' show PlatformException;
+
+import '../services/diagnostics_log.dart';
 import '../sync_protocol/wire_timestamps.dart';
 import '../../watch/start/watch_sync_orchestrator.dart';
 import '../../state/watch/live_session_mirror_state.dart';
@@ -192,15 +195,21 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
     void Function(Object error, StackTrace stack)? onFailure,
     DateTime Function()? clock,
     Duration handlerTimeout = const Duration(seconds: 30),
+    DiagnosticsLog? diagnostics,
   }) : _channel = channel,
        _onFailure = onFailure,
        _clock = clock ?? DateTime.now,
-       _handlerTimeout = handlerTimeout;
+       _handlerTimeout = handlerTimeout,
+       _diagnostics = diagnostics;
 
   /// A frame the radio refuses does not take the session down with it: it is
   /// reported here, its caller learns it was not delivered, and the next sync
   /// re-sends what is owed.
   final void Function(Object error, StackTrace stack)? _onFailure;
+
+  /// The phone's diagnostics log, when the app built one (plan 143, D-14302).
+  /// Null records nothing and changes nothing.
+  final DiagnosticsLog? _diagnostics;
 
   final WatchMessageChannel _channel;
 
@@ -288,6 +297,10 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
 
   Future<void> _reachabilityChanged(bool reachable) async {
     _phoneReachable = reachable;
+    _diagnostics?.note(
+      'reachability',
+      detail: reachable ? 'reachable' : 'unreachable',
+    );
     try {
       final info = await _channel.info;
       // A close during the read has closed the stream on purpose: the change is
@@ -349,24 +362,27 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
       reachable = await _channel.isReachable;
     } catch (error, stack) {
       _report(error, stack);
+      _noteSent(envelope, 'undelivered');
       return WatchDelivery.undelivered;
     }
     if (!reachable) {
-      return isDurable(envelope)
-          ? _queue(envelope)
-          : WatchDelivery.undelivered;
+      if (isDurable(envelope)) return _queue(envelope);
+      _noteSent(envelope, 'undelivered');
+      return WatchDelivery.undelivered;
     }
     try {
       await _channel.send(envelope);
       _phoneReachable = true;
     } catch (error, stack) {
-      _report(error, stack);
+      _report(error, stack, record: false);
       _phoneReachable = false;
+      _noteSent(envelope, 'failed: ${_reason(error)}');
       return isDurable(envelope)
           ? _queue(envelope)
           : WatchDelivery.undelivered;
     }
     await _inQueueLane(() => _withdrawSuperseded(envelope));
+    _noteSent(envelope, 'delivered');
     return WatchDelivery.delivered;
   }
 
@@ -378,9 +394,11 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
         await _withdrawSuperseded(envelope);
         try {
           await _channel.queue(envelope);
+          _noteSent(envelope, 'queued');
           return WatchDelivery.queued;
         } catch (error, stack) {
-          _report(error, stack);
+          _report(error, stack, record: false);
+          _noteSent(envelope, 'failed: ${_reason(error)}');
           return WatchDelivery.undelivered;
         }
       });
@@ -438,6 +456,7 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
     final handler = _handler;
     if (handler == null) return Future<void>.value();
     _heard.add(_clock());
+    _noteReceived(frame);
     final turn = _lane.then((_) => _handle(handler, frame));
     _lane = turn;
     return turn;
@@ -450,11 +469,63 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
     try {
       await handler(frame).timeout(_handlerTimeout);
     } catch (error, stack) {
-      _report(error, stack);
+      _diagnostics?.note(
+        'frame_handler_failed',
+        detail: '${_logName(frame)} ${_reason(error)}',
+      );
+      _report(error, stack, record: false);
     }
   }
 
-  void _report(Object error, StackTrace stack) {
+  /// The frame's name in the log: its `type`, or `request:<name>` for a
+  /// request frame.
+  static String _logName(Map<String, Object?> frame) {
+    final type = frame['type'];
+    if (type is String) return type;
+    final request = frame['request'];
+    if (request is String) return 'request:$request';
+    return 'unknown';
+  }
+
+  /// Why something failed, for the log (D-14307): never the error's message.
+  static String _reason(Object error) {
+    if (error is TimeoutException) return 'timeout';
+    if (error is PlatformException) return error.code;
+    return error.runtimeType.toString();
+  }
+
+  /// Types the log coalesces to one line a minute (D-14303).
+  static const Set<String> _chatty = <String>{'energy_live'};
+
+  void _noteSent(Map<String, Object?> frame, String outcome) {
+    final diagnostics = _diagnostics;
+    if (diagnostics == null) return;
+    final name = _logName(frame);
+    final session = frame['sessionId'];
+    final ordinary = outcome == 'delivered' && _chatty.contains(name);
+    diagnostics.note(
+      'frame_sent',
+      session: session is String ? session : null,
+      detail: '$name $outcome',
+      coalesce: ordinary ? 'frame_sent/$name' : null,
+    );
+  }
+
+  void _noteReceived(Map<String, Object?> frame) {
+    final diagnostics = _diagnostics;
+    if (diagnostics == null) return;
+    final name = _logName(frame);
+    final session = frame['sessionId'];
+    diagnostics.note(
+      'frame_received',
+      session: session is String ? session : null,
+      detail: name,
+      coalesce: _chatty.contains(name) ? 'frame_received/$name' : null,
+    );
+  }
+
+  void _report(Object error, StackTrace stack, {bool record = true}) {
+    if (record) _diagnostics?.note('link_error', detail: _reason(error));
     if (_onFailure == null) return;
     _onFailure(error, stack);
   }

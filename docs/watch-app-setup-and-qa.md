@@ -827,6 +827,14 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     frames (sent, received, queued) and the workout begin/adopt/end around
     the gap. Send a screenshot of the screen with the report.
 
+39. **Copying the phone diagnostics — (owner).** (Plan 143) After the same
+    session, open Settings on the phone: under the Apple Watch row a
+    Diagnostics row shows the number of events. Tap it: "Diagnostics
+    copied" appears. Paste into Notes: the first lines name the app, the
+    platform and the event count, then one line per event, oldest first,
+    with `launch`, `app_lifecycle`, `frame_sent` and `frame_received`
+    lines. Send the paste together with the watch screenshot.
+
 ### The wrist's own logging (PR 2b)
 
 The wrist-logging walkthrough, with every later watch plan's steps, lives in

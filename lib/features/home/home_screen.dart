@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/models/app_version_info.dart';
+import '../../core/services/diagnostics_log.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -102,6 +103,10 @@ class HomeScreen extends StatefulWidget {
   /// watch graph, and Settings then carries no APPLE WATCH section.
   final WatchLinkState? watchLinkState;
 
+  /// The phone's diagnostics log, handed on to Settings (plan 143, D-14306).
+  /// Null without a log, and Settings then carries no Diagnostics row.
+  final DiagnosticsLog? diagnostics;
+
   HomeScreen({
     super.key,
     required this.workoutState,
@@ -121,6 +126,7 @@ class HomeScreen extends StatefulWidget {
     required this.exerciseLibraryState,
     this.appVersionInfo,
     this.watchLinkState,
+    this.diagnostics,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -1164,6 +1170,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 widget.appVersionInfo ??
                 const AppVersionInfo(version: '0.0.0', build: '0'),
             watchLinkState: widget.watchLinkState,
+            diagnostics: widget.diagnostics,
           ),
         ),
       ),

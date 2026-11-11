@@ -11,6 +11,9 @@ import 'core/services/bundled_catalog_source.dart';
 import 'core/services/catalog_refresh_service.dart';
 import 'core/services/exercise_library_service.dart';
 import 'core/services/active_energy_service.dart';
+import 'core/services/diagnostics_lifecycle_observer.dart';
+import 'core/services/diagnostics_log.dart';
+import 'core/services/diagnostics_storage_default.dart';
 import 'core/services/health_platform_gateway.dart';
 import 'core/services/health_platform_service.dart';
 import 'core/services/health_sync_service.dart';
@@ -364,6 +367,12 @@ Future<Widget> runStartup({
   // Plan 134: one estimate store for the phone's own end and the watch import.
   final activeEnergy = ActiveEnergyService(repository, () => StatsProgressService(repository));
 
+  // Plan 143: the phone's own record of the watch link. Built once, noted at
+  // launch, handed to the watch transport below.
+  final diagnostics = DiagnosticsLog(storage: await openDefaultDiagnosticsStorage());
+  diagnostics.noteLaunch();
+  WidgetsBinding.instance.addObserver(DiagnosticsLifecycleObserver(diagnostics));
+
   // Create service with repository
   final routineSessionService = RoutineSessionService(repository);
   final sessionSummaryService = SessionSummaryService(repository);
@@ -386,6 +395,7 @@ Future<Widget> runStartup({
     // A wrist rating becomes the Fitness workout's effort (plan 90 D-4).
     healthSync: healthSyncService,
     activeEnergy: activeEnergy,
+    diagnostics: diagnostics,
     onFailure: (error, stackTrace) {
       debugPrint('Watch transport unavailable: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -470,5 +480,7 @@ Future<Widget> runStartup({
     onWatchResume: watchSync?.sync,
     // 47c D-3: the Settings row's status, null without a watch graph.
     watchLinkState: watchSync?.link,
+    // Plan 143 D-14305: the diagnostics log, handed on to Settings.
+    diagnostics: diagnostics,
   );
 }

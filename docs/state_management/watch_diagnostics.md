@@ -74,5 +74,17 @@ fails is recorded the same way for a refusal, and by error domain and code for a
 (once per `slack` events) rereads and rewrites the file under the same lock; a rewrite that fails, or a read that
 finds nothing, leaves the file untouched and tries again after `slack` more events.
 
-**The phone.** The phone's own log (plan 143) and the way this wrist log reaches the phone are separate, later
-plans; until then the wrist's log is read on the wrist.
+**The phone.** The phone keeps its own log of its side of the link (plan 143): `DiagnosticsLog`
+(`lib/core/services/diagnostics_log.dart`), the Dart twin of the wrist's, with the same line shape (`{at, kind,
+session?, detail?}`, UTC times), the same bound (newest 3000, rewritten when 3300 lines are reached; a failed
+rewrite or an empty read leaves the file and backs off), the same 60 s coalescing for `energy_live` and the same
+120-character cut. It lives in `phone-diagnostics.jsonl` under the app support directory (memory only on web, and for a run in which the directory cannot be resolved within two seconds) and
+is built once in `lib/main.dart`, which notes `launch` (with `previous=`) and registers
+`DiagnosticsLifecycleObserver` (`app_lifecycle`, every state). `WatchConnectivityTransport` notes `frame_sent`
+(`<type> delivered`, `queued`, `undelivered` or `failed: <reason>`), `frame_received`, `frame_handler_failed` and
+`link_error`, and `reachability`; a reason is the platform error's code, `timeout`, or the error's type name, never
+its message. Settings, in the APPLE WATCH section, has a `Diagnostics` row with `Copy`: it puts the header (app,
+platform, event count) and the events, oldest first, on the clipboard. Verified by `test/diagnostics_log_test.dart`,
+`test/diagnostics_watch_transport_test.dart`, `test/diagnostics_lifecycle_test.dart`,
+`test/diagnostics_wiring_source_test.dart` and `test/settings_diagnostics_test.dart`. Not yet: the phone's own
+validation refusals, and getting the wrist's log onto the phone; until then the wrist's log is read on the wrist.
