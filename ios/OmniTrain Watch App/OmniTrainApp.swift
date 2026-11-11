@@ -12,6 +12,7 @@
 
 import SwiftUI
 import WatchKit
+import WatchSessionEngine
 
 @main
 struct OmniTrain_Watch_AppApp: App {
@@ -34,6 +35,7 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
     let host = WatchAppHost()
 
     func handleActiveWorkoutRecovery() {
+        host.diagnostics.note("recovery_relaunch")
         Task { await host.recoverStrandedWorkout() }
     }
 }

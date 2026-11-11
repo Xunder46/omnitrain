@@ -41,6 +41,10 @@ func reportWatchRadioFailure(_ error: Error) {
 final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
     private let onSendFailure: (Error) -> Void
 
+    /// The diagnostics log, when the host built one (plan 142): the platform's
+    /// late refusals note into it.
+    private let diagnostics: WatchDiagnosticsLog?
+
     private var receiveHandler: (@concurrent ([String: Any]) async -> Void)?
     private var reachabilityHandler: ((Bool) -> Void)?
     private var linkProblemHandler: ((Bool) -> Void)?
@@ -75,8 +79,12 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
         }
     }
 
-    init(onSendFailure: @escaping (Error) -> Void = { _ in }) {
+    init(
+        onSendFailure: @escaping (Error) -> Void = { _ in },
+        diagnostics: WatchDiagnosticsLog? = nil
+    ) {
         self.onSendFailure = onSendFailure
+        self.diagnostics = diagnostics
         super.init()
 
         lane = WatchInboundLane(startsOpen: false) { [weak self] frame in await self?.receiveHandler?(frame) }
@@ -109,6 +117,11 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
 
         session.sendMessage(frame, replyHandler: nil) { [weak self] error in
             guard let self else { return }
+            self.diagnostics?.note(
+                "frame_send_refused",
+                session: frame["sessionId"] as? String,
+                detail: "\(frame["type"] as? String ?? "unknown") \(error)"
+            )
             guard WatchConnectivityBridge.isDurable(frame) else {
                 self.onSendFailure(error)
                 return

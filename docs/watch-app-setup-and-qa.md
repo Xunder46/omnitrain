@@ -817,6 +817,16 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     rest screen, and finish it on the phone: within about ten seconds the
     watch goes back to Start by itself.
 
+38. **Reading the watch diagnostics — (owner).** (Plan 142) After a session
+    in which the watch app was closed and reopened (force-quit it
+    mid-session and reopen it after a minute), open Diagnostics at the
+    bottom of the Start screen. The top line says "Started HH:mm —
+    restarted by the system" only after the system's recovery relaunch (a
+    plain force-quit shows just "Started HH:mm"), and the second line names
+    what the app last did before the gap. The lines below show the sync
+    frames (sent, received, queued) and the workout begin/adopt/end around
+    the gap. Send a screenshot of the screen with the report.
+
 ### The wrist's own logging (PR 2b)
 
 The wrist-logging walkthrough, with every later watch plan's steps, lives in

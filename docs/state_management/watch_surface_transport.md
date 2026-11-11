@@ -63,7 +63,7 @@ nothing notified; an equal or later stamp applies, and an unreadable `sentAt` is
 not stale, while the inbox still stages the entries of a stale snapshot.
 Verified by `test/watch_message_order_test.dart` (`S-9301`..`S-9307`).
 
-The wrist's half of this area — the Swift bridge over the same radio, the wrist's start surface and the wrist's logging surface (the Crown and the per-exercise dialled numbers included) — has its own page: [The Watch Surface — the Wrist's Half](watch_surface_wrist.md).
+The wrist's half of this area — the Swift bridge over the same radio, the wrist's start surface and the wrist's logging surface (the Crown and the per-exercise dialled numbers included) — has its own page: [The Watch Surface — the Wrist's Half](watch_surface_wrist.md). The wrist's own record of what happened around a gap — `WatchDiagnosticsLog` and the Diagnostics screen that reads it — has its own page: [The Watch Diagnostics Log](watch_diagnostics.md).
 
 ### The phone's link: the plugin, the channel, the queue and the status
 

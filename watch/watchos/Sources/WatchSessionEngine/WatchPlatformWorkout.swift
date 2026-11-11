@@ -324,6 +324,7 @@ extension WatchPlatformWorkoutStore {
 /// The watch's platform workout, over whatever store the platform provides.
 public final class WatchPlatformWorkout {
     private let store: WatchPlatformWorkoutStore
+    private let diagnostics: WatchDiagnosticsLog?
 
     /// The workout currently registered, or nil when the watch has none open.
     public private(set) var running: WatchActivityType?
@@ -337,8 +338,9 @@ public final class WatchPlatformWorkout {
     /// (plan 82 review): the flag then reads only the live session's outcome.
     func acknowledgeOpenFailure() { openFailed = false }
 
-    public init(store: WatchPlatformWorkoutStore) {
+    public init(store: WatchPlatformWorkoutStore, diagnostics: WatchDiagnosticsLog? = nil) {
         self.store = store
+        self.diagnostics = diagnostics
     }
 
     /// Registers `session` as a platform workout — its modality's type when it
@@ -361,6 +363,7 @@ public final class WatchPlatformWorkout {
         )
         openFailed = store.lastBeginFailed
         running = activityType
+        diagnostics?.note("workout_begin", session: session.sessionId, detail: activityType.watchOs)
         return activityType
     }
 
@@ -369,6 +372,7 @@ public final class WatchPlatformWorkout {
     public func end(saving: Bool) async {
         guard running != nil else { return }
         await store.end(saving: saving)
+        diagnostics?.note("workout_end", detail: saving ? "saving" : "discarded")
         running = nil
     }
 
@@ -388,6 +392,10 @@ public final class WatchPlatformWorkout {
 
         for activityType in stranded {
             await store.end(saving: saving)
+            diagnostics?.note(
+                "workout_recovered",
+                detail: "\(activityType) \(saving ? "saving" : "discarded")"
+            )
             ended.append(activityType)
         }
 
@@ -401,6 +409,7 @@ public final class WatchPlatformWorkout {
         guard let name = await store.adoptInProgress() else { return false }
         running = WatchActivityTypes.byModality.values.first { $0.watchOs == name }
             ?? WatchActivityTypes.generic
+        diagnostics?.note("workout_adopted", detail: name)
         return true
     }
 }

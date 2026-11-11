@@ -155,14 +155,19 @@ final class WatchAppHost: ObservableObject {
         // then the engine that hands its emissions to that sink. The package's
         // own harnesses record emissions in a separate array and never hand them
         // to a bridge, so theirs is not the order to copy.
+        let diagnosticsDirectory = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("watch-diagnostics", isDirectory: true)
+        let diagnostics = WatchDiagnosticsLog(directory: diagnosticsDirectory)
+        diagnostics.noteLaunch()
         let storeDirectory = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("watch-session", isDirectory: true)
         let store = FileWatchSessionStore(directory: storeDirectory)
-        let session = OmniTrainWatchConnectivity(onSendFailure: reportWatchRadioFailure)
-        let bridge = WatchConnectivityBridge(session: session, onFailure: reportWatchRadioFailure)
+        let session = OmniTrainWatchConnectivity(onSendFailure: reportWatchRadioFailure, diagnostics: diagnostics)
+        let bridge = WatchConnectivityBridge(session: session, onFailure: reportWatchRadioFailure, diagnostics: diagnostics)
         let forwarder = WatchEmitForwarder(transport: bridge, onFailure: reportWatchRadioFailure)
-        let engine = WatchSessionEngine(store: store, onEmit: forwarder.sink)
+        let engine = WatchSessionEngine(store: store, onEmit: forwarder.sink, diagnostics: diagnostics)
         let paths = WatchSessionStartPaths(engine: engine, store: store)
         let preferences = WatchPhonePreferences(store: store)
         // The bests holder, built beside the settings and over the same store
@@ -202,7 +207,7 @@ final class WatchAppHost: ObservableObject {
         // D-5): the state's `workoutNotice` closure reads the coordinator, so
         // the local must exist first.
         let workout = WatchWorkoutCoordinator(
-            platform: WatchPlatformWorkout(store: healthStore)
+            platform: WatchPlatformWorkout(store: healthStore, diagnostics: diagnostics)
         )
         // The units are read from the phone's preferences at every use, so a
         // sync that changes them reaches the logging screens without a relaunch.
@@ -239,6 +244,7 @@ final class WatchAppHost: ObservableObject {
         self.orchestrator = orchestrator
         self.forwarder = forwarder
         self.healthStore = healthStore
+        self.diagnostics = diagnostics
 
         // Every arrival is routed by the orchestrator, then the surface re-reads.
         // A message the wrist refuses is reported through the bridge's failure
@@ -265,6 +271,7 @@ final class WatchAppHost: ObservableObject {
         // launched beside its phone still learns that it did.
         bridge.onReachabilityChange { [weak self] reachable in
             guard let self else { return }
+            self.diagnostics.note("reachability", detail: reachable ? "reachable" : "unreachable")
             self.phoneReachability = WatchPhoneReachability.observed(reachable: reachable)
             self.revision += 1
             // The phone back in reach catches the wrist up by itself (D-96). Not
@@ -277,7 +284,10 @@ final class WatchAppHost: ObservableObject {
         }
         // The radio that cannot come up at all is its own line, not a
         // reachability answer (plan 60, D-5).
-        session.onLinkProblem { [weak self] problem in self?.linkUnavailable = problem }
+        session.onLinkProblem { [weak self] problem in
+            self?.diagnostics.note("link_problem", detail: problem ? "true" : "false")
+            self?.linkUnavailable = problem
+        }
 
         // End and the answer both change which surface the shell shows, and
         // neither goes through a host `@Published`. SwiftUI's `objectWillChange`
@@ -324,6 +334,11 @@ final class WatchAppHost: ObservableObject {
     /// `HealthKitWorkoutStore(` in this file, which is what the source scan
     /// `testS3110TheHostWiresTheSensorsAndRefreshesTheWorkoutFirst` reads.
     private let healthStore: HealthKitWorkoutStore
+
+    /// The diagnostics log, one for the life of the app (plan 142): the launch,
+    /// the scene phases, the link and the sends note into it, and the
+    /// Diagnostics surface reads it.
+    let diagnostics: WatchDiagnosticsLog
 
     /// Reads whatever the wrist already holds, in the order the surfaces need it:
     /// the engine first (its session, the rows it logged and their timers) so a
@@ -462,6 +477,11 @@ struct ContentView: View {
     /// ending underneath it does not replace it.
     @State private var showingFood = false
 
+    /// Whether the diagnostics sheet is up (plan 142). The start screen's
+    /// Diagnostics button opens it; the sheet is the root's, like the food
+    /// sheet, so a surface change underneath it does not replace it.
+    @State private var showingDiagnostics = false
+
     var body: some View {
         Group {
             if host.rating.isPromptOwed {
@@ -509,7 +529,8 @@ struct ContentView: View {
                     syncNotice: host.syncNotice,
                     isSyncing: host.isSyncing,
                     healthAccess: host.healthAccess,
-                    phoneProblem: host.phoneProblem
+                    phoneProblem: host.phoneProblem,
+                    onOpenDiagnostics: { showingDiagnostics = true }
                 )
                 .task { await host.askHealthAccess() }
             }
@@ -529,10 +550,16 @@ struct ContentView: View {
                 WatchNutritionView(model: host.nutritionModel, water: host.waterModel)
             }
         }
+        // Plan 142: the start screen's way into the diagnostics. Its own sheet,
+        // on the root, so a session ending underneath it does not close it.
+        .sheet(isPresented: $showingDiagnostics) {
+            NavigationStack { WatchDiagnosticsView(log: host.diagnostics) }
+        }
         .task {
             await host.restore()
         }
         .onChange(of: scenePhase) { _, phase in
+            host.diagnostics.note("scene", detail: "\(phase)")
             if phase == .active {
                 host.catchUpOnActivation()
                 // D-3108: the wrist coming back up is also a read of the

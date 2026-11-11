@@ -87,6 +87,10 @@ public struct WatchStartView: View {
     /// A phone-link problem the user can act on, or nil (plan 60, D-3).
     private let phoneProblem: String?
 
+    /// Opens the diagnostics surface. Nil leaves the button off the screen (plan
+    /// 142): the app owns the log, not this view.
+    private let onOpenDiagnostics: (() -> Void)?
+
     /// Wrist-scale inset. The phone's spacing tokens are sized for a full-width
     /// screen; this surface carries its own value rather than scaling one down.
     private static let surfaceInset = 4.0
@@ -94,6 +98,9 @@ public struct WatchStartView: View {
     /// The home surface's way into the foods list, which is reachable with no
     /// workout running.
     public static let nutritionLabel = "Nutrition"
+
+    /// The home surface's way into the diagnostics (plan 142).
+    public static let diagnosticsLabel = "Diagnostics"
 
     /// The user's explicit action — recovering a device that was out of reach
     /// and refreshing the routine list.
@@ -116,7 +123,8 @@ public struct WatchStartView: View {
         syncNotice: String? = nil,
         isSyncing: Bool = false,
         healthAccess: WatchHealthAccess = .unknown,
-        phoneProblem: String? = nil
+        phoneProblem: String? = nil,
+        onOpenDiagnostics: (() -> Void)? = nil
     ) {
         self.paths = paths
         self.onSessionStarted = onSessionStarted
@@ -129,6 +137,7 @@ public struct WatchStartView: View {
         self.isSyncing = isSyncing
         self.healthAccess = healthAccess
         self.phoneProblem = phoneProblem
+        self.onOpenDiagnostics = onOpenDiagnostics
     }
 
     /// What this surface says about the phone, from the one rule that decides it
@@ -234,6 +243,11 @@ public struct WatchStartView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                }
+
+                if let onOpenDiagnostics {
+                    Button(Self.diagnosticsLabel, action: onOpenDiagnostics)
+                        .buttonStyle(.bordered)
                 }
             }
             .padding(Self.surfaceInset)

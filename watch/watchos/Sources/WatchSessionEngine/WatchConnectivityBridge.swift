@@ -128,6 +128,7 @@ public enum WatchTransportRequest {
 /// The wrist's transport over a `WatchConnectivitySession`.
 public final class WatchConnectivityBridge: WatchSyncTransport {
     private let session: WatchConnectivitySession
+    private let diagnostics: WatchDiagnosticsLog?
 
     /// A frame the radio could not carry does not take the wrist down with it:
     /// the caller reports it and the next sync re-sends what is owed. A frame
@@ -144,10 +145,12 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
 
     public init(
         session: WatchConnectivitySession,
-        onFailure: ((Error) -> Void)? = nil
+        onFailure: ((Error) -> Void)? = nil,
+        diagnostics: WatchDiagnosticsLog? = nil
     ) {
         self.session = session
         self.onFailure = onFailure
+        self.diagnostics = diagnostics
 
         session.onReceive { [weak self] frame in
             await self?.deliver(frame)
@@ -198,6 +201,27 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
         await send(WatchTransportRequest.snapshotFrame())
     }
 
+    /// The frame's name in the log: its `type`, or `request:<name>` for a request frame.
+    private static func logName(_ frame: [String: Any]) -> String {
+        if let type = frame["type"] as? String { return type }
+        if let request = frame["request"] as? String { return "request:\(request)" }
+        return "unknown"
+    }
+
+    /// Types the log coalesces to one line a minute (D-14203).
+    private static let chattyTypes: Set<String> = ["energy_live"]
+
+    private func noteSent(_ frame: [String: Any], _ outcome: String) {
+        let name = Self.logName(frame)
+        let ordinary = outcome == "live" && Self.chattyTypes.contains(name)
+        diagnostics?.note(
+            "frame_sent",
+            session: frame["sessionId"] as? String,
+            detail: "\(name) \(outcome)",
+            coalesce: ordinary ? "frame_sent/\(name)" : nil
+        )
+    }
+
     /// Hands the phone one frame the wrist owes it.
     ///
     /// The frame is checked first: a value the radio cannot carry fails the
@@ -210,6 +234,11 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
         do {
             frame = try PropertyListFrames.plistSafe(envelope)
         } catch {
+            diagnostics?.note(
+                "frame_not_sent",
+                session: envelope["sessionId"] as? String,
+                detail: "\(Self.logName(envelope)) \(error)"
+            )
             report(error)
             return
         }
@@ -218,16 +247,20 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
             try session.send(frame)
         } catch {
             guard Self.isDurable(frame) else {
+                noteSent(frame, "failed: \(error)")
                 report(error)
                 return
             }
             do {
                 try Self.queueNewest(frame, on: session)
+                noteSent(frame, "queued")
             } catch {
+                noteSent(frame, "failed: \(error)")
                 report(error)
             }
             return
         }
+        noteSent(frame, "live")
         // The frame went out live: a copy of it still waiting in the OS queue is now older news (D-6).
         if Self.isDurable(frame) { Self.withdrawSuperseded(by: frame, on: session) }
     }
@@ -359,10 +392,33 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
     private func deliver(_ frame: [String: Any]) async {
         guard let inbound else { return }
         do {
+            diagnostics?.note(
+                "frame_received",
+                session: frame["sessionId"] as? String,
+                detail: Self.logName(frame),
+                coalesce: Self.chattyTypes.contains(Self.logName(frame))
+                    ? "frame_received/\(Self.logName(frame))" : nil
+            )
             try await inbound(frame)
         } catch {
+            diagnostics?.note(
+                "frame_handler_failed",
+                session: frame["sessionId"] as? String,
+                detail: "\(Self.logName(frame)) \(Self.logReason(error))"
+            )
             report(error)
         }
+    }
+
+    /// Why a handler failed, for the log (D-14211): a refusal by its codes and
+    /// paths only, because its message can quote the offending value; anything
+    /// else by its error domain and code.
+    private static func logReason(_ error: Error) -> String {
+        if let refused = error as? WatchEmissionRejected {
+            return refused.rejections.prefix(3).map { "\($0.code) at \($0.path)" }.joined(separator: "; ")
+        }
+        let bridged = error as NSError
+        return "\(bridged.domain) \(bridged.code)"
     }
 
     private func report(_ error: Error) {

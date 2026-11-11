@@ -48,6 +48,7 @@ public final class WatchSessionEngine: ObservableObject {
     private let clock: () -> Date
     private let newId: () -> String
     private let newSessionId: () -> String
+    private let diagnostics: WatchDiagnosticsLog?
 
     /// Countdowns whose end has already been announced to the wrist, by
     /// `WatchTimerHaptics.countdownKey`. Kept here, not in a screen's model: the
@@ -132,7 +133,8 @@ public final class WatchSessionEngine: ObservableObject {
         validator: SyncProtocolValidator? = nil,
         clock: @escaping () -> Date = { Date() },
         idFactory: @escaping () -> String = { UUID().uuidString },
-        sessionIdFactory: @escaping () -> String = { UUID().uuidString }
+        sessionIdFactory: @escaping () -> String = { UUID().uuidString },
+        diagnostics: WatchDiagnosticsLog? = nil
     ) {
         self.store = store
         self.onEmit = onEmit
@@ -140,6 +142,7 @@ public final class WatchSessionEngine: ObservableObject {
         self.clock = clock
         self.newId = idFactory
         self.newSessionId = sessionIdFactory
+        self.diagnostics = diagnostics
     }
 
     // MARK: - Restore
@@ -1337,7 +1340,13 @@ public final class WatchSessionEngine: ObservableObject {
     /// in the middle of; the suites pin the shape.
     private func emitSnapshot() {
         guard let envelope = sessionSnapshot() else { return }
-        if let validator, !validator.validateEnvelope(envelope).isEmpty { return }
+        if let validator {
+            let rejections = validator.validateEnvelope(envelope)
+            if !rejections.isEmpty {
+                noteRefused("frame_not_sent", envelope, rejections)
+                return
+            }
+        }
         emit(envelope)
     }
 
@@ -1349,7 +1358,13 @@ public final class WatchSessionEngine: ObservableObject {
     /// The suites pin the shape, so a drift fails there instead of going quiet.
     private func emitLifecycle(_ row: WatchSessionRecord, state: String) {
         let envelope = lifecycle(row, state: state)
-        if let validator, !validator.validateEnvelope(envelope).isEmpty { return }
+        if let validator {
+            let rejections = validator.validateEnvelope(envelope)
+            if !rejections.isEmpty {
+                noteRefused("frame_not_sent", envelope, rejections)
+                return
+            }
+        }
         emit(envelope)
     }
 
@@ -1608,7 +1623,13 @@ public final class WatchSessionEngine: ObservableObject {
             "sentAt": utcIso(at),
             "payload": ["activeEnergyKcal": total, "at": utcIso(at)],
         ]
-        if let validator, !validator.validateEnvelope(envelope).isEmpty { return }
+        if let validator {
+            let rejections = validator.validateEnvelope(envelope)
+            if !rejections.isEmpty {
+                noteRefused("frame_not_sent", envelope, rejections)
+                return
+            }
+        }
         energyAnnouncedSession = row.sessionId
         energyAnnouncedKcal = total
         energyAnnouncedAt = at
@@ -2233,12 +2254,23 @@ public final class WatchSessionEngine: ObservableObject {
     private func requireConformingIncoming(_ envelope: [String: Any]) throws {
         let rejections = SyncProtocolValidator.incomingRejections(validator, envelope)
         guard rejections.isEmpty else {
+            noteRefused("frame_rejected", envelope, rejections)
             throw WatchEmissionRejected(
                 message: "refusing to apply a message this build cannot read: "
                     + "\(rejections[0].description)",
                 rejections: rejections
             )
         }
+    }
+
+    /// Records a refused frame (plan 142 D-14207); never changes what happens next.
+    private func noteRefused(_ kind: String, _ envelope: [String: Any], _ rejections: [SyncProtocolRejection]) {
+        diagnostics?.note(
+            kind,
+            session: envelope["sessionId"] as? String,
+            // The code and the path only: a rejection's message can quote the offending value (D-14211).
+            detail: "\(envelope["type"] as? String ?? "unknown") \(rejections.first.map { "\($0.code) at \($0.path)" } ?? "")"
+        )
     }
 
     private func requireSession() -> WatchSessionRecord {
