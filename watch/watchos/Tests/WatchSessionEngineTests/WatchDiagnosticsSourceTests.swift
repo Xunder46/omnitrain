@@ -126,7 +126,7 @@ final class WatchDiagnosticsSourceTests: XCTestCase {
             "S-14213 the host hands the Start screen the sheet's opening"
         )
         XCTAssertTrue(
-            view.contains("WatchDiagnosticsView(log: host.diagnostics)"),
+            view.contains("WatchDiagnosticsView(log: host.diagnostics, onSend: { url in host.sendDiagnostics(url) })"),
             "S-14213 the sheet shows the host's own log"
         )
         XCTAssertTrue(

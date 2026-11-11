@@ -12,9 +12,17 @@ import SwiftUI
 
 public struct WatchDiagnosticsView: View {
     private let log: WatchDiagnosticsLog
+    private let onSend: ((URL) -> WatchDiagnosticsSendOutcome)?
     @State private var summary = WatchDiagnosticsSummary(events: [])
+    @State private var sendMessage: String?
 
-    public init(log: WatchDiagnosticsLog) { self.log = log }
+    public init(
+        log: WatchDiagnosticsLog,
+        onSend: ((URL) -> WatchDiagnosticsSendOutcome)? = nil
+    ) {
+        self.log = log
+        self.onSend = onSend
+    }
 
     public var body: some View {
         ScrollView {
@@ -28,11 +36,28 @@ public struct WatchDiagnosticsView: View {
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
+                if let onSend {
+                    Divider()
+                    Button("Send to phone") {
+                        sendMessage = sendReply(onSend)
+                    }
+                    .buttonStyle(.bordered)
+                    if let sendMessage {
+                        Text(sendMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationTitle("Diagnostics")
         .onAppear { summary = WatchDiagnosticsSummary(events: log.events()) }
+    }
+
+    private func sendReply(_ onSend: (URL) -> WatchDiagnosticsSendOutcome) -> String {
+        guard let url = log.snapshotFile() else { return "Nothing to send." }
+        return onSend(url).message
     }
 }
 #endif

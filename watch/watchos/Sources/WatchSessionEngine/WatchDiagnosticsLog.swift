@@ -103,6 +103,30 @@ public final class WatchDiagnosticsLog: @unchecked Sendable {
         return readAll()
     }
 
+    /// Copies the log file to a new file the caller may hand to the system's file
+    /// transfer (plan 144, D-14401): `watch-diagnostics-<UTC yyyyMMdd'T'HHmmss'Z'>.jsonl`
+    /// in `target`. Nil when the log holds no event or the copy fails.
+    public func snapshotFile(into target: URL = FileManager.default.temporaryDirectory) -> URL? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !readAll().isEmpty, let data = try? Data(contentsOf: fileURL) else { return nil }
+        let stamp = DateFormatter()
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        stamp.timeZone = TimeZone(secondsFromGMT: 0)
+        stamp.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+        let destination = target.appendingPathComponent(
+            "watch-diagnostics-\(stamp.string(from: clock())).jsonl"
+        )
+        do {
+            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+            try data.write(to: destination, options: .atomic)
+        } catch {
+            return nil
+        }
+        return destination
+    }
+
     // MARK: - File
 
     private func readAll() -> [WatchDiagnosticsEvent] {

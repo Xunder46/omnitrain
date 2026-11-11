@@ -183,6 +183,17 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
         return cancelled
     }
 
+    /// Hands the phone a copy of the diagnostics log (plan 144, D-14403). User-initiated and
+    /// separate from the sync frames: the system's file transfer, never the frame path.
+    func sendDiagnostics(_ url: URL) -> WatchDiagnosticsSendOutcome {
+        guard WCSession.isSupported() else { return .notReady }
+        let session = WCSession.default
+        guard session.activationState == .activated else { return .notReady }
+        guard session.isCompanionAppInstalled else { return .phoneAppMissing }
+        session.transferFile(url, metadata: ["kind": "diagnostics_log"])
+        return .sent
+    }
+
     /// Called once by the bridge, before the app starts receiving.
     func onReceive(_ handler: @escaping @concurrent ([String: Any]) async -> Void) {
         receiveHandler = handler

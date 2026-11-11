@@ -370,6 +370,8 @@ Future<Widget> runStartup({
   // Plan 143: the phone's own record of the watch link. Built once, noted at
   // launch, handed to the watch transport below.
   final diagnostics = DiagnosticsLog(storage: await openDefaultDiagnosticsStorage());
+  final received = await openWatchReceivedStorage();
+  diagnostics.attachWatchReceived(received.storage, received.receivedAt);
   diagnostics.noteLaunch();
   WidgetsBinding.instance.addObserver(DiagnosticsLifecycleObserver(diagnostics));
 

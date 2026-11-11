@@ -244,6 +244,7 @@ final class WatchAppHost: ObservableObject {
         self.orchestrator = orchestrator
         self.forwarder = forwarder
         self.healthStore = healthStore
+        self.radio = session
         self.diagnostics = diagnostics
 
         // Every arrival is routed by the orchestrator, then the surface re-reads.
@@ -334,6 +335,11 @@ final class WatchAppHost: ObservableObject {
     /// `HealthKitWorkoutStore(` in this file, which is what the source scan
     /// `testS3110TheHostWiresTheSensorsAndRefreshesTheWorkoutFirst` reads.
     private let healthStore: HealthKitWorkoutStore
+
+    /// The radio, made in `init` and kept (plan 144 D-14403): the Diagnostics
+    /// screen's Send hands the log's snapshot to the system's file transfer
+    /// through it.
+    private let radio: OmniTrainWatchConnectivity
 
     /// The diagnostics log, one for the life of the app (plan 142): the launch,
     /// the scene phases, the link and the sends note into it, and the
@@ -459,6 +465,9 @@ final class WatchAppHost: ObservableObject {
     func askHealthAccess() async {
         healthAccess = await healthStore.requestAccess()
     }
+
+    /// Offers the Diagnostics screen's log snapshot to the phone (plan 144, D-14403).
+    func sendDiagnostics(_ url: URL) -> WatchDiagnosticsSendOutcome { radio.sendDiagnostics(url) }
 }
 
 struct ContentView: View {
@@ -553,7 +562,9 @@ struct ContentView: View {
         // Plan 142: the start screen's way into the diagnostics. Its own sheet,
         // on the root, so a session ending underneath it does not close it.
         .sheet(isPresented: $showingDiagnostics) {
-            NavigationStack { WatchDiagnosticsView(log: host.diagnostics) }
+            NavigationStack {
+                WatchDiagnosticsView(log: host.diagnostics, onSend: { url in host.sendDiagnostics(url) })
+            }
         }
         .task {
             await host.restore()

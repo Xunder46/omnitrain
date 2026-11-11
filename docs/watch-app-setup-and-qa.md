@@ -835,6 +835,17 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     with `launch`, `app_lifecycle`, `frame_sent` and `frame_received`
     lines. Send the paste together with the watch screenshot.
 
+40. **Sending the watch log to the phone — (owner).** (Plan 144) On the
+    watch, open Diagnostics (Start screen, last button) and tap "Send to
+    phone": it says "Sent. The phone has it when it next wakes." Open the
+    OmniTrain app on the phone and wait a few seconds, then Settings: the
+    Diagnostics row reads "N events · watch log M events". Tap Copy and
+    paste into Notes: the header says "Watch log received <UTC time>", and the
+    lines below are both logs merged by time, tagged [phone] and [watch].
+    With the phone app deleted or the link not up, the watch shows
+    "Install the OmniTrain app on the phone." or "Phone link not ready."
+    (the simulator does not deliver file transfers: a real watch is needed).
+
 ### The wrist's own logging (PR 2b)
 
 The wrist-logging walkthrough, with every later watch plan's steps, lives in

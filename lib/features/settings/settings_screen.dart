@@ -1036,12 +1036,13 @@ class _DiagnosticsRow extends StatefulWidget {
 
 class _DiagnosticsRowState extends State<_DiagnosticsRow> {
   late int _count = widget.log.events().length;
+  late int _watchCount = widget.log.watchEvents().length;
 
   Future<void> _copy() async {
     final messenger = ScaffoldMessenger.of(context);
     final theme = Theme.of(context);
     final events = widget.log.events().length;
-    final text = widget.log.shareText(
+    final text = widget.log.shareTextWithWatch(
       header: [
         'OmniTrain phone diagnostics',
         'App ${widget.appVersionInfo.version} (${widget.appVersionInfo.build})',
@@ -1058,20 +1059,25 @@ class _DiagnosticsRowState extends State<_DiagnosticsRow> {
     }
     if (!mounted) return;
     OmniMessage.showOn(messenger, theme, 'Diagnostics copied');
-    setState(() => _count = widget.log.events().length);
+    setState(() {
+      _count = widget.log.events().length;
+      _watchCount = widget.log.watchEvents().length;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final empty = _count == 0;
+    final empty = _count == 0 && _watchCount == 0;
+    final hasWatchLog = _watchCount > 0;
     return OmniSurface(
       padding: EdgeInsets.zero,
       child: _SettingsRow(
         label: 'Diagnostics',
         subtitle: empty
             ? 'Nothing recorded yet'
-            : '$_count event${_count == 1 ? '' : 's'}',
+            : '$_count event${_count == 1 ? '' : 's'}'
+                '${hasWatchLog ? ' · watch log $_watchCount event${_watchCount == 1 ? '' : 's'}' : ''}',
         trailing: Text(
           'Copy',
           style: theme.textTheme.bodySmall?.copyWith(

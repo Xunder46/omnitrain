@@ -49,8 +49,32 @@ class DiagnosticsLog {
   final int _capacity;
   final int _slack;
 
+  // The watch's log sent to the phone (plan 144, D-14406). Attached after
+  // construction, so the fields are not final.
+  DiagnosticsStorage? _watchReceived;
+  DateTime? Function()? _watchReceivedAt;
+
   int? _lineCount;
   final Map<String, _Held> _coalesced = <String, _Held>{};
+
+  /// Attaches the watch's received log (plan 144, D-14405): read only, never
+  /// written by this log.
+  void attachWatchReceived(DiagnosticsStorage storage, DateTime? Function() receivedAt) {
+    _watchReceived = storage;
+    _watchReceivedAt = receivedAt;
+  }
+
+  /// The events of the watch's received log, oldest first (plan 144, D-14405).
+  /// Empty when none is attached or a read fails; a torn line is skipped.
+  List<DiagnosticsEvent> watchEvents() {
+    final storage = _watchReceived;
+    if (storage == null) return const <DiagnosticsEvent>[];
+    try {
+      return _decodeAll(storage.read());
+    } catch (_) {
+      return const <DiagnosticsEvent>[];
+    }
+  }
 
   /// Records one event. With a [coalesce] key, events under that key are
   /// recorded at most once per [coalesceWindow]: the first at once, then one
@@ -125,6 +149,38 @@ class DiagnosticsLog {
       final session = event.session == null ? '' : ' s:${event.session}';
       final detail = event.detail == null ? '' : ' ${event.detail}';
       lines.add('${_iso(event.at)} ${event.kind}$session$detail');
+    }
+    return lines.join('\n');
+  }
+
+  /// The phone's log and the watch's received log as one block of text (plan 144, D-14405).
+  /// With no watch storage it is exactly [shareText].
+  String shareTextWithWatch({List<String> header = const <String>[]}) {
+    if (_watchReceived == null) return shareText(header: header);
+    final watch = watchEvents();
+    final lines = <String>[...header];
+    if (watch.isEmpty) {
+      lines.add('Watch log not received');
+    } else {
+      final at = _watchReceivedAt?.call();
+      lines.add(at == null ? 'Watch log received (time unknown)' : 'Watch log received ${_iso(at)}');
+      lines.add("Times are each device's own clock");
+    }
+    final phone = events();
+    final merged = <(DiagnosticsEvent, String, int)>[
+      for (var i = 0; i < phone.length; i++) (phone[i], 'phone', i),
+      for (var i = 0; i < watch.length; i++) (watch[i], 'watch', i),
+    ];
+    merged.sort((a, b) {
+      final byTime = a.$1.at.compareTo(b.$1.at);
+      if (byTime != 0) return byTime;
+      final bySource = a.$2.compareTo(b.$2); // 'phone' sorts before 'watch'
+      return bySource != 0 ? bySource : a.$3.compareTo(b.$3);
+    });
+    for (final (event, source, _) in merged) {
+      final session = event.session == null ? '' : ' s:${event.session}';
+      final detail = event.detail == null ? '' : ' ${event.detail}';
+      lines.add('${_iso(event.at)} [$source] ${event.kind}$session$detail');
     }
     return lines.join('\n');
   }

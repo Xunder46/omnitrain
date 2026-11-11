@@ -43,4 +43,14 @@ class FileDiagnosticsStorage implements DiagnosticsStorage {
       return false;
     }
   }
+
+  /// The file's modification time, or null on any failure (plan 144, D-14406).
+  DateTime? modified() {
+    try {
+      if (!file.existsSync()) return null;
+      return file.lastModifiedSync();
+    } catch (_) {
+      return null;
+    }
+  }
 }

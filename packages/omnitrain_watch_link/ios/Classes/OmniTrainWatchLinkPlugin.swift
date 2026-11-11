@@ -261,4 +261,30 @@ public class OmniTrainWatchLinkPlugin: NSObject, FlutterPlugin, FlutterStreamHan
     public func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
         emit(["kind": "userInfo", "frame": userInfo])
     }
+
+    /// A file the watch sent on request (plan 144, D-14404). Only the diagnostics log is kept, and it
+    /// is copied before this returns: the system deletes the received file when the callback ends.
+    public func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        guard (file.metadata?["kind"] as? String) == "diagnostics_log" else { return }
+        do {
+            let support = try FileManager.default.url(
+                for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
+            )
+            let directory = support.appendingPathComponent("watch-diagnostics", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let destination = directory.appendingPathComponent("watch-received.jsonl")
+            let staged = directory.appendingPathComponent("watch-received.jsonl.incoming")
+            try? FileManager.default.removeItem(at: staged)
+            try FileManager.default.copyItem(at: file.fileURL, to: staged)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                _ = try FileManager.default.replaceItemAt(destination, withItemAt: staged)
+            } else {
+                try FileManager.default.moveItem(at: staged, to: destination)
+            }
+            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: destination.path)
+            NSLog("OmniTrainWatchLink: diagnostics log received")
+        } catch {
+            NSLog("OmniTrainWatchLink: diagnostics log not saved: %@", String(describing: error))
+        }
+    }
 }

@@ -16,6 +16,16 @@ abstract class DiagnosticsStorage {
   bool replace(String text);
 }
 
+/// Where the watch's log, sent to the phone on request, lives (plan 144, D-14406).
+class WatchReceivedSource {
+  const WatchReceivedSource({required this.storage, required this.receivedAt});
+
+  final DiagnosticsStorage storage;
+
+  /// When the file arrived (its modification time), or null.
+  final DateTime? Function() receivedAt;
+}
+
 /// Keeps the text in memory: the web build's storage, and a test's.
 class InMemoryDiagnosticsStorage implements DiagnosticsStorage {
   String _text = '';
