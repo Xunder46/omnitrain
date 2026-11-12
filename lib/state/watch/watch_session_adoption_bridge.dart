@@ -29,6 +29,7 @@ import '../../core/services/watch_session_importer.dart';
 import '../../core/sync_protocol/message_validator.dart';
 import '../../core/sync_protocol/phone_entries.dart';
 import '../../core/sync_protocol/wire_limits.dart';
+import '../../core/sync_protocol/wire_timestamps.dart';
 import '../../core/utils/entry_rows.dart';
 import '../../core/utils/logged_entry_rows.dart';
 import '../../core/utils/watch_reference_sync.dart';
@@ -671,6 +672,17 @@ class WatchSessionAdoptionBridge {
   static Map<String, Object?> _asObject(Object? value) =>
       value is Map ? value.cast<String, Object?>() : const <String, Object?>{};
 
+  /// The instant [value] names on the wire, in milliseconds, or null when it
+  /// names none a phone can read.
+  static int? _instantMs(Object? value) {
+    if (value is! String) return null;
+    try {
+      return parseUtcIso(value).millisecondsSinceEpoch;
+    } on FormatException {
+      return null;
+    }
+  }
+
   /// Reports a refused adoption (D-10) once per (held, offered) pair.
   ///
   /// The pair is what the rule acted on, so a repeat of the same pair — the
@@ -847,9 +859,21 @@ class WatchSessionAdoptionBridge {
 
     final held = target.currentSession;
     if (held == null || held.id != sessionId) return;
-    if (held.endedAtMs != null) return;
+    final state = _asObject(envelope['payload'])['state'];
+    if (held.endedAtMs != null) {
+      // D-14604 (O-5): a finished workout is not ended twice — the first
+      // ending keeps its status — but its end time is the latest instant either
+      // side has, so a later `completed` moves the end (and re-settles the
+      // estimate). A discard adds no training time, so `abandoned` moves
+      // nothing, and a session this phone ended itself keeps its own end (G1).
+      if (state == WatchLifecycleState.completed) {
+        final atMs = _instantMs(_asObject(envelope['payload'])['at']);
+        if (atMs != null) await target.catchUpEndedSession(atMs);
+      }
+      return;
+    }
 
-    switch (_asObject(envelope['payload'])['state']) {
+    switch (state) {
       case WatchLifecycleState.completed:
         await _catchUpSessionRow(sessionId);
         // The watch saved its own workout for this session: the phone's end

@@ -533,13 +533,15 @@ class WatchSessionEngine {
     // nothing — no row, no message — may come of a frame that is not about it
     // (D-78). The same snapshot still applies when the wrist holds nothing, or
     // holds a session that has already ended: that is the ordinary case of the
-    // phone's next workout arriving.
+    // phone's next workout arriving. And when the session it names has already
+    // ended, its entries are the only news such a frame can carry (D-14605).
     final held = _session;
     if (held != null &&
         held.status == WatchSessionStatus.active &&
         held.exercises.isNotEmpty &&
         held.sessionId != sessionId) {
-      return false;
+      if (!_holdsTerminalRow(sessionId)) return false;
+      return _mergeLateEntries(sessionId, entryMaps);
     }
 
     // D-113.2: an entry the snapshot carries exists, so its tombstone is
@@ -556,15 +558,31 @@ class WatchSessionEngine {
     final snapshotFocus = existing == null
         ? WatchActivityTypes.knownModality(payload['modality'])
         : null;
+    // D-14601: an ended session stays ended. A snapshot keeps the held terminal
+    // status against an `active` payload status, and a terminal payload status
+    // replaces the held one only when its instant — the snapshot's `sentAt`,
+    // the D-120 end moment — is earlier than the held terminal row's.
+    final messageStatus = payload['status']! as String;
+    final terminalHeld = existing != null && _isTerminal(existing.status);
+    final replacing =
+        terminalHeld &&
+        _isTerminal(messageStatus) &&
+        (sentAt.isBefore(existing.recordedAt) ||
+            (sentAt.isAtSameMomentAs(existing.recordedAt) &&
+                _incomingEndWinsATie(
+                  held: existing,
+                  incomingStatus: messageStatus,
+                  incomingMessageId: messageId,
+                )));
     final row = WatchSessionRecord(
       recordId: '$_snapshotPrefix$messageId',
       sessionId: sessionId,
-      recordedAt: sentAt,
+      recordedAt: terminalHeld && !replacing ? existing.recordedAt : sentAt,
       startedAt:
           existing?.startedAt ?? _startedAtOf(entryMaps, fallback: sentAt),
       modality: existing?.modality ?? snapshotFocus,
       source: existing?.source ?? 'phone',
-      status: payload['status']! as String,
+      status: terminalHeld && !replacing ? existing.status : messageStatus,
       currentExerciseIndex: _clampIndex(
         payload['currentExerciseIndex']! as int,
         exercises.length,
@@ -582,7 +600,11 @@ class WatchSessionEngine {
       for (final entry in entryMaps) entry['entryId']! as String,
     ]);
     await _adoptTimers(
-      asJsonObject(payload['timers']),
+      // A session that has ended runs no timer, so a late snapshot may clear
+      // one and never start one (D-14603, D-14604).
+      terminalHeld
+          ? _namedNullTimers(asJsonObject(payload['timers']))
+          : asJsonObject(payload['timers']),
       sessionId: sessionId,
       messageId: messageId,
       recordedAt: sentAt,
@@ -590,6 +612,76 @@ class WatchSessionEngine {
     );
     return true;
   }
+
+  /// Merges the entries of a snapshot whose session the wrist does not hold but
+  /// has already ended (D-14605): the entries are the only news such a frame
+  /// can carry. No row, no status, no structure, no revision, and no
+  /// confirmation — the session it describes is over and not the one the user
+  /// is in. Union by `entryId` is what keeps a re-stated set from doubling
+  /// (D-14606).
+  Future<bool> _mergeLateEntries(
+    String sessionId,
+    List<Map<String, Object?>> entryMaps,
+  ) async {
+    final rows = _observations.length;
+    final corrections = _entryCorrections.length;
+    for (final entry in entryMaps) {
+      await _storeSnapshotEntry(sessionId, entry);
+    }
+    return _observations.length != rows ||
+        _entryCorrections.length != corrections;
+  }
+
+  /// Whether any row the wrist holds for [sessionId] has ended it — the test
+  /// that makes a late snapshot's entries worth merging (D-14605).
+  bool _holdsTerminalRow(String sessionId) {
+    for (final row in _sessionRows) {
+      if (row.sessionId == sessionId && _isTerminal(row.status)) return true;
+    }
+    return false;
+  }
+
+  /// The kinds [timers] names as `null`, and nothing else: all a session that
+  /// has ended may take from a late frame (D-14603).
+  static Map<String, Object?> _namedNullTimers(Map<String, Object?> timers) => {
+    for (final entry in timers.entries)
+      if (entry.value == null) entry.key: null,
+  };
+
+  /// Whether an ending that arrives at the same instant as the held one
+  /// replaces it (D-14601 as amended by the lead review): `completed` wins a
+  /// tie, so a finished workout is never deleted by a discard that lands at
+  /// the same instant, and a still-tied pair resolves on the lexicographically
+  /// smaller messageId — the order the phone's reconciler applies too, so both
+  /// sides keep the same ending whatever order the frames arrived in.
+  static bool _incomingEndWinsATie({
+    required WatchSessionRecord held,
+    required String incomingStatus,
+    required String incomingMessageId,
+  }) {
+    if (incomingStatus != held.status) {
+      return incomingStatus == WatchSessionStatus.completed;
+    }
+    final heldMessageId = _messageIdOf(held);
+    if (heldMessageId == null) return false;
+    return incomingMessageId.compareTo(heldMessageId) < 0;
+  }
+
+  /// The message a phone-written row derives from, or null for a row the wrist
+  /// wrote itself (its own end carries no message id).
+  static String? _messageIdOf(WatchSessionRecord row) {
+    for (final prefix in const [_lifecyclePrefix, _snapshotPrefix]) {
+      if (row.recordId.startsWith(prefix)) {
+        return row.recordId.substring(prefix.length);
+      }
+    }
+    return null;
+  }
+
+  /// Whether [status] is one a session never leaves (D-14601).
+  static bool _isTerminal(String status) =>
+      status == WatchSessionStatus.completed ||
+      status == WatchSessionStatus.abandoned;
 
   /// Applies one structure change: the ladder, the position that follows from
   /// it, and the phone's corrections to entries the watch holds.
@@ -629,9 +721,14 @@ class WatchSessionEngine {
     return true;
   }
 
-  /// Applies a lifecycle message from the phone: the most recent status wins,
-  /// and an advanced position clamps to the ladder (PROTOCOL.md, "Idempotency
-  /// and reconciliation").
+  /// Applies a lifecycle message from the phone: the first ending of a session
+  /// is final, and an advanced position clamps to the ladder (D-14601).
+  ///
+  /// A session that has reached `completed` or `abandoned` never returns to
+  /// `active`: a `started` — or a position change — for it is ignored whole (no
+  /// row, no end), and a terminal state that arrived later than the held ending
+  /// loses to it. Only an earlier end replaces the held one, because the first
+  /// ending is the moment the workout actually finished.
   ///
   /// Nothing is echoed back — the phone is telling the watch what it decided,
   /// and answering it with the same news would be noise.
@@ -648,6 +745,41 @@ class WatchSessionEngine {
       WatchLifecycleState.abandoned => WatchSessionStatus.abandoned,
       _ => session.status,
     };
+    final ends = state == WatchLifecycleState.completed ||
+        state == WatchLifecycleState.abandoned;
+    final at =
+        parseOptionalUtcIso(payload['at']) ?? parseUtcIso(envelope['sentAt']);
+
+    if (_isTerminal(session.status)) {
+      if (!ends) return false;
+      // A completion outranks a discard whatever the two clocks say: the phone
+      // finished that workout, and a finished workout is never deleted (D-14601
+      // as amended by the Phase 1 review — the phone ignores an arriving
+      // `abandoned` for an ended row, and this is the same rule seen from the
+      // wrist's side). Instants still order two endings of the same status.
+      if (status != WatchSessionStatus.completed ||
+          session.status != WatchSessionStatus.abandoned) {
+        if (!at.isBefore(session.recordedAt)) {
+          final sameInstant = at.isAtSameMomentAs(session.recordedAt);
+          if (sameInstant &&
+              _incomingEndWinsATie(
+                held: session,
+                incomingStatus: status,
+                incomingMessageId: envelope['messageId']! as String,
+              )) {
+            // An equal instant is not a total order on its own (D-14601 as
+            // amended): the tie-break applies the incoming end, so both sides
+            // keep the same ending whichever arrived first.
+          } else {
+            // The same end delivered again: applied (nothing to write), so the
+            // caller does not read the repeat as a refusal (S-81). A later end
+            // for the same session is refused whole (D-14601).
+            return sameInstant && status == session.status;
+          }
+        }
+      }
+    }
+
     final index = state == WatchLifecycleState.exerciseAdvanced
         ? _clampIndex(
             payload['exerciseIndex']! as int,
@@ -655,11 +787,27 @@ class WatchSessionEngine {
           )
         : session.currentExerciseIndex;
 
+    if (ends) {
+      // D-14603a: an end stops every timer of the session, under the id of the
+      // message that named it — so a redelivered end stops nothing a second
+      // time — and the same stop `_transitionTo` runs for the wrist's own end.
+      await _adoptTimers(
+        {for (final kind in SyncProtocolValidator.timerKinds) kind: null},
+        sessionId: session.sessionId,
+        messageId: envelope['messageId']! as String,
+        recordedAt: at,
+        authoritative: false,
+      );
+    }
+
     await _appendSessionRow(
       WatchSessionRecord(
         recordId: '$_lifecyclePrefix${envelope['messageId']}',
         sessionId: session.sessionId,
-        recordedAt: parseUtcIso(envelope['sentAt']),
+        // An ending row records the moment it claims, so the next end is
+        // compared against the ending itself and not against its delivery
+        // (D-14601).
+        recordedAt: ends ? at : parseUtcIso(envelope['sentAt']),
         startedAt: session.startedAt,
         modality: session.modality,
         source: session.source,
@@ -868,7 +1016,10 @@ class WatchSessionEngine {
     // D-113.2: the phone is the structure authority, so an entry its snapshot
     // carries exists — whatever this watch was told about that id before.
     _unhideTheIdTheSnapshotNames(entry);
-    if (_observations.any((row) => row.recordId == entryId)) {
+    // D-14606: the entry id is the identity. A set the wrist logged under its
+    // own event id is the same entry as the one the phone sends back, so a row
+    // that already holds this `entryId` is re-stated, not doubled.
+    if (_heldRecord(entryId) != null) {
       final held = _heldPayload(entryId);
       if (held != null && !_sameStamp(held['loggedAt'], entry['loggedAt'])) {
         // D-113.3: the phone mints the highest number + 1, so deleting the
@@ -936,12 +1087,21 @@ class WatchSessionEngine {
   /// the held row with the phone's correction folded in, or null when the wrist
   /// holds no row for it.
   Map<String, Object?>? _heldPayload(String entryId) {
+    final row = _heldRecord(entryId);
+    if (row == null) return null;
+    final correction = _entryCorrections[entryId];
+    return correction == null ? row.payload : {...row.payload, ...correction};
+  }
+
+  /// The row the wrist holds for [entryId], under whatever id that row was
+  /// written with: the wrist logs a set under its `eventId`, and a snapshot
+  /// names the same entry by `entryId`, so one entry may be held under either
+  /// (D-14606).
+  WatchObservationRecord? _heldRecord(String entryId) {
     for (final row in _observations) {
-      if (row.recordId != entryId) continue;
-      final correction = _entryCorrections[entryId];
-      return correction == null
-          ? row.payload
-          : {...row.payload, ...correction};
+      if (row.recordId == entryId || row.payload['entryId'] == entryId) {
+        return row;
+      }
     }
     return null;
   }
@@ -1209,6 +1369,12 @@ class WatchSessionEngine {
     required String? lifecycle,
   }) async {
     final session = _requireSession();
+    // D-14602: an ended session stays ended. The wrist's own Finish or Discard
+    // on a session that has already ended changes nothing — the row that holds
+    // the end comes back, no row is appended, nothing is announced, and no
+    // timer is stopped on the way to a row that is never written. An auto-finish
+    // cannot upgrade a discard (S-14605).
+    if (status != null && _isTerminal(session.status)) return session;
     final now = _clock();
     // A rest can never outlive the workout (D-223, V-1): it is stopped at the
     // session's end instant, before the terminal row is built — the row copies
@@ -1376,12 +1542,17 @@ class WatchSessionEngine {
     );
     _requireConformant(envelope);
 
-    final existing = _observations.any((row) => row.recordId == recordId);
+    // D-14606: one `entryId` is one row, whatever id the row that holds it was
+    // written with. A re-statement of something already held emits nothing.
+    final entryId = event['entryId'];
+    final held =
+        _heldRecord(recordId) ??
+        (entryId is String && entryId.isNotEmpty ? _heldRecord(entryId) : null);
+    if (held != null) return held;
+
     final stored = await _store.append(record);
-    if (!existing) {
-      _observations.add(stored);
-      _emit(envelope);
-    }
+    _observations.add(stored);
+    _emit(envelope);
     return stored;
   }
 

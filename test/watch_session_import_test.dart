@@ -36,6 +36,7 @@ import 'package:omnitrain/core/services/health_platform_service.dart';
 import 'package:omnitrain/core/services/health_sync_service.dart';
 import 'package:omnitrain/core/services/watch_session_importer.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
+import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -1193,6 +1194,90 @@ void main() {
         beforeRefusal?.toMap(),
         reason: 'S-65 refused, not clamped: the row is unchanged from before the '
             '−240 kg correction, value and stamp alike',
+      );
+    });
+  });
+
+  group('S-14610 the imported end catches up', () {
+    test(
+      'S-14610 a set the wrist logged after its end moves the imported end to '
+      'that set',
+      () async {
+        final repository = await _repository();
+        final transport = CaptureTransport();
+        var refreshes = 0;
+        final inbox = _inbox(
+          repository,
+          transport,
+          onHistoryChanged: () async => refreshes++,
+        );
+
+        await _deliverEach(inbox, _capId, captureEvents('full'));
+        final imported = (await repository.getAllSessions()).single;
+        final end = imported.endedAtMs!;
+        final before = refreshes;
+        expect(before, greaterThan(0), reason: 'the fixture: the import refreshed');
+
+        final template = captureEvents(
+          'full',
+        ).firstWhere((event) => event['kind'] == 'set');
+        final late = end + 5000;
+        await inbox.receive(
+          observationsUp(_capId, [
+            {
+              ...template,
+              'entryId': 'cx-late-1',
+              'eventId': 'cx-late-1',
+              'loggedAt': utcIso(
+                DateTime.fromMillisecondsSinceEpoch(late, isUtc: true),
+              ),
+            },
+          ], messageId: 'msg-late-set'),
+        );
+
+        expect(
+          (await repository.getSession(imported.id))!.endedAtMs,
+          late,
+          reason: 'S-14610 the end is the latest instant the wrist logged',
+        );
+        expect(
+          refreshes,
+          greaterThan(before),
+          reason: 'S-14610 the moved end reaches history listeners (the '
+              'energy settle re-runs)',
+        );
+      },
+    );
+
+    test('S-14610 a set logged before the end leaves the end where it is', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, _capId, captureEvents('full'));
+      final imported = (await repository.getAllSessions()).single;
+      final end = imported.endedAtMs!;
+
+      final template = captureEvents(
+        'full',
+      ).firstWhere((event) => event['kind'] == 'set');
+      await inbox.receive(
+        observationsUp(_capId, [
+          {
+            ...template,
+            'entryId': 'cx-early-1',
+            'eventId': 'cx-early-1',
+            'loggedAt': utcIso(
+              DateTime.fromMillisecondsSinceEpoch(end - 60000, isUtc: true),
+            ),
+          },
+        ], messageId: 'msg-early-set'),
+      );
+
+      expect(
+        (await repository.getSession(imported.id))!.endedAtMs,
+        end,
+        reason: 'S-14610 an earlier instant never shortens the end',
       );
     });
   });

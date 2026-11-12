@@ -15,6 +15,11 @@
 //                                                          → `S-6216 ...` (×3)
 //   S-6217 a new interval replacing a delivered one clears first, then names it
 //                                                          → `S-6217 ...`
+// Plan 146 D-14603b (an ended session's timers stop on the wrist):
+//   S-14603b an end stops every timer the session ran, once, from the owed
+//          stop that survives a link that dropped it      → `S-14603b ...` (×2)
+//   S-14604b ending with the phone's rest running stops that rest on the wrist
+//                                                          → `S-14604b ...`
 // Plan 43c D-3 (the phone clears the clock the watch started):
 //   S-6321 finishing an adopted interval clears the wrist clock
 //                                                          → `S-6321 ...`
@@ -1034,13 +1039,15 @@ void main() {
 
   group('S-6216 the negative guards', () {
     test(
-      'S-6216 an inactive session sends nothing and clears the ledger',
+      'S-6216 an inactive session stops the timers it sent and clears the '
+      'ledger',
       () async {
         await wristStartsTimedSession();
         graph.timerPush.bindWorkoutState(phoneState);
         await startInterval();
         await graph.timerPush.flush();
         expect(timerFrames(), hasLength(1), reason: 'the fixture: one frame');
+        await applyPhoneTimers();
 
         await phoneState.endSession();
         expect(phoneState.hasActiveSession, isFalse);
@@ -1048,8 +1055,28 @@ void main() {
 
         expect(
           timerFrames(),
-          hasLength(1),
-          reason: 'S-6216 a session that is not active has no timers to send',
+          hasLength(2),
+          reason: 'S-6216 a session that stopped has no timers left running, so '
+              'the one timer it sent is stopped',
+        );
+        expect(
+          timersOf(timerFrames().last)['elapsed'],
+          isNull,
+          reason: 'S-6216 the stop names the timer it stops',
+        );
+
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.elapsed)!.state,
+          WatchTimerState.stopped,
+          reason: 'S-6216 the wrist stops what the ended session left running',
+        );
+
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(2),
+          reason: 'S-6216 a delivered stop is not sent twice',
         );
         expect(failures, isEmpty);
       },
@@ -1100,6 +1127,131 @@ void main() {
       );
       expect(failures, isEmpty);
     });
+  });
+
+  group('S-14603b the end of a session reaches the wrist as stops', () {
+    test(
+      'S-14604b ending the session with the phone\'s rest running stops the '
+      "rest on the wrist, in the phone's gone-branch frame",
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(1),
+          reason: 'the fixture: the phone rest travelled to the wrist',
+        );
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.running,
+          reason: 'the fixture: the wrist holds the rest the phone started',
+        );
+
+        await phoneState.endSession();
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          hasLength(2),
+          reason: 'S-14604b the end sends one frame stopping what it left',
+        );
+        final stop = timersOf(timerFrames().last);
+        expect(
+          stop['rest'],
+          isNull,
+          reason: 'S-14604b the frame names the rest it stops',
+        );
+
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.stopped,
+          reason: 'S-14604b the wrist stops the rest the ended session ran',
+        );
+
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(2),
+          reason: 'S-14603b a redelivered stop stops nothing twice',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-14603b a stop the radio refused is owed, and goes out again under the '
+      'same message id when the link carries it',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.running,
+          reason: 'the fixture: the wrist is resting',
+        );
+
+        radio.unreachable = true;
+        await phoneState.endSession();
+        await graph.timerPush.flush();
+        expect(
+          radio.attempted.where((frame) => frame['type'] == 'timer_state'),
+          hasLength(2),
+          reason: 'S-14603b the stop is offered while the link is down',
+        );
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.running,
+          reason: 'the fixture: nothing reached the wrist',
+        );
+
+        radio.unreachable = false;
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(2),
+          reason: 'S-14603b the owed stop goes out on the next trigger',
+        );
+        final attemptedStops = [
+          for (final frame in radio.attempted)
+            if (frame['type'] == 'timer_state') frame,
+        ];
+        expect(
+          attemptedStops.last['messageId'],
+          attemptedStops[1]['messageId'],
+          reason: 'S-14603b the retry is the same frame, so the wrist applies '
+              'one stop',
+        );
+        expect(
+          timersOf(frames.last)['rest'],
+          isNull,
+          reason: 'S-14603b the retried stop clears the rest',
+        );
+
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.stopped,
+          reason: 'S-14603b the wrist stops the rest once the link returns',
+        );
+
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(2),
+          reason: 'S-14603b a delivered stop is not owed again',
+        );
+        expect(failures, isEmpty);
+      },
+    );
   });
 
   group('S-6217 a new interval replacing a delivered one', () {

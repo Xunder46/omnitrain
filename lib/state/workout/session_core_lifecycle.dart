@@ -5,7 +5,10 @@ extension SessionCoreLifecycleMethods on SessionCore {
   /// it, writes it to Health (plan 89c1): [writeToHealth] false is the wrist's
   /// own end (D-1); a session the wrist is running is read here, at the
   /// phone's end, before the wrist can hear of it (D-2).
-  Future<void> endSession({required bool writeToHealth}) async {
+  /// [atMs] is the instant the session ended when the caller knows it — the
+  /// wrist's own end (D-14604); omitted, the phone's clock decides. Either way
+  /// the end is never stored before the start (D-153).
+  Future<void> endSession({required bool writeToHealth, int? atMs}) async {
     if (_currentSession == null) return;
     if (_currentSession!.endedAtMs != null) return;
 
@@ -18,7 +21,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
       await _timerManager.persistActiveRounds();
       await _timerManager.persistActiveTimedEntries();
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = atMs ?? DateTime.now().millisecondsSinceEpoch;
       await _timerManager.persistOpenRests(now);
       final updatedSession = TrainingSession(
         id: _currentSession!.id,
@@ -118,6 +121,11 @@ extension SessionCoreLifecycleMethods on SessionCore {
 
     final discarded = _currentSession!;
     try {
+      // D-14603c: the timers a discard leaves running are stopped here, in
+      // memory, before the row goes — a timer frame composed while the delete
+      // is in flight can then only name stopped timers, and the row's own
+      // rests are deleted with it.
+      _timerManager.closeAllOpenRestsInSessionInMemory();
       await _repository.deleteSession(discarded.id);
       clearSession();
     } catch (e) {
@@ -204,6 +212,54 @@ extension SessionCoreLifecycleMethods on SessionCore {
       _notify();
     } catch (e) {
       _setError('Failed to update session end time: $e');
+    }
+  }
+
+  /// Moves the end already stored on the held session to [atMs] when that is
+  /// later (D-14604): an ended workout keeps the status of the first ending and
+  /// takes the latest instant either side has. A session that has not ended, a
+  /// row this phone does not hold, and an instant at or before the end already
+  /// stored are all left alone — the settle is what a moved end owes.
+  Future<void> catchUpEndedSession(int atMs) async {
+    final session = _currentSession;
+    if (session == null) return;
+    final heldEndMs = session.endedAtMs;
+    if (heldEndMs == null) return;
+    final endMs = math.max(heldEndMs, atMs);
+    if (endMs == heldEndMs) return;
+
+    _clearError();
+    try {
+      final updatedSession = TrainingSession(
+        id: session.id,
+        ownerUserId: session.ownerUserId,
+        routineTemplateId: session.routineTemplateId,
+        startedAtMs: session.startedAtMs,
+        endedAtMs: endMs,
+        title: session.title,
+        note: session.note,
+        locationText: session.locationText,
+        modality: session.modality,
+        intent: session.intent,
+        perceivedSessionRpe: session.perceivedSessionRpe,
+        sessionFeeling: session.sessionFeeling,
+        qualityRating: session.qualityRating,
+        isRolling: session.isRolling,
+        createdAtMs: session.createdAtMs,
+        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+
+      await _repository.updateSession(updatedSession);
+      _currentSession = updatedSession;
+
+      // D-13408: a longer span changes an estimate; a measured row stays.
+      try {
+        await _activeEnergy?.settle(updatedSession.id);
+      } catch (_) {}
+
+      _notify();
+    } catch (e) {
+      _setError('Failed to catch up the session end: $e');
     }
   }
 

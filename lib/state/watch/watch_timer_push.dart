@@ -132,6 +132,14 @@ class WatchTimerPush {
   /// ledger on a session change.
   final Map<String, Map<String, Object?>> _owed = {};
 
+  /// The stops this push still owes a session whose work is over (D-14603b),
+  /// per session id and then per wire kind: the message id the kind's stop goes
+  /// out under, derived from the kind and the session so a retry is the same
+  /// frame. `timer_state` is never queued, so a stop the radio did not carry
+  /// waits here until the next trigger — a link rise, a sync, a phone change —
+  /// offers it again.
+  final Map<String, Map<String, String>> _stopOwed = {};
+
   /// The drain a running [flush] is, and whether another pass was asked for
   /// while it ran. Two flushes that overlap are one drain.
   Future<void>? _draining;
@@ -297,14 +305,24 @@ class WatchTimerPush {
   /// clears-only pass sends no start (54 D-1).
   Future<void> _pushOnce({required bool clearsOnly}) async {
     try {
+      // D-14603b: a stop still owed for a session that is over goes out on any
+      // trigger, whatever the phone holds now.
+      await _flushStops();
+
       final state = _workoutState;
       final session = state?.currentSession;
       if (state == null || session == null || !state.hasActiveSession) {
+        // The session is gone (discarded) or ended: its timers stop on the
+        // wrist. One last stop per kind the wrist was told about or is owed,
+        // applied here first, then the ledgers go — the stop is what remains
+        // of a session this phone no longer runs.
+        _oweStops(session?.id ?? _sessionId);
         _delivered.clear();
         _adopted.clear();
         _stale.clear();
         _owed.clear();
         _sessionId = null;
+        await _flushStops();
         return;
       }
       if (_sessionId != session.id) {
@@ -496,6 +514,41 @@ class WatchTimerPush {
       };
     }
     return wanted;
+  }
+
+  /// Records the stops [sessionId] is owed: every kind this push delivered or
+  /// still owes, under the id that kind's stop goes out on (D-14603b). A kind
+  /// whose clear never travelled is owed as well, so it is stopped here rather
+  /// than lost with the ledgers. A session the push never told the wrist about
+  /// owes nothing.
+  void _oweStops(String? sessionId) {
+    if (sessionId == null) return;
+    final kinds = {..._delivered.keys, ..._owed.keys};
+    if (kinds.isEmpty) return;
+    final owed = _stopOwed[sessionId] ??= <String, String>{};
+    for (final kind in kinds) {
+      owed.putIfAbsent(kind, () => 'tms-end-$sessionId-$kind');
+    }
+  }
+
+  /// Sends every stop still owed, one frame per kind, and forgets the ones the
+  /// radio carried. A frame the radio does not carry stays owed for the next
+  /// trigger, under the same message id, so the wrist applies one stop.
+  Future<void> _flushStops() async {
+    for (final sessionId in _stopOwed.keys.toList()) {
+      final owed = _stopOwed[sessionId];
+      if (owed == null) continue;
+      for (final entry in owed.entries.toList()) {
+        final delivery = await _mirror.sendTimerStop(
+          sessionId,
+          entry.key,
+          messageId: entry.value,
+        );
+        if (delivery != WatchDelivery.delivered) continue;
+        owed.remove(entry.key);
+      }
+      if (owed.isEmpty) _stopOwed.remove(sessionId);
+    }
   }
 
   /// Records [next] as the starts the radio refused (plan 98 D-2) — except a

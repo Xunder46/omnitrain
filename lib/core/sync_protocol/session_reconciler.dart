@@ -21,6 +21,8 @@
 /// on different structure.
 library;
 
+import 'wire_timestamps.dart';
+
 /// The converged session: structure from the phone, entries from everyone.
 class SyncSessionReconciler {
   SyncSessionReconciler.fromSnapshot(Map<String, Object?> snapshot) {
@@ -46,13 +48,26 @@ class SyncSessionReconciler {
   late int _revision;
   late int _currentExerciseIndex;
 
+  /// The instant of the ending that stands, once the session has one — what a
+  /// later terminal state is compared against (D-14601).
+  DateTime? _endedAt;
+
+  /// The message the standing ending arrived on, when it is a frame's — the
+  /// second half of the tie-break (D-14601 as amended): two ends at the same
+  /// instant resolve on the smaller messageId.
+  String? _endMessageId;
+
   /// Applies one schema-conformant message. Applying the same message twice
   /// changes nothing.
   void applyMessage(Map<String, Object?> message) {
     final payload = _asObject(message['payload']);
+    final sentAt = parseOptionalUtcIso(message['sentAt']);
+    final messageId = message['messageId'] is String
+        ? message['messageId']! as String
+        : null;
     switch (message['type']) {
       case 'session_snapshot':
-        _applySnapshot(payload);
+        _applySnapshot(payload, sentAt: sentAt, messageId: messageId);
       case 'observations_up':
         for (final event in payload['events']! as List) {
           _addEntry(_asObject(event));
@@ -67,7 +82,7 @@ class SyncSessionReconciler {
       case 'timer_state':
         _applyTimers(_asObject(payload['timers']!), authoritative: false);
       case 'session_lifecycle':
-        _applyLifecycle(payload);
+        _applyLifecycle(payload, sentAt: sentAt, messageId: messageId);
       // routines_down carries reference data, not session state.
     }
   }
@@ -109,15 +124,39 @@ class SyncSessionReconciler {
   /// replaces the held one wholesale, entries included: a second workout
   /// started on the wrist is not a continuation of the first, and merging would
   /// file the first session's entries under the second.
-  void _applySnapshot(Map<String, Object?> snapshot) {
+  ///
+  /// An ended session stays ended (D-14601): a snapshot keeps the held terminal
+  /// status against an `active` one, its terminal status replacing the held one
+  /// only when its own instant — the snapshot's `sentAt`, the D-120 end moment —
+  /// is earlier. Stopping the session's timers at its end is the phone's own
+  /// rule (D-14603, Phase 3), not this reconciliation's.
+  void _applySnapshot(
+    Map<String, Object?> snapshot, {
+    DateTime? sentAt,
+    String? messageId,
+  }) {
     final sessionId = snapshot['sessionId']! as String;
-    if (sessionId != _sessionId) {
+    final otherSession = sessionId != _sessionId;
+    if (otherSession) {
       _entries.clear();
       _appliedEventIds.clear();
+      _endedAt = null;
+      _endMessageId = null;
     }
 
+    final status = snapshot['status']! as String;
+    final keepsItsEnd =
+        !otherSession &&
+        _isTerminal(_status) &&
+        !(_isTerminal(status) &&
+            _incomingEndWins(status: status, at: sentAt, messageId: messageId));
+
     _sessionId = sessionId;
-    _status = snapshot['status']! as String;
+    if (!keepsItsEnd) {
+      _status = status;
+      _endedAt = _isTerminal(status) ? sentAt : null;
+      _endMessageId = _isTerminal(status) ? messageId : null;
+    }
     _revision = snapshot['revision']! as int;
     _currentExerciseIndex = snapshot['currentExerciseIndex']! as int;
 
@@ -143,18 +182,65 @@ class SyncSessionReconciler {
     }
   }
 
-  void _applyLifecycle(Map<String, Object?> payload) {
-    switch (payload['state']) {
+  /// The first ending of a session is final (D-14601): a `started` — or a
+  /// position change — for a session that has already ended is ignored whole,
+  /// and a terminal state that arrived later than the held ending loses to it.
+  void _applyLifecycle(
+    Map<String, Object?> payload, {
+    DateTime? sentAt,
+    String? messageId,
+  }) {
+    final state = payload['state'];
+    final ends = state == 'completed' || state == 'abandoned';
+    final at = parseOptionalUtcIso(payload['at']) ?? sentAt;
+
+    if (_isTerminal(_status)) {
+      if (!ends) return;
+      if (!_incomingEndWins(status: state! as String, at: at, messageId: messageId)) {
+        return;
+      }
+    }
+
+    switch (state) {
       case 'started':
         _status = 'active';
+        _endedAt = null;
+        _endMessageId = null;
       case 'exercise_advanced':
         _currentExerciseIndex = _validIndex(payload['exerciseIndex']! as int);
       case 'completed':
-        _status = 'completed';
       case 'abandoned':
-        _status = 'abandoned';
+        _status = state! as String;
+        _endedAt = at;
+        _endMessageId = messageId;
     }
   }
+
+  /// Whether a terminal state of [status] arriving at [at] on [messageId]
+  /// replaces the held ending (D-14601 as amended): an earlier instant wins;
+  /// at an equal instant `completed` wins — a finished workout is never
+  /// deleted by a discard that lands at the same moment — and a still-tied
+  /// pair resolves on the lexicographically smaller messageId, so both sides
+  /// keep the same ending whichever order the frames arrived in. A missing
+  /// instant or id never wins: the held ending stands.
+  bool _incomingEndWins({
+    required String status,
+    required DateTime? at,
+    required String? messageId,
+  }) {
+    final held = _endedAt;
+    if (held == null || at == null) return false;
+    if (at.isBefore(held)) return true;
+    if (at.isAfter(held)) return false;
+    if (status != _status) return status == 'completed';
+    final heldMessageId = _endMessageId;
+    if (heldMessageId == null || messageId == null) return false;
+    return messageId.compareTo(heldMessageId) < 0;
+  }
+
+  /// Whether [status] is one a session never leaves (D-14601).
+  static bool _isTerminal(String status) =>
+      status == 'completed' || status == 'abandoned';
 
   void _addEntry(Map<String, Object?> entry) {
     if (_entries.containsKey(entry['entryId']! as String)) return;

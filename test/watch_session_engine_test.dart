@@ -133,6 +133,7 @@ Map<String, Object?> _snapshotOf(
   String sessionId, {
   required String messageId,
   String status = WatchSessionStatus.active,
+  String sentAt = '2026-07-13T06:30:00Z',
   List<Map<String, Object?>>? exercises,
   List<Map<String, Object?>> entries = const <Map<String, Object?>>[],
   Map<String, Object?> timers = const <String, Object?>{},
@@ -142,7 +143,7 @@ Map<String, Object?> _snapshotOf(
   'sessionId': sessionId,
   'type': 'session_snapshot',
   'origin': 'phone',
-  'sentAt': '2026-07-13T06:30:00Z',
+  'sentAt': sentAt,
   'payload': <String, Object?>{
     'sessionId': sessionId,
     'revision': 0,
@@ -160,16 +161,18 @@ Map<String, Object?> _lifecycleOf(
   required String messageId,
   required String state,
   int? exerciseIndex,
+  String sentAt = '2026-07-13T06:30:00Z',
+  String? at,
 }) => {
   'protocolVersion': SyncProtocolValidator.protocolVersion,
   'messageId': messageId,
   'sessionId': sessionId,
   'type': 'session_lifecycle',
   'origin': 'phone',
-  'sentAt': '2026-07-13T06:30:00Z',
+  'sentAt': sentAt,
   'payload': <String, Object?>{
     'state': state,
-    'at': '2026-07-13T06:30:00Z',
+    'at': at ?? sentAt,
     'exerciseIndex': ?exerciseIndex,
   },
 };
@@ -2894,6 +2897,470 @@ void main() {
         'sx-run',
         reason: 'the ending is a row copied from the start, not a new timer',
       );
+    });
+  });
+
+  group('S-14601 a stale started cannot reopen a finished workout', () {
+    test('S-14601 the ending stands and the later start adds no row', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 10);
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-completed',
+          state: WatchLifecycleState.completed,
+        ),
+      );
+      final endedAt = engine.session!.recordedAt;
+      final rows = (await harness.store.readAll()).sessions.length;
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-stale-start',
+          state: WatchLifecycleState.started,
+          sentAt: '2026-07-13T06:20:00Z',
+        ),
+      );
+
+      expect(
+        applied,
+        isFalse,
+        reason: 'a start for an ended session changes nothing (D-14601)',
+      );
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(
+        engine.session!.recordedAt,
+        endedAt,
+        reason: "the first ending's instant stands",
+      );
+      expect(
+        (await harness.store.readAll()).sessions,
+        hasLength(rows),
+        reason: 'no row and no second end (D-14602)',
+      );
+      final relaunched = await harness.runningEngine();
+      expect(
+        relaunched.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'the stale start was never stored, so a relaunch sees it too',
+      );
+    });
+  });
+
+  group('S-14602 an active snapshot cannot reopen a finished workout', () {
+    test('S-14602 the wrist keeps its end, merges the late set, starts no '
+        'timer', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 10);
+      await engine.finishSession();
+      final endedAt = engine.session!.recordedAt;
+
+      final applied = await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-phone-active',
+          sentAt: '2026-07-13T06:20:00Z',
+          entries: [_entry('entry-late')],
+          timers: {'rest': _runningRest('2026-07-13T06:19:00Z')},
+        ),
+      );
+
+      expect(
+        applied,
+        isTrue,
+        reason: 'the snapshot still carries entries, so it is not refused (O-4)',
+      );
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'an active snapshot never reopens a terminal one (D-14604)',
+      );
+      expect(
+        engine.session!.recordedAt,
+        endedAt,
+        reason: 'and it moves no end',
+      );
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        contains('entry-late'),
+        reason: 'the late set is merged (D-14605)',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest),
+        isNull,
+        reason: 'no timer starts on a session that has ended (D-14604)',
+      );
+
+      final relaunched = await harness.runningEngine();
+      expect(
+        relaunched.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'and the row the wrist stored says so after a relaunch',
+      );
+      expect(relaunched.timerFor(WatchTimerKind.rest), isNull);
+    });
+  });
+
+  group('S-14603 an end stops the rest timer on the wrist', () {
+    test('S-14603 the applied end stops every timer, once', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _timerStateOf(
+          's-w1',
+          messageId: 'msg-phone-rest',
+          timers: {'rest': _runningRest('2026-07-13T06:05:00Z')},
+        ),
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.running,
+        reason: 'the fixture starts from a mirrored rest',
+      );
+
+      final abandon = _lifecycleOf(
+        's-w1',
+        messageId: 'msg-phone-abandon',
+        state: WatchLifecycleState.abandoned,
+        sentAt: '2026-07-13T06:10:00Z',
+      );
+      await engine.applyMessage(abandon);
+
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.stopped,
+        reason: 'an end stops the session\'s timers (D-14603a)',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.recordId,
+        'tms-msg-phone-abandon-rest',
+        reason: 'the stop is keyed by the message that named it, so a re-send '
+            'is the same stop',
+      );
+      final rows = (await harness.store.readAll()).timers.length;
+
+      await engine.applyMessage(abandon);
+
+      expect(
+        (await harness.store.readAll()).timers,
+        hasLength(rows),
+        reason: 'a redelivered end stops nothing a second time',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.stopped,
+      );
+    });
+  });
+
+  group('S-14605 an ended session is never reported active again', () {
+    test("S-14605 the wrist's own finish cannot upgrade a discard", () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.appendObservation(
+        _setEvent(harness.clock, entryId: 'entry-1'),
+      );
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-abandon',
+          state: WatchLifecycleState.abandoned,
+          sentAt: '2026-07-13T06:10:00Z',
+        ),
+      );
+      final endedAt = engine.session!.recordedAt;
+      final entries = engine.observations.map((row) => row.entryId).toList();
+      final rows = (await harness.store.readAll()).sessions.length;
+
+      final returned = await engine.finishSession();
+
+      expect(returned.status, WatchSessionStatus.abandoned);
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      expect(
+        engine.session!.recordedAt,
+        endedAt,
+        reason: "the discard's instant stands: it was the first ending",
+      );
+      expect(
+        engine.observations.map((row) => row.entryId),
+        entries,
+        reason: 'and the held set is untouched',
+      );
+      final stored = (await harness.store.readAll()).sessions;
+      expect(stored, hasLength(rows), reason: 'no row was appended');
+      expect(
+        stored.where((row) => row.status == WatchSessionStatus.completed),
+        isEmpty,
+        reason: 'a discard can never be reported as a completion (D-14601)',
+      );
+    });
+  });
+
+  group('S-14512 two endings at the same instant agree', () {
+    test('S-14512 a phone completion replaces a wrist discard at the tie',
+        () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.abandonSession();
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      final instant = _iso(harness.clock.now);
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-end',
+          state: WatchLifecycleState.completed,
+          sentAt: instant,
+          at: instant,
+        ),
+      );
+
+      expect(applied, isTrue, reason: 'the tie-break applies the completion');
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'on an equal end instant completed wins (D-14601 as amended), '
+            'so the wrist shows what the phone finished (S-14512)',
+      );
+    });
+
+    test('S-14512 a phone discard does not replace a wrist completion', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.finishSession();
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      final instant = _iso(harness.clock.now);
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-discard',
+          state: WatchLifecycleState.abandoned,
+          sentAt: instant,
+          at: instant,
+        ),
+      );
+
+      expect(applied, isFalse, reason: 'the tie is the completion\'s');
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'a finished workout is never deleted on a tie (D-14601 as '
+            'amended)',
+      );
+    });
+    test('S-14512 a phone completion wins over an earlier wrist discard', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.abandonSession();
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      harness.clock.advance(const Duration(minutes: 30));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-end',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(harness.clock.now),
+        ),
+      );
+
+      expect(applied, isTrue);
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'the phone finished that workout, so the wrist shows it '
+            'finished whatever the two clocks say (D-14601 as amended); this '
+            'is S-14512\'s divergence, whose phone frames carry a wall clock '
+            'and whose wrist ending carries the harness clock',
+      );
+    });
+  });
+
+  group('S-14608 a set is never held twice', () {
+    test('S-14608 one entryId is one row, whatever carried it', () async {
+      final harness = _Harness();
+      final ids = ['s-w1', 's-w2'];
+      var next = 0;
+      var records = 0;
+      final engine = await harness.runningEngine(
+        engine: WatchSessionEngine(
+          harness.store,
+          onEmit: harness.emitted.add,
+          validator: _validator(),
+          clock: harness.clock.call,
+          idFactory: () => 'rec-${++records}',
+          sessionIdFactory: () => ids[next++],
+        ),
+      );
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.appendObservation({
+        'entryId': 'entry-1',
+        'eventId': 'evt-wrist-1',
+        'kind': WatchObservationKind.set,
+        'loggedAt': '2026-07-13T06:00:00Z',
+        'sessionExerciseId': 'sx-bench',
+        'exerciseId': 'ex-sx-bench',
+        'reps': 8,
+        'loadKg': 80,
+      });
+
+      // The phone's snapshot re-carries the same entry twice, under two ids
+      // the wrist has never held.
+      for (final messageId in ['msg-dup-1', 'msg-dup-2']) {
+        await engine.applyMessage(
+          _snapshotOf(
+            's-w1',
+            messageId: messageId,
+            entries: [_entry('entry-1')],
+          ),
+        );
+      }
+
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['entry-1'],
+        reason: 'the entry id is the identity, not the event id it arrived on',
+      );
+      expect(
+        engine.observations,
+        hasLength(1),
+        reason: 'one held set, one row',
+      );
+
+      // The same entry again, this time merged behind a terminal row.
+      await engine.finishSession();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-squat')],
+      );
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-dup-3',
+          sentAt: '2026-07-13T06:40:00Z',
+          entries: [
+            _entry('entry-1'),
+            _entry('entry-2', loggedAt: '2026-07-13T06:30:00Z'),
+          ],
+        ),
+      );
+
+      final storedRows = (await harness.store.readAll()).observations
+          .where((row) => row.sessionId == 's-w1')
+          .map((row) => row.payload['entryId'])
+          .toList();
+      expect(
+        storedRows,
+        ['entry-1', 'entry-2'],
+        reason: 'the late merge adds what is new and doubles nothing',
+      );
+    });
+  });
+
+  group('S-14611 late actions on a finished workout change no status', () {
+    test('S-14611 a start, an active snapshot, a discard and a later end all '
+        'leave the first ending standing', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 10);
+      await engine.finishSession();
+      final endedAt = engine.session!.recordedAt;
+
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'life-started-late',
+          state: WatchLifecycleState.started,
+          sentAt: '2026-07-13T06:20:00Z',
+        ),
+      );
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'snap-active-late',
+          sentAt: '2026-07-13T06:30:00Z',
+          entries: [_entry('entry-late', loggedAt: '2026-07-13T06:25:00Z')],
+          timers: {'rest': _runningRest('2026-07-13T06:29:00Z')},
+        ),
+      );
+      await engine.abandonSession();
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'life-completed-late',
+          state: WatchLifecycleState.completed,
+          sentAt: '2026-07-13T06:50:00Z',
+        ),
+      );
+
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(
+        engine.session!.recordedAt,
+        endedAt,
+        reason: 'no late frame moves the end (D-14604)',
+      );
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['entry-late'],
+        reason: 'the late set still merges (O-4)',
+      );
+      expect(
+        engine.entries.where((entry) => entry.entryId == 'entry-late'),
+        hasLength(1),
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest),
+        isNull,
+        reason: 'no timer runs on a finished session',
+      );
+
+      engine.replaySessionEnd();
+
+      expect(harness.emitted.last['payload'], {
+        'state': WatchSessionStatus.completed,
+        'at': utcIso(endedAt),
+      }, reason: 'the end the phone hears is the first one, not the last');
+      expect(harness.emitted.last['sentAt'], utcIso(endedAt));
     });
   });
 }

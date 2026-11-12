@@ -225,8 +225,13 @@ class WorkoutState extends ChangeNotifier {
       _sessionCore.populateSessionFromManifest(manifest);
   /// Ends the session. [writeToHealth] false skips the Health write-back: the
   /// wrist's own end, whose workout the watch already saved (plan 89c1 D-1).
-  Future<void> endSession({bool writeToHealth = true}) =>
-      _sessionCore.endSession(writeToHealth: writeToHealth);
+  Future<void> endSession({bool writeToHealth = true, int? atMs}) =>
+      _sessionCore.endSession(writeToHealth: writeToHealth, atMs: atMs);
+
+  /// D-14604: a session this phone already ended takes the wrist's later end as
+  /// its own, and the estimate is settled again; its status does not change.
+  Future<void> catchUpEndedSession(int atMs) =>
+      _sessionCore.catchUpEndedSession(atMs);
   Future<void> discardCurrentSession() => _sessionCore.discardCurrentSession();
   Future<void> updateSessionNote(String note) =>
       _sessionCore.updateSessionNote(note);

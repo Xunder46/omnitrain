@@ -513,6 +513,7 @@ class _Pass {
       );
     } else {
       await _topUpRating(existing, unapplied);
+      await _catchUpEnd(existing, live);
       if (end!.row.appliedAtMs == null) await _attachSessionSummary();
     }
 
@@ -651,6 +652,32 @@ class _Pass {
       if (rating is int && rating >= 1 && rating <= 5) return rating;
     }
     return null;
+  }
+
+  /// D-14604: an ended session's end is the latest instant anyone knows — the
+  /// row's own, the wrist's end, and each set the wrist logged. A set the wrist
+  /// recorded after the end it sent is training time, so the end moves out to
+  /// it rather than the set being dropped, and the row's status is untouched.
+  Future<void> _catchUpEnd(TrainingSession session, List<_Entry> live) async {
+    final row = session.endedAtMs;
+    if (row == null) return;
+    var latest = row;
+    final sent = end?.endedAtMs;
+    if (sent != null && sent > latest) latest = sent;
+    for (final entry in live) {
+      if (entry.loggedAtMs > latest) latest = entry.loggedAtMs;
+    }
+    if (latest == row) return;
+
+    // Through the row's own map, so no field of the session is dropped.
+    await _repository.updateSession(
+      TrainingSession.fromMap({
+        ...session.toMap(),
+        'ended_at_ms': latest,
+        'updated_at_ms': latest,
+      }),
+    );
+    changed = true;
   }
 
   Future<String> _segmentId() async {

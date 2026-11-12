@@ -90,6 +90,34 @@ Future<WorkoutRepository> _repository() async {
   return repository;
 }
 
+/// A repository that also reads the phone's open rests at the moment the
+/// session row is deleted — the last instant a discard's in-memory stop is
+/// observable, because `clearSession` empties the cache right after (S-14604a).
+class _DeleteWatcher extends MockWorkoutRepository {
+  WorkoutState? phone;
+
+  /// The number of rests still open over the whole session, once per delete.
+  final List<int> atDelete = [];
+
+  int openRestsOf(WorkoutState state, String effortId) =>
+      state.getEntryRests(effortId).where((rest) => rest.restEndMs == null).length;
+
+  @override
+  Future<void> deleteSession(String id) async {
+    final state = phone;
+    if (state != null) {
+      var open = 0;
+      for (final segment in state.segments) {
+        for (final effort in state.getEffortsForSegment(segment.id)) {
+          open += openRestsOf(state, effort.id);
+        }
+      }
+      atDelete.add(open);
+    }
+    await super.deleteSession(id);
+  }
+}
+
 /// One phone, wired the way `createWatchSync` wires it: the adoption bridge
 /// first, the inbox that asks it whether a session is the phone's own, the
 /// mirror behind the entry-staging transport, and the router that drives them.
@@ -212,14 +240,15 @@ Map<String, Object?> _lifecycle(
   String sessionId, {
   String state = WatchLifecycleState.completed,
   String messageId = 'msg-wrist-lifecycle',
+  String at = '2026-10-05T10:30:00Z',
 }) => {
   'protocolVersion': SyncProtocolValidator.protocolVersion,
   'messageId': messageId,
   'sessionId': sessionId,
   'type': 'session_lifecycle',
   'origin': 'watch',
-  'sentAt': '2026-10-05T10:30:00Z',
-  'payload': {'state': state, 'at': '2026-10-05T10:30:00Z'},
+  'sentAt': at,
+  'payload': {'state': state, 'at': at},
 };
 
 /// The `state` of every `session_lifecycle` sent since index [from] — the
@@ -1220,6 +1249,169 @@ void main() {
   // running is stopped at the instant the terminal row records, and reported,
   // so the phone's total has both of its ends. The real engine over a real
   // store — no phone graph is involved here.
+  group('S-14609 / S-14610 the first ending keeps its status and the latest '
+      'instant becomes the end', () {
+    test(
+      "S-14609 the wrist's later abandon leaves the phone's finished session "
+      'completed at its own end',
+      () async {
+        final repository = await _repository();
+        final phone = await _phone(repository);
+        final sessionId = await _startPhoneSession(phone, repository);
+        final t1 =
+            phone.state.currentSession!.startedAtMs + 20 * 60 * 1000;
+        final wristAt = utcIso(
+          DateTime.fromMillisecondsSinceEpoch(t1 + 10 * 60 * 1000, isUtc: true),
+        );
+
+        await phone.state.endSession(atMs: t1);
+        expect(
+          phone.state.currentSession!.endedAtMs,
+          t1,
+          reason: 'the fixture: the phone ended p1 at the instant it names',
+        );
+
+        await phone.router.receive(
+          _lifecycle(
+            sessionId,
+            state: WatchLifecycleState.abandoned,
+            messageId: 'msg-wrist-abandon',
+            at: wristAt,
+          ),
+        );
+
+        expect(
+          phone.state.currentSession!.endedAtMs,
+          t1,
+          reason: 'S-14609 a later discard adds no training time',
+        );
+        expect(
+          (await repository.getSession(sessionId))!.endedAtMs,
+          t1,
+          reason: 'S-14609 the stored row keeps the phone end',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-14609 a later completed moves the end to the later instant, and the '
+      'session stays over',
+      () async {
+        final repository = await _repository();
+        final phone = await _phone(repository);
+        final sessionId = await _startPhoneSession(phone, repository);
+        final started = phone.state.currentSession!.startedAtMs;
+        final t1 = started + 20 * 60 * 1000;
+        final later = started + 45 * 60 * 1000;
+
+        await phone.state.endSession(atMs: t1);
+
+        await phone.router.receive(
+          _lifecycle(
+            sessionId,
+            messageId: 'msg-wrist-later',
+            at: utcIso(DateTime.fromMillisecondsSinceEpoch(later, isUtc: true)),
+          ),
+        );
+
+        expect(
+          phone.state.currentSession!.endedAtMs,
+          later,
+          reason: 'S-14610 the end is the latest instant either side has',
+        );
+        expect(
+          (await repository.getSession(sessionId))!.endedAtMs,
+          later,
+          reason: 'S-14610 the stored row took the move',
+        );
+        expect(
+          phone.state.hasActiveSession,
+          isFalse,
+          reason: 'S-14609 the moved end does not reopen the session',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-14610 an end instant before the start is clamped to the start',
+      () async {
+        final repository = await _repository();
+        final phone = await _phone(repository);
+        await _startPhoneSession(phone, repository);
+        final started = phone.state.currentSession!.startedAtMs;
+
+        await phone.state.endSession(atMs: started - 3600000);
+
+        expect(
+          phone.state.currentSession!.endedAtMs,
+          started,
+          reason: 'D-153 an end is never stored before the start',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-14604a a discard stops the phone\'s own rest', () {
+    test(
+      'S-14604a the open rest is closed in memory before the session row is '
+      'deleted',
+      () async {
+        final repository = _DeleteWatcher();
+        await repository.initialize();
+        await seedExercise(
+          repository,
+          id: 'ex-bench',
+          name: 'Barbell Bench Press',
+          capabilities: [
+            ExerciseCapability.sets,
+            ExerciseCapability.reps,
+            ExerciseCapability.load,
+          ],
+        );
+        await seedExercise(
+          repository,
+          id: 'ex-squat',
+          name: 'Barbell Back Squat',
+          capabilities: [
+            ExerciseCapability.sets,
+            ExerciseCapability.reps,
+            ExerciseCapability.load,
+          ],
+        );
+        final phone = await _phone(repository);
+        repository.phone = phone.state;
+
+        await _startPhoneSession(phone, repository);
+        final effort = phone.state
+            .getEffortsForSegment(phone.state.segments.single.id)
+            .first;
+        await phone.state.recordRestStart(effort.id, 0);
+        expect(
+          repository.openRestsOf(phone.state, effort.id),
+          1,
+          reason: 'the fixture: the phone is resting',
+        );
+
+        await phone.state.discardCurrentSession();
+
+        expect(
+          repository.atDelete,
+          [0],
+          reason: 'S-14604a the discard closes the rest before the row goes',
+        );
+        expect(
+          await repository.getAllSessions(),
+          isEmpty,
+          reason: 'S-14604a the discard still deletes the session',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+  });
+
   group('S-322 / S-331 a rest cannot outlive the workout', () {
     late _WristClock clock;
     late InMemoryWatchSessionStore store;

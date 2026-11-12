@@ -994,12 +994,17 @@
     {
       "path": "reconciliation/lifecycle_started.json",
       "scenario": null,
-      "property": "a session reported started is live again"
+      "property": "a stale start leaves an abandoned session ended"
     },
     {
       "path": "reconciliation/lifecycle_completed.json",
       "scenario": null,
       "property": "a completed session stays completed"
+    },
+    {
+      "path": "reconciliation/ended_is_final.json",
+      "scenario": "S-14612",
+      "property": "the first end is final, whatever arrives after it"
     },
     {
       "path": "reconciliation/duplicate_slot_add.json",

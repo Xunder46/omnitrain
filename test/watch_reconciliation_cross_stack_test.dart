@@ -446,4 +446,127 @@ void main() {
       reason: 'S-335 emitted state is stored state',
     );
   });
+
+  // D-14601 as amended by the Phase 1 review: two endings at the *same* instant
+  // are not ordered by time, so both stacks apply one tie-break instead of
+  // letting arrival order decide. `completed` wins over `abandoned`; between two
+  // different endings of the same kind, the smaller messageId wins.
+  group('D-14601 an equal end instant resolves the same on both stacks', () {
+    const String sessionId = 's-tie';
+    final String at = utcIso(_now.add(const Duration(minutes: 30)));
+
+    Map<String, Object?> snapshot({String? status, String? messageId}) => {
+          'protocolVersion': 1,
+          'messageId': messageId ?? 'msg-tie-snapshot',
+          'sessionId': sessionId,
+          'type': 'session_snapshot',
+          'origin': 'phone',
+          'sentAt': status == null ? utcIso(_now) : at,
+          'payload': {
+            'sessionId': sessionId,
+            'revision': 10,
+            'status': status ?? 'active',
+            'currentExerciseIndex': 0,
+            'exercises': [
+              {
+                'sessionExerciseId': 'sx-bench',
+                'exerciseId': 'ex-barbell-bench-press',
+                'name': 'Barbell Bench Press',
+                'capabilities': ['sets', 'reps', 'load'],
+              },
+            ],
+            'entries': [],
+            'timers': {},
+          },
+        };
+
+    Map<String, Object?> ending(String state, String messageId) => {
+          'protocolVersion': 1,
+          'messageId': messageId,
+          'sessionId': sessionId,
+          'type': 'session_lifecycle',
+          'origin': 'watch',
+          'sentAt': at,
+          'payload': {'state': state, 'at': at},
+        };
+
+    /// The status the phone and the wrist each end up on after [stream].
+    Future<List<String?>> statusesAfter(
+      List<Map<String, Object?>> stream,
+    ) async {
+      final phone = SyncSessionReconciler.fromSnapshot(
+        _payloadOf(snapshot()),
+      );
+      final engine = WatchSessionEngine(
+        InMemoryWatchSessionStore(),
+        clock: () => _now,
+      );
+      await engine.applyMessage(snapshot());
+      for (final message in stream) {
+        phone.applyMessage(message);
+        await engine.applyMessage(message);
+      }
+      return [phone.convergedState()['status'] as String?, engine.session!.status];
+    }
+
+    test('D-14601 completed ends the session whichever ending arrives first',
+        () async {
+      expect(
+        await statusesAfter([ending('completed', 'msg-a'), ending('abandoned', 'msg-b')]),
+        ['completed', 'completed'],
+        reason: 'D-14601 completed arrived first and stands',
+      );
+      expect(
+        await statusesAfter([ending('abandoned', 'msg-b'), ending('completed', 'msg-a')]),
+        ['completed', 'completed'],
+        reason: 'D-14601 the later completion supersedes the abandonment at the '
+            'same instant, on both stacks',
+      );
+    });
+
+    test('D-14601 the smaller messageId breaks a tie between like endings',
+        () async {
+      // Two `abandoned` endings at one instant are the same fate, so nothing is
+      // observable in the status; the tie-break is proven by the row both stacks
+      // keep, which is the one the smaller messageId names.
+      final phone = SyncSessionReconciler.fromSnapshot(
+        _payloadOf(snapshot()),
+      );
+      final engine = WatchSessionEngine(
+        InMemoryWatchSessionStore(),
+        clock: () => _now,
+      );
+      await engine.applyMessage(snapshot());
+      for (final message in [
+        ending('abandoned', 'msg-b'),
+        ending('abandoned', 'msg-a'),
+      ]) {
+        phone.applyMessage(message);
+        await engine.applyMessage(message);
+      }
+
+      expect(phone.convergedState()['status'], 'abandoned');
+      expect(engine.session!.status, 'abandoned');
+      expect(engine.session!.recordId, 'life-msg-a',
+          reason: 'D-14601 msg-a < msg-b, so the wrist keeps the msg-a ending');
+    });
+
+    test('D-14601 a snapshot-carried abandonment loses the tie to a completion',
+        () async {
+      final abandoned = snapshot(status: 'abandoned', messageId: 'msg-snap');
+
+      expect(
+        await statusesAfter([ending('completed', 'msg-a'), abandoned]),
+        ['completed', 'completed'],
+        reason: 'D-14601 an equal-instant snapshot cannot un-end a completed '
+            'session on either stack',
+      );
+      expect(
+        await statusesAfter([abandoned, ending('completed', 'msg-a')]),
+        ['completed', 'completed'],
+        reason: 'D-14601 the completion arriving second at the same instant '
+            'still supersedes the snapshot-carried abandonment',
+      );
+    });
+  });
 }

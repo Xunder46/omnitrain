@@ -447,6 +447,37 @@ class LiveSessionMirrorState extends ChangeNotifier {
     _envelopeFor(sessionId, 'timer_state', {'timers': timers}),
   );
 
+  /// Stops [kind] on the watch for a session whose work is over (D-14603b).
+  ///
+  /// [messageId] is the caller's, not minted here: the stop is decided by
+  /// (kind, session) alone, so a retry after a frame the radio dropped is the
+  /// same frame again, and a redelivery is one stop to the wrist. Unknown kinds
+  /// are ignored. The stop is applied here first — the mirror holds the wrist's
+  /// timers, and a session this phone just ended must not leave one running in
+  /// its own view — and then sent.
+  Future<WatchDelivery> sendTimerStop(
+    String sessionId,
+    String kind, {
+    required String messageId,
+  }) async {
+    if (!SyncProtocolValidator.timerKinds.contains(kind)) {
+      return WatchDelivery.delivered;
+    }
+    final envelope = _envelopeFor(
+      sessionId,
+      'timer_state',
+      {
+        'timers': {kind: null},
+      },
+      messageId: messageId,
+    );
+    if (sessionId == this.sessionId) {
+      _reconciler.applyMessage(envelope);
+      notifyListeners();
+    }
+    return _transport.send(envelope);
+  }
+
   /// Asks the watch for its snapshot — the phone's half of joining a session
   /// that was started on the wrist.
   Future<void> requestSnapshot() => _transport.requestSnapshot();
@@ -907,10 +938,11 @@ class LiveSessionMirrorState extends ChangeNotifier {
   Map<String, Object?> _envelopeFor(
     String? sessionId,
     String type,
-    Map<String, Object?> payload,
-  ) => phoneEnvelope(
+    Map<String, Object?> payload, {
+    String? messageId,
+  }) => phoneEnvelope(
     type: type,
-    messageId: _newId(),
+    messageId: messageId ?? _newId(),
     sentAt: _clock(),
     sessionId: sessionId,
     payload: payload,

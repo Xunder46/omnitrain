@@ -271,7 +271,16 @@ emptied the in-memory ledger — is cleared on the next pass that sees it in the
 mirror: the copy must name a slot whose effort kind maps to that timer, match a
 finished interval whose start is at or within `_loggedStartToleranceMs` after the copy's start,
 and match no active or paused one; the cleared copy is remembered so no second
-clear is sent (121a D-4, D-5). The rest travels as a `rest` timer with no slot
+clear is sent (121a D-4, D-5). When the phone's session is gone or ended, one last pass stops
+what the wrist still runs: the gone branch of `_pushOnce` owes a stop for every
+kind the ledger delivered or still owes and sends each as a `{kind: null}`
+frame through `LiveSessionMirrorState.sendTimerStop`, under the stable message
+id `tms-end-<sessionId>-<kind>` — a retry is the same frame, so the wrist
+applies one stop. A stop the radio refuses stays owed in memory and is
+re-offered at the next trigger (D-14603b; `test/watch_timer_push_test.dart`,
+group `S-14603b the end of a session reaches the wrist as stops`, the case
+`S-14604b ending the session with the phone's rest running stops the rest`).
+The rest travels as a `rest` timer with no slot
 and
 no planned length (a rest is a count-up and belongs to no slot), running or
 paused with its pause bookkeeping, and a rest the phone no longer holds open

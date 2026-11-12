@@ -179,11 +179,17 @@ void main() {
   );
 
   test(
-    'S-14510 the shrinker reduces S-14503 padded with 20 unrelated actions',
+    'S-14510 the shrinker reduces a padded failing trace with 20 unrelated actions',
     () async {
       final actions = await _paddedS14503();
+      // The failure is built in, not a product defect that a later plan fixes:
+      // the wrist that never hears an end (`_DeafToEndWrist`) never converges on a
+      // finished workout (plan 146 re-based this test on it).
       Future<bool> stillFails(List<PairAction> candidate) async {
-        final run = await ConvergenceRun.replayActions(candidate);
+        final run = await ConvergenceRun.replayActions(
+          candidate,
+          engineFactory: _DeafToEndWrist.new,
+        );
         return run.report.statusMismatches.isNotEmpty ||
             run.report.absorbingViolations.isNotEmpty;
       }
@@ -192,7 +198,7 @@ void main() {
         await stillFails(actions),
         isTrue,
         reason:
-            'the padded trace still fails check 1 or 2 (finding F-1): '
+            'the padded trace still fails check 1 or 2 (the mutation wrist): '
             '${Shrinker.describeTrace(actions)}',
       );
 
@@ -602,13 +608,11 @@ Future<List<PairAction>> _paddedS14503() async {
     runner.advanceTime(30),
     runner.linkDrops(),
     runner.linkRises(),
-    // S-14503 proper: the wrist starts, the link drops, the phone re-asserts
-    // the session live, the wrist finishes, the queued re-assert lands after.
-    runner.wristStartsFreeWorkout(),
-    runner.linkDrops(),
-    runner.phoneReassertsLive(),
-    runner.wristFinishes(),
-    runner.linkRises(),
+    // The core: the phone starts and finishes a session. Run against the wrist
+    // that ignores `completed` (S-14508's mutation), the wrist never hears the
+    // end, so the pair disagrees (check 1). The padding around it does not matter.
+    runner.phoneStartsSession(),
+    runner.phoneFinishes(),
   ];
 }
 
@@ -662,6 +666,27 @@ class _MutationWrist extends WatchSessionEngine {
         ignoredCompleted++;
         return false;
       }
+    }
+    return super.applyMessage(envelope);
+  }
+}
+
+/// A wrist that never hears an end: it refuses every `completed` lifecycle
+/// and every snapshot that reports `completed`. Unlike [_MutationWrist] the
+/// heal cannot repair it, so any trace in which the phone finishes a session
+/// fails check 1 — a failure that is built in and does not depend on a defect
+/// a later plan fixes (S-14510 uses it as the shrinker's subject).
+class _DeafToEndWrist extends _MutationWrist {
+  _DeafToEndWrist(super.args);
+
+  @override
+  Future<bool> applyMessage(Map<String, Object?> envelope) async {
+    final payload = envelope['payload'];
+    if (payload is Map &&
+        envelope['type'] == 'session_snapshot' &&
+        payload['status'] == 'completed') {
+      ignoredCompleted++;
+      return false;
     }
     return super.applyMessage(envelope);
   }

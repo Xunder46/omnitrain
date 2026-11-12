@@ -475,6 +475,13 @@ in place, resending the structure as a snapshot and no new started lifecycle
   (`a set logged on the watch lands in the session the phone holds`) and
   `test/watch_session_merge_test.dart` (`S-9 a wrist set reaches the live phone
   session`, `S-12 a slot the session does not have`).
+- **A later wrist end moves the phone's end forward (D-14604).** When the row is
+  already ended and an imported end is later, the importer moves `ended_at_ms`
+  and `updated_at_ms` to the latest instant it knows — the arriving end and every
+  logged set in the same pass included — so a session finished on the wrist
+  longer than the phone knew keeps the wrist's end; an end that is not later
+  writes nothing. Verified by `test/watch_session_import_test.dart`, group
+  `S-14610 the imported end catches up`.
 - **A wrist set fills the phone's next unlogged planned row, in the held merge
   only.** While the phone holds the session, a wrist `set` fills the first row
   the phone reads as unlogged — no rest at its position + 1, which differs from

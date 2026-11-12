@@ -417,8 +417,10 @@ void main() {
   /// the wrist engine runs it. Returns the interval's start S_H.
   Future<int> holdStart() async {
     await phoneState.startTimedEntry(_plankSlotId, 0);
-    final startMs =
-        phoneState.getTimedInstancesForEffort(_plankSlotId).single.startedAtMs;
+    final startMs = phoneState
+        .getTimedInstancesForEffort(_plankSlotId)
+        .single
+        .startedAtMs;
     await graph.timerPush.flush();
     for (final frame in radio.ofType('timer_state')) {
       await engine.applyMessage(frame);
@@ -470,7 +472,8 @@ void main() {
     expect(
       radio.sent.contains(clears.single),
       isFalse,
-      reason: 'H-log-away: the live clear did not travel (timer_state is '
+      reason:
+          'H-log-away: the live clear did not travel (timer_state is '
           'live-only)',
     );
     expect(
@@ -507,9 +510,9 @@ void main() {
     final start = startedAt ?? _restStart;
     await phoneState.recordRestStart(effort, entryIndex);
 
-    final stored = (await repository.getEntryRests(effort)).firstWhere(
-      (rest) => rest.entryIndex == entryIndex,
-    );
+    final stored = (await repository.getEntryRests(
+      effort,
+    )).firstWhere((rest) => rest.entryIndex == entryIndex);
     final pinned = stored.copyWith(
       restStartMs: start.millisecondsSinceEpoch,
       restIsPaused: paused,
@@ -740,8 +743,10 @@ void main() {
 
     // The next interval starts while the wrist is in reach: elapsed delivers.
     await phoneState.startTimedEntry(_runSlotId, 0);
-    final sR =
-        phoneState.getTimedInstancesForEffort(_runSlotId).single.startedAtMs;
+    final sR = phoneState
+        .getTimedInstancesForEffort(_runSlotId)
+        .single
+        .startedAtMs;
     await graph.timerPush.flush();
     for (final frame in timerFrames()) {
       await engine.applyMessage(frame);
@@ -760,7 +765,8 @@ void main() {
     expect(
       timersOf(snapshots.single),
       equals({'elapsed': deliveredElapsed}),
-      reason: 'D-1/D-3: the snapshot carries exactly the delivered elapsed, '
+      reason:
+          'D-1/D-3: the snapshot carries exactly the delivered elapsed, '
           'and nothing the phone no longer runs',
     );
     await engine.applyMessage(snapshots.single);
@@ -825,7 +831,8 @@ void main() {
     expect(
       keys,
       contains('rest'),
-      reason: 'plan 127 D-2: the rest the radio refused is owed, so it rides '
+      reason:
+          'plan 127 D-2: the rest the radio refused is owed, so it rides '
           'the snapshot (it replaces 121a\'s "owed kinds are never named")',
     );
     await engine.applyMessage(snapshot);
@@ -890,7 +897,8 @@ void main() {
     expect(
       keys,
       contains('hold'),
-      reason: 'plan 127 D-2: the hold the radio refused is owed, so it rides '
+      reason:
+          'plan 127 D-2: the hold the radio refused is owed, so it rides '
           'the snapshot (it replaces 121a\'s "owed kinds are never named")',
     );
   });
@@ -908,7 +916,8 @@ void main() {
     expect(
       _projectedTimerKeys(projected!),
       isNot(contains('hold')),
-      reason: 'D-1: the projection reads the phone state at compose time, not '
+      reason:
+          'D-1: the projection reads the phone state at compose time, not '
           'the delivered ledger',
     );
   });
@@ -1011,11 +1020,7 @@ void main() {
     await _seedCatalog(repository);
     await engine.createSession(
       modality: null,
-      exercises: [
-        _slotPlank(),
-        if (secondPlankSlot) _slotPlank2(),
-        _slotRun(),
-      ],
+      exercises: [_slotPlank(), if (secondPlankSlot) _slotPlank2(), _slotRun()],
     );
     await radio.fromWrist(engine.sessionSnapshot()!);
     await _settle();
@@ -1081,8 +1086,13 @@ void main() {
     await _settle();
 
     final mirrorHold = mirrorTimer('hold');
-    expect(mirrorHold, isNotNull, reason: 'the fixture: the mirror folded the '
-        'wrist snapshot');
+    expect(
+      mirrorHold,
+      isNotNull,
+      reason:
+          'the fixture: the mirror folded the '
+          'wrist snapshot',
+    );
     expect(
       mirrorHold!['state'],
       'running',
@@ -1142,8 +1152,13 @@ void main() {
     await _settle();
 
     final mirrorHold = mirrorTimer('hold');
-    expect(mirrorHold, isNotNull, reason: 'the fixture: the mirror folded the '
-        'wrist frame');
+    expect(
+      mirrorHold,
+      isNotNull,
+      reason:
+          'the fixture: the mirror folded the '
+          'wrist frame',
+    );
     expect(
       mirrorHold!['startedAt'],
       utcIso(DateTime.fromMillisecondsSinceEpoch(w + 5000, isUtc: true)),
@@ -1152,7 +1167,8 @@ void main() {
     expect(
       radio.attempted.skip(attemptedAtStart).where(_isHoldClear),
       isEmpty,
-      reason: 'D-4 (v): the start does not match the logged interval, so no '
+      reason:
+          'D-4 (v): the start does not match the logged interval, so no '
           'clear',
     );
   });
@@ -1162,7 +1178,9 @@ void main() {
     final w = await restartedHoldFixture(logAway: false);
     final attemptedAtStart = radio.attempted.length;
 
-    final interval0 = phoneState.getTimedInstancesForEffort(_plankSlotId).single;
+    final interval0 = phoneState
+        .getTimedInstancesForEffort(_plankSlotId)
+        .single;
     expect(
       interval0.state,
       TimedState.active,
@@ -1195,8 +1213,13 @@ void main() {
     await engine.applyMessage(frame);
 
     final mirrorHold = mirrorTimer('hold');
-    expect(mirrorHold, isNotNull, reason: 'the fixture: the mirror folded the '
-        'wrist frame');
+    expect(
+      mirrorHold,
+      isNotNull,
+      reason:
+          'the fixture: the mirror folded the '
+          'wrist frame',
+    );
     expect(
       mirrorHold!['state'],
       'stopped',
@@ -1218,8 +1241,13 @@ void main() {
     await radio.fromWrist(wristSnapshot);
     await _settle();
     final mirrorHold = mirrorTimer('hold');
-    expect(mirrorHold, isNotNull, reason: 'the fixture: the mirror folded the '
-        'wrist snapshot');
+    expect(
+      mirrorHold,
+      isNotNull,
+      reason:
+          'the fixture: the mirror folded the '
+          'wrist snapshot',
+    );
     expect(
       mirrorHold!['startedAt'],
       utcIso(DateTime.fromMillisecondsSinceEpoch(w, isUtc: true)),
@@ -1280,8 +1308,13 @@ void main() {
     await _settle();
 
     final mirrorRest = mirrorTimer('rest');
-    expect(mirrorRest, isNotNull, reason: 'the fixture: the mirror folded the '
-        'wrist frame');
+    expect(
+      mirrorRest,
+      isNotNull,
+      reason:
+          'the fixture: the mirror folded the '
+          'wrist frame',
+    );
     expect(
       mirrorRest!['state'],
       'running',
@@ -1322,8 +1355,13 @@ void main() {
     await radio.fromWrist(engine.sessionSnapshot()!);
     await _settle();
     final mirrorHold = mirrorTimer('hold');
-    expect(mirrorHold, isNotNull, reason: 'the fixture: the mirror folded the '
-        'wrist snapshot');
+    expect(
+      mirrorHold,
+      isNotNull,
+      reason:
+          'the fixture: the mirror folded the '
+          'wrist snapshot',
+    );
     expect(
       mirrorHold!['sessionExerciseId'],
       _plankSlotId,
@@ -1337,7 +1375,8 @@ void main() {
     expect(
       radio.attempted.skip(attemptedAtStart).where(_isHoldClear),
       isEmpty,
-      reason: 'D-4 (iii): the phone still wants a hold (sx-plank2), so a clear '
+      reason:
+          'D-4 (iii): the phone still wants a hold (sx-plank2), so a clear '
           'would stop a timer the phone did not log',
     );
   });
@@ -1357,8 +1396,13 @@ void main() {
     await _settle();
 
     final mirrorHold = mirrorTimer('hold');
-    expect(mirrorHold, isNotNull, reason: 'the fixture: the mirror folded the '
-        'wrist frame');
+    expect(
+      mirrorHold,
+      isNotNull,
+      reason:
+          'the fixture: the mirror folded the '
+          'wrist frame',
+    );
     expect(
       mirrorHold!['startedAt'],
       utcIso(DateTime.fromMillisecondsSinceEpoch(w - 400, isUtc: true)),
@@ -1367,7 +1411,8 @@ void main() {
     expect(
       phoneState.getTimedInstancesForEffort(_plankSlotId),
       hasLength(1),
-      reason: 'the fixture: the adoption ignored the copy (it matches the '
+      reason:
+          'the fixture: the adoption ignored the copy (it matches the '
           'logged interval within 1000 ms)',
     );
 
@@ -1378,51 +1423,65 @@ void main() {
     expect(
       clears,
       hasLength(1),
-      reason: 'D-4 (v): the start is within the 1000 ms tolerance of the '
+      reason:
+          'D-4 (v): the start is within the 1000 ms tolerance of the '
           'logged interval, so one clear',
     );
   });
 
-  test('S-12108h the reconcile ignores a mirror hold that started LATER than the '
-      'logged interval (W+400 ms), a newer wrist timer (S-6329)', () async {
-    final w = await restartedHoldFixture();
-    final attemptedAtStart = radio.attempted.length;
+  test(
+    'S-12108h the reconcile ignores a mirror hold that started LATER than the '
+    'logged interval (W+400 ms), a newer wrist timer (S-6329)',
+    () async {
+      final w = await restartedHoldFixture();
+      final attemptedAtStart = radio.attempted.length;
 
-    await radio.fromWrist(
-      _wristTimerFrame({
-        'hold': _wristHold(
-          startedAt: DateTime.fromMillisecondsSinceEpoch(w + 400, isUtc: true),
-        ),
-      }),
-    );
-    await _settle();
+      await radio.fromWrist(
+        _wristTimerFrame({
+          'hold': _wristHold(
+            startedAt: DateTime.fromMillisecondsSinceEpoch(
+              w + 400,
+              isUtc: true,
+            ),
+          ),
+        }),
+      );
+      await _settle();
 
-    final mirrorHold = mirrorTimer('hold');
-    expect(mirrorHold, isNotNull, reason: 'the fixture: the mirror folded the '
-        'wrist frame');
-    expect(
-      mirrorHold!['startedAt'],
-      utcIso(DateTime.fromMillisecondsSinceEpoch(w + 400, isUtc: true)),
-      reason: 'the fixture: the mirror hold starts at W+400 ms',
-    );
-    expect(
-      phoneState.getTimedInstancesForEffort(_plankSlotId),
-      hasLength(1),
-      reason: 'the fixture: the adoption ignored the copy (it matches the '
-          'logged interval within 1000 ms)',
-    );
+      final mirrorHold = mirrorTimer('hold');
+      expect(
+        mirrorHold,
+        isNotNull,
+        reason:
+            'the fixture: the mirror folded the '
+            'wrist frame',
+      );
+      expect(
+        mirrorHold!['startedAt'],
+        utcIso(DateTime.fromMillisecondsSinceEpoch(w + 400, isUtc: true)),
+        reason: 'the fixture: the mirror hold starts at W+400 ms',
+      );
+      expect(
+        phoneState.getTimedInstancesForEffort(_plankSlotId),
+        hasLength(1),
+        reason:
+            'the fixture: the adoption ignored the copy (it matches the '
+            'logged interval within 1000 ms)',
+      );
 
-    final clears = radio.attempted
-        .skip(attemptedAtStart)
-        .where(_isHoldClear)
-        .toList();
-    expect(
-      clears,
-      isEmpty,
-      reason: 'D-4 (v): a copy that started after the logged interval is a '
-          'newer wrist timer, so no clear',
-    );
-  });
+      final clears = radio.attempted
+          .skip(attemptedAtStart)
+          .where(_isHoldClear)
+          .toList();
+      expect(
+        clears,
+        isEmpty,
+        reason:
+            'D-4 (v): a copy that started after the logged interval is a '
+            'newer wrist timer, so no clear',
+      );
+    },
+  );
 
   test('S-12109 the end of the session is unchanged', () async {
     await wristStartsHoldSession();
@@ -1451,12 +1510,24 @@ void main() {
     await graph.timerPush.flush();
     await graph.autoPush.flush();
     await _settle();
+    // Plan 146 (D-14603b) replaces "no timer_state at the end": the hold's clear
+    // never travelled (the radio was unreachable when it was logged away), so the
+    // wrist may still run that clock, and an end stops every timer of the
+    // session on both sides. Exactly one frame, and it is the hold's clear.
+    final endFrames = radio.attempted
+        .skip(attemptedBeforeEnd)
+        .where((frame) => frame['type'] == 'timer_state')
+        .toList();
     expect(
-      radio.attempted
-          .skip(attemptedBeforeEnd)
-          .where((frame) => frame['type'] == 'timer_state'),
-      isEmpty,
-      reason: 'the end attempts no timer_state (the existing _pushOnce rule)',
+      endFrames,
+      hasLength(1),
+      reason:
+          'the end sends one last stop for the clock the wrist may still run',
+    );
+    expect(
+      endFrames.single,
+      predicate<Map<String, Object?>>(_isHoldClear),
+      reason: 'that one frame clears the hold',
     );
   });
 
@@ -1551,42 +1622,45 @@ void main() {
       expect(
         _asObject(holdJson)['state'],
         isNot(WatchTimerState.running),
-        reason: 'no timer_state sent after the wrist frame names a running '
+        reason:
+            'no timer_state sent after the wrist frame names a running '
             'hold',
       );
     }
   });
 
-  test('S-12113 record: which frame stops the hold after a phone restart',
-      () async {
-    await wristStartsHoldSession();
-    await holdStart();
-    await holdLogAway();
-    await restartPhoneGraph();
+  test(
+    'S-12113 record: which frame stops the hold after a phone restart',
+    () async {
+      await wristStartsHoldSession();
+      await holdStart();
+      await holdLogAway();
+      await restartPhoneGraph();
 
-    final sentBefore = radio.sent.length;
-    await radio.fromWrist(engine.sessionSnapshot()!);
-    await _settle();
-    // Every session-bearing frame the phone sent after the wrist snapshot,
-    // applied in order. NOTE(record): today no D-4 clear is composed (the
-    // ledger was lost with the first graph), so the frame that stops the hold,
-    // if any, can only be a snapshot's omission — which cannot stop a row the
-    // wrist wrote, so the hold is expected to survive until Phase 1.
-    final frames = radio.sent.skip(sentBefore).where((frame) {
-      return frame['type'] == 'session_snapshot' ||
-          frame['type'] == 'timer_state';
-    }).toList();
-    for (final frame in frames) {
-      await engine.applyMessage(frame);
-    }
-    final hold = engine.timerFor(WatchTimerKind.hold);
-    expect(hold, isNotNull, reason: 'the wrist row is kept');
-    expect(
-      hold!.state,
-      WatchTimerState.stopped,
-      reason: 'AC-4: the hold stops once the wrist is in reach again',
-    );
-  });
+      final sentBefore = radio.sent.length;
+      await radio.fromWrist(engine.sessionSnapshot()!);
+      await _settle();
+      // Every session-bearing frame the phone sent after the wrist snapshot,
+      // applied in order. NOTE(record): today no D-4 clear is composed (the
+      // ledger was lost with the first graph), so the frame that stops the hold,
+      // if any, can only be a snapshot's omission — which cannot stop a row the
+      // wrist wrote, so the hold is expected to survive until Phase 1.
+      final frames = radio.sent.skip(sentBefore).where((frame) {
+        return frame['type'] == 'session_snapshot' ||
+            frame['type'] == 'timer_state';
+      }).toList();
+      for (final frame in frames) {
+        await engine.applyMessage(frame);
+      }
+      final hold = engine.timerFor(WatchTimerKind.hold);
+      expect(hold, isNotNull, reason: 'the wrist row is kept');
+      expect(
+        hold!.state,
+        WatchTimerState.stopped,
+        reason: 'AC-4: the hold stops once the wrist is in reach again',
+      );
+    },
+  );
 
   test('S-12114 a second interval on the slot takes the logged hold off the '
       'snapshot', () async {
@@ -1618,8 +1692,13 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 5));
     await phoneState.startTimedEntry(_plankSlotId, 1);
     instances = phoneState.getTimedInstancesForEffort(_plankSlotId);
-    expect(instances[0].state, TimedState.finished, reason: 'the fixture: '
-        'interval 0 is logged');
+    expect(
+      instances[0].state,
+      TimedState.finished,
+      reason:
+          'the fixture: '
+          'interval 0 is logged',
+    );
     final sH2 = instances[1].startedAtMs;
     expect(sH2 > sH, isTrue, reason: 'the fixture: S_H2 is later than S_H');
     await graph.timerPush.flush();
@@ -1631,34 +1710,38 @@ void main() {
     expect(
       _envelopeTimerKeys(snapshots.single),
       isNot(contains('hold')),
-      reason: 'D-1: the delivered S_H no longer matches and S_H2 was never '
+      reason:
+          'D-1: the delivered S_H no longer matches and S_H2 was never '
           'delivered, so the snapshot names no hold',
     );
   });
 
-  test('S-12115 a hold the wrist itself ended is not named by the projection',
-      () async {
-    await wristStartsHoldSession();
-    final sH = await holdStart();
+  test(
+    'S-12115 a hold the wrist itself ended is not named by the projection',
+    () async {
+      await wristStartsHoldSession();
+      final sH = await holdStart();
 
-    // The wrist ends its own hold while the phone still runs interval 0.
-    await radio.fromWrist(
-      _wristTimerFrame({
-        'hold': _wristHold(
-          startedAt: DateTime.fromMillisecondsSinceEpoch(sH, isUtc: true),
-          state: 'stopped',
-        ),
-      }),
-    );
-    await _settle();
+      // The wrist ends its own hold while the phone still runs interval 0.
+      await radio.fromWrist(
+        _wristTimerFrame({
+          'hold': _wristHold(
+            startedAt: DateTime.fromMillisecondsSinceEpoch(sH, isUtc: true),
+            state: 'stopped',
+          ),
+        }),
+      );
+      await _settle();
 
-    final projected = await graph.mirror.projectedSession();
-    expect(projected, isNotNull, reason: 'the phone speaks for its session');
-    expect(
-      _projectedTimerKeys(projected!),
-      isNot(contains('hold')),
-      reason: 'D-1 (v): the mirror holds this very hold as stopped, so the '
-          'snapshot must not name it',
-    );
-  });
+      final projected = await graph.mirror.projectedSession();
+      expect(projected, isNotNull, reason: 'the phone speaks for its session');
+      expect(
+        _projectedTimerKeys(projected!),
+        isNot(contains('hold')),
+        reason:
+            'D-1 (v): the mirror holds this very hold as stopped, so the '
+            'snapshot must not name it',
+      );
+    },
+  );
 }

@@ -1,7 +1,7 @@
 {
   "protocolVersion": 1,
   "name": "Session lifecycle state machine",
-  "description": "Every lifecycle state applied in order, plus the out-of-range position falls back to the last valid exercise rather than escaping the exercise list. Lifecycle messages never change structure, entries, or the revision.",
+  "description": "Every lifecycle state applied in order, plus the out-of-range position falls back to the last valid exercise rather than escaping the exercise list. The first ending is final: the completed at 18:54 stands, and the abandoned that follows it is ignored. Lifecycle messages never change structure, entries, or the revision.",
   "snapshot": {
     "protocolVersion": 1,
     "messageId": "msg-lifecycle-snapshot",
@@ -95,7 +95,7 @@
   ],
   "expected": {
     "sessionId": "s-2026-07-13-9",
-    "status": "abandoned",
+    "status": "completed",
     "revision": 5,
     "currentExerciseIndex": 2,
     "exercises": [
