@@ -417,71 +417,59 @@ void main() {
   //   -> the phone, unaware of the end, sends a NEWER active snapshot; the
   //      wrist reports the finished workout active again. "Ignore older by
   //      sentAt" cannot catch it; only "ended is final" can.
-  test(
-    'F-2 a completed workout never reports active again',
-    skip: 'plan 146: ended is final — a completed session cannot go live',
-    () async {
-      final run = await script(
-        (r) => [
-          r.wristStartsFreeWorkout(),
-          r.linkDrops(),
-          r.wristFinishes(),
-          r.phoneStartsRest(),
-          r.linkRises(),
-        ],
-      );
-      expect(
-        run.report.absorbingViolations,
-        isEmpty,
-        reason: '${run.failures.join('\n')}\n${run.trace}',
-      );
-    },
-  );
+  test('F-2 a completed workout never reports active again', () async {
+    final run = await script(
+      (r) => [
+        r.wristStartsFreeWorkout(),
+        r.linkDrops(),
+        r.wristFinishes(),
+        r.phoneStartsRest(),
+        r.linkRises(),
+      ],
+    );
+    expect(
+      run.report.absorbingViolations,
+      isEmpty,
+      reason: '${run.failures.join('\n')}\n${run.trace}',
+    );
+  });
 
   // F-3 (seed 2): 1. phone starts a session  2. phone starts a rest timer
   //   3. phone discards
   //   -> a rest timer runs on the phone and on the wrist although the session
   //      is abandoned. An end does not clear the rest timer on either side.
-  test(
-    'F-3 an ended session runs no rest timer',
-    skip: 'plan 146: an end clears the rest timer on both sides',
-    () async {
-      final run = await script(
-        (r) => [r.phoneStartsSession(), r.phoneStartsRest(), r.phoneDiscards()],
-      );
-      expect(
-        run.report.timerViolations,
-        isEmpty,
-        reason: '${run.failures.join('\n')}\n${run.trace}',
-      );
-    },
-  );
+  test('F-3 an ended session runs no rest timer', () async {
+    final run = await script(
+      (r) => [r.phoneStartsSession(), r.phoneStartsRest(), r.phoneDiscards()],
+    );
+    expect(
+      run.report.timerViolations,
+      isEmpty,
+      reason: '${run.failures.join('\n')}\n${run.trace}',
+    );
+  });
 
   // F-4 (seed 4): 1. phone starts a session  2. wrist discards
   //   3. link drops  4. phone starts a session  5. wrist finishes
   //   -> session 1: phone abandoned vs wrist completed. The wrist turned a
   //      session that had ended into `completed`: the end is not final inside
   //      the engine.
-  test(
-    'F-4 an abandoned session is never reported completed',
-    skip: 'plan 146: ended is final — an abandoned session cannot complete',
-    () async {
-      final run = await script(
-        (r) => [
-          r.phoneStartsSession(),
-          r.wristDiscards(),
-          r.linkDrops(),
-          r.phoneStartsSession(),
-          r.wristFinishes(),
-        ],
-      );
-      expect(
-        run.report.statusMismatches,
-        isEmpty,
-        reason: '${run.failures.join('\n')}\n${run.trace}',
-      );
-    },
-  );
+  test('F-4 an abandoned session is never reported completed', () async {
+    final run = await script(
+      (r) => [
+        r.phoneStartsSession(),
+        r.wristDiscards(),
+        r.linkDrops(),
+        r.phoneStartsSession(),
+        r.wristFinishes(),
+      ],
+    );
+    expect(
+      run.report.statusMismatches,
+      isEmpty,
+      reason: '${run.failures.join('\n')}\n${run.trace}',
+    );
+  });
 
   // F-5 turned out to be a harness reading fault, not a product defect (plan
   // 146 phase 4): the wrist did apply the owed abandon after it moved on, but

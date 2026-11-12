@@ -187,7 +187,6 @@ void main() {
 
   test(
     'S-14503 a finished workout is never reopened by a queued started',
-    skip: 'plan 146: a finished workout is final',
     () async {
       final harness = await WatchPairHarness.build();
       final runner = harness.runner;
@@ -732,8 +731,7 @@ void _b2Tests() {
       expect(
         harness.phone.currentSession?.id,
         sessionId,
-        reason:
-            'the phone adopted the wrist workout\n${runner.traceText()}',
+        reason: 'the phone adopted the wrist workout\n${runner.traceText()}',
       );
 
       await runner.perform(runner.linkDrops());
@@ -827,8 +825,7 @@ void _b2Tests() {
       expect(
         report.absorbingViolations,
         isEmpty,
-        reason:
-            'an end is final on each side\n${runner.traceText()}',
+        reason: 'an end is final on each side\n${runner.traceText()}',
       );
       expect(
         [report.phoneStatus[label], report.wristStatus[label]],
@@ -839,63 +836,60 @@ void _b2Tests() {
     },
   );
 
-  test(
-    'S-14513 an owed W1 end survives W2 starting on the wrist',
-    () async {
-      final harness = await WatchPairHarness.build();
-      final runner = harness.runner;
+  test('S-14513 an owed W1 end survives W2 starting on the wrist', () async {
+    final harness = await WatchPairHarness.build();
+    final runner = harness.runner;
 
-      await runner.perform(runner.wristStartsFreeWorkout());
-      final w1 = harness.wristEngine.session!.sessionId;
-      await runner.perform(runner.wristLogsSet());
-      expect(
-        harness.phone.currentSession?.id,
-        w1,
-        reason: 'the phone holds W1\n${runner.traceText()}',
-      );
+    await runner.perform(runner.wristStartsFreeWorkout());
+    final w1 = harness.wristEngine.session!.sessionId;
+    await runner.perform(runner.wristLogsSet());
+    expect(
+      harness.phone.currentSession?.id,
+      w1,
+      reason: 'the phone holds W1\n${runner.traceText()}',
+    );
 
-      await runner.perform(runner.linkDrops());
-      await runner.perform(runner.wristFinishes());
-      await runner.perform(runner.wristStartsFreeWorkout());
-      final w2 = harness.wristEngine.session!.sessionId;
-      expect(w2, isNot(w1));
-      await runner.perform(runner.linkRises());
+    await runner.perform(runner.linkDrops());
+    await runner.perform(runner.wristFinishes());
+    await runner.perform(runner.wristStartsFreeWorkout());
+    final w2 = harness.wristEngine.session!.sessionId;
+    expect(w2, isNot(w1));
+    await runner.perform(runner.linkRises());
 
-      await runner.heal();
-      final report = await runner.checkConvergence();
-      final l1 = harness.labelFor(w1);
-      final l2 = harness.labelFor(w2);
+    await runner.heal();
+    final report = await runner.checkConvergence();
+    final l1 = harness.labelFor(w1);
+    final l2 = harness.labelFor(w2);
 
-      expect(
-        report.phoneStatus[l1],
-        WatchSessionStatus.completed,
-        reason: 'W1\'s end arrived after W2 started\n${runner.traceText()}',
-      );
-      expect(
-        report.wristStatus[l1],
-        WatchSessionStatus.completed,
-        reason: runner.traceText(),
-      );
-      expect(
-        report.phoneStatus[l2],
-        WatchSessionStatus.active,
-        reason: 'W2 is live on the phone\n${runner.traceText()}',
-      );
-      expect(
-        report.wristStatus[l2],
-        WatchSessionStatus.active,
-        reason: runner.traceText(),
-      );
-      expect(
-        report.absorbingViolations,
-        isEmpty,
-        reason: 'W1 is never active again\n${runner.traceText()}',
-      );
-      expect(report.statusMismatches, isEmpty, reason: runner.traceText());
-      expect(report.entryMismatches, isEmpty, reason: runner.traceText());
-      expect(report.healConverged, isTrue, reason: runner.traceText());
-    },
-  );
+    expect(
+      report.phoneStatus[l1],
+      WatchSessionStatus.completed,
+      reason: 'W1\'s end arrived after W2 started\n${runner.traceText()}',
+    );
+    expect(
+      report.wristStatus[l1],
+      WatchSessionStatus.completed,
+      reason: runner.traceText(),
+    );
+    expect(
+      report.phoneStatus[l2],
+      WatchSessionStatus.active,
+      reason: 'W2 is live on the phone\n${runner.traceText()}',
+    );
+    expect(
+      report.wristStatus[l2],
+      WatchSessionStatus.active,
+      reason: runner.traceText(),
+    );
+    expect(
+      report.absorbingViolations,
+      isEmpty,
+      reason: 'W1 is never active again\n${runner.traceText()}',
+    );
+    expect(report.statusMismatches, isEmpty, reason: runner.traceText());
+    expect(report.entryMismatches, isEmpty, reason: runner.traceText());
+    expect(report.healConverged, isTrue, reason: runner.traceText());
+  });
 
   test(
     'S-14514 the phone re-offers an owed end once per 30 s window',
@@ -974,29 +968,26 @@ void _b2Tests() {
     },
   );
 
-  test(
-    'S-14515 a run over the empty fixture space holds nothing and breaks '
-    'nothing',
-    () async {
-      final run = await ConvergenceRun.runSeed(
-        7,
-        allowedActions: kNoSessionActions,
-        length: 40,
-      );
+  test('S-14515 a run over the empty fixture space holds nothing and breaks '
+      'nothing', () async {
+    final run = await ConvergenceRun.runSeed(
+      7,
+      allowedActions: kNoSessionActions,
+      length: 40,
+    );
 
-      expect(run.actions, hasLength(40));
-      expect(run.pair.failures, isEmpty, reason: run.trace);
-      expect(run.report.failures, isEmpty, reason: run.trace);
-      expect(
-        run.report.sessionCount,
-        0,
-        reason: 'no action starts a session\n${run.trace}',
-      );
-      expect(run.report.phoneStatus, isEmpty, reason: run.trace);
-      expect(run.report.wristStatus, isEmpty, reason: run.trace);
-      expect(run.heal.converged, isTrue, reason: run.trace);
-    },
-  );
+    expect(run.actions, hasLength(40));
+    expect(run.pair.failures, isEmpty, reason: run.trace);
+    expect(run.report.failures, isEmpty, reason: run.trace);
+    expect(
+      run.report.sessionCount,
+      0,
+      reason: 'no action starts a session\n${run.trace}',
+    );
+    expect(run.report.phoneStatus, isEmpty, reason: run.trace);
+    expect(run.report.wristStatus, isEmpty, reason: run.trace);
+    expect(run.heal.converged, isTrue, reason: run.trace);
+  });
 
   test(
     'S-14516 a refused durable snapshot is queued and still arrives',
@@ -1040,7 +1031,8 @@ void _b2Tests() {
       expect(
         harness.radio.phoneQueue.any((f) => f['type'] == 'session_snapshot'),
         isTrue,
-        reason: 'the refused snapshot waits in the queue\n${runner.traceText()}',
+        reason:
+            'the refused snapshot waits in the queue\n${runner.traceText()}',
       );
 
       final phoneIds = runner.phoneEntryIds[sessionId] ?? const <String>{};
@@ -1137,12 +1129,14 @@ void _b2Tests() {
       expect(
         report.timerDisagreements,
         0,
-        reason: 'the reconnect snapshot repaired the loss\n${runner.traceText()}',
+        reason:
+            'the reconnect snapshot repaired the loss\n${runner.traceText()}',
       );
       expect(
         _isRunning(phoneTimers, WatchTimerKind.rest),
         isTrue,
-        reason: 'the phone holds the rest after the heal\n${runner.traceText()}',
+        reason:
+            'the phone holds the rest after the heal\n${runner.traceText()}',
       );
       expect(
         _isRunning(wristTimers, WatchTimerKind.rest),
