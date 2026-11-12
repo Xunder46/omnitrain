@@ -570,6 +570,87 @@ void main() {
     });
   });
 
+  // Phase 5.Z shape A: 33 of 200 random seeds ended a session and then started
+  // a rest on it (see the plan's `.evidence.md`, "Phase 5.Z"). D-14603 says an
+  // end stops every timer of that session; a start after the end is not a start.
+  group('D-14603 a timer after the end starts nothing', () {
+    test('D-14603 a rest tapped on a finished session is no rest at all', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.advance(const Duration(seconds: 30));
+      await engine.finishSession();
+      final emittedAtEnd = harness.emitted.length;
+
+      harness.clock.advance(const Duration(seconds: 5));
+      final started = await engine.startTimer(WatchTimerKind.rest);
+
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(
+        started.state,
+        WatchTimerState.stopped,
+        reason: 'the returned timer is the one that applies: none',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest),
+        isNull,
+        reason: 'nothing runs on an ended session',
+      );
+      expect(
+        harness.emitted.skip(emittedAtEnd).map((frame) => frame['type']),
+        isNot(contains('timer_state')),
+        reason: 'and nothing claims a rest started, so the phone mirrors none',
+      );
+    });
+
+    test('D-14603 a rest tapped on an abandoned session is no rest either', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.abandonSession();
+      final emittedAtEnd = harness.emitted.length;
+
+      await engine.startTimer(WatchTimerKind.rest);
+
+      expect(engine.timerFor(WatchTimerKind.rest), isNull);
+      expect(
+        harness.emitted.skip(emittedAtEnd).map((frame) => frame['type']),
+        isNot(contains('timer_state')),
+      );
+    });
+
+    test('D-14603 a phone timer frame starts nothing on an ended session', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      final sessionId = engine.session!.sessionId;
+      await engine.finishSession();
+
+      await engine.applyMessage(
+        _timerStateOf(
+          sessionId,
+          messageId: 'msg-late-rest',
+          timers: {'rest': _runningRest('2026-07-13T06:29:50Z')},
+        ),
+      );
+
+      expect(
+        engine.timerFor(WatchTimerKind.rest),
+        isNull,
+        reason: 'a frame that arrives after the end cannot start a timer either',
+      );
+    });
+  });
+
   group('S-003 logging with the phone unreachable delivers exactly once', () {
     test(
       'every entry is persisted, emitted, and re-emitted with its identity',

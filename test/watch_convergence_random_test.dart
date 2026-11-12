@@ -169,20 +169,19 @@ void main() {
       // divergence and is printed; any other kind fails this test, so a new class
       // cannot arrive silently (D-14508: the report is the product).
       const knownClasses = <String, String>{
-        'timers':
-            'D-14603 — an end stops every timer of that session on both sides: '
-            'the wrist\'s `startTimer` does not check a terminal status the way '
-            'its `_transitionTo` does, so a rest outlives an end on one side '
-            '(Phase 5.Y evidence, timers)',
         'status':
             'PR 3 — the owner\'s "an earlier discard wins over a later finish" '
             'needs the phone to delete a finished workout (A-146-15, A-146-20)',
         'absorbing':
-            'open — seed 111 only, and it does not reproduce under '
-            'kShippingActions, so no minimal trace isolates it (A-146-25)',
-        'duplicates':
-            'D-14606 — a re-delivered request:snapshot can leave one entry id '
-            'twice on a wrist holding the phone\'s session (F-7)',
+            'open — the wrist keeps work a session the phone ended handed it on '
+            'a handful of seeds (24 of 2000 in the Phase 5.Z soak, seed 111 '
+            'first; it does not reproduce under kShippingActions, so no minimal '
+            'trace isolates it — A-146-25)',
+        'timers':
+            'D-14603 residue — 1 of 2000 seeds (1814) still shows a rest running '
+            'after an end on both sides: the end arrives at the phone from the '
+            'wrist, and the phone\'s own session keeps the rest it started '
+            '(A-146-29)',
         'entries':
             'open — a late-merged entry (D-14605) is still missed on 4 of 2000 '
             'seeds after the harness reads the wrist store (A-146-24)',
@@ -194,10 +193,15 @@ void main() {
       // Measured on seed 1..200 during Phase 5.Y: 42 seeds diverge on a trace
       // the shipping app can perform, and 39 on a second run of the same seeds —
       // the phone reads the device clock, so a divergence near the skew boundary
-      // moves (A-146-15). The ratchet catches a class getting much worse; a new
+      // moves (A-146-15). Phase 5.Z fixed `duplicates` and almost all of
+      // `timers` (33 seeds at 1..200, 1 at 1..2000), and re-measured 18
+      // (A-146-27). The ratchet catches a class getting much worse; a new
       // *kind* is caught by `unknown` below. Heal stalls are excluded: they are
       // not deterministic.
-      const int shippingRatchet = 55;
+      // Per 200 seeds, so the 2000-seed soak measures instead of failing on a
+      // count that only grows with the seed total: 18 measured on 1..200 in
+      // Phase 5.Z, which is 180 at 2000 (this run: 147).
+      final shippingRatchet = (kSeedCount * 18 / 200).ceil();
 
       final shippingKinds = <int, List<String>>{};
       final syntheticOnly = <int>[];
@@ -243,7 +247,7 @@ void main() {
       print('S-14509 contract: by class $byClass');
       expect(
         knownClasses.keys.toSet(),
-        {'heal', 'status', 'absorbing', 'entries', 'duplicates', 'timers'},
+        {'heal', 'status', 'absorbing', 'entries', 'timers'},
         reason:
             'the list above must name every kind `_kindsOf` can report, or a '
             'class could arrive with no owner',
@@ -262,7 +266,8 @@ void main() {
         lessThanOrEqualTo(shippingRatchet),
         reason:
             'Phase 5.Y measured 39 and 42 shipping-action divergences on the '
-            'same 200 seeds; this run has ${shippingFinding.length}: '
+            'same 200 seeds, Phase 5.Z 18 ($kSeedCount seeds at the same rate: '
+            '$shippingRatchet); this run has ${shippingFinding.length}: '
             '$shippingFinding. The pair disagrees about a workout the user can '
             'have — traffic above the band means a class got much worse.',
       );
@@ -628,9 +633,6 @@ void main() {
   //      produced an entry duplicate; the 2000-seed soak did (seeds 408, 660).
   test(
     'F-7 a set is never held twice',
-    skip: 'plan 146 open: a phone session held by the wrist doubles one entry '
-        '(D-14606 still violated) — see Phase 5 evidence, seed replay is green '
-        'for F-6 only',
     () async {
       final run = await script(
         (r) => [

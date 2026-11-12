@@ -472,6 +472,145 @@ D-14606; see A-146-26.
 - No `lib/` source changed this run, so no project-invariant or SQL/schema work applies; the
   interface grep still returns only the composition root: `lib/main.dart`.
 
+## Phase 5.Z — the three product gaps, closed or narrowed
+
+Phase 5.Y left three gaps open: timers that outlive an end (33 of 200 seeds), the F-7 duplicate set,
+and absorbing seed 111. This phase fixed the first two at their source, narrowed the third, lowered the
+sweep contract, and re-ran the 2000-seed soak.
+
+### 1. D-14603 — an end stops every timer (fixed)
+
+Two holes, both in `lib/watch/session/watch_session_engine.dart`:
+
+| where | before | after |
+|---|---|---|
+| `startTimer` | started a timer whatever the held session's status | a terminal held session returns the newest row of that kind, or a timer stopped where it began — **no row, no `timer_state`** |
+| `_applyTimerState` | adopted any phone `timer_state` for the held session | a terminal held session takes `_namedNullTimers` (a `null` stops, a running timer cannot restart one) |
+| `_applySnapshot` → `_adoptTimers` | filtered timers only when the *held* row was already terminal, so a snapshot that **ends** the session adopted its running rest | filters on the status the row is written with: `_isTerminal(row.status)` |
+
+The first two mirrored `_transitionTo`'s D-14602 guard; the third is why 10 seeds out of 2000 still
+showed a rest after the soak's first run (see the soak table).
+
+Base test group, `test/watch_session_engine_test.dart` "D-14603 a timer after the end starts nothing":
+
+| test | before | after |
+|---|---|---|
+| `a rest tapped on a finished session is no rest at all` | `Expected: 'stopped' / Actual: 'running'` | pass |
+| `a rest tapped on an abandoned session is no rest either` | `Expected: null / Actual: <Instance of 'WatchTimerRecord'>` | pass |
+| `a phone timer frame starts nothing on an ended session` | `Expected: null / Actual: <Instance of 'WatchTimerRecord'>` | pass |
+
+```
+$ gateway.sh prove-red HEAD test test/watch_session_engine_test.dart \
+    --plain-name "D-14603 a timer after the end starts nothing"
+RED AT HEAD (exit 1)   -- three assertion failures, not a compile error
+```
+
+Minimal real trace — seed 11 of the baseline sweep, actions 17–20 (`.work/gateway/test-20261111-234645-6894.log`):
+
+```
+17. wrist finishes
+18. phone finishes
+19. time advances 40s
+20. wrist starts a rest timer
+   wrist→phone timer_state (session 1) undelivered
+heal: session 1: a rest timer runs on the phone although the session is completed
+      session 1: a rest timer runs on the wrist although the session is completed
+```
+
+The sweep after the fix: **`timers` 33 → 0** on seeds 1..200, and 148 → 176 converging seeds
+(`.work/gateway/test-20261111-235301-9713.log`).
+
+### 2. F-7 — a set is never held twice (fixed; the test is unskipped)
+
+`F-7 a set is never held twice` (`test/watch_convergence_random_test.dart`) lost its `skip:`. Red first:
+
+```
+Expected: empty
+  Actual: ['session 2: the wrist exposed entry-effort-...-0-1 twice']
+```
+
+Instrumentation showed **two rows in `wristEngine.entries`, one row in `wristStore.readAll()`** — so the
+engine had added the same stored row twice. Cause: `applyMessage` is not serialized, the pair delivers a
+queued burst without awaiting each frame (`unawaited(_deliver(...))` in `test/helpers/watch_pair_harness.dart`),
+and two frames carrying the same entry pass `_heldRecord` before either row reaches `_observations`. The
+store keeps one row per id, so both callers got the *same* row back and both added it.
+
+Fix, in the same file: `_inflightEntries` claims an entry id before its append is awaited, in
+`_storeSnapshotEntry` and `_appendObservation`; the second caller awaits the first and then re-runs, so it
+is re-stated (or found held) instead of stored again.
+
+Mutation check (the guard is new code, so `prove-red` cannot compile it):
+
+```
+ORIGINAL  _inflightEntries[entryId] = writing;
+MUTANT    (line removed)
+$ gateway.sh test test/watch_convergence_random_test.dart --plain-name "F-7 a set is never held twice"
+          Failed: Actual: ['session 2: the wrist exposed entry-effort-... twice']
+RESTORED  exact original line, same command: All tests passed!
+```
+
+Minimal trace (verbatim from the green run):
+
+```
+1. wrist starts a Free workout      2. link drops        3. phone discards
+4. phone starts a session           5. wrist discards    6. wrist starts a Free workout
+7. a live frame from the wrist refused                   8. phone logs a set
+heal: session 2's snapshots drain both ways; the wrist merges session 2's entry
+```
+
+`duplicates` is gone from the sweep's class list: no seed of 1..200 or 1..2000 reports it.
+
+### 3. Absorbing seed 111 (narrowed, still open)
+
+`absorbing` is no longer one seed: the 2000-seed soak reports 21 seeds (Phase 5.Y: 8). It does not
+reproduce under `kShippingActions` for seed 111, so no minimal trace isolates it, and the class stays in
+`knownClasses` with that note (A-146-25). Not a timer defect: the two classes never co-occur now except
+in the seed below.
+
+### Contract lowering
+
+| knob | Phase 5.Y | Phase 5.Z |
+|---|---|---|
+| `knownClasses` | `timers, status, absorbing, duplicates, entries, heal` | `status, absorbing, entries, heal` — `timers` remains, relabelled as a residue |
+| `shippingRatchet` | `55` (measured 39–42) | 18 per 200 seeds, scaled as `kSeedCount * 18 / 200`, so the 2000-seed soak measures rather than fails |
+| seeds 1..200 measured | 40 diverging on a shipping trace | **18** (`[29, 33, 43, 83, 94, 95, 111, 115, 116, 117, 124, 134, 145, 149, 152, 161, 170, 193]`), 4 only after the harness-only re-assert, 2 heal stalls |
+
+### The 2000-seed soak
+
+| run | converge | shipping divergences | by class |
+|---|---|---|---|
+| Phase 5.Y | 1680 / 2000 | 320 | `timers=215, status=85, absorbing=8, heal=18, duplicates=2, entries=4` |
+| 5.Z after `startTimer` + `_applyTimerState` | 1764 | 159 | `status=165, heal=33, absorbing=24, entries=11, timers=10` (`.work/gateway/test-20261112-000137-13813.log`) |
+| 5.Z after the snapshot filter | 1779 | 147 | `heal=32, status=166, absorbing=23, entries=12, timers=2` (`.work/gateway/test-20261112-000406-14627.log`) |
+| 5.Z final, contract lowered | **1777** | **146** | `status=166, absorbing=21, heal=32, entries=11, timers=2` (`.work/gateway/test-20261112-000556-15213.log`) |
+
+`+1: All tests passed!` for the soak at `CONVERGENCE_SEEDS=2000`. Counts move a little between runs —
+the phone reads the device clock (A-146-15) — so the two 5.Z rows are the same state, measured twice.
+
+### What is still open
+
+| class | size (2000 seeds) | owner |
+|---|---|---|
+| `status` | 166 | PR 3 — "an earlier discard wins over a later finish" needs the phone to delete a finished workout (A-146-15, A-146-20) |
+| `heal` | 32 | flake class — the heal exchange never settles on a handful of seeds |
+| `absorbing` | 21 | open — no minimal trace under `kShippingActions` (A-146-25) |
+| `entries` | 11 | open — a late-merged entry is still missed (A-146-24) |
+| `timers` | 2 (seed 1814) | residue: the end reaches the phone from the wrist and the phone's own session keeps the rest it had started (A-146-29) |
+
+### Suites
+
+*(filled in at the end of the run)*
+
+| Check | Command | Result |
+|---|---|---|
+| full suite | `gateway.sh test` | **+7441 ~2: All tests passed!** (5m24s, exit 0; `.work/gateway/test-20261112-000733-15770.log`) |
+| UI standards | `gateway.sh test test/ui_standards_contract_test.dart` | **41 passed, 0 failed** (`All tests passed!`) |
+| lint | `gateway.sh lint` | **181 issues** — the baseline, unchanged; files touched by this phase contribute none |
+| interface invariant | `grep -rln "import .*hive_workout_repository" lib/` | `lib/main.dart` only (the composition root); no state, feature, widget or core file |
+| 2000-seed soak | `gateway.sh test test/watch_convergence_random_test.dart --dart-define=kSeedCount=2000` | **All tests passed!** — 1777 converge, 146 diverging, `{status: 166, absorbing: 21, heal: 32, entries: 11, timers: 2}` (`test-20261112-000556-15213.log`) |
+| default sweep | inside the full suite above | the same test at 200 seeds passes under the lowered contract (`shippingRatchet` = 18) |
+
+
 ---
 
 ## Assumption Log adjudication (conductor, at verification)

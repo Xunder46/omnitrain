@@ -280,6 +280,16 @@ applies one stop. A stop the radio refuses stays owed in memory and is
 re-offered at the next trigger (D-14603b; `test/watch_timer_push_test.dart`,
 group `S-14603b the end of a session reaches the wrist as stops`, the case
 `S-14604b ending the session with the phone's rest running stops the rest`).
+The wrist applies the same rule on its own side: a session it has ended starts
+no timer — `startTimer` stores no row and sends no `timer_state`, a late
+`timer_state` contributes only its `null`s, and a snapshot that is the one
+ending the session adopts no running timer
+(`test/watch_session_engine_test.dart`, group
+`D-14603 a timer after the end starts nothing`). A burst the radio delivers
+without awaiting each frame cannot store one entry twice either: the entry id
+is claimed before its append is awaited, so the second copy is a re-statement
+of the first (`test/watch_convergence_random_test.dart`,
+`F-7 a set is never held twice`).
 The rest travels as a `rest` timer with no slot
 and
 no planned length (a rest is a count-up and belongs to no slot), running or

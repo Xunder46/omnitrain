@@ -92,6 +92,8 @@ class WatchSessionEngine {
 
   final List<WatchSessionRecord> _sessionRows = [];
   final List<WatchObservationRecord> _observations = [];
+  /// The entries whose row is being written right now, by `entryId` (F-7).
+  final Map<String, Future<WatchObservationRecord>> _inflightEntries = {};
   final List<WatchTimerRecord> _timers = [];
   final List<WatchSensorSampleRecord> _sensorSamples = [];
 
@@ -600,9 +602,10 @@ class WatchSessionEngine {
       for (final entry in entryMaps) entry['entryId']! as String,
     ]);
     await _adoptTimers(
-      // A session that has ended runs no timer, so a late snapshot may clear
-      // one and never start one (D-14603, D-14604).
-      terminalHeld
+      // A session that has ended runs no timer, so a snapshot may clear one and
+      // never start one (D-14603, D-14604) — whether the held row already ended
+      // or this very snapshot is the one that ends it.
+      _isTerminal(row.status)
           ? _namedNullTimers(asJsonObject(payload['timers']))
           : asJsonObject(payload['timers']),
       sessionId: sessionId,
@@ -827,9 +830,17 @@ class WatchSessionEngine {
   Future<bool> _applyTimerState(Map<String, Object?> envelope) async {
     if (!_guardSession(envelope)) return false;
     final payload = asJsonObject(envelope['payload']);
+    final sessionId = envelope['sessionId']! as String;
+    final timers = asJsonObject(payload['timers']);
+    final held = _session;
+    // D-14603: a session that has ended takes a `null` from a late frame and
+    // nothing else — a running timer a phone still reports cannot restart one.
+    final terminal = held != null &&
+        held.sessionId == sessionId &&
+        _isTerminal(held.status);
     return _adoptTimers(
-      asJsonObject(payload['timers']),
-      sessionId: envelope['sessionId']! as String,
+      terminal ? _namedNullTimers(timers) : timers,
+      sessionId: sessionId,
       messageId: envelope['messageId']! as String,
       recordedAt: parseUtcIso(envelope['sentAt']),
       authoritative: false,
@@ -1038,7 +1049,19 @@ class WatchSessionEngine {
       return;
     }
 
-    final stored = await _store.append(
+    // F-7: a burst delivered without awaiting each frame can hand this engine
+    // two copies of one entry, and both would miss the other's row — the row
+    // only reaches [_observations] once its append returns — while the store,
+    // which keeps one row per id, hands the same row back twice. The id is
+    // claimed before the write is awaited, so the second copy waits for the
+    // first and is then re-stated rather than stored again.
+    final inflight = _inflightEntries[entryId];
+    if (inflight != null) {
+      await inflight;
+      return _storeSnapshotEntry(sessionId, entry);
+    }
+
+    final writing = _store.append(
       WatchObservationRecord(
         recordId: entryId,
         sessionId: sessionId,
@@ -1047,7 +1070,12 @@ class WatchSessionEngine {
         payload: entry,
       ),
     );
-    _observations.add(stored);
+    _inflightEntries[entryId] = writing;
+    try {
+      _observations.add(await writing);
+    } finally {
+      _inflightEntries.remove(entryId);
+    }
   }
 
   /// Shows [entry]'s id again — the tombstone it carried no longer stands —
@@ -1550,7 +1578,23 @@ class WatchSessionEngine {
         (entryId is String && entryId.isNotEmpty ? _heldRecord(entryId) : null);
     if (held != null) return held;
 
-    final stored = await _store.append(record);
+    // F-7, as in [_storeSnapshotEntry]: a second copy of the same entry that
+    // lands before the first copy's row is in [_observations] waits for it and
+    // then finds it held — nothing is stored twice, nothing is announced twice.
+    final inflight = _inflightEntries[recordId];
+    if (inflight != null) {
+      await inflight;
+      return _appendObservation(event, sessionId: sessionId);
+    }
+
+    final writing = _store.append(record);
+    _inflightEntries[recordId] = writing;
+    final WatchObservationRecord stored;
+    try {
+      stored = await writing;
+    } finally {
+      _inflightEntries.remove(recordId);
+    }
     _observations.add(stored);
     _emit(envelope);
     return stored;
@@ -1635,11 +1679,30 @@ class WatchSessionEngine {
     String? sessionExerciseId,
   }) async {
     _requireTimerKind(kind);
+    final session = _requireSession();
     final now = _clock();
+    if (_isTerminal(session.status)) {
+      // D-14603: the end stopped every timer of this session, so a start after
+      // it is not a start — no row and no `timer_state`, or the phone would
+      // mirror a rest for a workout that is over. The newest row of [kind] is
+      // the timer that applies; with none, the answer is a timer that stopped
+      // where it began, never stored and never sent.
+      return _newestTimer(kind: kind) ??
+          WatchTimerRecord(
+            recordId: 'tms-ended-${session.sessionId}-$kind',
+            sessionId: session.sessionId,
+            recordedAt: now,
+            kind: kind,
+            startedAt: now,
+            stoppedAt: now,
+            plannedDurationMs: plannedDurationMs,
+            sessionExerciseId: sessionExerciseId,
+          );
+    }
     final stored = await _appendTimer(
       WatchTimerRecord(
         recordId: _newId(),
-        sessionId: _requireSession().sessionId,
+        sessionId: session.sessionId,
         recordedAt: now,
         kind: kind,
         startedAt: now,
