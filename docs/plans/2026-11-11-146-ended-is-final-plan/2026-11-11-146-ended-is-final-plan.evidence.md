@@ -616,3 +616,73 @@ the phone reads the device clock (A-146-15) — so the two 5.Z rows are the same
 ## Assumption Log adjudication (conductor, at verification)
 
 *(each executor entry marked RATIFIED (promoted to a D-x) or REVERT (remediation task opened))*
+
+## PR 2 (Swift): the same rules in `WatchSessionEngine.swift` (developer, 2026-11-12)
+
+Rule → test → red at HEAD → green. `prove-red HEAD swift-test --filter WatchEndedIsFinalTests` swaps
+the new test file into a copy of `HEAD`.
+
+| Rule | Test (`WatchEndedIsFinalTests`) | HEAD |
+|---|---|---|
+| D-14602 | `testS14605AnAbandonedSessionIsNeverReportedCompleted` | red |
+| D-14601 (reopen) | `testS14601AStaleStartedCannotReopenAFinishedWorkout` | red |
+| D-14601 (order) | `testS14601AnEarlierEndingReplacesTheHeldOneAndALaterOneLoses` | red |
+| D-14601 (completed > abandoned) | `testS14601ACompletionOutranksADiscardWhateverTheInstantsSay` | red |
+| D-14601 (tie-break) | `testS14601ATiedEndingResolvesOnTheSmallerMessageId` | red |
+| D-14603 (end stops timers / no restart) | `testS14603AnEndStopsEveryTimerOfTheSession` | red |
+| D-14605 (late snapshot merges entries only) | `testS14607ALateSnapshotMergesOnlyItsEntries` | red |
+| D-14601 (snapshot keeps the held end) | `testS14601AnActiveSnapshotKeepsTheHeldEndingButTakesItsStructure` | red |
+| D-14601 (snapshot, non-replacing terminal) | `testS14601ALaterTerminalSnapshotDoesNotReplaceTheHeldEnding` | red |
+| D-14606 (entryId is the identity) | `testS14606AnEntryTheWristLoggedUnderItsEventIdIsTheOneTheSnapshotNames` | red |
+| F-7 (burst of copies) | `testS14606ABurstOfCopiesOfOneEntryStoresItOnce` | **green** — A-146-31 |
+
+```
+prove-red HEAD swift-test --filter WatchEndedIsFinalTests:
+  Executed 11 tests, with 33 failures (0 unexpected) in 0.156 (0.158) seconds
+  log: .work/gateway/swift-test-20261112-082815-57519.log
+```
+
+Green, on the change:
+
+```
+swift-test --filter WatchEndedIsFinalTests: Executed 11 tests, with 0 failures (0 unexpected)
+swift-test (full): Executed 1365 tests, with 0 failures (0 unexpected) in 10.184 (10.291) seconds
+  log: .work/gateway/swift-test-20261112-082856-58180.log
+```
+
+The pre-existing generic reconciliation walker was red at HEAD before this change and is green after it:
+at HEAD `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges` reports 3 failures at
+`WatchLiveMirroringTests.swift:363` (`abandoned` vs `completed`, `active` vs `abandoned` ×2) on the
+`ended_is_final` and two `lifecycle_*` fixtures; the full run above executes the suite with 0 failures.
+
+Mutation check on the burst guard, which is green at HEAD and so proves the claim rather than the rule:
+the in-flight claim in `storeSnapshotEntry` (`if let inflight = inflightEntries[entryId] { await
+inflight.wait(); … }`) was removed, the test run, and the claim restored exactly.
+
+```
+with the claim removed:
+  WatchEndedIsFinalTests.swift:535: XCTAssertEqual failed: ("2") is not equal to ("1") - the second copy waits …
+  WatchEndedIsFinalTests.swift:540: XCTAssertEqual failed: ("2") is not equal to ("1") - two copies in flight are one entry, stored once
+  Executed 11 tests, with 2 failures (0 unexpected)
+with the claim restored: Executed 11 tests, with 0 failures (0 unexpected)
+```
+
+So the claim is proved by mutation (two store appends, two rows without it; one of each with it), and the
+reason it is green at HEAD is A-146-31's: before this change the snapshot path never reached the store
+while the first copy's append was parked. No mutation is left applied.
+
+Cross-stack checks, this run:
+
+```
+test (full flutter suite): 05:15 +7441 -0 ~2: All tests passed!
+  log: .work/gateway/test-20261112-082918-58419.log
+lint (flutter analyze): 181 issues found — the plan's 181 baseline, unchanged
+  log: .work/gateway/lint-20261112-083447-64814.log
+import .*hive_workout_repository under lib/: only lib/main.dart (the composition root);
+  lib/state, lib/features, lib/widgets, lib/core are clean.
+```
+
+`docs/` gained nothing but this plan and its evidence: no page states the Swift engine's ordering rule —
+PROTOCOL.md's "Idempotency and reconciliation" (Phase 2) is the contract both stacks now obey — so no doc
+update was required for PR 2. The one stale statement was a test-header comment, corrected in
+`SyncProtocolFixturesTests.swift` (A-146-34).

@@ -528,6 +528,17 @@ mismatches on unskipped seeds; the evidence file carries the counts.
       `shippingRatchet` scaled to `(kSeedCount * 18 / 200).ceil()`. 2000-seed soak **1777 converge, 146
       diverging** (`.work/gateway/test-20261112-000556-15213.log`). Full suite **+7441 ~2: All tests
       passed!**, lint 181 unchanged (A-146-27..29, evidence `## Phase 5.Z`).
+- [x] PR 2: the Swift engine obeys the same rules (@developer) — Phase **Complete**. New test file
+      `watch/watchos/Tests/WatchSessionEngineTests/WatchEndedIsFinalTests.swift` (11 tests: S-14601 ×5,
+      S-14603, S-14605, S-14606 ×2, S-14607); `prove-red HEAD` → **RED AT HEAD**, 10 of 11 test cases
+      failing (33 assertions; the F-7 burst guard is green at HEAD, A-146-31). Full `swift-test`
+      **Executed 1365 tests, with 0 failures**; the generic walker
+      `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`, red at HEAD on the
+      `ended_is_final` and two `lifecycle_*` fixtures, is green. Engine: terminal-status/instant rule in
+      `applySnapshotExclusive`, terminal guard + all-null stop + `recordedAt` for endings in
+      `applyLifecycleExclusive`, `namedNullTimers` in `applyTimerState`, the refusal in `startTimer`, the
+      terminal guard in `transitionToExclusive`, and the `entryId` union with the in-flight claim
+      (A-146-30..33; evidence `## PR 2 (Swift)`).
 
 ## Assumption Log
 
@@ -682,6 +693,24 @@ mismatches on unskipped seeds; the evidence file carries the counts.
   Two seeds of 2000 (1814) still show a rest after the end: the end travels wrist → phone and the
   phone's own session keeps the rest it started, which is the phone's ledger (D-14603b), not the wrist's
   guard. `timers` therefore stays in `knownClasses`, relabelled as residue rather than as D-14603's gap.
+- **A-146-30 (PR 2): the Swift parity tests live in a new file, which the Predicted Files do not name.**
+  Options: extend `WatchSessionEngineTests.swift` (2000+ lines, and a diff far bigger than the change);
+  or add `WatchEndedIsFinalTests.swift`. Chosen: the new file, one test per rule, mirroring PR 1's Dart
+  group names so the two suites read the same.
+- **A-146-31 (PR 2): the F-7 burst test is green at HEAD, so it is proved by mutation, not by prove-red.**
+  Removing the in-flight claim from `storeSnapshotEntry` makes it red (two store appends, two rows);
+  restoring it makes it green. The `entryId` union is proved by prove-red like every other rule.
+- **A-146-32 (PR 2): plan 63 D-1 still refuses a stale snapshot, so the earlier-ending rule reaches the
+  Swift wrist through lifecycle frames only.** A snapshot older than the newest one applied changes
+  nothing at all, including its ending; the scenario's earlier-ending half is therefore proved on the
+  lifecycle path (`testS14601AnEarlierEndingReplacesTheHeldOneAndALaterOneLoses`) and the stale-snapshot
+  refusal is asserted instead of the replacement.
+- **A-146-33 (PR 2): `startTimer` after an end returns the stop row the end wrote, not the synthetic
+  one.** The end always writes a stop row per kind, so `newestTimer(kind:)` is never nil in practice; the
+  synthetic stopped timer is kept for parity with the twin and is unreachable from the UI paths tested.
+- **A-146-34 (PR 2): the stale header of `SyncProtocolFixturesTests.swift` was corrected.** It claimed
+  the reconciliation fixtures are replayed only by the Dart test; `WatchLiveMirroringTests` replays them
+  through the Swift engine, and the comment now says so.
 
 ## Open items (Phase 5.Z residue)
 
