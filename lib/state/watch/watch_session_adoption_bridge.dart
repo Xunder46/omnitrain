@@ -24,6 +24,7 @@ import '../../core/constants/block_types.dart';
 import '../../core/constants/capability.dart';
 import '../../core/constants/metric_ids.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/constants/workout_constants.dart';
 import '../../core/services/watch_routine_matcher.dart';
 import '../../core/services/watch_session_importer.dart';
 import '../../core/sync_protocol/message_validator.dart';
@@ -277,7 +278,12 @@ class WatchSessionAdoptionBridge {
         // exercise holds — the index is the set number, logged rows included —
         // and it is a read-only projection of the phone's own rows (I-1), so a
         // slot with none, or a non-`set` slot, carries the key not at all.
-        if (_wireKind(slot) == PhoneEntries.setKind) {
+        // D-14901/D-14902: every other kind carries how many efforts the phone
+        // plans — its own record count, read live at each answer — and only
+        // when there is at least one, because the wire's minimum is 1 and a
+        // slot with no plan carries the key not at all (D-14904).
+        final wireKind = _wireKind(slot);
+        if (wireKind == PhoneEntries.setKind) {
           final groups = EntryRows.setGroups(
             await _repository.getEffortObservations(effort.id),
           );
@@ -289,6 +295,16 @@ class WatchSessionAdoptionBridge {
                 _plannedSetOf(group, exerciseHasLoad: hasLoad),
             ];
           }
+        } else {
+          final planned = switch (wireKind) {
+            PhoneEntries.roundKind =>
+              target.getRoundsForEffort(effort.id).length,
+            PhoneEntries.timedKind ||
+            PhoneEntries.holdKind =>
+              target.getTimedInstancesForEffort(effort.id).length,
+            _ => 0,
+          };
+          if (planned >= 1) slot['plannedEfforts'] = planned;
         }
         entries.addAll(await _entriesFor(effort, slot, wristRows));
       }
@@ -655,7 +671,8 @@ class WatchSessionAdoptionBridge {
           '${(slot['capabilities']! as List).join(',')}:'
           '${slot['effortKind'] ?? ''}:'
           '${slot['roundDurationSecs'] ?? ''}'
-          ':${jsonEncode(slot['plannedSets'] ?? const <Object?>[])}',
+          ':${jsonEncode(slot['plannedSets'] ?? const <Object?>[])}'
+          ':${slot['plannedEfforts'] ?? ''}',
   ].join('|');
 
   /// The session a wrist frame names, or null when it names none.
@@ -1127,15 +1144,19 @@ class WatchSessionAdoptionBridge {
       await _repository.createEffort(
         _effort(slot, segmentId: segmentId, orderIndex: orderIndex, atMs: atMs),
       );
-      // D-3: the routine's `set` efforts start with its own plan, so the
+      // D-3: the routine's planned efforts start with its own plan, so the
       // wrist's first set fills a planned row instead of joining the exercise
-      // (D-6). The gate is the same kind the effort itself logs as (I-5).
+      // (D-6). The gate is the same kind the effort itself logs as (I-5), and
+      // D-14906 widens it from sets to every kind the slot declares: a hold,
+      // a timed effort and a round hold their plan as their own records.
       final slotId = slot['sessionExerciseId'] as String;
-      if (routine != null && _effortKind(slot) == BlockTypes.set) {
+      final kind = _effortKind(slot);
+      if (routine != null && _declaredKinds.contains(kind)) {
         final exerciseId = slot['exerciseId'];
         await _createPlannedRows(
           slotId: slotId,
           exerciseId: exerciseId is String ? exerciseId : null,
+          kind: kind,
           targets: routine.targetsBySlot[slotId] ?? const [],
           atMs: atMs,
         );
@@ -1187,7 +1208,7 @@ class WatchSessionAdoptionBridge {
     return (template: template, targetsBySlot: targetsBySlot);
   }
 
-  /// Writes the routine's planned set rows into the effort just created (D-3).
+  /// Writes the routine's planned rows into the effort just created (D-3).
   ///
   /// The rows are the ones the phone's own routine start writes, from the same
   /// builder and with the same defaults (I-6): one per planned set, the
@@ -1195,20 +1216,74 @@ class WatchSessionAdoptionBridge {
   /// has no target for, and the extra-weight row an exercise without `load` —
   /// or one the library no longer holds — carries. [atMs] is the adoption's own
   /// stamp, so a planned row reads as one the phone wrote just now.
+  ///
+  /// D-14906: a non-`set` effort holds its plan as one record per planned index
+  /// — a [TimedInstance] for a hold or a timed effort, a [RoundInstance] for a
+  /// round — carrying the template's per-index `duration` (or `round-duration`)
+  /// where it has one and the phone's own default where it does not.
   Future<void> _createPlannedRows({
     required String slotId,
     required String? exerciseId,
+    required String kind,
     required List<TemplateTarget> targets,
     required int atMs,
   }) async {
     final exercise = exerciseId == null
         ? null
         : await _repository.getExerciseById(exerciseId);
+    final plansCount = _plannedSetCount(targets);
+
+    if (kind != BlockTypes.set) {
+      for (var index = 0; index < plansCount; index++) {
+        if (kind == BlockTypes.round) {
+          final plannedSecs =
+              _plannedValue(targets, MetricIds.roundDuration, index)?.toInt() ??
+              exercise?.defaultRoundDurationSecs ??
+              WorkoutConstants.defaultRoundDurationSecs;
+          await _repository.createRoundInstance(
+            RoundInstance(
+              id: 'round-$slotId-$index-$atMs',
+              effortId: slotId,
+              roundIndex: index,
+              plannedDurationSecs: plannedSecs,
+              actualDurationSecs: 0,
+              startedAtMs: 0,
+              finishedAtMs: null,
+              completed: false,
+              state: RoundState.notStarted,
+              pausedAtMs: null,
+              totalPausedDurationMs: 0,
+              createdAtMs: atMs,
+              updatedAtMs: atMs,
+            ),
+          );
+          continue;
+        }
+        await _repository.createTimedInstance(
+          TimedInstance(
+            id: 'timed-$slotId-$index-$atMs',
+            effortId: slotId,
+            entryIndex: index,
+            targetDurationSecs:
+                _plannedValue(targets, MetricIds.duration, index)?.toInt() ?? 0,
+            actualDurationSecs: 0,
+            startedAtMs: 0,
+            finishedAtMs: null,
+            state: TimedState.notStarted,
+            pausedAtMs: null,
+            totalPausedDurationMs: 0,
+            createdAtMs: atMs,
+            updatedAtMs: atMs,
+          ),
+        );
+      }
+      return;
+    }
+
     final exerciseHasLoad =
         exercise?.capabilities.contains(ExerciseCapability.load) ?? false;
 
-    final setCount = _plannedSetCount(targets);
-    for (var entryIndex = 0; entryIndex < setCount; entryIndex++) {
+    for (var entryIndex = 0; entryIndex < plansCount; entryIndex++) {
       final reps = _plannedValue(targets, MetricIds.reps, entryIndex);
       final weightKg = _plannedValue(targets, MetricIds.weight, entryIndex);
       for (final row in LoggedEntryRows.setObservations(

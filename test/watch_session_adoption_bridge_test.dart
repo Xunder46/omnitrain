@@ -39,6 +39,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/block_types.dart';
 import 'package:omnitrain/core/constants/capability.dart';
+import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
@@ -2086,6 +2087,236 @@ void main() {
       expect(started, isEmpty,
           reason: 'nothing to point an unlinked plan at');
       expect(failures.single, isA<StateError>());
+    });
+  });
+
+  // Plan 149 (PR 1) Phase 3 — D-14906: an adopted routine session holds the
+  // plan of every declared kind, not only its sets. The ladder's slot ids are
+  // the template's effort ids (`sx-<effortId>`), so the adoption matches the
+  // routine and writes each effort's planned rows: set rows for a set, a
+  // timed instance or a round per planned index for the rest.
+  group('S-14908 the adoption seeds the non-set plan', () {
+    const holdSlot = 'sx-eff-hold';
+    const roundSlot = 'sx-eff-round';
+    const sessionId = 's-routine-149';
+    const at = 1780000000000;
+
+    /// The catalog the ladder names: a bodyweight hold, and a pitch session the
+    /// phone already holds a default round length for.
+    Future<void> seedCatalog(WorkoutRepository repository) async {
+      await repository.createExercise(
+        Exercise(
+          id: 'ex-plank',
+          name: 'Plank',
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      await repository.setExerciseCapabilities('ex-plank', const [
+        ExerciseCapability.hold,
+        ExerciseCapability.time,
+      ]);
+      await repository.createExercise(
+        Exercise(
+          id: 'ex-soccer',
+          name: 'Soccer',
+          defaultRoundDurationSecs: 2400,
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      await repository.setExerciseCapabilities('ex-soccer', const [
+        ExerciseCapability.rounds,
+        ExerciseCapability.time,
+      ]);
+    }
+
+    /// The routine the ladder is a run of: a hold effort and a round effort.
+    /// [withTargets] false is S-14909's adversarial half — the same two
+    /// efforts, with no per-index `duration` or `round-duration` target at all.
+    Future<void> seedRoutine(
+      WorkoutRepository repository, {
+      bool withTargets = true,
+    }) async {
+      await repository.createTemplate(
+        WorkoutTemplate(
+          id: 'tpl-149',
+          ownerUserId: null,
+          name: 'Core and Pitch',
+          description: null,
+          focusModality: null,
+          primaryDisciplineId: null,
+          note: null,
+          isBuiltInDemo: false,
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      await repository.createTemplateSegment(
+        TemplateSegment(
+          id: 'tpl-149-seg',
+          templateId: 'tpl-149',
+          orderIndex: 0,
+          segmentType: 'strength_sets',
+          disciplineId: null,
+          name: 'Main',
+          note: null,
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      await repository.createTemplateEffort(
+        TemplateEffort(
+          id: 'eff-hold',
+          templateSegmentId: 'tpl-149-seg',
+          orderIndex: 0,
+          effortKind: BlockTypes.drill,
+          modality: null,
+          exerciseId: 'ex-plank',
+          note: null,
+          restSeconds: null,
+          restType: null,
+          createdAtMs: at,
+        ),
+      );
+      await repository.createTemplateEffort(
+        TemplateEffort(
+          id: 'eff-round',
+          templateSegmentId: 'tpl-149-seg',
+          orderIndex: 1,
+          effortKind: BlockTypes.round,
+          modality: null,
+          exerciseId: 'ex-soccer',
+          note: null,
+          restSeconds: null,
+          restType: null,
+          createdAtMs: at,
+        ),
+      );
+      if (!withTargets) return;
+      for (var index = 0; index < 3; index++) {
+        await repository.createTemplateTarget(
+          TemplateTarget(
+            id: 'tgt-hold-$index',
+            templateEffortId: 'eff-hold',
+            metricId: MetricIds.duration,
+            setIndex: index,
+            targetInt: 45,
+            createdAtMs: at,
+            updatedAtMs: at,
+          ),
+        );
+      }
+      for (var index = 0; index < 4; index++) {
+        await repository.createTemplateTarget(
+          TemplateTarget(
+            id: 'tgt-round-$index',
+            templateEffortId: 'eff-round',
+            metricId: MetricIds.roundDuration,
+            setIndex: index,
+            targetInt: 180,
+            createdAtMs: at,
+            updatedAtMs: at,
+          ),
+        );
+      }
+    }
+
+    Map<String, Object?> holdLadderSlot() => _slot(
+      holdSlot,
+      'ex-plank',
+      declaredKind: BlockTypes.drill,
+      capabilities: const [ExerciseCapability.hold, ExerciseCapability.time],
+    );
+
+    Map<String, Object?> roundLadderSlot() => _slot(
+      roundSlot,
+      'ex-soccer',
+      declaredKind: BlockTypes.round,
+      capabilities: const [ExerciseCapability.rounds, ExerciseCapability.time],
+    );
+
+    /// One slot of the ladder the bridge projects, by slot id.
+    Map<String, Object?> slotIn(Map<String, Object?> payload, String id) =>
+        (payload['exercises'] as List)
+            .cast<Map<String, Object?>>()
+            .firstWhere((slot) => slot['sessionExerciseId'] == id);
+
+    Future<_Phone> adopt(WorkoutRepository repository) async {
+      final phone = await _phone(repository);
+      await phone.router.receive(
+        _snapshot(
+          sessionId: sessionId,
+          revision: 3,
+          exercises: [holdLadderSlot(), roundLadderSlot()],
+        ),
+      );
+      await phone.state.loadHistoricalSession(sessionId);
+      return phone;
+    }
+
+    test('S-14908 an adopted routine session seeds its planned holds and '
+        'periods', () async {
+      final repository = await _repository();
+      await seedCatalog(repository);
+      await seedRoutine(repository);
+
+      final phone = await adopt(repository);
+      expect(phone.failures, isEmpty,
+          reason: 'the adoption writes rows the in-memory store takes');
+
+      final holds = phone.state.getTimedInstancesForEffort(holdSlot);
+      expect(holds, hasLength(3),
+          reason: 'S-14908 the hold effort holds one planned instance per '
+              'index the template plans (D-14906)');
+      expect(holds.map((hold) => hold.entryIndex).toList()..sort(), [0, 1, 2]);
+      expect(holds.map((hold) => hold.targetDurationSecs).toSet(), {45},
+          reason: 'the template\'s own `duration` target per index');
+
+      final rounds = phone.state.getRoundsForEffort(roundSlot);
+      expect(rounds, hasLength(4),
+          reason: 'S-14908 the round effort holds one planned round per '
+              'period the template plans');
+      expect(rounds.map((round) => round.roundIndex).toList()..sort(), [
+        0,
+        1,
+        2,
+        3,
+      ]);
+      expect(rounds.map((round) => round.plannedDurationSecs).toSet(), {180},
+          reason: 'the template\'s own `round-duration` target per index');
+
+      final projected = (await phone.bridge.projectSession(null))!;
+      expect(slotIn(projected, holdSlot)['plannedEfforts'], 3,
+          reason: 'the next snapshot carries the plan the adoption wrote');
+      expect(slotIn(projected, roundSlot)['plannedEfforts'], 4);
+    });
+
+    test('S-14909 a template with no per-index targets still seeds the count',
+        () async {
+      final repository = await _repository();
+      await seedCatalog(repository);
+      await seedRoutine(repository, withTargets: false);
+
+      final phone = await adopt(repository);
+      expect(phone.failures, isEmpty);
+
+      final holds = phone.state.getTimedInstancesForEffort(holdSlot);
+      expect(holds, hasLength(1),
+          reason: 'S-14909 the count rule (highest set index + 1, one when the '
+              'template holds no targets) still plans one hold');
+      expect(holds.single.targetDurationSecs, 0,
+          reason: 'an open-ended hold, the phone\'s own default');
+
+      final rounds = phone.state.getRoundsForEffort(roundSlot);
+      expect(rounds, hasLength(1));
+      expect(rounds.single.plannedDurationSecs, 2400,
+          reason: 'the exercise\'s own default round length');
+
+      final projected = (await phone.bridge.projectSession(null))!;
+      expect(slotIn(projected, holdSlot)['plannedEfforts'], 1,
+          reason: 'a plan of one is still a plan');
+      expect(slotIn(projected, roundSlot)['plannedEfforts'], 1);
     });
   });
 }

@@ -21,7 +21,7 @@ transport and the sensors are in
 | The session the wrist is running becoming the phone's own in-progress session | `WatchSessionAdoptionBridge.consider`, called by `WatchIncomingRouter` after the mirror has applied a snapshot — and now its owner names `WatchSessionAdoptionBridge.onSessionStarted` beside it: a wrist `session_started` report opens the session row (no efforts of its own, D-8977; the first snapshot that reaches that effort-less row writes the wrist's ladder into it and seeds the first entries exactly as a fresh adoption does, so a report that beats its snapshot never leaves the phone showing an empty session, D-8978 — `test/watch_session_adoption_bridge_test.dart`: `S-8980 the first snapshot fills a report-opened row with the ladder`, `S-8980 a row that already holds an effort is loaded as it is, never filled from the snapshot`; the row also carries the routine's Focus as an adopted run does, S-8981) and remembers the plan it names, linking it only when the wrist finishes that session (`test/watch_session_import_test.dart`, group `S-8963…S-8964b a wrist report that starts a plan`: `S-8963 a startable plan opens the row and reports the link, Mock and Hive`, `S-8971 last write wins, and the store reads the link back after a restart, Mock and Hive`, `S-8964 a free start is adopted with nothing linked`, `S-8964 a missing plan, an empty id and a held session behave (Mock and Hive)`, plus `S-13031 the wrist completed lifecycle links the plan`) |
 | Telling the wrist when its session is already history | `WatchIncomingRouter`'s answer to that snapshot: the mirror's `reportLifecycle` |
 | Ending the phone's copy when the wrist ends its own | `WatchSessionAdoptionBridge.onLifecycle` → the ordinary finish or the ordinary discard |
-| The ladder the phone asserts, and the entries it logged | `WatchSessionAdoptionBridge.projectSession`, composed on demand from the bound session — the ladder, plus the phone's own logged sets (a set is logged exactly when a rest sits at its index + 1), timed, hold and round entries in the answer's `entries` (D-31, D-33, D-130); a `set` slot's planned rows ride the slot itself as `plannedSets`, not as entries (D-2, `S-3621 a set slot carries every planned row, in set order`) |
+| The ladder the phone asserts, and the entries it logged | `WatchSessionAdoptionBridge.projectSession`, composed on demand from the bound session — the ladder, plus the phone's own logged sets (a set is logged exactly when a rest sits at its index + 1), timed, hold and round entries in the answer's `entries` (D-31, D-33, D-130); a `set` slot's planned rows ride the slot itself as `plannedSets`, not as entries (D-2, `S-3621 a set slot carries every planned row, in set order`), and every other kind's plan rides it as `plannedEfforts` (D-14901, `S-14901 a drill slot carries how many holds it plans`) |
 | Turning the phone's logged rows into wire entries | `PhoneEntries.project` / `PhoneEntries.ordered` in `lib/core/sync_protocol/phone_entries.dart` — pure, no repository and no clock |
 | Which phone record a wrist row already claimed | `WatchSessionAdoptionBridge`'s per-kind claim read over the session's live inbox rows (D-34) — `S-142 a wrist-logged entry of any kind is not doubled` |
 | Handing the rating the wrist recorded to the finish that writes the row | `WatchSessionAdoptionBridge.onLifecycle`'s read of the session row before it ends the session |
@@ -42,9 +42,13 @@ adopt the same rows`). An empty wrist session is adopted but reads as not yet
 active (D-6), verified by that file's
 `S-3 an empty wrist session is adopted but reads "not yet active"`. A wrist
 free session stays free — no routine title, intent or link — while an adopted
-ladder that is a run of one of the phone's own routines links to it and its
-`set` efforts start with the routine's planned rows
+ladder that is a run of one of the phone's own routines links to it and every
+effort the slot declares starts with the routine's planned rows — the set rows
+a `set` effort holds, and one timed instance or round per planned index for a
+hold, a timed effort or a round (D-14906)
 (`test/watch_session_adoption_bridge_test.dart`,
+`S-14908 an adopted routine session seeds its planned holds and periods`,
+`S-14909 a template with no per-index targets still seeds the count`;
 `S-1 a wrist snapshot becomes the phone's in-progress session` — its slots
 carry no `sx-` prefix, so it stays the free-session guard;
 `test/watch_routine_adoption_test.dart`,
@@ -144,8 +148,20 @@ ladder that raises the projected revision. Verified by
 `S-3621 a timed slot carries no key, whatever rows it holds`,
 `S-3621 an effort with no rows carries no key`) and by
 `test/watch_session_adoption_bridge_test.dart`
-(`S-3622 a planned-value edit moves the revision`). The wrist reads the key
-for a `set` effort only: its next set starts from `plannedSets[setsHeld]` —
+(`S-3622 a planned-value edit moves the revision`). **Every other kind's plan
+travels on the slot as `plannedEfforts` (plan 149, D-14901).** A non-`set` slot
+with at least one planned record carries its count — a `hold`/`timed` slot's
+timed instances, a `round` slot's rounds, read live at each answer, so a
+logged effort past the plan grows it by one — and a slot with no plan, or a
+`set` slot, carries no key at all: the two keys are never on the same slot.
+Verified by `test/watch_session_projection_test.dart` (group
+`S-14901 the phone sends the planned efforts`:
+`S-14901 a drill slot carries how many holds it plans`,
+`S-14902 a round and a timed slot carry their own counts`,
+`S-14903 a set slot never carries a count`,
+`S-14904 a slot with no planned effort carries no count`,
+`S-14906/S-14907 a fourth effort moves the count and the revision`). The
+wrist reads `plannedSets` for a `set` effort only: its next set starts from `plannedSets[setsHeld]` —
 reps and load — while fewer sets are held than planned, `setsHeld` counting
 the slot's `set` entries the wrist holds, its own unconfirmed ones included;
 past the planned rows, or for a row that carries no `reps`, the old chain

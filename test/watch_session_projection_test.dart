@@ -2876,6 +2876,284 @@ void main() {
     });
   });
 
+  // Plan 2026-11-12-149 PR 1 (D-14901, D-14902, D-14905): every effort kind
+  // carries how much of itself the phone planned. A `set` slot keeps its
+  // `plannedSets`; a timed, drill (hold) or round slot carries `plannedEfforts`
+  // — the count the phone's own screen shows — and neither kind carries both
+  // keys.
+  group('S-14901 the phone sends the planned efforts', () {
+    /// One slot of a projection, by its id.
+    Map<String, Object?> slotIn(Map<String, Object?> payload, String id) =>
+        _objects(payload['exercises']).firstWhere(
+          (slot) => slot['sessionExerciseId'] == id,
+        );
+
+    /// One snapshot answer of the phone's own session.
+    Future<Map<String, Object?>> answer() async {
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      return _payload(radio.lastOfType('session_snapshot'));
+    }
+
+    /// The phone's own timed records for [slotId]: [count] rows, none started —
+    /// a plan the phone states and has not run yet.
+    Future<void> seedTimed(
+      String slotId, {
+      required int count,
+      int durationSecs = 45,
+    }) async {
+      for (var index = 0; index < count; index++) {
+        await repository.createTimedInstance(
+          TimedInstance(
+            id: 'timed-$slotId-$index',
+            effortId: slotId,
+            entryIndex: index,
+            targetDurationSecs: durationSecs,
+            createdAtMs: _at(index),
+            updatedAtMs: _at(index),
+          ),
+        );
+      }
+    }
+
+    /// The phone's own round records for [slotId], none started.
+    Future<void> seedRounds(
+      String slotId, {
+      required int count,
+      int secs = 180,
+    }) async {
+      for (var index = 0; index < count; index++) {
+        await repository.createRoundInstance(
+          RoundInstance(
+            id: 'round-$slotId-$index',
+            effortId: slotId,
+            roundIndex: index,
+            plannedDurationSecs: secs,
+            createdAtMs: _at(index),
+            updatedAtMs: _at(index),
+          ),
+        );
+      }
+    }
+
+    test('S-14901 a drill slot carries how many holds it plans', () async {
+      await _SessionFixture.seedEfforts(repository, phoneState, 'sess-drill', [
+        (
+          slotId: 'sl-drill',
+          exerciseId: 'ex-plank',
+          effortKind: 'drill',
+          write: () => seedTimed('sl-drill', count: 3),
+        ),
+      ]);
+
+      final slot = slotIn(await answer(), 'sl-drill');
+
+      expect(
+        slot['effortKind'],
+        'drill',
+        reason: 'the fixture: a drill slot, which the wire spells `hold`',
+      );
+      expect(
+        slot['plannedEfforts'],
+        3,
+        reason:
+            'S-14901 a drill effort sends how many holds the phone planned — '
+            'the count its own screen shows — so the wrist starts the same '
+            'three (D-14901, D-14902)',
+      );
+      expect(
+        slot.containsKey('plannedSets'),
+        isFalse,
+        reason: 'S-14901/D-14901 the two keys never travel on one slot',
+      );
+    });
+
+    test('S-14902 a round and a timed slot carry their own counts', () async {
+      await _SessionFixture.seedEfforts(repository, phoneState, 'sess-mixed', [
+        (
+          slotId: 'sl-round',
+          exerciseId: 'ex-plank',
+          effortKind: 'round',
+          write: () => seedRounds('sl-round', count: 4),
+        ),
+        (
+          slotId: 'sl-timed',
+          exerciseId: 'ex-plank',
+          effortKind: 'timed',
+          write: () => seedTimed('sl-timed', count: 2, durationSecs: 90),
+        ),
+        (
+          slotId: 'sl-set',
+          exerciseId: 'ex-bench',
+          effortKind: 'set',
+          write: () async {
+            for (var number = 0; number < 3; number++) {
+              for (final row in LoggedEntryRows.setObservations(
+                effortId: 'sl-set',
+                entryIndex: number,
+                reps: 10,
+                weightKg: 0.0,
+                exerciseHasLoad: true,
+                atMs: _at(number),
+              )) {
+                await repository.createObservation(row);
+              }
+            }
+          },
+        ),
+      ]);
+
+      final payload = await answer();
+
+      expect(
+        _slotIds(payload),
+        ['sl-round', 'sl-timed', 'sl-set'],
+        reason: 'the fixture: one slot of each kind rides the ladder',
+      );
+      expect(
+        slotIn(payload, 'sl-round')['plannedEfforts'],
+        4,
+        reason:
+            'S-14902 a round effort sends the number of rounds the phone plans '
+            '(D-14902), so the wrist counts the same four',
+      );
+      expect(
+        slotIn(payload, 'sl-round')['roundDurationSecs'],
+        180,
+        reason: 'S-14902 and the length it counts each one down from',
+      );
+      expect(
+        slotIn(payload, 'sl-timed')['plannedEfforts'],
+        2,
+        reason: 'S-14902 a timed effort sends its own count, not the round’s',
+      );
+      expect(
+        slotIn(payload, 'sl-set')['plannedSets'],
+        [
+          {'reps': 10},
+          {'reps': 10},
+          {'reps': 10},
+        ],
+        reason: 'S-14902 a set slot keeps the planned sets it always sent',
+      );
+      expect(
+        slotIn(payload, 'sl-set').containsKey('plannedEfforts'),
+        isFalse,
+        reason:
+            'S-14902/D-14901 a set slot carries its rows and never a count: no '
+            'slot carries both keys',
+      );
+    });
+
+    test('S-14903 a set slot never carries a count', () async {
+      await seed(
+        'sess-sets',
+        [
+          (reps: 10, loadKg: 40.0, skipped: false, atMs: _at(1)),
+          (reps: 8, loadKg: 42.5, skipped: false, atMs: _at(2)),
+        ],
+        slotId: 'sl-1',
+        logged: false,
+      );
+
+      final slot = slotIn(await answer(), 'sl-1');
+
+      expect(
+        slot['plannedSets'],
+        [
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 8, 'loadKg': 42.5},
+        ],
+        reason: 'the fixture: a set slot with two planned rows',
+      );
+      expect(
+        slot.containsKey('plannedEfforts'),
+        isFalse,
+        reason:
+            'S-14903 a set effort states its plan row by row: a count beside it '
+            'would let the two disagree, so the key is omitted (D-14901)',
+      );
+    });
+
+    test('S-14904 a slot with no planned effort carries no count', () async {
+      await _SessionFixture.seedEfforts(repository, phoneState, 'sess-empty', [
+        (
+          slotId: 'sl-empty',
+          exerciseId: 'ex-plank',
+          effortKind: 'drill',
+          write: () async {},
+        ),
+      ]);
+
+      final slot = slotIn(await answer(), 'sl-empty');
+
+      expect(
+        slot['capabilities'],
+        isNotEmpty,
+        reason: 'the fixture: the slot rides the ladder, so each absence below '
+            'is the key’s and not the slot’s',
+      );
+      expect(
+        slot.containsKey('plannedEfforts'),
+        isFalse,
+        reason:
+            'S-14904 an effort holding no record plans nothing, and the wire’s '
+            'minimum is 1: the key is omitted rather than sent as 0 (D-14901)',
+      );
+      expect(
+        slot.containsKey('plannedSets'),
+        isFalse,
+        reason: 'S-14904 and a non-set slot never carried that key either',
+      );
+    });
+
+    test('S-14906/S-14907 a fourth effort moves the count and the revision',
+        () async {
+      await _SessionFixture.seedEfforts(repository, phoneState, 'sess-fourth', [
+        (
+          slotId: 'sl-drill',
+          exerciseId: 'ex-plank',
+          effortKind: 'drill',
+          write: () => seedTimed('sl-drill', count: 3),
+        ),
+      ]);
+
+      final first = await answer();
+      expect(
+        slotIn(first, 'sl-drill')['plannedEfforts'],
+        3,
+        reason: 'the fixture: three holds planned',
+      );
+
+      final unchanged = await answer();
+      expect(
+        unchanged['revision'],
+        first['revision'],
+        reason: 'S-14906 nothing changed, so the ladder states no newer revision',
+      );
+
+      // The user adds a fourth hold on the phone, through the same path the
+      // session screen's own add uses.
+      await phoneState.addTimedEntry('sl-drill');
+
+      final second = await answer();
+      expect(
+        slotIn(second, 'sl-drill')['plannedEfforts'],
+        4,
+        reason:
+            'S-14907 a fourth timed record is a fourth planned hold: the count '
+            'is read live from the phone’s state at each answer (D-14902)',
+      );
+      expect(
+        second['revision'],
+        (first['revision']! as int) + 1,
+        reason:
+            'S-14906/D-14905 the wrist starts each hold from the count, so a '
+            'changed count is a changed ladder and must state a newer revision',
+      );
+    });
+  });
+
   // The same answer on both stores: the projection is a read, so what it reads
   // must not depend on which store holds the rows.
   final parity = <String, String>{};

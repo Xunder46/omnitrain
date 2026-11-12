@@ -146,6 +146,12 @@
       "note": "A `set` slot MAY carry the phone's planned sets: `sx-bench` holds three rows in set order — 10 reps at 40 kg twice, then 8 reps at 42.5 kg — and holds no entries, so all three rows are still to come. A slot with no set rows, a non-set slot, or an older phone omits the key."
     },
     {
+      "path": "valid/session_snapshot_planned_efforts.json",
+      "type": "session_snapshot",
+      "scenario": "S-14901",
+      "note": "Every non-`set` slot MAY carry how many efforts the phone plans: the drill `sx-plank` plans 3, the timed `sx-run` 2, and the round `sx-soccer` 4 with its own 180 s period. The `set` slot beside them carries `plannedSets` and no `plannedEfforts`, so no slot carries both keys."
+    },
+    {
       "path": "valid/routines_down_round_length.json",
       "type": "routines_down",
       "scenario": "S-1404",
@@ -684,6 +690,30 @@
       "expectedCode": "unexpected_field",
       "expectedReasonContains": "setNumber",
       "note": "A planned row is a closed object: its position in the array IS the set number, so a `setNumber` key is a field the schema does not define and the snapshot is refused."
+    },
+    {
+      "path": "invalid/session_snapshot_planned_efforts_zero.json",
+      "type": "session_snapshot",
+      "scenario": "S-14905",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1, found 0",
+      "note": "A slot that plans no effort omits the key rather than sending 0: `plannedEfforts` declares `minimum: 1`, so a zero is refused and a wrist never shows \"0 planned\"."
+    },
+    {
+      "path": "invalid/session_snapshot_planned_efforts_fractional.json",
+      "type": "session_snapshot",
+      "scenario": "S-14905",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected integer",
+      "note": "The count is a whole number of efforts: 2.5 is a number, not an integer, and is refused."
+    },
+    {
+      "path": "invalid/session_snapshot_planned_efforts_string.json",
+      "type": "session_snapshot",
+      "scenario": "S-14905",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected integer",
+      "note": "The count is a JSON number, never a string: \"3\" is refused rather than parsed."
     },
     {
       "path": "invalid/session_snapshot_modality_empty.json",

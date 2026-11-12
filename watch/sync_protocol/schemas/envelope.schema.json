@@ -162,6 +162,11 @@
               }
             }
           }
+        },
+        "plannedEfforts": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many timed, drill (hold) or round efforts this slot plans, as the phone counts them. Sent only for a non-set effort, and only when it plans at least one: a set effort carries plannedSets instead, and no slot carries both keys. Optional: an older phone omits it, and the wrist then starts the slot from its own defaults."
         }
       }
     },

@@ -20,8 +20,8 @@ while the phone was out of reach arrives at the wrist's next sync
 of reach`). None of these is phone→wrist any more: the sets the phone has
 logged ride the frame the phone sends — its answer to a Sync, or the push a
 change triggers — as `entries`, which the wrist's existing snapshot merge
-stores, and a `set` slot's planned rows ride the same frame on the slot itself
-as `plannedSets` (above)
+stores, and the plan of a `set` slot rides the same frame on the slot itself
+as `plannedSets`, every other kind's as `plannedEfforts` (above)
 (`test/watch_session_projection_test.dart`,
 `S-31 the phone's own sets arrive as entries`, and the wrist adopting a session
 it does not hold — `S-38 the wrist adopts a session it does not hold`). What
@@ -302,18 +302,22 @@ remains out is listed below.
   gone is dropped and consumed` asserts today's behaviour; a mirror delete of
   a watch-logged set instead re-keys the rests — group
   `S-4501..S-4507 a rest is keyed on the POSITION`).
-- **The routine's plan travels for `set` efforts; the other kinds carry no
-  planned rows.** A `set` slot's planned rows ride the slot as `plannedSets`
-  and the wrist dials each set from them (above). A timed or hold slot carries
-  no planned value at all, and a round slot's only one is the round length
-  `roundDurationSecs`. A routine started on the wrist opens on the phone as
+- **The routine's plan travels for every declared kind (plan 149).** A `set`
+  slot's planned rows ride the slot as `plannedSets` and the wrist dials each
+  set from them (above); a hold, timed or round slot carries its count as
+  `plannedEfforts`, and the phone seeds one record per planned index when it
+  adopts the routine's session (`test/watch_session_adoption_bridge_test.dart`,
+  `S-14908 an adopted routine session seeds its planned holds and periods`,
+  `S-14909 a template with no per-index targets still seeds the count`); a
+  round slot also carries the round length `roundDurationSecs`. A routine
+  started on the wrist opens on the phone as
   that routine: the wrist's slot ids are the phone's own template effort ids,
   each ending in the per-session token `~<token>` (`sx-<effortId>~<token>`;
   the recogniser cuts the id at the last `~` before the lookup), so a ladder
   whose every slot names an effort of one
   template the phone holds adopts with the template's name, `intent =
-  'routine'` and `routineTemplateId`, and each of its `set` efforts starts
-  with the template's planned rows read from the phone's current template —
+  'routine'` and `routineTemplateId`, and each of its efforts starts
+  with the template's plan read from the phone's current template —
   while a ladder no template covers adopts as a free session exactly as
   before (`test/watch_routine_adoption_test.dart`,
   `S-3640 the snapshot adopts as the routine the wrist started`,
@@ -324,12 +328,8 @@ remains out is listed below.
   the tokened ids, `S-15006 a tokened ladder adopts as the routine the wrist
   started`, `S-15007 a wrist set lands in a tokened slot's effort`,
   `S-15009 two tildes: the cut is at the last one`).
-- **A wrist-started routine's timed, hold and round efforts get no planned
-  rows, and a routine added to an already-open empty wrist session is not
-  planned.** The efforts are linked to the routine but start empty, as a wrist
-  free session's always have (`test/watch_routine_adoption_test.dart`,
-  `S-3641 the adopted effort holds the template's planned sets` asserts the
-  timed effort holds no set rows); a routine picked on the wrist while an empty
-  session is already running fills that session through the wrist's absorb
-  branch, which the phone sees as appended slots, not as an adoption, so those
-  slots carry no planned rows. No test pins the second case.
+- **A routine added to an already-open empty wrist session is not planned.**
+  A routine picked on the wrist while an empty session is already running
+  fills that session through the wrist's absorb branch, which the phone sees
+  as appended slots, not as an adoption, so those slots carry no planned rows.
+  No test pins this case.

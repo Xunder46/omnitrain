@@ -252,9 +252,9 @@ Any defect the reviewer opens here must carry its structural guard: a permanent 
 
 ## Progress
 
-- [ ] PR 1 Phase 1 (contract) — @dba
-- [ ] PR 1 Phase 2 (phone sends the amount) — @developer
-- [ ] PR 1 Phase 3 (adoption seeds the non-set plan) — @developer
+- [x] PR 1 Phase 1 (contract) — @dba — schema + 4 fixtures + 4 manifest rows + PROTOCOL.md bullet & version row; Dart fixtures 182 passed, Swift fixtures 6/6; `prove-red` GREEN AT HEAD (data-only fixtures), mutation proof recorded
+- [x] PR 1 Phase 2 (phone sends the amount) — @developer — `projectSession` writer + `_ladderOf` segment; group `S-14901 the phone sends the planned efforts` 5/5, RED AT HEAD before it
+- [x] PR 1 Phase 3 (adoption seeds the non-set plan) — @developer — seeding gate widened, `_createPlannedRows` per kind; S-14908/S-14909 2/2, RED AT HEAD before it; docs amended; sweep 232/232
 - [ ] PR 2 planned (wrist rule + labels)
 - [ ] PR 3 planned (P-3 prefixes)
 
@@ -266,6 +266,10 @@ Executors append here (decision, options considered, choice + why, ≤ 3 lines e
 - **A-14902** (planner, derived — vetoable): the adoption seeding must widen to non-set kinds (Phase 3) or P-1 fails for wrist-started routine sessions (the adopted hold slot holds no rows, the count reads 0/1). Options: seed rows (chosen — I-6 parity, the phone's own screens gain the same rows) vs read the template in `projectSession` per projection (a per-call template lookup the bridge's I-2 rule already forbids caching; more reads, no phone-side rows).
 - **A-14903** (planner, derived — vetoable): a wrist-added or ad-hoc slot travels with `plannedEfforts: 1` (its seeded row), which is today's one-effort rule in effect. Options: suppress the key for non-routine slots (needs an "is this routine?" flag the slot does not carry) vs send the count (chosen: one rule, no new flag, behaviour identical).
 - **A-14904** (planner, derived — vetoable): "no plan" means zero planned rows (all deleted / legacy), i.e. the key's absence — the seed's "planned amount is 0/missing" has no separate wire state, because a count of 0 is refused by the schema (S-14905) and omission IS the zero.
+- **A-14905** (implementer, Phase 2): the group's tests are named for the fixtures the register states, not the step list's paraphrase — `S-14901 a drill slot carries how many holds it plans`, `S-14902 a round and a timed slot carry their own counts`, `S-14906/S-14907 a fourth effort moves the count and the revision`. Options: adopt the step list's "hold slot" wording (the register's fixture is a `drill` slot, so the name would misdescribe it) vs the fixture's own words (chosen). The docs cite the actual names.
+- **A-14906** (implementer, Phase 1): `prove-red` reports GREEN AT HEAD for the schema-and-fixture guards because the schema, the fixtures and the manifest are data already on disk at HEAD. Options: accept the GREEN AT (proves nothing) vs a mutation — `plannedEfforts` `minimum: 1` → `0`, the walker then fails `invalid/session_snapshot_planned_efforts_zero.json is rejected as constraint_violation` (`Expected: non-empty`, `Actual: []`), original restored and 182 passed (chosen).
+- **A-14907** (implementer, Phase 3): `test/watch_session_adoption_bridge_test.dart` has no file-scope slot helper (`_slot()` there takes named `declaredKind`), so the new group carries a local `slotIn(...)`. Options: widen `_slot()` for every existing caller (touches 40+ call sites for no gain) vs a local helper (chosen).
+- **A-14908** (implementer, Phase 3): a `timed`/`hold` template effort with no `duration` targets now seeds exactly one `TimedInstance` (`targetDurationSecs` 0), and a `round` one seeds one round at the exercise's default length. This is the count rule's "one when no targets" and `addEntry`'s own default, and no existing pin contradicts it: the routine-adoption suite's timed effort already held no set rows (still true) and the 232-test sweep passes unchanged.
 
 ## Open questions
 

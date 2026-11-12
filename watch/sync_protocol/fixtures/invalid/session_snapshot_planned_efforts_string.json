@@ -1,0 +1,27 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-planned-efforts-string",
+  "sessionId": "s-2026-11-12-4",
+  "type": "session_snapshot",
+  "origin": "phone",
+  "sentAt": "2026-11-12T18:00:00Z",
+  "payload": {
+    "sessionId": "s-2026-11-12-4",
+    "revision": 1,
+    "status": "active",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-soccer",
+        "exerciseId": "ex-soccer",
+        "name": "Soccer",
+        "capabilities": ["time", "rounds"],
+        "effortKind": "round",
+        "roundDurationSecs": 180,
+        "plannedEfforts": "3"
+      }
+    ],
+    "entries": [],
+    "timers": {}
+  }
+}

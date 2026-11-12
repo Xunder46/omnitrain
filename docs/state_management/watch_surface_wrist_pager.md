@@ -56,8 +56,10 @@ can lag a move the pager did not make. One such move is the rest screen's Next:
 exercise FIRST and ends the rest after, because the shell swaps the rest screen
 for the logger the instant the rest is over, and a logger built in the gap
 would show the exercise just left while the next Log wrote to the new one.
-A hold or timed effort carries no planned count on the wire (`plannedSets` is
-sent for set efforts only), so one logged hold makes the exercise "done" for the
+A hold or timed effort's plan does reach the wrist — as `plannedEfforts` on its
+slot, `S-14901 a drill slot carries how many holds it plans` in
+`test/watch_session_projection_test.dart` — but the engine does not read it yet
+(plan 149's PR 2), so one logged hold makes the exercise "done" for the
 rest line and Next names the next exercise with no entry yet, forward from the
 current one and then from the top; entries are counted per slot id, so logging
 out of order from the list never moves a count to another exercise. Verified by
