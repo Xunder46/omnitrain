@@ -814,7 +814,10 @@ void main() {
 
       for (final statement in const [
         'Lifecycle messages are applied in the order received',
-        'the most recent status wins',
+        // Re-pointed 2026-11-11 (plan 146, "Ended is final"): the rule that
+        // replaced "the most recent status wins".
+        'The first ending of a session is final',
+        'MUST NOT return to `active`',
       ]) {
         expect(spec, contains(statement));
       }

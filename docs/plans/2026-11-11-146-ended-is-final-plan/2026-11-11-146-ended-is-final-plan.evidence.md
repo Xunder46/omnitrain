@@ -332,6 +332,148 @@ Report: converged/total, duplicates, statusMismatches, entryMismatches, timerVio
 Heal-stall seeds (10, 86, 142, 184): rerun individually; a stall there is the known harness flake, not a
 finding, unless it stalls after a rerun.
 
+## Phase 5.Y (developer, 2026-11-11)
+
+**Baseline measured this run** (`gateway.sh test test/watch_convergence_random_test.dart
+--plain-name "S-14509 the random seeds" --dart-define=CONVERGENCE_VERBOSE=true`):
+`167 of 200 seeds converge, 33 diverge (entries=7, timers=21, status=6, absorbing=1, heal=1)`;
+heal stalls `[]`, runaways `[]`, non-conformant refusals `0`. Log
+`.work/gateway/test-20261111-231641-84794.log`.
+
+### F-6 classified: harness reading fault, fixed (red → green)
+
+Red, deterministic, shipped before the fix (`.work/gateway/test-20261111-231929-86000.log`):
+
+```
+F-6 a set the phone logs reaches the wrist or check 3 is relaxed [E]
+  Expected: empty
+    Actual: ['session 1: the wrist never held entry-effort-1794457171221-0-1']
+  1. phone starts a session   2. link drops   3. wrist discards
+  4. wrist starts a Free workout   5. phone logs a set
+```
+
+Root cause: `lib/watch/session/watch_session_engine.dart` `_mergeLateEntries` (D-14605) stores the
+set for the *ended* session, and `entries`/`observations` (`lib/watch/session/watch_session_engine.dart`
+"Session state") project only `_session?.sessionId` — the wrist's own Free workout. The pair holds the
+entry; the sampler could not see it. `_wristStatusOf` already reads storage for the same reason (F-5,
+A-146-22).
+
+Fix (`test/helpers/watch_pair_harness.dart`, `_sampleEntries`, +7 lines): union the wrist's
+`wristStore.readAll().observations` per session before the current-session projection.
+
+Green after the fix, same file:
+`00:00 +5: F-6 ... / 00:00 +13 ~2: All tests passed!` (`.work/gateway/test-20261111-232516-88597.log`).
+
+Prove-red note: the change is in the test harness only, so `prove-red HEAD` would restore F-6's `skip:`
+rather than fail it. The red is the observed pre-fix run above, green the post-fix run — same seed, same
+fixture, no product edit.
+
+### The sweep after the fix
+
+`173 of 200 seeds converge, 27 diverge (timers=21, status=6, absorbing=1, heal=1)` — **entries 7 → 0**,
+so all seven entries divergences were this one fault. Log
+`.work/gateway/test-20261111-232140-86881.log`.
+
+### Shrink attempts per class (all non-reproducing under `kShippingActions`)
+
+`ConvergenceRun.runSeed(seed, allowedActions: kShippingActions)` + `Shrinker.shrink` with a
+kind-specific predicate, for timers 11/65/103/125, status 110/138/142, absorbing 111:
+
+```
+P5 seed=11 kind=timers actions=31 kinds=[] minimal=31 reproduces=false
+P5 seed=65 kind=timers ... reproduces=false      P5 seed=103 kind=timers ... reproduces=false
+P5 seed=125 kind=timers ... reproduces=false     P5 seed=110 kind=status ... reproduces=false
+P5 seed=138 kind=status ... reproduces=false     P5 seed=142 kind=status ... reproduces=false
+P5 seed=111 kind=absorbing ... reproduces=false
+```
+
+`kinds=[]` is the run's own report: those seeds converge on shipping actions. Status **seed 33** did
+shrink, to 5 actions: phone starts → link drops → wrist discards → phone finishes → wrist starts a Free
+workout, `session 1: phone completed vs wrist abandoned` — the "a discard before the finish wins" case
+the plan leaves to PR 3 (D-14607, A-146-20).
+
+### The S-14509 contract: asserted, not skipped
+
+The body runs each seed twice: on `kShippingActions`, then on the default space. Every divergence it
+finds must belong to a class the test names with its owner (`knownClasses`: `timers` → D-14603's
+`startTimer` terminal gap, `status` → PR 3, `duplicates` → D-14606, `absorbing`/`entries` → open,
+`heal` → the known flake); an unnamed kind fails, and so does shipping traffic above the measured
+band. Every seed is printed with its kinds and trace.
+
+Measured 200 seeds (`.work/gateway/test-20261111-233559-96764.log`, and the whole file at
+`.work/gateway/test-20261111-233636-97092.log`):
+
+```
+S-14509 contract: 200 seeds; 145 converge on every trace; 41 diverge on a trace the shipping app can
+perform [11, 29, 31, 33, 40, 43, 53, 69, 71, 73, 83, 89, 94, 95, 96, 101, 103, 106, 107, 111, 115,
+116, 117, 118, 120, 121, 123, 124, 134, 145, 146, 147, 149, 152, 154, 161, 170, 172, 180, 193, 197];
+2 on a heal stall alone [86, 184]; 12 only after the harness-only re-assert [27, 65, 68, 108, 110, 125,
+138, 141, 142, 150, 160, 183]
+S-14509 contract: by class {timers: 33, status: 19, heal: 3, absorbing: 2, entries: 1}
+```
+
+An earlier run of the same body on the same seeds read 39 shipping divergences, 4 heal-only and
+{timers 32, status 18, heal 5, absorbing 2} — the phone reads the device clock
+(`session-1794458213…`), so a divergence within the wrist/phone skew moves between runs (A-146-15).
+That band (39–42) is what the ratchet encodes: 55 shipping divergences, heal-only excluded.
+
+The consequence for A-146-25: **a divergence does not need the harness-only re-assert.** 41 of 200
+seeds diverge on a trace the shipping app can perform, so the classes are reachable by a user and are
+product gaps, not sweep artefacts.
+
+### 2000-seed soak
+
+`gateway.sh test test/watch_convergence_random_test.dart --plain-name "S-14509 the random seeds"
+--dart-define=CONVERGENCE_SEEDS=2000` → `+1: All tests passed!` in 42 s
+(`.work/gateway/test-20261111-232621-89173.log`):
+
+```
+convergence sweep: 1680 of 2000 seeds converge, 320 diverge
+  (timers=215, status=85, absorbing=8, heal=18, duplicates=2, entries=4)
+convergence sweep: heal never settles on seeds
+  [184, 187, 548, 660, 671, 915, 1058, 1097, 1648]
+convergence sweep: the pair never stopped answering itself on seeds [] (refusals there: )
+convergence sweep: 0 non-conformant frames refused on seeds []
+```
+
+### S-007 re-pointed
+
+`test/sync_protocol_fixtures_test.dart` "states the lifecycle ordering rule normatively" now asserts
+`The first ending of a session is final` and `MUST NOT return to \`active\`` instead of the superseded
+"the most recent status wins" (PROTOCOL.md's 2026-11-11 version row, D-14601). `+178: All tests passed!`
+(`.work/gateway/test-20261111-232615-89063.log`).
+
+### F-7 still red (skipped, named)
+
+```
+F-7 a set is never held twice [E]
+  Expected: empty
+    Actual: ['session 2: the wrist exposed entry-effort-1794457280822-0-1 twice']
+```
+
+A wrist that ends up holding the phone's session lists one entry id twice (D-14606). Skip reason names
+D-14606; see A-146-26.
+
+### Footprint
+
+`test/helpers/watch_pair_harness.dart` +7, `test/watch_convergence_random_test.dart` +144 −21,
+`test/sync_protocol_fixtures_test.dart` +5 −2, plan +49, evidence +142.
+
+### Suites
+
+- `gateway.sh test` (full, final): `05:10 +7437 ~3: All tests passed!` — 7437 passed, 0 failed, 3
+  skipped (F-7 plus the two pre-existing skips). `.work/gateway/test-20261111-233742-97585.log`
+- `gateway.sh test test/ui_standards_contract_test.dart`: `00:01 +41: All tests passed!`
+- `gateway.sh test test/watch_convergence_random_test.dart`: `00:25 +14 ~1: All tests passed!` — 14
+  passed, F-7 the only skip (`.work/gateway/test-20261111-233636-97092.log`)
+- `gateway.sh lint`: `181 issues found.` — equal to the plan's baseline, none in a touched file
+  (`.work/gateway/lint-20261111-232824-90009.log`)
+- `gateway.sh test test/sync_protocol_fixtures_test.dart`: `+178: All tests passed!`
+- No `lib/` source changed this run, so no project-invariant or SQL/schema work applies; the
+  interface grep still returns only the composition root: `lib/main.dart`.
+
+---
+
 ## Assumption Log adjudication (conductor, at verification)
 
 *(each executor entry marked RATIFIED (promoted to a D-x) or REVERT (remediation task opened))*

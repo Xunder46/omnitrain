@@ -499,7 +499,23 @@ mismatches on unskipped seeds; the evidence file carries the counts.
 - [x] Phase 4: F-5 owed-end delivery (@developer) — **Blocked (scope)**: the seam is the
       read-only pair harness `_wristStatusOf` (1 line + 1 await), which this run may not edit;
       the product side already delivers and applies the end. Items 1, 2, 4 done; S-14606 landed green.
-- [ ] Phase 5: unskip and sweep (@developer)
+- [ ] Phase 5: unskip and sweep (@developer) — **Blocked (scope), Phase 5.Y** on the classes it did
+      not own. Items done: F-6 (7 seeds) was a **harness reading fault** — `WatchSessionEngine.entries`
+      projects only the session the wrist is on, so an entry merged for an ended session (D-14605) is
+      held in the store and invisible to the sampler; `_sampleEntries` now reads `wristStore.readAll()`
+      (`test/helpers/watch_pair_harness.dart`, +7 lines), F-6 is unskipped and green, and the 200-seed
+      sweep went **167 → 173 of 200 converging (entries 7 → 0)**. S-007 is re-pointed at
+      "The first ending of a session is final" (`test/sync_protocol_fixtures_test.dart`, +5 −2; 178
+      fixture tests green). The S-14509 contract is **asserted, not skipped**: each seed runs on
+      `kShippingActions` and then on the full space; every divergence must fall in a class the test
+      names with its owner (`timers` → D-14603's `startTimer` terminal gap, `status` → PR 3,
+      `duplicates` → D-14606, `absorbing`/`entries` → open, `heal` → the known flake), every seed is
+      printed, and shipping-action traffic is held under a measured ratchet. It reads 145 converge,
+      41 diverge on a shipping trace, 2 heal-only, 12 only after the harness-only re-assert, by class
+      {timers 33, status 19, heal 3, absorbing 2, entries 1}. On 2000 seeds 320 still diverge
+      (timers 215, status 85, absorbing 8, heal 18, duplicates 2, entries 4). F-7 stays red (a wrist
+      holding a phone session exposes one entry twice) and keeps a skip naming D-14606. Convergence
+      file `+14 ~1`, all green.
 
 ## Assumption Log
 
@@ -615,6 +631,37 @@ mismatches on unskipped seeds; the evidence file carries the counts.
 - **A-146-23 (developer): S-14606 is a shipped-behaviour guard.** `prove-red a03a85d4` says GREEN AT:
   the owed end already survived a later phone session before plan 146, so no red was available; the
   guard is proven by mutation instead (`offerAllOwedEnds` neutered → S-14606 RED).
+
+- **A-146-24 (Phase 5.Y): F-6 was the harness, not the pair.** A shrunk 5-action trace (phone starts →
+  link drops → wrist discards → wrist starts a Free workout → phone logs a set) stores the set on the
+  wrist through `_mergeLateEntries` (D-14605) while the wrist's `entries` projects its *current* session,
+  so the sampler never saw it. Options: expose ended sessions' entries on the engine (a product surface
+  no screen needs), or sample the store. Chosen: sample `wristStore.readAll()` — the same storage read
+  `_wristStatusOf` already does for F-5. Proven red→green on the same file (`F-6 [E]` → `+5`), sweep
+  167 → 173/200, entries 7 → 0.
+- **A-146-25 (Phase 5.Y): the sweep's remaining classes are not one defect, and they are reachable
+  by a user.** On 2000 seeds the full action space diverges 320 times (timers 215, status 85, absorbing
+  8, heal 18, duplicates 2, entries 4). Shrinking was attempted for timers (11, 65, 103, 125), status
+  (110, 138, 142) and absorbing (111): every one **converges under `kShippingActions`**, so no minimal
+  trace isolates them from those seeds. But the shipping-space run of all 200 seeds still diverges on
+  41 of them (same classes: timers 33, status 19, absorbing 2, entries 1), so the classes are not an
+  artefact of the harness-only step. Not absorbed here (each needs a new rule or fixture); Phase 5.Y
+  records the counts and asserts the contract instead of cherry-picking.
+- **A-146-26 (Phase 5.Y): F-7 is a real D-14606 violation and stays skipped.** Its 8-action replay is
+  deterministic red: `session 2: the wrist exposed entry-effort-…-0-1 twice` — a wrist that holds the
+  phone's session lists one entry id twice. Not fixed: the duplicate is created on a path the trace only
+  reaches after `request:snapshot` re-delivery, and a fix needs a minimal reproduction the budget did
+  not allow. The skip names D-14606, not the plan.
+
+## Open items (Phase 5.Y residue)
+
+- timers (215/2000): needs a shrunk trace; the seeded ones converge without the synthetic re-assert.
+- status (85/2000): seed 33's 5-action trace is the "a discard before the finish wins" reading → PR 3.
+- absorbing (8/2000): no reproducing seed under shipping actions.
+- duplicates (2/2000) + F-7: D-14606 on a re-delivered `request:snapshot`.
+- entries (4/2000) remain even after the storage read: cause unknown, no shrunk trace.
+- heal (18/2000) never settles: the known flake class (seeds 184, 187, 548, 660, 671, 915, 1058, 1097, 1648).
+
 
 ## Feedback
 

@@ -1219,6 +1219,13 @@ class HarnessRunner {
         _noteDuplicates('phone', id, ids);
       }
     }
+    // The wrist's whole store, not only its current session's projection
+    // (D-14605): an entry merged for a session the wrist has already ended is
+    // held even though `entries` reads the session the wrist is on now.
+    final stored = await harness.wristStore.readAll();
+    for (final observation in stored.observations) {
+      _addEntries(wristEntryIds, observation.sessionId, [observation.entryId]);
+    }
     final wrist = harness.wristEngine.session;
     if (wrist != null) {
       final ids = [

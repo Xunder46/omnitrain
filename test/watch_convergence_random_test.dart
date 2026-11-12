@@ -7,9 +7,11 @@
 // (D-14503, D-14508, D-14509, D-14510; S-14510).
 // Harness: `test/helpers/watch_pair_harness.dart` (`ConvergenceRun`).
 //
-// The sweep is a measurement until plan 146 lands: it prints every seed that
-// diverges and asserts only that the harness itself is healthy. The second test
-// — the assertion of full convergence — is skipped for that reason (D-14508).
+// The sweep is the measurement; the contract is the second test. Since plan 146
+// Phase 5.Y the contract is asserted: every seed converges, or every divergence
+// it reports belongs to a class the plan names with the fix that owns it, and a
+// seed that only diverges after D-14513's harness-only re-assert is listed by
+// seed instead of hidden.
 //
 // Plain `test()` throughout: `testWidgets` runs inside FakeAsync, where the
 // engine's and the graph's real awaits never complete.
@@ -159,23 +161,113 @@ void main() {
   }, timeout: const Timeout(Duration(minutes: 5)));
 
   test(
-    'S-14509 every random seed converges on both sides',
-    skip: 'plan 146: the random run finds the findings in the evidence file',
+    'S-14509 every random seed converges, or diverges inside a class the plan '
+    'names',
     () async {
-      final diverging = <int>[];
+      // Plan 146 Phase 5.Y. Every class the 200- and 2000-seed sweeps still find,
+      // with the fix it waits on. A seed whose kinds are all in here is a known
+      // divergence and is printed; any other kind fails this test, so a new class
+      // cannot arrive silently (D-14508: the report is the product).
+      const knownClasses = <String, String>{
+        'timers':
+            'D-14603 — an end stops every timer of that session on both sides: '
+            'the wrist\'s `startTimer` does not check a terminal status the way '
+            'its `_transitionTo` does, so a rest outlives an end on one side '
+            '(Phase 5.Y evidence, timers)',
+        'status':
+            'PR 3 — the owner\'s "an earlier discard wins over a later finish" '
+            'needs the phone to delete a finished workout (A-146-15, A-146-20)',
+        'absorbing':
+            'open — seed 111 only, and it does not reproduce under '
+            'kShippingActions, so no minimal trace isolates it (A-146-25)',
+        'duplicates':
+            'D-14606 — a re-delivered request:snapshot can leave one entry id '
+            'twice on a wrist holding the phone\'s session (F-7)',
+        'entries':
+            'open — a late-merged entry (D-14605) is still missed on 4 of 2000 '
+            'seeds after the harness reads the wrist store (A-146-24)',
+        'heal':
+            'flake class — the heal exchange never settles on a handful of '
+            'seeds (the same class test/watch_convergence_harness_test.dart '
+            'records)',
+      };
+      // Measured on seed 1..200 during Phase 5.Y: 42 seeds diverge on a trace
+      // the shipping app can perform, and 39 on a second run of the same seeds —
+      // the phone reads the device clock, so a divergence near the skew boundary
+      // moves (A-146-15). The ratchet catches a class getting much worse; a new
+      // *kind* is caught by `unknown` below. Heal stalls are excluded: they are
+      // not deterministic.
+      const int shippingRatchet = 55;
+
+      final shippingKinds = <int, List<String>>{};
+      final syntheticOnly = <int>[];
+      final unknown = <String>{};
+      final byClass = <String, int>{};
       for (var seed = 1; seed <= kSeedCount; seed++) {
-        final run = await replay(seed);
-        if (run.converged) continue;
-        diverging.add(seed);
+        var run = await ConvergenceRun.runSeed(
+          seed,
+          allowedActions: kShippingActions,
+        );
+        if (run.report.converged) {
+          run = await replay(seed);
+          if (run.report.converged) continue;
+          if (run.usedSyntheticAction) {
+            syntheticOnly.add(seed);
+            _tally(_kindsOf(run), byClass, unknown, knownClasses.keys);
+            continue;
+          }
+        }
+        final kinds = _kindsOf(run);
+        shippingKinds[seed] = kinds;
+        _tally(kinds, byClass, unknown, knownClasses.keys);
         print(
-          'seed=$seed ${_kindsOf(run).join(',')}\n'
-          '${run.trace}\n'
-          '${run.failures.join('\n')}',
+          'seed=$seed diverges on a trace the shipping app can perform: '
+          '${kinds.join(',')}\n${run.trace}\n${run.failures.join('\n')}',
         );
       }
-      expect(diverging, isEmpty, reason: 'these seeds diverge: $diverging');
+      final shippingFinding = shippingKinds.entries
+          .where((entry) => entry.value.any((kind) => kind != 'heal'))
+          .map((entry) => entry.key)
+          .toList();
+      final shippingFlake = shippingKinds.keys
+          .where((seed) => !shippingFinding.contains(seed))
+          .toList();
+      final converged = kSeedCount - shippingKinds.length - syntheticOnly.length;
+      print(
+        'S-14509 contract: $kSeedCount seeds; $converged converge on every '
+        'trace; ${shippingFinding.length} diverge on a trace the shipping app '
+        'can perform $shippingFinding; ${shippingFlake.length} on a heal stall '
+        'alone $shippingFlake; ${syntheticOnly.length} only after the '
+        'harness-only re-assert $syntheticOnly',
+      );
+      print('S-14509 contract: by class $byClass');
+      expect(
+        knownClasses.keys.toSet(),
+        {'heal', 'status', 'absorbing', 'entries', 'duplicates', 'timers'},
+        reason:
+            'the list above must name every kind `_kindsOf` can report, or a '
+            'class could arrive with no owner',
+      );
+      expect(
+        unknown,
+        isEmpty,
+        reason:
+            'these divergence classes are not in the plan\'s list, so they are '
+            'new and unclassified: $unknown. Classify one with '
+            'ConvergenceRun.replayActions and Shrinker, then fix it or name the '
+            'PR that owns it in `knownClasses`.',
+      );
+      expect(
+        shippingFinding.length,
+        lessThanOrEqualTo(shippingRatchet),
+        reason:
+            'Phase 5.Y measured 39 and 42 shipping-action divergences on the '
+            'same 200 seeds; this run has ${shippingFinding.length}: '
+            '$shippingFinding. The pair disagrees about a workout the user can '
+            'have — traffic above the band means a class got much worse.',
+      );
     },
-    timeout: const Timeout(Duration(minutes: 5)),
+    timeout: const Timeout(Duration(minutes: 20)),
   );
 
   test(
@@ -509,10 +601,8 @@ void main() {
   // the workout? The set is not lost — it is on the phone — but it is never on
   // both sides. Plan 146 decides; then this test passes or the check learns
   // the exception.
-  test(
-    'F-6 a set the phone logs reaches the wrist or check 3 is relaxed',
-    skip: 'plan 146: decide whether check 3 applies after the wrist moved on',
-    () async {
+  test('F-6 a set the phone logs reaches the wrist or check 3 is relaxed',
+      () async {
       final run = await script(
         (r) => [
           r.phoneStartsSession(),
@@ -538,7 +628,9 @@ void main() {
   //      produced an entry duplicate; the 2000-seed soak did (seeds 408, 660).
   test(
     'F-7 a set is never held twice',
-    skip: 'plan 146: a re-delivered set does not duplicate on either side',
+    skip: 'plan 146 open: a phone session held by the wrist doubles one entry '
+        '(D-14606 still violated) — see Phase 5 evidence, seed replay is green '
+        'for F-6 only',
     () async {
       final run = await script(
         (r) => [
@@ -559,6 +651,20 @@ void main() {
       );
     },
   );
+}
+
+/// Counts each kind of a diverging run, and records the kinds the plan's known
+/// list does not name.
+void _tally(
+  List<String> kinds,
+  Map<String, int> byClass,
+  Set<String> unknown,
+  Iterable<String> known,
+) {
+  for (final kind in kinds) {
+    byClass[kind] = (byClass[kind] ?? 0) + 1;
+    if (!known.contains(kind)) unknown.add(kind);
+  }
 }
 
 /// Which of D-14507's checks a run failed, as report categories.

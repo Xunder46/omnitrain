@@ -159,26 +159,35 @@ prints one `seed=N kinds=…` line per seed, so two runs can be diffed line by
 line. The sweep — `S-14509 the random seeds: the harness is healthy and every
 seed is accounted for` — prints how many seeds converge, the seeds per check,
 the seeds whose heal never settles, and asserts only that no seed makes the
-pair throw or time out. A seed that fails a check is not asserted; the
-assertion of full convergence is skipped until the findings are fixed.
+pair throw or time out. The contract is the second test, `S-14509 every random
+seed converges, or diverges inside a class the plan names`: each seed runs on
+`kShippingActions` and then on the full space, every divergence it prints must
+belong to a class the test names with the fix that owns it, and shipping-action
+divergences are held under a measured ratchet (see
+`docs/plans/2026-11-11-146-ended-is-final-plan/`).
+
+The entry check reads the wrist's whole store, not only the session it is on:
+an entry merged for a session the wrist has already ended (the late-entry merge)
+is held but is not in that session's projection, so a sweep that sampled only the
+projection reported it as never held.
 
 A failing trace is made readable before it is written down: `Shrinker.shrink`
 removes actions one at a time while the named check still fails, and
 `Shrinker.describeTrace` renders what is left as numbered sentences —
 "S-14510 the shrinker reduces S-14503 padded with 20 unrelated actions" holds
-it to six actions or fewer. Every distinct finding then becomes one skipped
-replay test named `F-n` with a `skip: 'plan 146: <the invariant>'` reason and
-the shrunk trace in a comment above it (`F-2` to `F-6` in
+it to six actions or fewer. Every distinct finding then becomes one replay test
+named `F-n` with the shrunk trace in a comment above it, skipped with a
+`skip: 'plan 146 …'` reason while the invariant still fails (`F-7` in
 `test/watch_convergence_random_test.dart`; `F-1` is
 `S-14503 a finished workout is never reopened by a queued started` in
 `test/watch_convergence_harness_test.dart`). A finding that passes with the
 `skip` removed is not a finding and is not kept.
 
 `F-2` and `F-4` both say the same thing in different places: an ended session
-is final, yet a newer active frame or a wrist `finishSession` revives it, so
-the follow-up unit 146 — "ended is final" — is the fix for both. `F-6` is an
-open product question (does check 3 apply once the wrist has ended that workout
-and moved on?) that unit 146 must decide rather than fix.
+is final, yet a newer active frame or a wrist `finishSession` revives it, so the
+follow-up unit 146 — "ended is final" — is the fix for both. `F-6` — a set the
+phone logs while apart never reaching a wrist that moved on — turned out to be
+this harness reading fault, not the pair, and is unskipped and green.
 
 The harness has one synthetic action, `phoneReassertsLive`, which no build can
 send; it is excluded from `kShippingActions`, so a finding that needs it is
