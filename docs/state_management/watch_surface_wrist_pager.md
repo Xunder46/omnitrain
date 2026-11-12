@@ -46,6 +46,23 @@ stays free. Verified by `…testS6603ASwipeDuringAWorkClockIsRefusedAndRaisesThe
 holds that a session with one exercise shows no pager and no counter at all
 (`pageLabel` nil).
 
+**The logger shown is always the exercise the next Log writes to.** `Log`
+writes to the engine's current slot (or the swipe's focus while one lands), so
+the pager's logger and its n/m counter read the same thing: `shownIndex` is the
+swipe's own page while `state.focusSlotId` names one and the engine's
+`pager.currentIndex` otherwise — never the `selection` bookkeeping alone, which
+can lag a move the pager did not make. One such move is the rest screen's Next:
+`WatchLoggingState.leaveRest(advance:)` moves the session to the announced
+exercise FIRST and ends the rest after, because the shell swaps the rest screen
+for the logger the instant the rest is over, and a logger built in the gap
+would show the exercise just left while the next Log wrote to the new one.
+A hold or timed effort carries no planned count on the wire (`plannedSets` is
+sent for set efforts only), so one logged hold makes the exercise "done" for the
+rest line and Next names the next exercise with no entry yet, forward from the
+current one and then from the top; entries are counted per slot id, so logging
+out of order from the list never moves a count to another exercise. Verified by
+`WatchRestNextHoldTests.swift`.
+
 **The view is the shape around that model, and the desktop toolchain holds only
 its outline.** `WatchLoggingPagerView` (watchOS-only) mounts ONE
 `WatchLoggingView` for the shown exercise — its n/m counter sits beside the

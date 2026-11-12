@@ -147,9 +147,7 @@ public struct WatchRestView: View {
     private var nextButton: some View {
         Button {
             Task {
-                let target = state.restLabels.nextSlotId
-                await state.endRest()
-                if let target { _ = await advance(target) }
+                await state.leaveRest(advance: advance)
                 haptics.playNext()
                 onNext()
             }

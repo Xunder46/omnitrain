@@ -846,6 +846,19 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     "Install the OmniTrain app on the phone." or "Phone link not ready."
     (the simulator does not deliver file transfers: a real watch is needed).
 
+41. **The next log lands on the exercise on screen — (owner).** In a
+    holds workout with three or more exercises, start the first and log one
+    hold. On the rest screen it names the next exercise ("Next: <name>"); tap
+    Next. The logger that appears shows exactly that exercise, with its n/m
+    counter, and nothing flashes back to the exercise you left. Log a hold:
+    it appears under the exercise on screen (open the exercise list: the
+    count moved on that exercise, not on its neighbour). Then log out of
+    order: open the list, jump to the last exercise, log a hold, and tap Next
+    on the rest screen: it names the first exercise after it that has no
+    hold yet, or, with none after it, the first one from the top that has
+    none. A set exercise with sets left still says "Next: Set 2 of 3" and
+    stays on its exercise.
+
 ### The wrist's own logging (PR 2b)
 
 The wrist-logging walkthrough, with every later watch plan's steps, lives in

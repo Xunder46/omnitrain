@@ -353,8 +353,8 @@ final class WatchPagerFocusTests: XCTestCase {
             "S-9112 land(on:) clears the focus whether it moved or was refused"
         )
         XCTAssertTrue(
-            source.contains("pageLabel: \"\\(selection + 1)/\\(pager.pageCount)\""),
-            "S-9112 the counter reads the selection's page of the count"
+            source.contains("pageLabel: \"\\(shownIndex + 1)/\\(pager.pageCount)\""),
+            "S-9112 the counter reads the shown page of the count (the swipe's own while it lands, else the engine's)"
         )
         XCTAssertFalse(
             source.contains("TabView("),

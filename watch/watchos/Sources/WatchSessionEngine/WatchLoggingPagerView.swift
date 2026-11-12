@@ -76,6 +76,15 @@ public struct WatchLoggingPagerView: View {
         }
     }
 
+    /// The page the logger shows: the swipe's own page while one is landing (the
+    /// focus names it), else the engine's. `selection` is the swipe's bookkeeping
+    /// and can lag the engine after a move it did not make, such as the rest
+    /// screen's Next; the logger and its counter must be the exercise the next
+    /// Log writes to, so they never read it then.
+    private var shownIndex: Int {
+        state.focusSlotId != nil ? selection : pager.currentIndex
+    }
+
     /// The shown exercise's logger, rebuilt per exercise. A horizontal swipe
     /// moves to the neighbouring exercise: the focus names the page the user
     /// reached before the engine has moved (plan 52 D-5), and `land(on:)` moves
@@ -87,9 +96,9 @@ public struct WatchLoggingPagerView: View {
             WatchLoggingView(
                 state: state,
                 onLogged: onSurfaceChange,
-                pageLabel: "\(selection + 1)/\(pager.pageCount)"
+                pageLabel: "\(shownIndex + 1)/\(pager.pageCount)"
             )
-            .id(pager.rows.indices.contains(selection) ? pager.rows[selection].slotId : "")
+            .id(pager.rows.indices.contains(shownIndex) ? pager.rows[shownIndex].slotId : "")
             .transition(.asymmetric(insertion:
                 reduceMotion
                     ? .opacity

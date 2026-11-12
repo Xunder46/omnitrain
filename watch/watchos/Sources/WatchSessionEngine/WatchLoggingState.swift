@@ -478,6 +478,26 @@ public final class WatchLoggingState {
         _ = await engine.stopTimer(kind: WatchTimerKind.rest, at: instant)
     }
 
+    /// The rest screen's Next: ends the rest and, when the next line names an
+    /// exercise, moves the session there through `advance` (the menu's jump).
+    /// Returns the slot id the session was moved to, or nil when it stayed.
+    ///
+    /// The session moves first and the rest ends after it: the shell swaps the
+    /// rest screen for the logger the instant the rest is over, and a logger
+    /// built in the gap between the two is built on the exercise the user just
+    /// left while the next Log writes to the one the session then moves to.
+    ///
+    /// Kept here rather than in the watch-only view so the order is one the
+    /// desktop suite can hold.
+    @discardableResult
+    public func leaveRest(advance: (String) async -> Bool) async -> String? {
+        let target = restLabels.nextSlotId
+        var moved: String?
+        if let target, await advance(target) { moved = target }
+        await endRest()
+        return moved
+    }
+
     /// The running rest's elapsed time in whole seconds as of `now`, or nil when
     /// none is running.
     public func restElapsedSeconds() -> Int? {

@@ -153,11 +153,12 @@ final class WatchRestAdvanceTests: XCTestCase {
         XCTAssertTrue(logging.isResting, "S-9108 the fixture is resting on the announced line")
         harness.clearEmitted()
 
-        // The order the view's Next is written in (D-7): the target first,
-        // then the rest's end, then the jump.
+        // The view's Next is `leaveRest`: the session moves to the announced
+        // exercise, and the rest ends after it (so the logger the shell swaps
+        // in is already on the new exercise).
         let target = logging.restLabels.nextSlotId
-        await logging.endRest()
-        let jumped = await harness.menu.jump(to: try XCTUnwrap(target, "S-9108 the line announces B"))
+        let moved = await logging.leaveRest { await harness.menu.jump(to: $0) }
+        let jumped = moved != nil
 
         XCTAssertEqual(target, "z2", "S-9108 the line announces B's slot id")
         XCTAssertTrue(jumped, "S-9108 the menu takes the announced id")
@@ -172,18 +173,18 @@ final class WatchRestAdvanceTests: XCTestCase {
             "S-9108 and that exercise is B"
         )
 
-        // Exactly one advance frame, and it follows the rest's end on the wire.
+        // Exactly one advance frame, and the rest's end went on the wire too.
         let frames = harness.emitted
-        let restEndedAt = try XCTUnwrap(
+        _ = try XCTUnwrap(
             restEndedFrameIndex(in: frames),
             "S-9108 the rest's end went on the wire"
         )
-        let advancesAfter = frames.enumerated().filter { index, envelope in
-            index > restEndedAt && isAdvancedFrame(envelope)
+        let advancesAfter = frames.enumerated().filter { _, envelope in
+            isAdvancedFrame(envelope)
         }
         XCTAssertEqual(
             advancesAfter.count, 1,
-            "S-9108 one jump is one exercise_advanced after the rest's end"
+            "S-9108 one jump is one exercise_advanced"
         )
         let payload = (advancesAfter.first?.element["payload"] as? [String: Any]) ?? [:]
         XCTAssertEqual(
@@ -194,36 +195,20 @@ final class WatchRestAdvanceTests: XCTestCase {
 
     // MARK: - S-9109 the source keeps the order
 
-    func testS9109TheNextReadsTheTargetBeforeItEndsTheRest() throws {
+    func testS9109TheNextLeavesThroughTheOneOrderedStep() throws {
         let source = try engineSource("WatchRestView.swift")
 
-        XCTAssertTrue(
-            source.contains("state.restLabels.nextSlotId"),
-            "S-9109 the Next reads the announced slot"
-        )
         XCTAssertTrue(
             source.contains("advance: @escaping (String) async -> Bool"),
             "S-9109 the init takes the advance"
         )
-        let target = try XCTUnwrap(
-            source.range(of: "state.restLabels.nextSlotId"),
-            "S-9109 the target read is in the source"
+        XCTAssertTrue(
+            source.contains("state.leaveRest(advance: advance)"),
+            "S-9109 the Next leaves through leaveRest, which reads the target, moves the session, then ends the rest"
         )
-        let endRest = try XCTUnwrap(
-            source.range(of: "await state.endRest()"),
-            "S-9109 the rest's end is in the source"
-        )
-        let advance = try XCTUnwrap(
-            source.range(of: "_ = await advance(target)"),
-            "S-9109 the jump is in the source"
-        )
-        XCTAssertLessThan(
-            target.lowerBound, endRest.lowerBound,
-            "S-9109 the target is read before the rest ends"
-        )
-        XCTAssertGreaterThan(
-            advance.lowerBound, endRest.lowerBound,
-            "S-9109 the jump follows the rest's end"
+        XCTAssertFalse(
+            source.contains("state.endRest()"),
+            "S-9109 the view never ends the rest itself"
         )
 
         let app = try appSource("ContentView.swift")
