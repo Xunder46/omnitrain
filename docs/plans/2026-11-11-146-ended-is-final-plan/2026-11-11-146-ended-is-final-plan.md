@@ -397,19 +397,21 @@ None — no screen, widget, copy or navigation change. The summary screen's disc
 `lib/state/watch/watch_session_adoption_bridge.dart`, `lib/core/services/watch_session_importer.dart`,
 the four test files above.
 
-### Phase 4: F-5 — the owed end reaches a running wrist (@developer) — BLOCKED by Phase 3
-1. [ ] Remove the `skip:` from F-5 only and run it red —
-       `test/watch_convergence_random_test.dart` (F-5 test, skip at :487);
-       `.github/copilot/scripts/macos/gateway.sh test test/watch_convergence_random_test.dart --plain-name "F-5"`.
-2. [ ] Bisect the seam with the red run: the router's G1 `reportLifecycle(completed)` answer
-       (`lib/state/watch/watch_incoming_router.dart` `receive`, ~159), `_reofferOwedEnd` (~240-252),
-       `lib/state/watch/watch_sync_wiring.dart` (`sync()` ~130, `linkChanges` listener ~447-462),
-       `lib/state/watch/live_session_mirror_state.dart` (`offerAllOwedEnds`, `takeOwedEnd`,
-       `_resetEndsSent`), `lib/state/watch/watch_session_auto_push.dart` (`_announceEnd`, D-83 drop).
-3. [ ] Fix at the confirmed seam (D-14609); record the origin + rationale in the Assumption Log.
-4. [ ] Regression test for S-14606 (discard while down + phone starts later → the owed end still
-       delivers at link rise, exactly once) — `test/watch_session_end_owed_test.dart`.
-5. [ ] Re-run F-5's replay green; run the S-14606 regression green.
+### Phase 4: F-5 — the owed end reaches a running wrist (@developer) — BLOCKED by Phase 3 — **Blocked (scope): the seam is the read-only pair harness**
+1. [x] Remove the `skip:` from F-5 only and run it red — red as predicted:
+       `Expected: empty / Actual: ['session 1: phone abandoned vs wrist active']` (evidence).
+2. [x] Bisect the seam with the red run — not in any of the five files: the owed `abandoned` for
+       session 1 is delivered at heal and `_applyLifecycle` applies it (row `life-<id>` abandoned, a
+       duplicate later refused by `_guardSession`). The false red is
+       `test/helpers/watch_pair_harness.dart` `_wristStatusOf` (~1190): it reads only
+       `wristEngine.session`, so a session the wrist has moved off keeps its stale `active` sample.
+3. [ ] Fix at the confirmed seam — **cannot land**: the seam is a READ-ONLY file this phase's
+       Predicted Files exclude. One-line patch recorded in the evidence for the governor; A-146-22.
+4. [x] Regression test for S-14606 (discard while down + phone starts later → the owed end still
+       delivers at link rise, exactly once) — `test/watch_session_end_owed_test.dart`, green; proven
+       to bite by the `offerAllOwedEnds` mutation (RED, `has length of <0>`).
+5. [ ] Re-run F-5's replay green — **not green** without item 3; F-5 carries its skip again with the
+       reason in the test. S-14606's regression is green (item 4).
 
 **Done Criteria**: `.github/copilot/scripts/macos/gateway.sh lint`;
 `.github/copilot/scripts/macos/gateway.sh test test/watch_session_end_owed_test.dart test/watch_convergence_random_test.dart --plain-name "F-5"` (green).
@@ -494,7 +496,9 @@ mismatches on unskipped seeds; the evidence file carries the counts.
       timer_state") is the pre-146 rule item 1 supersedes (A-146-16); the test is not edited.
       Convergence files: 32 passed, 8 skipped, `S-14510` only red (Phase 5). lint 181, unchanged. Full
       suite **7427 passed, 10 skipped, 2 failed** (`S-14510`, `S-12109`).
-- [ ] Phase 4: F-5 owed-end delivery (@developer)
+- [x] Phase 4: F-5 owed-end delivery (@developer) — **Blocked (scope)**: the seam is the
+      read-only pair harness `_wristStatusOf` (1 line + 1 await), which this run may not edit;
+      the product side already delivers and applies the end. Items 1, 2, 4 done; S-14606 landed green.
 - [ ] Phase 5: unskip and sweep (@developer)
 
 ## Assumption Log
@@ -601,7 +605,16 @@ mismatches on unskipped seeds; the evidence file carries the counts.
 - **A-146-18 (lead, 2026-11-12): S-12109 amended, not relaxed.** `test/watch_logged_hold_stays_stopped_test.dart` S-12109's last assertion ("the end attempts no `timer_state`") is replaced by a stronger one that D-14603b requires: exactly one `timer_state` at the end and it is the hold's clear (the clear never travelled while the radio was unreachable, so the wrist may still run that clock). Ratifies A-146-16's recommended option.
 - **A-146-19 (lead): S-14510 re-based early (was Phase 5).** The shrinker test now shrinks a padded trace under `_DeafToEndWrist` (a wrist that refuses every `completed` lifecycle and `completed` snapshot), a failure built in and independent of defects this plan fixes; same assertions (padded trace fails check 1 or 2; shrinks to at most 6 actions).
 - **A-146-20 (lead, owner-facing): interim rule in PR 1.** A completion outranks a held discard whatever the instants (A-146-15). This is the safe interim (a finished workout is never turned into a discard) and matches the phone, which ignores an arriving discard for an ended row. The owner's "a discard before the finish wins" is PR 3's job (the phone deleting a finished workout when an earlier discard arrives, plus the wrist side); until then a finish beats a discard whenever they meet. Ratified by the lead; owner to be told.
-- **A-146-21 (lead): files outside the Predicted Files are ratified:** `lib/state/workout/workout_state.dart` (facade passthrough), `lib/state/watch/live_session_mirror_state.dart` (`sendTimerStop`), `lib/watch/session/watch_session_engine.dart` (S-14512 guard); `endSession`'s `updatedAtMs` following the end instant and the importer riding the inbox's `historyChanged` are accepted.
+- **A-146-22 (developer): F-5's red is the pair harness, not the pair.** The product delivers the owed
+  `abandoned` and the engine applies it (evidence trace); `test/helpers/watch_pair_harness.dart`
+  `_wristStatusOf` reads only the held session, so an end applied to a session the wrist has since
+  moved off keeps its stale `active`. Fix is in that file (READ-ONLY here): make `_wristStatusOf`
+  async and fall back to the last `wristStore` row for a session the engine is not holding, and
+  `await` it in `_sample()` — proven to turn F-5 green before the edit was reverted. Phase 4 reported
+  Blocked (scope) rather than touching a file outside its Predicted Files.
+- **A-146-23 (developer): S-14606 is a shipped-behaviour guard.** `prove-red a03a85d4` says GREEN AT:
+  the owed end already survived a later phone session before plan 146, so no red was available; the
+  guard is proven by mutation instead (`offerAllOwedEnds` neutered → S-14606 RED).
 
 ## Feedback
 
@@ -616,4 +629,12 @@ mismatches on unskipped seeds; the evidence file carries the counts.
   (F-5) and Phase 5 (unskip + sweep) are untouched.
 - **Earlier this phase: item 8 done first (time budget).** The tie-break is implemented on both stacks
   and pinned by three tests; items 1–7 landed in the run that followed, per A-146-13..A-146-18.
+- **Phase 4 (F-5) stops on the pair harness, which its brief marks READ-ONLY.** The owed `abandoned`
+  is delivered and applied (evidence trace: `_applyLifecycle` writes the row while the wrist holds the
+  session, and a duplicate later is refused), so there is no product seam to fix; F-5's mismatch is
+  `test/helpers/watch_pair_harness.dart` `_wristStatusOf` sampling only the held session. The fix is
+  ~3 lines (async `_wristStatusOf` with a last-row `wristStore` fallback, awaited in `_sample()`), was
+  proven to turn F-5 green, and is recorded as a Governor action. S-14606's regression is written and
+  green; F-5 keeps a `skip:` naming this reason so `flutter test` stays green. Re-plan needs: put the
+  harness in a phase's Predicted Files, then unskip F-5.
 

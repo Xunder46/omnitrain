@@ -292,9 +292,33 @@ No step ends with a mutation applied.
 
 ## Phase 4 (F-5)
 
-- Red run of F-5 (`--plain-name "F-5"`): paste the failure verbatim.
-- Confirmed seam (file + line) and why; the fix's diff target.
-- Regression: `test/watch_session_end_owed_test.dart` (S-14606) red→green.
+- Red run, F-5 with its `skip:` removed (`--plain-name "F-5"`):
+  `Expected: empty / Actual: ['session 1: phone abandoned vs wrist active']`.
+- Confirmed seam: **not one of the five candidate product files.** Probes inside the engine traced the
+  owed end: `session_lifecycle (session 1, abandoned)` is delivered at heal and `_applyLifecycle`
+  applies it while the wrist holds session 1 (`held=s-w-1 heldStatus=active exercises=1 guard=true`,
+  row `life-<messageId>` written `abandoned`); a second `abandoned` for session 1 arriving after the
+  wrist moved to session 2 is refused by `_guardSession` (`guard=false`) — correct, terminal is final.
+  The false red is the observation side: `test/helpers/watch_pair_harness.dart` `_wristStatusOf`
+  (~line 1190) returns `wristEngine.session.status` only for the held id and null otherwise, and
+  `_sample()` (~line 1130) keeps the last non-null sample, so session 1's `abandoned` is never seen.
+- Fix target (proven, then reverted — the file is READ-ONLY for this phase): make `_wristStatusOf`
+  async, fall back to the last `harness.wristStore.readAll()` row for that session, and `await` it in
+  `_sample()`. With that one change F-5 runs green (`00:00 +1: All tests passed!`) with no product
+  change. Phase 4 therefore reports Blocked (scope); the patch is a Governor action.
+- Regression: `test/watch_session_end_owed_test.dart`, "S-14606 a phone discard while the wrist runs,
+  then a later phone session: the owed end still reaches the wrist, exactly once (D-14609)" — green
+  (31 passed in the file). `prove-red a03a85d4` says **GREEN AT** (the owed end already survived a
+  later phone session before plan 146), so the guard is proven by mutation instead:
+  `offerAllOwedEnds()` with `return;` at the top → `Expected: an object with length of <1> / Actual: []
+  / one owed end, not a flood` at `test/watch_session_end_owed_test.dart:414`; original restored,
+  `git-diff --stat` shows no `lib/` file, re-run green.
+- Suites (2026-11-11): `watch_session_end_owed_test.dart` 32 passed;
+  `watch_session_engine_test.dart` + `watch_convergence_harness_test.dart` 94 passed, 1 skipped
+  (S-14503, Phase 5); `watch_convergence_random_test.dart` 8 passed, 7 skipped (S-14509, F-2..F-7,
+  F-5 with the harness reason); `gateway.sh lint` 181 issues (baseline); no `import
+  .*hive_workout_repository` under `lib/state`, `lib/features`, `lib/widgets`, `lib/core`
+  (`lib/main.dart` only). No `.swift` file touched.
 
 ## Phase 5 (sweep + soak)
 

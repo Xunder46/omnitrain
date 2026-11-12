@@ -1106,7 +1106,7 @@ class HarnessRunner {
       harness.labelFor(id);
     }
     for (final id in ids) {
-      final wrist = _wristStatusOf(id);
+      final wrist = await _wristStatusOf(id);
       final phoneStatus = await _phoneStatusOf(id);
       if (wrist != null) wristStatuses[id] = wrist;
       if (phoneStatus != null) phoneStatuses[id] = phoneStatus;
@@ -1172,13 +1172,22 @@ class HarnessRunner {
   final Set<String> _phoneHeld = {};
 
   /// The wrist's status for [sessionId]: the held session's own (the engine
-  /// holds one at a time), null when the wrist is on another session.
-  String? _wristStatusOf(String sessionId) {
+  /// holds one at a time); for a session the wrist has moved on from, the status
+  /// of its newest stored row (the wrist keeps every row, so an end applied while
+  /// it held another session is still readable); null when the wrist never held
+  /// it. Reading only the held session missed an owed end applied after the
+  /// wrist moved on, which read as "still active" (plan 146, F-5).
+  Future<String?> _wristStatusOf(String sessionId) async {
     final session = harness.wristEngine.session;
     if (session != null && session.sessionId == sessionId) {
       return session.status;
     }
-    return null;
+    final stored = await harness.wristStore.readAll();
+    String? newest;
+    for (final row in stored.sessions) {
+      if (row.sessionId == sessionId) newest = row.status;
+    }
+    return newest;
   }
 
   Future<void> _sampleEntries() async {

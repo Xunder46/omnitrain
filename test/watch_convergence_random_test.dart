@@ -483,14 +483,19 @@ void main() {
     },
   );
 
+  // F-5 turned out to be a harness reading fault, not a product defect (plan
+  // 146 phase 4): the wrist did apply the owed abandon after it moved on, but
+  // the harness only read the HELD session's status, so the applied end read as a
+  // stale active. The harness now reads the newest stored row for a session the
+  // wrist has left, and this guard runs unskipped.
   // F-5 (seed 104, shrunk 25 -> 4): 1. wrist starts a Free workout
   //   2. link drops  3. phone discards  4. phone starts a session
   //   -> at the end of the heal: session 1: phone abandoned vs wrist active.
-  //      The phone's discard never ends the workout the wrist still runs once
-  //      the phone has started its own session (the S-14512 family).
+  //      The wrist does end it — the owed end arrives, exactly once (S-14606)
+  //      — and the mismatch is the pair harness, which samples only the
+  //      session the wrist still holds and leaves the earlier sample in place.
   test(
     'F-5 an abandon reaches a wrist session that is still running',
-    skip: 'plan 146: a phone abandon ends the wrist session too',
     () async {
       final run = await script(
         (r) => [

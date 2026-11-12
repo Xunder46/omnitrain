@@ -393,6 +393,49 @@ void main() {
   );
 
   test(
+    'S-14606 a phone discard while the wrist runs, then a later phone session: '
+    'the owed end still reaches the wrist, exactly once (D-14609)',
+    () async {
+      await wristStarts();
+      await phoneDiscardsWhileAway();
+      await phone.createNewSession();
+      final later = phone.currentSession?.id;
+      expect(later, isNotNull, reason: 'fixture: the phone holds a session');
+      expect(later, isNot(_sid), reason: 'fixture: a later session, a new id');
+      radio.sent.clear();
+      radio.emitLink(reachable: true);
+      await pumpEventQueue();
+      await graph.autoPush.flush();
+      await pumpEventQueue();
+      final owed = [
+        for (final frame in lifecyclesSent())
+          if (frame['sessionId'] == _sid) frame,
+      ];
+      expect(owed, hasLength(1), reason: 'one owed end, not a flood');
+      expect(
+        (owed.single['payload'] as Map)['state'],
+        WatchLifecycleState.abandoned,
+      );
+      expect(
+        engine.session?.status,
+        WatchSessionStatus.active,
+        reason: 'fixture: the wrist still runs the discarded session',
+      );
+      await engine.applyMessage(owed.single);
+      expect(
+        engine.session?.status,
+        WatchSessionStatus.abandoned,
+        reason: 'the wrist ends what the phone discarded',
+      );
+      expect(
+        phone.currentSession?.id,
+        later,
+        reason: 'the later session is untouched by the owed end',
+      );
+    },
+  );
+
+  test(
     'S-12805 phone restart, empty ledger, wrist frame: answered from the stored row (D-3)',
     () async {
       await wristStarts();
