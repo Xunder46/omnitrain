@@ -269,6 +269,343 @@ final class WatchRestLabelsTests: XCTestCase {
         XCTAssertEqual(labels.next, "Next: Set 3 of 3")
     }
 
+    // MARK: - S-14920 the wrist counts each kind against its own plan
+
+    /// S-14920's fixture: A "Plank" plans 3 holds, B "Wall Sit" plans 2, and C is
+    /// a planned set. Neither drill declares a kind: they resolve to a drill from
+    /// their capabilities, as a phone-projected slot does (D-14910).
+    private var plannedHoldLadder: [[String: Any]] {
+        [
+            slot("A", "Plank", capabilities: ["hold", "time"], plannedEfforts: 3),
+            slot("B", "Wall Sit", capabilities: ["hold", "time"], plannedEfforts: 2),
+            slot("C", "Bench", planned: 2),
+        ]
+    }
+
+    func testS14920APlannedHoldStaysUntilItsPlanThenNamesTheNext() {
+        let first = deriveRestLabels(
+            sessionExercises: plannedHoldLadder,
+            entries: entries("A", 1, kind: WatchObservationKind.hold),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(first.now, "Plank", "S-14920 a hold is no numbered set")
+        XCTAssertEqual(first.next, "Next: Hold 2 of 3", "S-14920 the plan's next hold")
+        XCTAssertNil(first.nextSlotId, "S-14920 the plan is not met, so Next stays")
+
+        let second = deriveRestLabels(
+            sessionExercises: plannedHoldLadder,
+            entries: entries("A", 2, kind: WatchObservationKind.hold),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(second.next, "Next: Hold 3 of 3", "S-14920 the last hold of the plan")
+        XCTAssertNil(second.nextSlotId)
+
+        let third = deriveRestLabels(
+            sessionExercises: plannedHoldLadder,
+            entries: entries("A", 3, kind: WatchObservationKind.hold),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(third.now, "Plank", "S-14920 the name alone is the now line")
+        XCTAssertEqual(
+            third.next,
+            "Next: Wall Sit · Hold 1 of 2",
+            "S-14920 the plan met, the line names the next not-done exercise with its own count"
+        )
+        XCTAssertEqual(third.nextSlotId, "B", "S-14920 and the id Next moves to")
+    }
+
+    // MARK: - S-14921 a planned round moves on when its plan is met
+
+    func testS14921APlannedRoundStaysWithItsCountAndMovesWhenMet() {
+        let ladder = [
+            slot("A", "Sports Drill", effortKind: WatchEffortKind.round, plannedEfforts: 3),
+            slot("B", "Bench", planned: 2),
+        ]
+
+        let first = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: entries("A", 1, kind: WatchObservationKind.round),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.round,
+            nextRound: nil,
+            roundNoun: "Period"
+        )
+        XCTAssertEqual(
+            first.next,
+            "Next: Period 2 of 3",
+            "S-14921 a planned round is not today's unbounded period line"
+        )
+        XCTAssertNil(first.nextSlotId, "S-14921 the plan is not met, so the round stays")
+
+        let second = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: entries("A", 2, kind: WatchObservationKind.round),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.round,
+            nextRound: nil,
+            roundNoun: "Period"
+        )
+        XCTAssertEqual(second.next, "Next: Period 3 of 3", "S-14921 the last period of the plan")
+        XCTAssertNil(second.nextSlotId)
+
+        let third = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: entries("A", 3, kind: WatchObservationKind.round),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.round,
+            nextRound: nil,
+            roundNoun: "Period"
+        )
+        XCTAssertEqual(
+            third.next,
+            "Next: Bench · Set 1 of 2",
+            "S-14921 the plan met, the planned round moves on like every other kind"
+        )
+        XCTAssertEqual(third.nextSlotId, "B")
+    }
+
+    // MARK: - S-14922 a planned timed effort counts its intervals
+
+    func testS14922APlannedTimedEffortStaysWithItsIntervalCount() {
+        let ladder = [
+            slot("A", "Row Intervals", effortKind: WatchEffortKind.timed, plannedEfforts: 3),
+            slot("B", "Plank", capabilities: ["hold", "time"], plannedEfforts: 1),
+        ]
+
+        let first = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: entries("A", 1, kind: WatchObservationKind.timed),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.timed,
+            nextRound: nil
+        )
+        XCTAssertEqual(first.next, "Next: Interval 2 of 3", "S-14922 a timed kind's own word")
+        XCTAssertNil(first.nextSlotId)
+
+        let second = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: entries("A", 2, kind: WatchObservationKind.timed),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.timed,
+            nextRound: nil
+        )
+        XCTAssertEqual(second.next, "Next: Interval 3 of 3")
+        XCTAssertNil(second.nextSlotId)
+
+        let third = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: entries("A", 3, kind: WatchObservationKind.timed),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.timed,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            third.next,
+            "Next: Plank · Hold 1 of 1",
+            "S-14922 the later planned hold is announced with its own count"
+        )
+        XCTAssertEqual(third.nextSlotId, "B")
+    }
+
+    // MARK: - S-14923 the mirrored ignore gates
+
+    func testS14923ASetSlotIgnoresPlannedEfforts() {
+        // A hand-built slot carrying both keys: the phone never sends both
+        // (D-14901), and the set rule alone must apply.
+        var both = slot("A", "Bench", planned: 2)
+        both["plannedEfforts"] = 3
+
+        let labels = deriveRestLabels(
+            sessionExercises: [both],
+            entries: entries("A", 1),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(labels.now, "Bench · Set 1 done")
+        XCTAssertEqual(
+            labels.next,
+            "Next: Set 2 of 2",
+            "S-14923 plannedEfforts never becomes a set slot's count"
+        )
+        XCTAssertNil(labels.nextSlotId, "S-14923 the set rule keeps the exercise")
+    }
+
+    func testS14923ADrillSlotIgnoresPlannedSets() {
+        let ladder = [
+            slot(
+                "A", "Plank", planned: 2,
+                capabilities: ["hold", "time"]
+            ),
+            slot("B", "Wall Sit", capabilities: ["hold", "time"]),
+        ]
+        let labels = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: entries("A", 1, kind: WatchObservationKind.hold),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            labels.next,
+            "Next: Wall Sit",
+            "S-14923 a drill reads no plannedSets: its one hold is done and the line moves"
+        )
+        XCTAssertEqual(labels.nextSlotId, "B")
+        XCTAssertFalse(labels.next.contains("Set"), "S-14923 a non-set slot never reads Set")
+    }
+
+    // MARK: - S-14924 a fourth hold is accepted
+
+    func testS14924AFourthHoldIsAcceptedAndNeverReadsPastItsPlan() {
+        let labels = deriveRestLabels(
+            sessionExercises: plannedHoldLadder,
+            entries: entries("A", 4, kind: WatchObservationKind.hold),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(labels.now, "Plank")
+        XCTAssertEqual(
+            labels.next,
+            "Next: Wall Sit · Hold 1 of 2",
+            "S-14924 4 is at least the plan of 3, so the line moves on"
+        )
+        XCTAssertEqual(labels.nextSlotId, "B")
+        XCTAssertFalse(labels.next.contains("4 of 3"), "S-14924 no count ever prints past its plan")
+    }
+
+    // MARK: - S-14925 out-of-order counting keys on the slot id
+
+    func testS14925OutOfOrderCountingKeysOnTheSlotId() {
+        let ladder = [
+            slot("A", "Alpha", capabilities: ["hold", "time"], plannedEfforts: 2),
+            slot("B", "Bravo", capabilities: ["hold", "time"], plannedEfforts: 2),
+            slot("C", "Charlie", capabilities: ["hold", "time"], plannedEfforts: 2),
+        ]
+        // C logged first, then A: C's hold must not complete A's plan.
+        let outOfOrder = entries("C", 1, kind: WatchObservationKind.hold)
+            + entries("A", 1, kind: WatchObservationKind.hold)
+
+        let onA = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: outOfOrder,
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(onA.next, "Next: Hold 2 of 2", "S-14925 A's own count is one hold")
+        XCTAssertNil(onA.nextSlotId)
+
+        let aDone = entries("C", 1, kind: WatchObservationKind.hold)
+            + entries("A", 2, kind: WatchObservationKind.hold)
+        let afterA = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: aDone,
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            afterA.next,
+            "Next: Bravo · Hold 1 of 2",
+            "S-14925 B's own logged count is zero, so k is 1"
+        )
+        XCTAssertEqual(afterA.nextSlotId, "B")
+
+        let bDone = aDone + entries("B", 2, kind: WatchObservationKind.hold)
+        let onB = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: bDone,
+            currentIndex: 1,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            onB.next,
+            "Next: Charlie · Hold 2 of 2",
+            "S-14925 C's own entry is the count the line shows"
+        )
+        XCTAssertEqual(onB.nextSlotId, "C")
+    }
+
+    // MARK: - S-14926 no planned amount keeps today's rule
+
+    func testS14926NoPlannedAmountKeepsTodaysRule() {
+        let ladder = [
+            slot("A", "Plank", capabilities: ["hold", "time"]),
+            slot("B", "Squat"),
+        ]
+
+        let holdDone = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: entries("A", 1, kind: WatchObservationKind.hold),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(holdDone.now, "Plank")
+        XCTAssertEqual(
+            holdDone.next,
+            "Next: Squat",
+            "S-14926 an unplanned hold is done after one effort, so the line moves"
+        )
+        XCTAssertEqual(holdDone.nextSlotId, "B")
+
+        let freeSet = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: entries("A", 1, kind: WatchObservationKind.hold) + entries("B", 1),
+            currentIndex: 1,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(freeSet.now, "Squat · Set 1 done")
+        XCTAssertEqual(freeSet.next, "Next: Set 2", "S-14926 an unplanned set keeps the bare stay line")
+        XCTAssertNil(freeSet.nextSlotId)
+    }
+
+    // MARK: - S-14928 a plan of one is the one-effort rule
+
+    func testS14928APlanOfOneBehavesAsTheOneEffortRule() {
+        let planned = [
+            slot("A1", "Plank", capabilities: ["hold", "time"], plannedEfforts: 1),
+            slot("B1", "Wall Sit", capabilities: ["hold", "time"]),
+        ]
+        let unplanned = [
+            slot("A1", "Plank", capabilities: ["hold", "time"]),
+            slot("B1", "Wall Sit", capabilities: ["hold", "time"]),
+        ]
+        let oneHold = entries("A1", 1, kind: WatchObservationKind.hold)
+
+        let withPlan = deriveRestLabels(
+            sessionExercises: planned,
+            entries: oneHold,
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        let withoutPlan = deriveRestLabels(
+            sessionExercises: unplanned,
+            entries: oneHold,
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            withPlan,
+            withoutPlan,
+            "S-14928 a plan of one is the one-effort rule in effect"
+        )
+        XCTAssertEqual(withPlan.next, "Next: Wall Sit")
+        XCTAssertEqual(withPlan.nextSlotId, "B1")
+    }
+
     // MARK: - S-9101 the announced exercise carries its slot id (plan 79, D-6)
 
     /// The plan's fixture ladder: A "Squat" planned 2, B "Bench" planned 3,
@@ -462,13 +799,15 @@ final class WatchRestLabelsTests: XCTestCase {
         _ id: String,
         _ name: String,
         planned: Int = 0,
-        effortKind: String? = nil
+        effortKind: String? = nil,
+        capabilities: [String] = ["sets", "reps", "load"],
+        plannedEfforts: Int? = nil
     ) -> [String: Any] {
         var slot: [String: Any] = [
             "sessionExerciseId": id,
             "exerciseId": "ex-\(id)",
             "name": name,
-            "capabilities": ["sets", "reps", "load"],
+            "capabilities": capabilities,
         ]
         if planned > 0 {
             slot["plannedSets"] = Array(
@@ -477,6 +816,7 @@ final class WatchRestLabelsTests: XCTestCase {
             )
         }
         if let effortKind { slot["effortKind"] = effortKind }
+        if let plannedEfforts { slot["plannedEfforts"] = plannedEfforts }
         return slot
     }
 

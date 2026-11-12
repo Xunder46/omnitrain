@@ -183,6 +183,36 @@ in kilograms and is shown through the wrist's saved unit. Verified by
 `testS3631ASlotThatDeclaresAnotherKindIgnoresTheKey`,
 `testS3632AHoldSlotIgnoresTheKey`).
 
+The wrist reads `plannedEfforts` for a non-`set` effort only. An exercise is done
+once the efforts of its OWN kind reach that count, so a planned hold, interval or
+round keeps the rest line on itself with its count ("Hold 2 of 3", "Interval 2 of
+3", "Period 2 of 3") until the plan is met, and only then does the line name the
+next not-done exercise with its own count (`Wall Sit · Hold 1 of 2`); a `round`
+with no plan keeps the unbounded period line, and a slot with no plan keeps the
+one-effort rule. A count past the plan is accepted and never printed past its
+plan. Entries are counted per slot id and per wire kind, so out-of-order logging
+never completes another exercise's plan. Verified by
+`watch/watchos/Tests/WatchSessionEngineTests/WatchRestLabelsTests.swift` (group
+`S-14920 the wrist counts each kind against its own plan`:
+`testS14920APlannedHoldStaysUntilItsPlanThenNamesTheNext`,
+`testS14921APlannedRoundStaysWithItsCountAndMovesWhenMet`,
+`testS14922APlannedTimedEffortStaysWithItsIntervalCount`,
+`testS14923ASetSlotIgnoresPlannedEfforts`,
+`testS14923ADrillSlotIgnoresPlannedSets`,
+`testS14924AFourthHoldIsAcceptedAndNeverReadsPastItsPlan`,
+`testS14925OutOfOrderCountingKeysOnTheSlotId`,
+`testS14926NoPlannedAmountKeepsTodaysRule`,
+`testS14928APlanOfOneBehavesAsTheOneEffortRule`), by
+`watch/watchos/Tests/WatchSessionEngineTests/WatchRestNextHoldTests.swift`
+(`testS14921APlannedRoundMovesOnWhenItsPlanIsMet`,
+`testS14924AFourthPlannedHoldIsAccepted`,
+`testS14925APlannedLadderCountsOutOfOrderPerSlot`,
+`testS14926NoPlanKeepsTodaysRule`,
+`testS14927TheSameFrameAppliedTwiceChangesNothing`) and by
+`watch/watchos/Tests/WatchSessionEngineTests/WatchPlannedSetsTests.swift`
+(`testS14923ASetSlotIgnoresPlannedEfforts`,
+`testS14923ADrillSlotIgnoresPlannedSets`).
+
 **D-35 — a set edited on the phone is re-stated on the wrist at the next push or
 Sync.** A set edited on the phone shows its new value on the watch at the next
 push or Sync, still

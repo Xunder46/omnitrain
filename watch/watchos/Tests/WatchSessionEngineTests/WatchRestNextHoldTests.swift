@@ -5,9 +5,11 @@
 //  A second hold must land on the exercise the screen shows. The rest screen's
 //  one Next button ends the rest and, when the next line names an exercise,
 //  moves the session there; the logger that comes back must be that exercise's,
-//  and the next Log must write to it. Holds carry no planned count on the wire
-//  (`plannedSets` is sent for set efforts only), so a hold exercise with one hold
-//  logged is "done" and Next names the next not-done exercise.
+//  and the next Log must write to it. A hold may now carry a planned count: the
+//  phone sends it as `plannedEfforts` (plan 149 PR 1) and plan 149 PR 2 counts
+//  it per kind. This file's fixtures carry no plan — the no-plan world, where a
+//  hold exercise with one hold logged is "done" and Next names the next not-done
+//  exercise; the planned half is asserted below in the plan 149 cases.
 //
 //  Also the out-of-order rules: logging an exercise reached from the list counts
 //  against that exercise's own slot, and Next names the first not-done exercise
@@ -35,6 +37,29 @@ private func plannedSetSlot(_ id: String, _ name: String, planned: Int) -> [Stri
         "name": name,
         "capabilities": ["reps", "sets", "load"],
         "plannedSets": (0..<planned).map { _ in ["reps": 10] },
+    ]
+}
+
+/// A hold slot carrying the phone's plan for it (plan 149 PR 1's wire).
+private func plannedHoldSlot(_ id: String, _ name: String, plannedEfforts: Int) -> [String: Any] {
+    [
+        "sessionExerciseId": id,
+        "exerciseId": "ex-\(id)",
+        "name": name,
+        "capabilities": ["hold", "time"],
+        "plannedEfforts": plannedEfforts,
+    ]
+}
+
+/// A round slot carrying the phone's plan: how many periods it holds.
+private func roundSlot(_ id: String, _ name: String, plannedEfforts: Int) -> [String: Any] {
+    [
+        "sessionExerciseId": id,
+        "exerciseId": "ex-\(id)",
+        "name": name,
+        "capabilities": ["time", "rounds"],
+        "effortKind": WatchEffortKind.round,
+        "plannedEfforts": plannedEfforts,
     ]
 }
 
@@ -210,6 +235,206 @@ final class WatchRestNextHoldTests: XCTestCase {
         // After C: D is done, so the search wraps to A (B is done too).
         XCTAssertEqual(state.restLabels.nextSlotId, "A")
         XCTAssertEqual(state.restLabels.next, "Next: Plank")
+    }
+
+    // MARK: - Plan 149 PR 2: a planned amount on the wrist
+
+    /// A planned-hold ladder: A plans 3 holds, B plans 2, and the surface starts
+    /// on A.
+    private func plannedLadder() async -> (FocusHarness, WatchLoggingState) {
+        let harness = await FocusHarness().launch()
+        _ = await harness.engine.createSession(
+            modality: "isometric_stretching",
+            exercises: [
+                plannedHoldSlot("A", "Plank", plannedEfforts: 3),
+                plannedHoldSlot("B", "Wall Sit", plannedEfforts: 2),
+            ]
+        )
+        let state = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+        return (harness, state)
+    }
+
+    func testS14921APlannedRoundMovesOnWhenItsPlanIsMet() async throws {
+        let harness = await FocusHarness().launch()
+        _ = await harness.engine.createSession(
+            modality: "sports",
+            exercises: [
+                roundSlot("A", "Sports Drill", plannedEfforts: 3),
+                plannedSetSlot("B", "Bench", planned: 2),
+            ]
+        )
+        let state = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+
+        await logRound(harness, state)
+        XCTAssertEqual(
+            state.restLabels.next,
+            "Next: Period 2 of 3",
+            "S-14921 a planned round stays with its count, not today's unbounded line"
+        )
+        XCTAssertNil(state.restLabels.nextSlotId, "S-14921 the plan is not met, so the round stays")
+
+        await logRound(harness, state)
+        XCTAssertEqual(state.restLabels.next, "Next: Period 3 of 3")
+
+        await logRound(harness, state)
+        XCTAssertEqual(
+            state.restLabels.next,
+            "Next: Bench · Set 1 of 2",
+            "S-14921 the plan met, the planned round moves on — the wedge is gone"
+        )
+        XCTAssertEqual(state.restLabels.nextSlotId, "B")
+    }
+
+    func testS14924AFourthPlannedHoldIsAccepted() async throws {
+        let (harness, state) = await plannedLadder()
+
+        for _ in 0..<3 {
+            try await expectHold(harness, state, on: "A")
+        }
+        XCTAssertEqual(state.restLabels.next, "Next: Wall Sit · Hold 1 of 2")
+
+        // Past the plan the wrist still logs: the fourth hold is the user's, not
+        // an error (P-2).
+        await state.endRest()
+        try await expectHold(harness, state, on: "A")
+        XCTAssertEqual(loggedCount(harness, "A"), 4, "S-14924 the fourth hold is accepted")
+        XCTAssertEqual(
+            state.restLabels.next,
+            "Next: Wall Sit · Hold 1 of 2",
+            "S-14924 four holds are at least the plan of three, so the line moves on"
+        )
+        XCTAssertEqual(state.restLabels.nextSlotId, "B")
+        XCTAssertFalse(state.restLabels.next.contains("4 of 3"), "S-14924 no count prints past its plan")
+    }
+
+    func testS14925APlannedLadderCountsOutOfOrderPerSlot() async throws {
+        let harness = await FocusHarness().launch()
+        _ = await harness.engine.createSession(
+            modality: "isometric_stretching",
+            exercises: [
+                plannedHoldSlot("A", "Plank", plannedEfforts: 2),
+                plannedHoldSlot("B", "Wall Sit", plannedEfforts: 2),
+                plannedHoldSlot("C", "Bridge", plannedEfforts: 2),
+            ]
+        )
+        let state = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+
+        await harness.menu.jump(to: "C")
+        try await expectHold(harness, state, on: "C")
+        XCTAssertEqual(state.restLabels.next, "Next: Hold 2 of 2", "S-14925 C's own count is one")
+
+        await harness.menu.jump(to: "A")
+        await state.endRest()
+        try await expectHold(harness, state, on: "A")
+        XCTAssertEqual(
+            state.restLabels.next,
+            "Next: Hold 2 of 2",
+            "S-14925 C's hold never completes A's plan"
+        )
+        XCTAssertNil(state.restLabels.nextSlotId, "S-14925 A is short of its plan, so Next stays")
+
+        await state.endRest()
+        try await expectHold(harness, state, on: "A")
+        XCTAssertEqual(
+            state.restLabels.next,
+            "Next: Wall Sit · Hold 1 of 2",
+            "S-14925 B's own logged count is zero, so the move line reads k = 1"
+        )
+        XCTAssertEqual(state.restLabels.nextSlotId, "B")
+    }
+
+    func testS14926NoPlanKeepsTodaysRule() async throws {
+        let (harness, state) = await holdLadder()
+
+        try await logHold(harness, state)
+
+        XCTAssertEqual(
+            state.restLabels.next,
+            "Next: Wall Sit",
+            "S-14926 a hold with no plan is done after one effort and the line moves"
+        )
+        XCTAssertEqual(state.restLabels.nextSlotId, "B")
+    }
+
+    func testS14927TheSameFrameAppliedTwiceChangesNothing() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        let frame = plannedEffortSnapshot(
+            messageId: "msg-149b-repeat",
+            exercises: [
+                plannedHoldSlot("A", "Plank", plannedEfforts: 3),
+                plannedHoldSlot("B", "Wall Sit", plannedEfforts: 2),
+            ],
+            entries: [holdEntry("entry-A-0", slot: "A")]
+        )
+        XCTAssertTrue(
+            Harness.validator().validateEnvelope(frame).isEmpty,
+            "\(Harness.validator().validateEnvelope(frame))"
+        )
+        _ = try await engine.applyMessage(frame)
+
+        let state = WatchLoggingState(engine: engine, clock: harness.clock.call)
+        let first = state.restLabels
+        XCTAssertEqual(first.next, "Next: Hold 2 of 3", "S-14927 the imported hold counts")
+        XCTAssertNil(first.nextSlotId)
+        let entriesBefore = engine.entries.count
+
+        _ = try await engine.applyMessage(frame)
+
+        XCTAssertEqual(state.restLabels, first, "S-14927 the same frame twice changes nothing")
+        let entriesAfter = engine.entries.count
+        XCTAssertEqual(entriesAfter, entriesBefore, "S-14927 and adds no entry")
+        let exercises = engine.session?.exercises ?? []
+        XCTAssertEqual(
+            exercises.first.flatMap { $0["plannedEfforts"] as? Int },
+            3,
+            "S-14927 the plan is still the phone's"
+        )
+    }
+
+    /// One round on whatever exercise the surface is on: Start, run, Log.
+    private func logRound(_ harness: FocusHarness, _ state: WatchLoggingState) async {
+        await state.startWork()
+        harness.clock.advance(30)
+        _ = try? await state.log()
+    }
+
+    /// A phone frame carrying planned efforts, as PR 1's schema declares them.
+    private func plannedEffortSnapshot(
+        messageId: String,
+        revision: Int = 1,
+        exercises: [[String: Any]],
+        entries: [[String: Any]] = []
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": "s-next",
+            "type": "session_snapshot",
+            "origin": "phone",
+            "sentAt": "2026-11-12T18:00:00Z",
+            "payload": [
+                "sessionId": "s-next",
+                "revision": revision,
+                "status": WatchSessionStatus.active,
+                "currentExerciseIndex": 0,
+                "exercises": exercises,
+                "entries": entries,
+                "timers": [String: Any](),
+            ] as [String: Any],
+        ]
+    }
+
+    /// One hold entry as a phone frame carries it.
+    private func holdEntry(_ entryId: String, slot: String) -> [String: Any] {
+        [
+            "entryId": entryId,
+            "eventId": entryId,
+            "kind": WatchObservationKind.hold,
+            "loggedAt": "2026-11-12T17:59:00Z",
+            "sessionExerciseId": slot,
+            "exerciseId": "ex-\(slot)",
+        ]
     }
 
     // MARK: - The watch-only views stay on the same rule

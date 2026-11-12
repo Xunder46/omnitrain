@@ -21,7 +21,9 @@ of reach`). None of these is phone→wrist any more: the sets the phone has
 logged ride the frame the phone sends — its answer to a Sync, or the push a
 change triggers — as `entries`, which the wrist's existing snapshot merge
 stores, and the plan of a `set` slot rides the same frame on the slot itself
-as `plannedSets`, every other kind's as `plannedEfforts` (above)
+as `plannedSets`, every other kind's as `plannedEfforts` (above), and the wrist
+counts both when it decides an exercise is finished
+(`docs/state_management/watch_surface_wrist_pager.md`)
 (`test/watch_session_projection_test.dart`,
 `S-31 the phone's own sets arrive as entries`, and the wrist adopting a session
 it does not hold — `S-38 the wrist adopts a session it does not hold`). What
@@ -308,7 +310,11 @@ remains out is listed below.
   `plannedEfforts`, and the phone seeds one record per planned index when it
   adopts the routine's session (`test/watch_session_adoption_bridge_test.dart`,
   `S-14908 an adopted routine session seeds its planned holds and periods`,
-  `S-14909 a template with no per-index targets still seeds the count`); a
+  `S-14909 a template with no per-index targets still seeds the count`); the
+  wrist reads that count as the plan it holds an exercise to, so a planned hold,
+  timed or round slot stays on its exercise until its own efforts reach it
+  (`watch/watchos/Tests/WatchSessionEngineTests/WatchRestLabelsTests.swift`,
+  group `S-14920 the wrist counts each kind against its own plan`); a
   round slot also carries the round length `roundDurationSecs`. A routine
   started on the wrist opens on the phone as
   that routine: the wrist's slot ids are the phone's own template effort ids,

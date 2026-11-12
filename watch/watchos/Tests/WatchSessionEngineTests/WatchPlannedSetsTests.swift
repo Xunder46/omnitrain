@@ -430,6 +430,62 @@ final class WatchPlannedSetsTests: XCTestCase {
         )
     }
 
+    // MARK: - S-14923 the mirrored ignore gates (plan 149 PR 2)
+
+    func testS14923ASetSlotIgnoresPlannedEfforts() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        // A hand-built slot carrying both keys: the phone never sends both
+        // (`plannedEfforts` is a non-set kind's key, D-14901).
+        var both = slot(plannedSets: Array(plannedRows.prefix(2)))
+        both["plannedEfforts"] = 3
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [both])
+
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+        _ = try await surface.log()
+
+        XCTAssertEqual(
+            surface.setCaption,
+            "Set 2 of 2",
+            "S-14923 a set slot reads plannedSets alone"
+        )
+        XCTAssertEqual(
+            surface.restLabels.next,
+            "Next: Set 2 of 2",
+            "S-14923 plannedEfforts never becomes a set slot's count"
+        )
+        XCTAssertNil(surface.restLabels.nextSlotId, "S-14923 the set rule keeps the exercise")
+    }
+
+    func testS14923ADrillSlotIgnoresPlannedSets() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        var planked = slot(capabilities: ["time", "hold"], effortKind: "hold", plannedSets: plannedRows)
+        planked["sessionExerciseId"] = "sx-plank"
+        planked["name"] = "Plank"
+        var wall = slot(capabilities: ["time", "hold"], effortKind: "hold")
+        wall["sessionExerciseId"] = "sx-wall"
+        wall["name"] = "Wall Sit"
+        _ = await engine.createSession(modality: "isometric", exercises: [planked, wall])
+
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+        await surface.startWork()
+        harness.clock.advance(30)
+        _ = try await surface.log()
+
+        XCTAssertNil(surface.setCaption, "S-14923 a drill is no numbered set")
+        XCTAssertEqual(
+            surface.restLabels.next,
+            "Next: Wall Sit",
+            "S-14923 a drill reads no plannedSets: its one hold is done and the line moves"
+        )
+        XCTAssertEqual(surface.restLabels.nextSlotId, "sx-wall")
+        XCTAssertFalse(
+            surface.restLabels.next.contains("Set"),
+            "S-14923 a non-set slot's line never reads Set"
+        )
+    }
+
     // MARK: - Helpers
 
     /// Fixture P: the three rows a phone session with three sets of bench holds.

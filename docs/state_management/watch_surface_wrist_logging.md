@@ -234,12 +234,24 @@ shown. An extra set on a finished exercise: swipe back to it. Verified by
 (`testS9108TheRestsNextJumpsToTheAnnouncedExercise` through the engine,
 `testS9109TheNextReadsTheTargetBeforeItEndsTheRest` as the source guard). The labels come from the pure function
 `deriveRestLabels` in `WatchRestLabels.swift` through
-`WatchLoggingState.restLabels`: a slot is done when all its planned sets are
-logged, or with no plan when anything is logged
+`WatchLoggingState.restLabels`: a slot is done when the efforts of its OWN kind
+reach its own plan — its planned sets logged for a set, the phone's
+`plannedEfforts` for a hold, interval or round — or, with no plan, when
+anything is logged
 (`…testS7603cAnExerciseWithItsPlanExactlyLoggedIsSkipped`,
-`…testS7611OnlySetEntriesCountAsSets`); the next exercise is searched forward
-from the current one, then from the top; the phone's logged sets count like the
-wrist's. The Dart twin `lib/watch/logging/watch_rest_screen.dart` does not show
+`…testS7611OnlySetEntriesCountAsSets`); a planned hold, interval or round keeps
+the line on itself with its count ("Next: Hold 2 of 3"), a planned round never
+shows the plan-less period line, and a count past the plan is accepted and never
+printed past it
+(`testS14920APlannedHoldStaysUntilItsPlanThenNamesTheNext`,
+`…testS14921APlannedRoundStaysWithItsCountAndMovesWhenMet`,
+`…testS14922APlannedTimedEffortStaysWithItsIntervalCount`,
+`…testS14924AFourthHoldIsAcceptedAndNeverReadsPastItsPlan`,
+`…testS14925OutOfOrderCountingKeysOnTheSlotId`,
+`…testS14926NoPlannedAmountKeepsTodaysRule`,
+`…testS14928APlanOfOneBehavesAsTheOneEffortRule`); the next exercise is searched
+forward from the current one, then from the top, naming each slot's own count
+("Wall Sit · Hold 1 of 2"); the phone's logged sets count like the wrist's. The Dart twin `lib/watch/logging/watch_rest_screen.dart` does not show
 these two lines yet (parity gap, plan 51b D-5).
 The rest screen carries the same list button the logging surface does, and both
 open the one session menu: a jump or an add made from there moves nothing the

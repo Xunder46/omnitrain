@@ -9,9 +9,10 @@
 //
 //  A pure function over the session's ladder and entries, outside the
 //  watchOS-only view, so the desktop toolchain can assert the rule: a slot is
-//  "done" when its planned sets are all logged (or, with no plan, when anything
-//  is logged), and the search for the next exercise goes forward from the
-//  current one, then from the top.
+//  "done" when the efforts of its own kind reach its own plan — the planned
+//  sets for a set, the planned efforts for a hold, interval or round — or, with
+//  no plan, when anything is logged, and the search for the next exercise goes
+//  forward from the current one, then from the top (plan 149 PR 2, D-14903).
 //
 
 import Foundation
@@ -52,31 +53,90 @@ private struct RestLabelSlot {
     /// The id the slot answers to in the menu: its own `sessionExerciseId`, or
     /// the exercise's when the slot carries none (plan 79, D-6).
     let slotId: String
+    /// The effort kind the slot is, resolved the way the logging surface
+    /// resolves it: its declared kind, else its capabilities, else a set
+    /// (plan 149 PR 2, D-14910).
+    let kind: String
     /// Entries of kind `set` logged for the slot (the phone's and the wrist's).
     let sets: Int
+    /// Entries of kind `hold` logged for the slot.
+    let holds: Int
+    /// Entries of kind `timed` logged for the slot.
+    let timed: Int
+    /// Entries of kind `round` logged for the slot.
+    let rounds: Int
     /// Entries of any effort kind logged for the slot.
     let efforts: Int
-    /// The set rows the phone planned for the slot, or 0.
+    /// The set rows the phone planned for the slot, or 0 — read only for a set
+    /// slot.
     let planned: Int
+    /// The efforts of its own kind the phone planned for the slot, or 0 — read
+    /// only for a non-set slot, so the two plan keys never both apply (D-14910).
+    let plannedEfforts: Int
 
-    var isDone: Bool { planned > 0 ? sets >= planned : efforts > 0 }
+    /// The entries of the slot's own effort kind (D-14903).
+    var ownKindCount: Int {
+        switch kind {
+        case WatchEffortKind.drill: return holds
+        case WatchEffortKind.timed: return timed
+        case WatchEffortKind.round: return rounds
+        default: return sets
+        }
+    }
 
-    /// The slot as the next line names it: its name, and its next set when the
-    /// phone planned the sets.
-    var nextLabel: String {
-        planned > 0 ? "\(name) · Set \(sets + 1) of \(planned)" : name
+    var isDone: Bool {
+        if plannedEfforts > 0 { return ownKindCount >= plannedEfforts }
+        return planned > 0 ? sets >= planned : efforts > 0
+    }
+
+    /// The word the rest screen uses for the slot's own kind, nil for a set.
+    func kindWord(roundNoun: String?) -> String? {
+        switch kind {
+        case WatchEffortKind.drill: return "Hold"
+        case WatchEffortKind.timed: return "Interval"
+        case WatchEffortKind.round: return roundNoun ?? "Round"
+        default: return nil
+        }
+    }
+
+    /// "k of N" for the slot's next effort: N never falls below k, so an extra
+    /// effort logged past the plan reads as its own last number (D-14904).
+    var kOfN: String {
+        "\(ownKindCount + 1) of \(max(plannedEfforts, ownKindCount + 1))"
+    }
+
+    /// The slot as the next line names it: its name, and its next set or its
+    /// next effort of its own kind when the phone planned either (D-14911).
+    func nextLabel(roundNoun: String?) -> String {
+        if plannedEfforts > 0, let word = kindWord(roundNoun: roundNoun) {
+            return "\(name) · \(word) \(kOfN)"
+        }
+        return planned > 0 ? "\(name) · Set \(sets + 1) of \(planned)" : name
+    }
+
+    /// The effort kind a slot is: the kind it declares, else the one its
+    /// capabilities resolve to — the mirror of `WatchLoggingState.effortKind`.
+    static func kind(of slot: [String: Any], capabilities: [String]) -> String {
+        if let declared = slot["effortKind"] as? String,
+           WatchEffortKind.declared.contains(declared) {
+            return declared
+        }
+        return WatchEffortKind.resolved(capabilities) ?? WatchEffortKind.set
     }
 }
 
 /// The two labels for a rest that follows an effort of `effortKind` on the
 /// ladder's current slot. `nextRound` is the word-and-number of the next period
-/// ("Period 2") for a round effort, nil otherwise.
+/// ("Period 2") for a round effort with no plan, nil otherwise. `roundNoun` is
+/// the modality's word for a round ("Period", "Interval", "Round"), used for a
+/// planned round's count (D-14904).
 public func deriveRestLabels(
     sessionExercises: [[String: Any]],
     entries: [WatchObservationRecord],
     currentIndex: Int,
     effortKind: String,
-    nextRound: String?
+    nextRound: String?,
+    roundNoun: String? = nil
 ) -> WatchRestLabels {
     let clamped = min(max(currentIndex, 0), max(sessionExercises.count - 1, 0))
     var slots: [RestLabelSlot] = []
@@ -85,6 +145,7 @@ public func deriveRestLabels(
     for (index, slot) in sessionExercises.enumerated() {
         guard let exercise = WatchCatalogExercise(slot: slot) else { continue }
         let slotId = (slot["sessionExerciseId"] as? String) ?? exercise.slotId
+        let kind = RestLabelSlot.kind(of: slot, capabilities: exercise.capabilities)
         let mine = entries.filter {
             ($0.payload["sessionExerciseId"] as? String) == slotId
         }
@@ -93,9 +154,18 @@ public func deriveRestLabels(
             RestLabelSlot(
                 name: exercise.name,
                 slotId: slotId,
+                kind: kind,
                 sets: mine.filter { $0.kind == WatchObservationKind.set }.count,
+                holds: mine.filter { $0.kind == WatchObservationKind.hold }.count,
+                timed: mine.filter { $0.kind == WatchObservationKind.timed }.count,
+                rounds: mine.filter { $0.kind == WatchObservationKind.round }.count,
                 efforts: mine.filter { WatchObservationKind.efforts.contains($0.kind) }.count,
-                planned: (slot["plannedSets"] as? [[String: Any]])?.count ?? 0
+                planned: kind == WatchEffortKind.set
+                    ? (slot["plannedSets"] as? [[String: Any]])?.count ?? 0
+                    : 0,
+                plannedEfforts: kind == WatchEffortKind.set
+                    ? 0
+                    : (slot["plannedEfforts"] as? Int).flatMap { $0 >= 1 ? $0 : nil } ?? 0
             )
         )
     }
@@ -116,15 +186,22 @@ public func deriveRestLabels(
         now = me.name
     }
 
-    if effortKind == WatchEffortKind.set {
+    if me.plannedEfforts > 0 {
+        // A planned non-set slot stays until its own kind's count reaches its
+        // plan, whatever period the caller offered: a planned round is never
+        // the unbounded line (D-14903, D-14912).
+        if me.ownKindCount < me.plannedEfforts,
+           let word = me.kindWord(roundNoun: roundNoun) {
+            return WatchRestLabels(now: now, next: "\(prefix)\(word) \(me.kOfN)")
+        }
+    } else if effortKind == WatchEffortKind.set {
         if me.planned == 0 {
             return WatchRestLabels(now: now, next: "\(prefix)Set \(me.sets + 1)")
         }
         if me.sets < me.planned {
             return WatchRestLabels(now: now, next: "\(prefix)Set \(me.sets + 1) of \(me.planned)")
         }
-    }
-    if effortKind == WatchEffortKind.round, let nextRound {
+    } else if effortKind == WatchEffortKind.round, let nextRound {
         return WatchRestLabels(now: now, next: "\(prefix)\(nextRound)")
     }
 
@@ -132,7 +209,7 @@ public func deriveRestLabels(
     for index in order where !slots[index].isDone {
         return WatchRestLabels(
             now: now,
-            next: "\(prefix)\(slots[index].nextLabel)",
+            next: "\(prefix)\(slots[index].nextLabel(roundNoun: roundNoun))",
             nextSlotId: slots[index].slotId
         )
     }

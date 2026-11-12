@@ -544,7 +544,13 @@ public final class WatchLoggingState {
             entries: engine.entries,
             currentIndex: session.currentExerciseIndex,
             effortKind: kind,
-            nextRound: kind == WatchEffortKind.round ? "\(singular) \(nextRoundNumber)" : nil
+            // D-14912: `nextRound` means "an unplanned round stays". A planned
+            // round is counted by the pure rule and moves on when its plan is
+            // met, so the unbounded line is only ever built for a planless one.
+            nextRound: kind == WatchEffortKind.round && plannedEfforts == nil
+                ? "\(singular) \(nextRoundNumber)"
+                : nil,
+            roundNoun: singular
         )
     }
 
@@ -699,6 +705,18 @@ public final class WatchLoggingState {
         guard effortKind == WatchEffortKind.set,
               let planned = slot?["plannedSets"] as? [[String: Any]],
               !planned.isEmpty
+        else { return nil }
+        return planned
+    }
+
+    /// The efforts the phone planned for the current slot, or nil unless the
+    /// effort is a non-set kind and the slot plans at least one — the mirror of
+    /// `plannedSets`, which a non-set slot never reads (plan 149 PR 2, D-14910).
+    /// Anything but an integer of one or more is the key's absence (D-14913).
+    private var plannedEfforts: Int? {
+        guard effortKind != WatchEffortKind.set,
+              let planned = slot?["plannedEfforts"] as? Int,
+              planned >= 1
         else { return nil }
         return planned
     }
