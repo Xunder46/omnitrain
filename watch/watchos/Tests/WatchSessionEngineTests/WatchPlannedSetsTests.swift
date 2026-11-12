@@ -451,7 +451,7 @@ final class WatchPlannedSetsTests: XCTestCase {
         )
         XCTAssertEqual(
             surface.restLabels.next,
-            "Next: Set 2 of 2",
+            "Next set: Set 2 of 2",
             "S-14923 plannedEfforts never becomes a set slot's count"
         )
         XCTAssertNil(surface.restLabels.nextSlotId, "S-14923 the set rule keeps the exercise")
@@ -476,7 +476,7 @@ final class WatchPlannedSetsTests: XCTestCase {
         XCTAssertNil(surface.setCaption, "S-14923 a drill is no numbered set")
         XCTAssertEqual(
             surface.restLabels.next,
-            "Next: Wall Sit",
+            "Next exercise: Wall Sit",
             "S-14923 a drill reads no plannedSets: its one hold is done and the line moves"
         )
         XCTAssertEqual(surface.restLabels.nextSlotId, "sx-wall")

@@ -27,7 +27,7 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: nil
         )
         XCTAssertEqual(first.now, "Bench · Set 3 done", "S-7601 the three logged sets are the count")
-        XCTAssertEqual(first.next, "Next: Set 4 of 4", "S-7601 the plan of four says which set is next")
+        XCTAssertEqual(first.next, "Next set: Set 4 of 4", "S-7601 the plan of four says which set is next")
 
         let second = deriveRestLabels(
             sessionExercises: [slot("b1", "Bench", planned: 3)],
@@ -37,7 +37,7 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: nil
         )
         XCTAssertEqual(second.now, "Bench · Set 2 done")
-        XCTAssertEqual(second.next, "Next: Set 3 of 3")
+        XCTAssertEqual(second.next, "Next set: Set 3 of 3")
     }
 
     // MARK: - S-7602 the plan done names the later exercise
@@ -54,7 +54,7 @@ final class WatchRestLabelsTests: XCTestCase {
         )
         XCTAssertEqual(
             first.next,
-            "Next: Squat · Set 1 of 2",
+            "Next exercise: Squat · Set 1 of 2",
             "S-7602 the later exercise's own plan names its first set"
         )
 
@@ -67,7 +67,7 @@ final class WatchRestLabelsTests: XCTestCase {
         )
         XCTAssertEqual(
             second.next,
-            "Next: Squat · Set 2 of 2",
+            "Next exercise: Squat · Set 2 of 2",
             "S-7602 the later exercise's own logged set is the count"
         )
     }
@@ -92,7 +92,7 @@ final class WatchRestLabelsTests: XCTestCase {
         XCTAssertEqual(forward.now, "B · Set 3 done")
         XCTAssertEqual(
             forward.next,
-            "Next: C · Set 1 of 2",
+            "Next exercise: C · Set 1 of 2",
             "S-7603 the later unfinished exercise wins over the earlier one"
         )
 
@@ -108,7 +108,7 @@ final class WatchRestLabelsTests: XCTestCase {
         )
         XCTAssertEqual(
             backward.next,
-            "Next: A · Set 1 of 2",
+            "Next exercise: A · Set 1 of 2",
             "S-7603 the earlier unfinished exercise is named when the search wraps"
         )
     }
@@ -139,7 +139,7 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: nil
         )
         XCTAssertEqual(labels.now, "Bench · Set 4 done", "S-7605 the free set's own count")
-        XCTAssertEqual(labels.next, "Next: Set 5", "S-7605 no plan, so no 'of N'")
+        XCTAssertEqual(labels.next, "Next set: Set 5", "S-7605 no plan, so no 'of N'")
     }
 
     // MARK: - S-7606 a rest after a jump to an unlogged exercise
@@ -153,7 +153,7 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: nil
         )
         XCTAssertEqual(planned.now, "Bench", "S-7606 no set logged, so the name alone")
-        XCTAssertEqual(planned.next, "Next: Set 1 of 3", "S-7606 the plan's first set")
+        XCTAssertEqual(planned.next, "Next set: Set 1 of 3", "S-7606 the plan's first set")
 
         let free = deriveRestLabels(
             sessionExercises: [slot("b1", "Bench")],
@@ -163,7 +163,7 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: nil
         )
         XCTAssertEqual(free.now, "Bench")
-        XCTAssertEqual(free.next, "Next: Set 1", "S-7606 no plan, so no 'of N'")
+        XCTAssertEqual(free.next, "Next set: Set 1", "S-7606 no plan, so no 'of N'")
     }
 
     // MARK: - S-7607 a round effort names the next period
@@ -183,7 +183,7 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: "Period 2"
         )
         XCTAssertEqual(withRound.now, "Bench", "S-7607 a round is no numbered set")
-        XCTAssertEqual(withRound.next, "Next: Period 2", "S-7607 the modality's own word")
+        XCTAssertEqual(withRound.next, "Next set: Period 2", "S-7607 the modality's own word")
 
         let fallsThrough = deriveRestLabels(
             sessionExercises: ladder,
@@ -194,7 +194,7 @@ final class WatchRestLabelsTests: XCTestCase {
         )
         XCTAssertEqual(
             fallsThrough.next,
-            "Next: Squat",
+            "Next exercise: Squat",
             "S-7607 without a next period the exercise search stands in"
         )
     }
@@ -216,7 +216,7 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: nil
         )
         XCTAssertEqual(withLater.now, "Bench", "S-7608 a timed effort is no numbered set")
-        XCTAssertEqual(withLater.next, "Next: Squat", "S-7608 the later unlogged exercise")
+        XCTAssertEqual(withLater.next, "Next exercise: Squat", "S-7608 the later unlogged exercise")
 
         let alone = deriveRestLabels(
             sessionExercises: [slot("b1", "Bench", effortKind: WatchEffortKind.timed)],
@@ -266,7 +266,7 @@ final class WatchRestLabelsTests: XCTestCase {
             "Bench · Set 2 done",
             "S-7611 the timed entry is not a set, so the count is two"
         )
-        XCTAssertEqual(labels.next, "Next: Set 3 of 3")
+        XCTAssertEqual(labels.next, "Next set: Set 3 of 3")
     }
 
     // MARK: - S-14920 the wrist counts each kind against its own plan
@@ -291,7 +291,7 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: nil
         )
         XCTAssertEqual(first.now, "Plank", "S-14920 a hold is no numbered set")
-        XCTAssertEqual(first.next, "Next: Hold 2 of 3", "S-14920 the plan's next hold")
+        XCTAssertEqual(first.next, "Next set: Hold 2 of 3", "S-14920 the plan's next hold")
         XCTAssertNil(first.nextSlotId, "S-14920 the plan is not met, so Next stays")
 
         let second = deriveRestLabels(
@@ -301,7 +301,7 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.drill,
             nextRound: nil
         )
-        XCTAssertEqual(second.next, "Next: Hold 3 of 3", "S-14920 the last hold of the plan")
+        XCTAssertEqual(second.next, "Next set: Hold 3 of 3", "S-14920 the last hold of the plan")
         XCTAssertNil(second.nextSlotId)
 
         let third = deriveRestLabels(
@@ -314,7 +314,7 @@ final class WatchRestLabelsTests: XCTestCase {
         XCTAssertEqual(third.now, "Plank", "S-14920 the name alone is the now line")
         XCTAssertEqual(
             third.next,
-            "Next: Wall Sit · Hold 1 of 2",
+            "Next exercise: Wall Sit · Hold 1 of 2",
             "S-14920 the plan met, the line names the next not-done exercise with its own count"
         )
         XCTAssertEqual(third.nextSlotId, "B", "S-14920 and the id Next moves to")
@@ -338,7 +338,7 @@ final class WatchRestLabelsTests: XCTestCase {
         )
         XCTAssertEqual(
             first.next,
-            "Next: Period 2 of 3",
+            "Next set: Period 2 of 3",
             "S-14921 a planned round is not today's unbounded period line"
         )
         XCTAssertNil(first.nextSlotId, "S-14921 the plan is not met, so the round stays")
@@ -351,7 +351,7 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: nil,
             roundNoun: "Period"
         )
-        XCTAssertEqual(second.next, "Next: Period 3 of 3", "S-14921 the last period of the plan")
+        XCTAssertEqual(second.next, "Next set: Period 3 of 3", "S-14921 the last period of the plan")
         XCTAssertNil(second.nextSlotId)
 
         let third = deriveRestLabels(
@@ -364,7 +364,7 @@ final class WatchRestLabelsTests: XCTestCase {
         )
         XCTAssertEqual(
             third.next,
-            "Next: Bench · Set 1 of 2",
+            "Next exercise: Bench · Set 1 of 2",
             "S-14921 the plan met, the planned round moves on like every other kind"
         )
         XCTAssertEqual(third.nextSlotId, "B")
@@ -385,7 +385,7 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.timed,
             nextRound: nil
         )
-        XCTAssertEqual(first.next, "Next: Interval 2 of 3", "S-14922 a timed kind's own word")
+        XCTAssertEqual(first.next, "Next set: Interval 2 of 3", "S-14922 a timed kind's own word")
         XCTAssertNil(first.nextSlotId)
 
         let second = deriveRestLabels(
@@ -395,7 +395,7 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.timed,
             nextRound: nil
         )
-        XCTAssertEqual(second.next, "Next: Interval 3 of 3")
+        XCTAssertEqual(second.next, "Next set: Interval 3 of 3")
         XCTAssertNil(second.nextSlotId)
 
         let third = deriveRestLabels(
@@ -407,7 +407,7 @@ final class WatchRestLabelsTests: XCTestCase {
         )
         XCTAssertEqual(
             third.next,
-            "Next: Plank · Hold 1 of 1",
+            "Next exercise: Plank · Hold 1 of 1",
             "S-14922 the later planned hold is announced with its own count"
         )
         XCTAssertEqual(third.nextSlotId, "B")
@@ -431,7 +431,7 @@ final class WatchRestLabelsTests: XCTestCase {
         XCTAssertEqual(labels.now, "Bench · Set 1 done")
         XCTAssertEqual(
             labels.next,
-            "Next: Set 2 of 2",
+            "Next set: Set 2 of 2",
             "S-14923 plannedEfforts never becomes a set slot's count"
         )
         XCTAssertNil(labels.nextSlotId, "S-14923 the set rule keeps the exercise")
@@ -454,7 +454,7 @@ final class WatchRestLabelsTests: XCTestCase {
         )
         XCTAssertEqual(
             labels.next,
-            "Next: Wall Sit",
+            "Next exercise: Wall Sit",
             "S-14923 a drill reads no plannedSets: its one hold is done and the line moves"
         )
         XCTAssertEqual(labels.nextSlotId, "B")
@@ -474,7 +474,7 @@ final class WatchRestLabelsTests: XCTestCase {
         XCTAssertEqual(labels.now, "Plank")
         XCTAssertEqual(
             labels.next,
-            "Next: Wall Sit · Hold 1 of 2",
+            "Next exercise: Wall Sit · Hold 1 of 2",
             "S-14924 4 is at least the plan of 3, so the line moves on"
         )
         XCTAssertEqual(labels.nextSlotId, "B")
@@ -500,7 +500,7 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.drill,
             nextRound: nil
         )
-        XCTAssertEqual(onA.next, "Next: Hold 2 of 2", "S-14925 A's own count is one hold")
+        XCTAssertEqual(onA.next, "Next set: Hold 2 of 2", "S-14925 A's own count is one hold")
         XCTAssertNil(onA.nextSlotId)
 
         let aDone = entries("C", 1, kind: WatchObservationKind.hold)
@@ -514,7 +514,7 @@ final class WatchRestLabelsTests: XCTestCase {
         )
         XCTAssertEqual(
             afterA.next,
-            "Next: Bravo · Hold 1 of 2",
+            "Next exercise: Bravo · Hold 1 of 2",
             "S-14925 B's own logged count is zero, so k is 1"
         )
         XCTAssertEqual(afterA.nextSlotId, "B")
@@ -529,7 +529,7 @@ final class WatchRestLabelsTests: XCTestCase {
         )
         XCTAssertEqual(
             onB.next,
-            "Next: Charlie · Hold 2 of 2",
+            "Next exercise: Charlie · Hold 2 of 2",
             "S-14925 C's own entry is the count the line shows"
         )
         XCTAssertEqual(onB.nextSlotId, "C")
@@ -553,7 +553,7 @@ final class WatchRestLabelsTests: XCTestCase {
         XCTAssertEqual(holdDone.now, "Plank")
         XCTAssertEqual(
             holdDone.next,
-            "Next: Squat",
+            "Next exercise: Squat",
             "S-14926 an unplanned hold is done after one effort, so the line moves"
         )
         XCTAssertEqual(holdDone.nextSlotId, "B")
@@ -566,7 +566,7 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: nil
         )
         XCTAssertEqual(freeSet.now, "Squat · Set 1 done")
-        XCTAssertEqual(freeSet.next, "Next: Set 2", "S-14926 an unplanned set keeps the bare stay line")
+        XCTAssertEqual(freeSet.next, "Next set: Set 2", "S-14926 an unplanned set keeps the bare stay line")
         XCTAssertNil(freeSet.nextSlotId)
     }
 
@@ -602,8 +602,141 @@ final class WatchRestLabelsTests: XCTestCase {
             withoutPlan,
             "S-14928 a plan of one is the one-effort rule in effect"
         )
-        XCTAssertEqual(withPlan.next, "Next: Wall Sit")
+        XCTAssertEqual(withPlan.next, "Next exercise: Wall Sit")
         XCTAssertEqual(withPlan.nextSlotId, "B1")
+    }
+
+    // MARK: - S-14940..S-14945 the stay/move prefixes (plan 149 PR 3, D-14907)
+
+    func testS14940APlannedHoldStaysUnderTheSetPrefix() {
+        let labels = deriveRestLabels(
+            sessionExercises: plannedHoldLadder,
+            entries: entries("A", 1, kind: WatchObservationKind.hold),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            labels.next,
+            "Next set: Hold 2 of 3",
+            "S-14940 a planned hold short of its plan says Next stays on this exercise"
+        )
+        XCTAssertNil(labels.nextSlotId, "S-14940 the stay line moves nothing")
+    }
+
+    func testS14941AMetHoldPlanMovesUnderTheExercisePrefix() {
+        let labels = deriveRestLabels(
+            sessionExercises: plannedHoldLadder,
+            entries: entries("A", 3, kind: WatchObservationKind.hold),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.drill,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            labels.next,
+            "Next exercise: Wall Sit · Hold 1 of 2",
+            "S-14941 the plan met, the line says Next moves and names the exercise"
+        )
+        XCTAssertEqual(labels.nextSlotId, "B", "S-14941 and the id Next moves to")
+    }
+
+    func testS14942APlannedSetStaysThenMovesUnderItsOwnPrefix() {
+        let staying = deriveRestLabels(
+            sessionExercises: [slot("A", "Bench", planned: 3)],
+            entries: entries("A", 1),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(staying.next, "Next set: Set 2 of 3", "S-14942 a set with sets left stays")
+        XCTAssertNil(staying.nextSlotId, "S-14942 a stay line names no exercise")
+
+        let moving = deriveRestLabels(
+            sessionExercises: [slot("A", "Bench", planned: 2), slot("B", "Squat", planned: 3)],
+            entries: entries("A", 2),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            moving.next,
+            "Next exercise: Squat · Set 1 of 3",
+            "S-14942 the plan logged, the line says Next moves and names the exercise"
+        )
+        XCTAssertEqual(moving.nextSlotId, "B", "S-14942 and the id Next moves to")
+    }
+
+    func testS14943AnUnplannedRoundStaysUnderTheSetPrefix() {
+        let labels = deriveRestLabels(
+            sessionExercises: [slot("A", "Sports Drill", effortKind: WatchEffortKind.round)],
+            entries: entries("A", 1, kind: WatchObservationKind.round),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.round,
+            nextRound: "Period 2",
+            roundNoun: "Period"
+        )
+        XCTAssertEqual(
+            labels.next,
+            "Next set: Period 2",
+            "S-14943 no plan, so the unbounded period line stays on the exercise"
+        )
+        XCTAssertNil(labels.nextSlotId, "S-14943 a period names no exercise")
+    }
+
+    func testS14944AnIntervalAndAPlannedRoundStayUnderTheSetPrefix() {
+        let interval = deriveRestLabels(
+            sessionExercises: [
+                slot("A", "Row Intervals", effortKind: WatchEffortKind.timed, plannedEfforts: 3)
+            ],
+            entries: entries("A", 1, kind: WatchObservationKind.timed),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.timed,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            interval.next,
+            "Next set: Interval 2 of 3",
+            "S-14944 a timed kind short of its plan says Next stays"
+        )
+
+        let round = deriveRestLabels(
+            sessionExercises: [
+                slot("A", "Sports Drill", effortKind: WatchEffortKind.round, plannedEfforts: 3)
+            ],
+            entries: entries("A", 1, kind: WatchObservationKind.round),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.round,
+            nextRound: "Period 2",
+            roundNoun: "Period"
+        )
+        XCTAssertEqual(
+            round.next,
+            "Next set: Period 2 of 3",
+            "S-14944 a planned round short of its plan says Next stays"
+        )
+    }
+
+    func testS14945NothingLeftAndNoExerciseKeepTheirWords() {
+        let done = deriveRestLabels(
+            sessionExercises: [slot("b1", "Bench", planned: 3)],
+            entries: entries("b1", 3),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(done.next, WatchRestLabelCopy.nothingNext, "S-14945 nothing left keeps the words")
+        XCTAssertEqual(done.next, "Nothing planned next", "S-14945 the literal is unchanged")
+
+        let empty = deriveRestLabels(
+            sessionExercises: [],
+            entries: [],
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(empty.now, WatchRestLabelCopy.noExercise, "S-14945 no exercise keeps its word")
+        XCTAssertEqual(empty.next, "Nothing planned next", "S-14945 and the next line says nothing is planned")
+        XCTAssertEqual(empty.next, WatchRestLabelCopy.nothingNext)
     }
 
     // MARK: - S-9101 the announced exercise carries its slot id (plan 79, D-6)
@@ -627,7 +760,7 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: nil
         )
         XCTAssertEqual(labels.now, "Squat · Set 2 done")
-        XCTAssertEqual(labels.next, "Next: Bench · Set 1 of 3", "S-9101 the line names B's first set")
+        XCTAssertEqual(labels.next, "Next exercise: Bench · Set 1 of 3", "S-9101 the line names B's first set")
         XCTAssertEqual(labels.nextSlotId, "B", "S-9101 the id the menu's jump accepts rides with it")
     }
 
@@ -641,7 +774,7 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.set,
             nextRound: nil
         )
-        XCTAssertEqual(labels.next, "Next: Set 2 of 2", "S-9102 the line is this exercise's own set count")
+        XCTAssertEqual(labels.next, "Next set: Set 2 of 2", "S-9102 the line is this exercise's own set count")
         XCTAssertNil(labels.nextSlotId, "S-9102 a set count names no exercise to open")
     }
 
@@ -655,7 +788,7 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.set,
             nextRound: nil
         )
-        XCTAssertEqual(labels.next, "Next: Set 4", "S-9103 no plan, so no 'of N'")
+        XCTAssertEqual(labels.next, "Next set: Set 4", "S-9103 no plan, so no 'of N'")
         XCTAssertNil(labels.nextSlotId, "S-9103 a planless count names no exercise")
     }
 
@@ -683,7 +816,7 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.round,
             nextRound: "Period 2"
         )
-        XCTAssertEqual(labels.next, "Next: Period 2", "S-9105 the modality's own word")
+        XCTAssertEqual(labels.next, "Next set: Period 2", "S-9105 the modality's own word")
         XCTAssertNil(labels.nextSlotId, "S-9105 a period is not an exercise to open")
     }
 
@@ -699,7 +832,7 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.timed,
             nextRound: nil
         )
-        XCTAssertEqual(forward.next, "Next: Bench · Set 1 of 3", "S-9106 the later unlogged exercise")
+        XCTAssertEqual(forward.next, "Next exercise: Bench · Set 1 of 3", "S-9106 the later unlogged exercise")
         XCTAssertEqual(forward.nextSlotId, "B", "S-9106 the timed effort announces B all the same")
 
         let wrap = deriveRestLabels(
@@ -709,7 +842,7 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.timed,
             nextRound: nil
         )
-        XCTAssertEqual(wrap.next, "Next: Squat · Set 1 of 2", "S-9106 the search wraps to the top")
+        XCTAssertEqual(wrap.next, "Next exercise: Squat · Set 1 of 2", "S-9106 the search wraps to the top")
         XCTAssertEqual(wrap.nextSlotId, "A", "S-9106 and the wrap carries the id too")
     }
 
@@ -730,7 +863,7 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.set,
             nextRound: nil
         )
-        XCTAssertEqual(labels.next, "Next: Bench · Set 1 of 3", "S-9107 the line reads as always")
+        XCTAssertEqual(labels.next, "Next exercise: Bench · Set 1 of 3", "S-9107 the line reads as always")
         XCTAssertEqual(
             labels.nextSlotId,
             exercise.slotId,
@@ -765,13 +898,13 @@ final class WatchRestLabelsTests: XCTestCase {
             "Bench Press · Set 1 done",
             "S-7609 the phone's entry is a set the wrist holds"
         )
-        XCTAssertEqual(state.restLabels.next, "Next: Set 2 of 3")
+        XCTAssertEqual(state.restLabels.next, "Next set: Set 2 of 3")
 
         harness.clock.advance(120)
         try await state.log()
 
         XCTAssertEqual(state.restLabels.now, "Bench Press · Set 2 done", "S-7609 the wrist's own set joins")
-        XCTAssertEqual(state.restLabels.next, "Next: Set 3 of 3")
+        XCTAssertEqual(state.restLabels.next, "Next set: Set 3 of 3")
     }
 
     // MARK: - S-7610 the view reads the labels

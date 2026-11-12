@@ -168,7 +168,7 @@ final class WatchRestNextHoldTests: XCTestCase {
         )
         let state = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
         try await state.log()
-        XCTAssertEqual(state.restLabels.next, "Next: Set 2 of 3")
+        XCTAssertEqual(state.restLabels.next, "Next set: Set 2 of 3")
 
         var advanced = false
         let moved = await state.leaveRest { _ in advanced = true; return true }
@@ -234,7 +234,7 @@ final class WatchRestNextHoldTests: XCTestCase {
         try await expectHold(harness, state, on: "C")
         // After C: D is done, so the search wraps to A (B is done too).
         XCTAssertEqual(state.restLabels.nextSlotId, "A")
-        XCTAssertEqual(state.restLabels.next, "Next: Plank")
+        XCTAssertEqual(state.restLabels.next, "Next exercise: Plank")
     }
 
     // MARK: - Plan 149 PR 2: a planned amount on the wrist
@@ -268,18 +268,18 @@ final class WatchRestNextHoldTests: XCTestCase {
         await logRound(harness, state)
         XCTAssertEqual(
             state.restLabels.next,
-            "Next: Period 2 of 3",
+            "Next set: Period 2 of 3",
             "S-14921 a planned round stays with its count, not today's unbounded line"
         )
         XCTAssertNil(state.restLabels.nextSlotId, "S-14921 the plan is not met, so the round stays")
 
         await logRound(harness, state)
-        XCTAssertEqual(state.restLabels.next, "Next: Period 3 of 3")
+        XCTAssertEqual(state.restLabels.next, "Next set: Period 3 of 3")
 
         await logRound(harness, state)
         XCTAssertEqual(
             state.restLabels.next,
-            "Next: Bench · Set 1 of 2",
+            "Next exercise: Bench · Set 1 of 2",
             "S-14921 the plan met, the planned round moves on — the wedge is gone"
         )
         XCTAssertEqual(state.restLabels.nextSlotId, "B")
@@ -291,7 +291,7 @@ final class WatchRestNextHoldTests: XCTestCase {
         for _ in 0..<3 {
             try await expectHold(harness, state, on: "A")
         }
-        XCTAssertEqual(state.restLabels.next, "Next: Wall Sit · Hold 1 of 2")
+        XCTAssertEqual(state.restLabels.next, "Next exercise: Wall Sit · Hold 1 of 2")
 
         // Past the plan the wrist still logs: the fourth hold is the user's, not
         // an error (P-2).
@@ -300,7 +300,7 @@ final class WatchRestNextHoldTests: XCTestCase {
         XCTAssertEqual(loggedCount(harness, "A"), 4, "S-14924 the fourth hold is accepted")
         XCTAssertEqual(
             state.restLabels.next,
-            "Next: Wall Sit · Hold 1 of 2",
+            "Next exercise: Wall Sit · Hold 1 of 2",
             "S-14924 four holds are at least the plan of three, so the line moves on"
         )
         XCTAssertEqual(state.restLabels.nextSlotId, "B")
@@ -321,14 +321,14 @@ final class WatchRestNextHoldTests: XCTestCase {
 
         await harness.menu.jump(to: "C")
         try await expectHold(harness, state, on: "C")
-        XCTAssertEqual(state.restLabels.next, "Next: Hold 2 of 2", "S-14925 C's own count is one")
+        XCTAssertEqual(state.restLabels.next, "Next set: Hold 2 of 2", "S-14925 C's own count is one")
 
         await harness.menu.jump(to: "A")
         await state.endRest()
         try await expectHold(harness, state, on: "A")
         XCTAssertEqual(
             state.restLabels.next,
-            "Next: Hold 2 of 2",
+            "Next set: Hold 2 of 2",
             "S-14925 C's hold never completes A's plan"
         )
         XCTAssertNil(state.restLabels.nextSlotId, "S-14925 A is short of its plan, so Next stays")
@@ -337,7 +337,7 @@ final class WatchRestNextHoldTests: XCTestCase {
         try await expectHold(harness, state, on: "A")
         XCTAssertEqual(
             state.restLabels.next,
-            "Next: Wall Sit · Hold 1 of 2",
+            "Next exercise: Wall Sit · Hold 1 of 2",
             "S-14925 B's own logged count is zero, so the move line reads k = 1"
         )
         XCTAssertEqual(state.restLabels.nextSlotId, "B")
@@ -350,7 +350,7 @@ final class WatchRestNextHoldTests: XCTestCase {
 
         XCTAssertEqual(
             state.restLabels.next,
-            "Next: Wall Sit",
+            "Next exercise: Wall Sit",
             "S-14926 a hold with no plan is done after one effort and the line moves"
         )
         XCTAssertEqual(state.restLabels.nextSlotId, "B")
@@ -375,7 +375,7 @@ final class WatchRestNextHoldTests: XCTestCase {
 
         let state = WatchLoggingState(engine: engine, clock: harness.clock.call)
         let first = state.restLabels
-        XCTAssertEqual(first.next, "Next: Hold 2 of 3", "S-14927 the imported hold counts")
+        XCTAssertEqual(first.next, "Next set: Hold 2 of 3", "S-14927 the imported hold counts")
         XCTAssertNil(first.nextSlotId)
         let entriesBefore = engine.entries.count
 

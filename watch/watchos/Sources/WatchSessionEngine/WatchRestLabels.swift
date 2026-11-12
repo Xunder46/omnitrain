@@ -23,8 +23,9 @@ public struct WatchRestLabels: Equatable {
     /// that has logged one: "Barbell Bench Press · Set 2 done".
     public let now: String
 
-    /// What comes next: "Next: Set 3 of 3", "Next: Barbell Back Squat · Set 1
-    /// of 2", "Next: Period 2", or the words that say nothing is planned.
+    /// What comes next: "Next set: Set 3 of 3" while Next stays on this
+    /// exercise, "Next exercise: Barbell Back Squat · Set 1 of 2" when it moves,
+    /// or the words that say nothing is planned (plan 149 PR 3, D-14907).
     public let next: String
 
     /// The slot the next line announces, when the line names an exercise: the
@@ -42,7 +43,10 @@ public struct WatchRestLabels: Equatable {
 /// The rest screen's fixed words. They live here rather than on the view, which
 /// compiles only into a watch target: this is the half the suite can read.
 public enum WatchRestLabelCopy {
-    public static let nextPrefix = "Next: "
+    /// The line's word while Next stays on the exercise it is on (D-14907).
+    public static let nextSetPrefix = "Next set: "
+    /// The line's word when Next moves to the exercise it names (D-14907).
+    public static let nextExercisePrefix = "Next exercise: "
     public static let nothingNext = "Nothing planned next"
     public static let noExercise = "No exercise"
 }
@@ -177,7 +181,8 @@ public func deriveRestLabels(
         )
     }
     let me = slots[here]
-    let prefix = WatchRestLabelCopy.nextPrefix
+    let stayPrefix = WatchRestLabelCopy.nextSetPrefix
+    let movePrefix = WatchRestLabelCopy.nextExercisePrefix
 
     let now: String
     if effortKind == WatchEffortKind.set, me.sets > 0 {
@@ -192,24 +197,24 @@ public func deriveRestLabels(
         // the unbounded line (D-14903, D-14912).
         if me.ownKindCount < me.plannedEfforts,
            let word = me.kindWord(roundNoun: roundNoun) {
-            return WatchRestLabels(now: now, next: "\(prefix)\(word) \(me.kOfN)")
+            return WatchRestLabels(now: now, next: "\(stayPrefix)\(word) \(me.kOfN)")
         }
     } else if effortKind == WatchEffortKind.set {
         if me.planned == 0 {
-            return WatchRestLabels(now: now, next: "\(prefix)Set \(me.sets + 1)")
+            return WatchRestLabels(now: now, next: "\(stayPrefix)Set \(me.sets + 1)")
         }
         if me.sets < me.planned {
-            return WatchRestLabels(now: now, next: "\(prefix)Set \(me.sets + 1) of \(me.planned)")
+            return WatchRestLabels(now: now, next: "\(stayPrefix)Set \(me.sets + 1) of \(me.planned)")
         }
     } else if effortKind == WatchEffortKind.round, let nextRound {
-        return WatchRestLabels(now: now, next: "\(prefix)\(nextRound)")
+        return WatchRestLabels(now: now, next: "\(stayPrefix)\(nextRound)")
     }
 
     let order = Array((here + 1)..<slots.count) + Array(0..<here)
     for index in order where !slots[index].isDone {
         return WatchRestLabels(
             now: now,
-            next: "\(prefix)\(slots[index].nextLabel(roundNoun: roundNoun))",
+            next: "\(movePrefix)\(slots[index].nextLabel(roundNoun: roundNoun))",
             nextSlotId: slots[index].slotId
         )
     }

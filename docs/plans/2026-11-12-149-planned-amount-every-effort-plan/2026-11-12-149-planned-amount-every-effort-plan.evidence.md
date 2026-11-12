@@ -74,3 +74,88 @@ Companion to `2026-11-12-149-planned-amount-every-effort-plan.md`. Implementers 
 - After Phase 2: the wrist receives `plannedEfforts` it does not yet read; phone pins updated where whole non-set slots are asserted.
 - After Phase 3: wrist-started routine sessions hold planned rows for every declared kind; set rows byte-identical.
 - PR 2/PR 3: nothing changes on the wrist until then; `WatchMenu`, `WatchWorkoutSummary`, `WatchRestView`, the importer and `phone_entries.dart` are named read-only dependents.
+
+## PR 3 (the P-3 prefixes) — 2026-11-12
+
+### What changed
+
+`WatchRestLabelCopy.nextPrefix` ("Next: ") became two constants — `nextSetPrefix`
+("Next set: ", Next stays on this exercise) and `nextExercisePrefix`
+("Next exercise: ", Next moves to the exercise the line names). Every stay branch
+(the planned non-set line, the unplanned set line, the planned set line, the round
+`nextRound` line) uses the stay word; the forward/backward not-done search uses the
+move word and still sets `nextSlotId`. `nothingNext` and `noExercise` are
+untouched; so is `WatchRestView` (its next line already carries `.lineLimit(2)` and
+`.minimumScaleFactor(0.8)`, and its accessibility hint reads `state.restLabels.next`).
+
+### prove-red (the guard the gateway observed, not my account)
+
+```
+gateway: prove-red: 'swift-test' on HEAD with your versions of:
+  watch/watchos/Tests/WatchSessionEngineTests/WatchRestLabelsTests.swift
+  watch/watchos/Tests/WatchSessionEngineTests/WatchRestNextHoldTests.swift
+  watch/watchos/Tests/WatchSessionEngineTests/WatchPlannedSetsTests.swift
+gateway: prove-red: RED AT HEAD (exit 1). It proves the guard only if an assertion fails
+  for the reason the test guards; a compile or load error means the test could not run
+  there (use a mutation instead).
+```
+
+Representative failures at HEAD (the pre-change word on the left, the guarded word on
+the right):
+
+| Test at HEAD | Failure |
+|---|---|
+| `WatchRestLabelsTests.testS14940APlannedHoldStaysUnderTheSetPrefix` (`:619`) | `XCTAssertEqual failed: ("Next: Hold 2 of 3") is not equal to ("Next set: Hold 2 of 3")` |
+| `WatchRestLabelsTests.testS7601APlannedSetCountsTheLoggedSets` | `("Next: Set 4 of 4") is not equal to ("Next set: Set 4 of 4")` |
+| `WatchPlannedSetsTests.testS14923ADrillSlotIgnoresPlannedSets` | `("Next: Wall Sit") is not equal to ("Next exercise: Wall Sit")` |
+| `WatchPlannedSetsTests.testS14923ASetSlotIgnoresPlannedEfforts` | `("Next: Set 2 of 2") is not equal to ("Next set: Set 2 of 2")` |
+
+Every failure is an assertion mismatch, not a compile error: at HEAD the labels still
+render, only with the one old word — so the tests guard the new wording itself and no
+mutation was needed.
+
+### Red→green per scenario
+
+| Scenario | Test | Red at HEAD | Green |
+|---|---|---|---|
+| S-14940 a planned hold short of its plan says Next stays | `testS14940APlannedHoldStaysUnderTheSetPrefix` | `"Next: Hold 2 of 3"` ≠ `"Next set: Hold 2 of 3"` | passed |
+| S-14941 a met hold plan says Next moves, and names the exercise | `testS14941AMetHoldPlanMovesUnderTheExercisePrefix` | `"Next: Wall Sit · Hold 1 of 2"` ≠ `"Next exercise: …"` | passed |
+| S-14942 a planned set stays, then moves, under its own two prefixes | `testS14942APlannedSetStaysThenMovesUnderItsOwnPrefix` | `"Next: Set 2 of 3"` / `"Next: Squat · Set 1 of 3"` ≠ the two new words | passed |
+| S-14943 an unplanned round stays under the set prefix | `testS14943AnUnplannedRoundStaysUnderTheSetPrefix` | `"Next: Period 2"` ≠ `"Next set: Period 2"` | passed |
+| S-14944 an interval and a planned round stay under the set prefix | `testS14944AnIntervalAndAPlannedRoundStayUnderTheSetPrefix` | `"Next: Interval 2 of 3"` / `"Next: Period 2 of 3"` ≠ the set word | passed |
+| S-14945 nothing left and no exercise keep their words | `testS14945NothingLeftAndNoExerciseKeepTheirWords` | unchanged words — this scenario is the non-regression guard (see note) | passed |
+
+Note on S-14945: the two words it pins are deliberately unchanged, so on its own it
+cannot go red at HEAD. It is the adversarial neighbour of S-14940..S-14944 — a prefix
+applied to the fallback branches (which would read "Next set: Nothing planned next")
+fails it — and the file's `prove-red` run above carries it as part of a red suite.
+
+### Existing assertions re-prefixed (prefix only, nothing weakened, nothing deleted)
+
+39 assertions across three files, each changed in the word before the colon and
+nothing else: `WatchRestLabelsTests.swift` 28 (S-7601..S-7611, S-14920..S-14928,
+S-9101..S-9107), `WatchRestNextHoldTests.swift` 9, `WatchPlannedSetsTests.swift` 2.
+The aggregate-Equatable case in `testS14928APlanOfOneBehavesAsTheOneEffortRule`
+compares two label structs, both of which changed together, so it needed only its
+literal.
+
+### Suite counts (observed)
+
+- Focused: `swift-test --filter "WatchRestLabelsTests|WatchRestNextHoldTests|WatchPlannedSetsTests"` → **61 tests, 0 failures** (WatchRestLabelsTests 34, WatchRestNextHoldTests 13).
+- Full `gateway.sh swift-test`: **1387 tests, 0 failures** — `Test Suite 'All tests' passed`, `Executed 1387 tests, with 0 failures (0 unexpected)` (`.work/gateway/swift-test-20261112-180708-23384.log`, exit 0).
+- Full `gateway.sh test` (Flutter): **7452 passed, 2 skipped, 0 failed** — `05:06 +7452 ~2: All tests passed!` (`.work/gateway/test-20261112-180736-23718.log`, exit 0); the same counts as the PR 1 run.
+- `gateway.sh test test/docs_indexing_contract_test.dart test/ui_standards_contract_test.dart`: **54 passed** — `All tests passed!`, i.e. no doc page crossed the 64 KiB ceiling and no standards scan changed.
+- `gateway.sh lint`: **181 issues found** — the baseline exactly, none in a touched file (`.work/gateway/lint-20261112-180701-23235.log`).
+- Invariant: `grep -rn "hive_workout_repository" lib/` → `lib/main.dart` only; nothing in `lib/state`, `lib/features`, `lib/widgets` or `lib/core`. No Dart source in this run.
+
+### Docs amended
+
+`docs/state_management/watch_surface_wrist_logging.md` (the rest-line paragraph, the
+`nextSlotId` sentence, the planned-hold count, the VoiceOver hint),
+`docs/state_management/watch_surface_wrist_pager.md` (`Next set: Hold 2 of 3`),
+`docs/watch-app-setup-and-qa.md` (steps 33 and 41),
+`docs/watch-app-qa-wrist-logging.md` (step 34). Each behavioural sentence names an
+existing test (`testS14940APlannedHoldStaysUnderTheSetPrefix` ..
+`testS14945NothingLeftAndNoExerciseKeepTheirWords`). Residue sweep:
+`grep -rn "Next: " docs/ --glob '!**/plans/**'` → no label quote left (only prose such
+as "tapping Next:"); `grep -rn "nextPrefix" -g '!**/plans/**'` → no match.

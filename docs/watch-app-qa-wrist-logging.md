@@ -318,11 +318,15 @@ hardware yet.
     tap, no screen with only the exercise name appears at any moment, and the
     counter reads 2/3; swiping past the first or last exercise does nothing.
     Log the last planned set of exercise 1 and read the rest line
-    "Next: <exercise 2> · Set 1 of N": tap Next and exercise 2's logger opens.
-    With sets remaining ("Next: Set 2 of 3"), or on an exercise with no plan,
-    Next returns to the same exercise. Swipe back to exercise 1 and log an
+    "Next exercise: <exercise 2> · Set 1 of N": tap Next and exercise 2's logger
+    opens. With sets remaining ("Next set: Set 2 of 3"), or on an exercise with
+    no plan, Next returns to the same exercise — the line's word is the tell:
+    "Next exercise: " only when Next moves. Swipe back to exercise 1 and log an
     extra set. Held off-device by `WatchRestAdvanceTests.swift`,
-    `WatchPagerModelTests` S-9110 and `WatchPagerSourceTests` S-9111 (plan 79).
+    `WatchPagerModelTests` S-9110 and `WatchPagerSourceTests` S-9111 (plan 79);
+    the two words by
+    `WatchRestLabelsTests.testS14941AMetHoldPlanMovesUnderTheExercisePrefix`
+    and `…testS14942APlannedSetStaysThenMovesUnderItsOwnPrefix` (plan 149).
 
 35. **New PR banner on the wrist — (owner).** (a) On a watch that has never
     synced, log any set: no banner, and the usual logged tap. (b) Tap Sync and

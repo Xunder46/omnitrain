@@ -772,7 +772,7 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     `WatchNutritionFreshnessTests.swift` S-15208).
 33. **VoiceOver on the wrist (optional) — (owner).** With VoiceOver on, the
     rest clock reads "Rest time" with the spoken value and the Next button
-    carries the "Next: …" line as its hint; menu rows and summary rows read
+    carries the next line's own words as its hint; menu rows and summary rows read
     as one element each, the rating buttons read "Rating 3 of 5" and Confirm
     says "Saves your rating"
     (`WatchAccessibilitySourceTests.swift` S-15303..S-15307;
@@ -848,16 +848,19 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
 
 41. **The next log lands on the exercise on screen — (owner).** In a
     holds workout with three or more exercises, start the first and log one
-    hold. On the rest screen it names the next exercise ("Next: <name>"); tap
-    Next. The logger that appears shows exactly that exercise, with its n/m
-    counter, and nothing flashes back to the exercise you left. Log a hold:
+    hold. On the rest screen it names the next exercise ("Next exercise:
+    <name>"); tap Next. The logger that appears shows exactly that exercise,
+    with its n/m counter, and nothing flashes back to the exercise you left. Log a hold:
     it appears under the exercise on screen (open the exercise list: the
     count moved on that exercise, not on its neighbour). Then log out of
     order: open the list, jump to the last exercise, log a hold, and tap Next
     on the rest screen: it names the first exercise after it that has no
     hold yet, or, with none after it, the first one from the top that has
-    none. A set exercise with sets left still says "Next: Set 2 of 3" and
-    stays on its exercise.
+    none. A set exercise with sets left still says "Next set: Set 2 of 3" and
+    stays on its exercise. The line's word says which of the two it is —
+    "Next set: " while Next stays, "Next exercise: " only when it names the
+    exercise Next opens (`WatchRestLabelsTests.testS14941AMetHoldPlanMovesUnderTheExercisePrefix`,
+    `…testS14942APlannedSetStaysThenMovesUnderItsOwnPrefix`).
 
 ### The wrist's own logging (PR 2b)
 

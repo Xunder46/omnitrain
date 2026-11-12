@@ -60,7 +60,7 @@ A hold, interval or round's plan does reach the wrist — as `plannedEfforts` on
 its slot, `S-14901 a drill slot carries how many holds it plans` in
 `test/watch_session_projection_test.dart` — and the engine reads it: an exercise
 is "done" once the efforts of its OWN kind reach its plan, so a planned hold
-stays until its holds are logged and the rest line counts it (`Next: Hold 2 of
+stays until its holds are logged and the rest line counts it (`Next set: Hold 2 of
 3`), a planned round never shows the unbounded period line, and an unplanned
 exercise keeps today's one-effort rule. Next names the next exercise that is not
 done, forward from the current one and then from the top, and a planned exercise

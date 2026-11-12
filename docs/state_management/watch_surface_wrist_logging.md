@@ -200,11 +200,14 @@ is the same scale as the logging screen's work readouts
 Since plan 51b the rest screen also says what was just done and what is next:
 the name line reads "Barbell Bench Press · Set 2 done" for a set effort that has
 logged sets, and the exercise name alone for a timed, hold or round effort or an
-exercise with nothing logged yet; a "Next: …" line above the Next button names
-the next set ("Next: Set 3 of 3" with a plan, "Next: Set 4" without), the next
-unfinished exercise ("Next: Barbell Back Squat · Set 1 of 2"), the next period
-("Next: Period 2") or "Nothing planned next"
-(`WatchRestLabelsTests.testS7601APlannedSetCountsTheLoggedSets`,
+exercise with nothing logged yet; a "Next set: …" or "Next exercise: …" line
+above the Next button names the next set ("Next set: Set 3 of 3" with a plan,
+"Next set: Set 4" without), the next period ("Next set: Period 2"), the next
+unfinished exercise ("Next exercise: Barbell Back Squat · Set 1 of 2") or
+"Nothing planned next". The line's word is the rule, not decoration: "Next set: "
+while Next stays on the exercise it is on, "Next exercise: " only when the line
+names the exercise Next moves to (plan 149 D-14907). Verified by
+`WatchRestLabelsTests.testS7601APlannedSetCountsTheLoggedSets`,
 `…testS7602ACompletePlanNamesTheLaterExercise`,
 `…testS7603TheForwardSearchWinsThenTheBackwardOne`,
 `…testS7604EverythingDoneSaysNothingPlannedNext`,
@@ -213,10 +216,16 @@ unfinished exercise ("Next: Barbell Back Squat · Set 1 of 2"), the next period
 `…testS7607ARoundEffortNamesTheNextPeriod`,
 `…testS7608ATimedEffortNamesTheNextExerciseWithWork`,
 `…testS7609ThroughTheEngineThePhonesSetCounts`,
-`…testS7610TheRestViewReadsTheLabels`). Since plan 79 the "Next: …" line also
-carries the announced exercise's slot id (`WatchRestLabels.nextSlotId`, set
-only when the line names another exercise, nil for "Next: Set n",
-"Next: Period n" and "Nothing planned next"), and the rest screen's Next
+`…testS7610TheRestViewReadsTheLabels`,
+`…testS14940APlannedHoldStaysUnderTheSetPrefix`,
+`…testS14941AMetHoldPlanMovesUnderTheExercisePrefix`,
+`…testS14942APlannedSetStaysThenMovesUnderItsOwnPrefix`,
+`…testS14943AnUnplannedRoundStaysUnderTheSetPrefix`,
+`…testS14944AnIntervalAndAPlannedRoundStayUnderTheSetPrefix`,
+`…testS14945NothingLeftAndNoExerciseKeepTheirWords`). Since plan 79 the next
+line also carries the announced exercise's slot id (`WatchRestLabels.nextSlotId`,
+set only when the line names another exercise, nil for "Next set: Set n",
+"Next set: Period n" and "Nothing planned next"), and the rest screen's Next
 button reads it before it ends the rest and then jumps through the menu
 (`advance: { await menuState.jump(to: $0) }` in `ContentView.swift`): when the
 line names an exercise, Next opens that exercise's logger; with sets
@@ -240,7 +249,7 @@ reach its own plan — its planned sets logged for a set, the phone's
 anything is logged
 (`…testS7603cAnExerciseWithItsPlanExactlyLoggedIsSkipped`,
 `…testS7611OnlySetEntriesCountAsSets`); a planned hold, interval or round keeps
-the line on itself with its count ("Next: Hold 2 of 3"), a planned round never
+the line on itself with its count ("Next set: Hold 2 of 3"), a planned round never
 shows the plan-less period line, and a count past the plan is accepted and never
 printed past it
 (`testS14920APlannedHoldStaysUntilItsPlanThenNamesTheNext`,
@@ -320,8 +329,8 @@ limits") and in the QA walkthrough's gaps. Verified by
 
 **The wrist's surfaces speak to VoiceOver.** The rest clock reads "Rest time"
 with a spoken value ("2 minutes 5 seconds", via `WatchSpokenText.duration`)
-and is marked as updating frequently; the rest Next button carries the
-"Next: …" line as its hint; menu rows read name and count as one element,
+and is marked as updating frequently; the rest Next button carries the next
+line's own words as its hint; menu rows read name and count as one element,
 summary rows label and value as one element with the title a header; the
 rating buttons read "Rating 3 of 5" (the selected one marked selected), the
 Crown view reads the current choice or "No rating", Confirm carries the hint

@@ -55,7 +55,7 @@ A hold exercise planned 3: after hold 1 Next says "Next set: Hold 2 of 3" and st
 |----|-------|----------|------------|---------------------|
 | **PR 1** (planned below, Phases 1–3) | The wire: `sessionExercise` MAY carry `plannedEfforts` (schema, fixtures, manifest, PROTOCOL.md row); the phone projects the planned count for non-set slots and seeds the planned non-set rows on adoption | contract + phone | — | D-14901, D-14902, D-14903 (phone half), D-14905, D-14906, D-14907 (wording is PR 3's) |
 | **PR 2** (planned: `docs/plans/2026-11-12-149b-planned-amount-wrist-rule-plan/2026-11-12-149b-planned-amount-wrist-rule-plan.md`) | The wrist rule and rest labels: `deriveRestLabels` counts each slot's own effort kind against its plan; the stay/move lines gain kind-aware "k of N" wordings; the round stay-line respects the plan; `WatchRestNextHoldTests.swift` extended only where PR 2's plan names it | Swift watch (`watch/watchos`) | PR 1 (the wrist ignores the key until then — safe intermediate state, see Notes) | D-14903 (wrist half), D-14904; scenarios S-14920..S-14928 (planned then) |
-| **PR 3** (P-3, CONFIRMED by the owner) | Rest-screen clarity: the next line reads "Next set: …" when it stays and "Next exercise: <name>" when it moves | Swift watch | PR 2 | D-14907; scenarios S-14940.. (planned then) |
+| **PR 3** (P-3, CONFIRMED by the owner; **built**) | Rest-screen clarity: the next line reads "Next set: …" when it stays and "Next exercise: <name>" when it moves | Swift watch | PR 2 | D-14907; scenarios S-14940..S-14945 |
 
 Order rationale: the contract and the sender must exist before any receiver can read the field; PR 2 is the user-visible fix; PR 3 is a wording change on top, matching the seed's suggested order.
 
@@ -192,8 +192,35 @@ Numbering is stable and never reused; PR 1 owns S-14901..S-14909, PR 2 reserves 
 ### S-14920..S-14928 (PR 2, planned then — ids reserved)
 The wrist rule: S-14920 after hold 1 of 3 the line stays and reads "Next: Hold 2 of 3", after hold 3 it names the next not-done exercise; S-14921 rounds likewise ("Next: Period 2 of 3") and the unbounded round wedge is gone; S-14922 timed intervals likewise ("Next: Interval 2 of 3"); S-14923 a set slot ignores `plannedEfforts` and a drill slot ignores `plannedSets` (both gates, mirrored); S-14924 a fourth hold is accepted and the extra reads "Hold 4 of 4"; S-14925 out-of-order counting per slot id (jump to C, log, back to A: A's plan counts A's entries only); S-14926 no planned amount keeps today's rule (free hold moves after one, free set stays); S-14927 the same frame twice changes nothing (idempotent); S-14928 a `plannedEfforts` of 1 on a wrist-added slot behaves as today's one-effort rule.
 
-### S-14940.. (PR 3)
-The P-3 prefixes (D-14907): after hold 1 of 3 the line reads "Next set: Hold 2 of 3" (the seed scenario's exact wording); when the plan is met it reads "Next exercise: <name>".
+### S-14940: a planned hold short of its plan says Next stays
+- Fixture: ladder A `drill` "Plank" `plannedEfforts: 3`, B `drill` "Wall Sit" `plannedEfforts: 2`; one `hold` observation on A.
+- Trigger: `deriveRestLabels` on A, `effortKind: .drill`.
+- Expected outcome: `next` is exactly `"Next set: Hold 2 of 3"` (D-14907's wording, word for word), `nextSlotId` nil — the word says Next stays.
+
+### S-14941: a met hold plan says Next moves, and names the exercise
+- Fixture: as S-14940 with three `hold` observations on A (the plan met exactly).
+- Trigger: `deriveRestLabels` on A, `effortKind: .drill`.
+- Expected outcome: `next` is `"Next exercise: Wall Sit · Hold 1 of 2"` and `nextSlotId` is `"B"` — the move word and the id ride together.
+
+### S-14942: a planned set stays, then moves, under its own two prefixes
+- Fixture: (a) one slot A "Bench" `plannedSets: 3` with one set logged; (b) A "Bench" `plannedSets: 2` with two logged, B "Squat" `plannedSets: 3` with none.
+- Trigger: `deriveRestLabels` on A, `effortKind: .set`, both fixtures.
+- Expected outcome: (a) `"Next set: Set 2 of 3"`, `nextSlotId` nil; (b) `"Next exercise: Squat · Set 1 of 3"`, `nextSlotId` `"B"` — the same line's word changes exactly when Next's target changes.
+
+### S-14943: an unplanned round stays under the set prefix
+- Fixture: one `round` slot A "Sports Drill" with no plan, one `round` observation, `nextRound: "Period 2"`, `roundNoun: "Period"`.
+- Trigger: `deriveRestLabels` on A, `effortKind: .round`.
+- Expected outcome: `"Next set: Period 2"`, `nextSlotId` nil — an unplanned round never wears the move word.
+
+### S-14944: an interval and a planned round stay under the set prefix
+- Fixture: (a) a `timed` slot A "Row Intervals" `plannedEfforts: 3` with one `timed` observation; (b) a `round` slot A "Sports Drill" `plannedEfforts: 3` with one `round` observation, `nextRound: "Period 2"`, `roundNoun: "Period"`.
+- Trigger: `deriveRestLabels` on A, `effortKind: .timed` and `.round`.
+- Expected outcome: `"Next set: Interval 2 of 3"` and `"Next set: Period 2 of 3"` — the prefix is the stay/move rule, never the effort kind.
+
+### S-14945: the two lines with nothing to name keep their words
+- Fixture: (a) one slot b1 "Bench" `plannedSets: 3` with three logged (every slot done); (b) an empty ladder and no entries.
+- Trigger: `deriveRestLabels`, `effortKind: .set`.
+- Expected outcome: `next` is `"Nothing planned next"` in both; (b)'s `now` is `"No exercise"` — neither word gains a prefix, and both equal `WatchRestLabelCopy.nothingNext` / `.noExercise`.
 
 ## Iteration 1 — PR 1 (contract + phone)
 
@@ -256,7 +283,7 @@ Any defect the reviewer opens here must carry its structural guard: a permanent 
 - [x] PR 1 Phase 2 (phone sends the amount) — @developer — `projectSession` writer + `_ladderOf` segment; group `S-14901 the phone sends the planned efforts` 5/5, RED AT HEAD before it
 - [x] PR 1 Phase 3 (adoption seeds the non-set plan) — @developer — seeding gate widened, `_createPlannedRows` per kind; S-14908/S-14909 2/2, RED AT HEAD before it; docs amended; sweep 232/232
 - [ ] PR 2 planned (wrist rule + labels)
-- [ ] PR 3 planned (P-3 prefixes)
+- [x] PR 3 (P-3 prefixes) — @developer — `WatchRestLabelCopy.nextSetPrefix` / `nextExercisePrefix` replace `nextPrefix`; S-14940..S-14945 added, 39 existing assertions re-prefixed; swift 61/61 focused, full suite green, `prove-red` RED AT HEAD; docs amended (4 files)
 
 ## Assumption Log
 
@@ -270,6 +297,10 @@ Executors append here (decision, options considered, choice + why, ≤ 3 lines e
 - **A-14906** (implementer, Phase 1): `prove-red` reports GREEN AT HEAD for the schema-and-fixture guards because the schema, the fixtures and the manifest are data already on disk at HEAD. Options: accept the GREEN AT (proves nothing) vs a mutation — `plannedEfforts` `minimum: 1` → `0`, the walker then fails `invalid/session_snapshot_planned_efforts_zero.json is rejected as constraint_violation` (`Expected: non-empty`, `Actual: []`), original restored and 182 passed (chosen).
 - **A-14907** (implementer, Phase 3): `test/watch_session_adoption_bridge_test.dart` has no file-scope slot helper (`_slot()` there takes named `declaredKind`), so the new group carries a local `slotIn(...)`. Options: widen `_slot()` for every existing caller (touches 40+ call sites for no gain) vs a local helper (chosen).
 - **A-14908** (implementer, Phase 3): a `timed`/`hold` template effort with no `duration` targets now seeds exactly one `TimedInstance` (`targetDurationSecs` 0), and a `round` one seeds one round at the exercise's default length. This is the count rule's "one when no targets" and `addEntry`'s own default, and no existing pin contradicts it: the routine-adoption suite's timed effort already held no set rows (still true) and the 232-test sweep passes unchanged.
+- **A-14909** (implementer, PR 3): the two words live as two flat constants, `WatchRestLabelCopy.nextSetPrefix` / `.nextExercisePrefix`, replacing `nextPrefix` rather than a `prefix(for:)` helper or a `nextPrefix(staying:)` parameter. Options: one parameterised accessor (a call site per branch carries a Bool) vs two constants (chosen: same shape as the enum's other words, one grep per word, and the view's hint keeps reading the finished string).
+- **A-14910** (implementer, PR 3): the prefix follows Next's *target*, not the effort kind — an unplanned round's `"Next set: Period 2"` and a planned round's `"Next set: Period 2 of 3"` keep the stay word (S-14943, S-14944). Options: a word per effort kind (a round would read "Next round:") vs stay/move only (chosen: the seed and the brief name exactly two words, and the user's question is "will Next leave this exercise?").
+- **A-14911** (implementer, PR 3): no view change was needed — `WatchRestView`'s next line already carries `.lineLimit(2)` and `.minimumScaleFactor(0.8)`, and the accessibility hint reads `state.restLabels.next` itself, so the longer word is the only difference. Accepted: on a 40 mm watch the move line may now wrap or scale; that is a device check, not a unit test (no layout is testable in the package).
+- **A-14912** (implementer, PR 3): `prove-red HEAD swift-test` was used with the modified test files and reported RED AT HEAD as assertion mismatches (`("Next: Hold 2 of 3") is not equal to ("Next set: Hold 2 of 3")`), so no mutation was needed; the verdict line and a sample are in the evidence file.
 
 ## Open questions
 
