@@ -3258,7 +3258,7 @@ void main() {
             'amended)',
       );
     });
-    test('S-14512 a phone completion wins over an earlier wrist discard', () async {
+    test('S-14641 a later phone completion loses to the wrist\'s discard', () async {
       final harness = _Harness(sessionId: 's-w1');
       final engine = await harness.runningEngine();
       await engine.createSession(
@@ -3267,6 +3267,7 @@ void main() {
       );
       await engine.abandonSession();
       expect(engine.session!.status, WatchSessionStatus.abandoned);
+      final discardedAt = engine.session!.recordedAt;
       harness.clock.advance(const Duration(minutes: 30));
 
       final applied = await engine.applyMessage(
@@ -3275,17 +3276,166 @@ void main() {
           messageId: 'msg-phone-end',
           state: WatchLifecycleState.completed,
           sentAt: _iso(harness.clock.now),
+          at: _iso(harness.clock.now),
         ),
       );
 
-      expect(applied, isTrue);
+      expect(applied, isFalse, reason: 'a later end loses (D-14630)');
       expect(
         engine.session!.status,
-        WatchSessionStatus.completed,
-        reason: 'the phone finished that workout, so the wrist shows it '
-            'finished whatever the two clocks say (D-14601 as amended); this '
-            'is S-14512\'s divergence, whose phone frames carry a wall clock '
-            'and whose wrist ending carries the harness clock',
+        WatchSessionStatus.abandoned,
+        reason: 'the earlier end instant wins whether it is the discard or '
+            'the finish (D-14630); this is A-146-15\'s interim, superseded',
+      );
+      expect(
+        engine.session!.recordedAt,
+        discardedAt,
+        reason: 'the ending that stands keeps its own instant',
+      );
+    });
+  });
+
+  group('S-14640 an earlier discard replaces the twin\'s completed', () {
+    test('S-14640 the held completion flips to the earlier abandon, and later '
+        'frames change nothing', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.appendObservation(_setEvent(harness.clock, entryId: 'e-1'));
+
+      // The phone's finish is t2; the wrist's discard is t1, half a minute
+      // earlier, and it stayed on the wrist while the link was down.
+      harness.clock.advance(const Duration(minutes: 1));
+      final t2 = harness.clock.now;
+      await engine.finishSession();
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(engine.session!.recordedAt, t2);
+      final t1 = t2.subtract(const Duration(seconds: 30));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-wrist-discard',
+          state: WatchLifecycleState.abandoned,
+          sentAt: _iso(t2),
+          at: _iso(t1),
+        ),
+      );
+
+      expect(applied, isTrue, reason: 'the earlier ending replaces the later');
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.abandoned,
+        reason: 'a discard stamped before the finish is the ending that was '
+            'always the truth (D-14630)',
+      );
+      expect(
+        engine.session!.recordedAt,
+        t1,
+        reason: 'the ending row records the moment it claims',
+      );
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['e-1'],
+        reason: 'an ending never drops a logged set',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.round),
+        isNull,
+        reason: 'an end stops every timer of the session',
+      );
+
+      // A stale start and an active snapshot arrive afterwards: neither
+      // returns a terminal session to `active`.
+      harness.clock.advance(const Duration(minutes: 1));
+      expect(
+        await engine.applyMessage(
+          _lifecycleOf(
+            's-w1',
+            messageId: 'msg-stale-start',
+            state: WatchLifecycleState.started,
+            sentAt: _iso(harness.clock.now),
+            at: _iso(harness.clock.now),
+          ),
+        ),
+        isFalse,
+      );
+      harness.clock.advance(const Duration(minutes: 1));
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-stale-snapshot',
+          sentAt: _iso(harness.clock.now),
+          entries: [_entry('e-1')],
+        ),
+      );
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      expect(engine.session!.recordedAt, t1);
+      expect(engine.timerFor(WatchTimerKind.round), isNull);
+      expect(engine.entries.map((entry) => entry.entryId), ['e-1']);
+    });
+
+    test('S-14641 both arrival orders converge on the same ending', () async {
+      Future<(String, DateTime)> ending({
+        required bool discardFirst,
+      }) async {
+        final harness = _Harness(sessionId: 's-w1');
+        final engine = await harness.runningEngine();
+        await engine.createSession(
+          modality: null,
+          exercises: [_exercise('sx-bench')],
+        );
+        harness.clock.advance(const Duration(minutes: 1));
+        final t1 = harness.clock.now;
+
+        if (discardFirst) {
+          await engine.abandonSession();
+          harness.clock.advance(const Duration(seconds: 30));
+          final t2 = harness.clock.now;
+          await engine.applyMessage(
+            _lifecycleOf(
+              's-w1',
+              messageId: 'msg-late-finish',
+              state: WatchLifecycleState.completed,
+              sentAt: _iso(t2),
+              at: _iso(t2),
+            ),
+          );
+        } else {
+          harness.clock.advance(const Duration(seconds: 30));
+          final t2 = harness.clock.now;
+          await engine.finishSession();
+          await engine.applyMessage(
+            _lifecycleOf(
+              's-w1',
+              messageId: 'msg-late-discard',
+              state: WatchLifecycleState.abandoned,
+              sentAt: _iso(t2),
+              at: _iso(t1),
+            ),
+          );
+        }
+        return (engine.session!.status, engine.session!.recordedAt);
+      }
+
+      // The wrist's abandon lands on its own clock in both orders; the phone's
+      // finish is `t2` whatever order the frames arrived in.
+      final discardFirst = await ending(discardFirst: true);
+      final finishFirst = await ending(discardFirst: false);
+
+      expect(discardFirst.$1, WatchSessionStatus.abandoned);
+      expect(
+        finishFirst.$1,
+        discardFirst.$1,
+        reason: 'the arrival order does not decide the ending (D-14630)',
+      );
+      expect(
+        finishFirst.$2,
+        discardFirst.$2,
+        reason: 'both orders keep the same ending instant',
       );
     });
   });

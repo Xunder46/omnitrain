@@ -569,4 +569,146 @@ void main() {
       );
     });
   });
+
+  group('S-14643 an earlier discard wins on both stacks', () {
+    const String sessionId = 's-sw-b';
+    final DateTime discardAt = _now.add(const Duration(minutes: 10));
+    final DateTime finishAt = _now.add(const Duration(minutes: 11));
+
+    Map<String, Object?> snapshot() => {
+          'protocolVersion': 1,
+          'messageId': 'msg-b-snapshot',
+          'sessionId': sessionId,
+          'type': 'session_snapshot',
+          'origin': 'phone',
+          'sentAt': utcIso(_now),
+          'payload': {
+            'sessionId': sessionId,
+            'revision': 3,
+            'status': 'active',
+            'currentExerciseIndex': 0,
+            'exercises': [
+              {
+                'sessionExerciseId': 'sx-bench',
+                'exerciseId': 'ex-barbell-bench-press',
+                'name': 'Barbell Bench Press',
+                'capabilities': ['sets', 'reps', 'load'],
+              },
+            ],
+            'entries': [],
+            'timers': {},
+          },
+        };
+
+    Map<String, Object?> ending(
+      String state,
+      String messageId,
+      DateTime at, {
+      required String origin,
+    }) =>
+        {
+          'protocolVersion': 1,
+          'messageId': messageId,
+          'sessionId': sessionId,
+          'type': 'session_lifecycle',
+          'origin': origin,
+          'sentAt': utcIso(at),
+          'payload': {'state': state, 'at': utcIso(at)},
+        };
+
+    /// The phone's and the wrist's status after [stream], in that order, with
+    /// the wrist's winning record so a caller can see which ending it kept.
+    Future<List<String?>> statusesAfter(
+      List<Map<String, Object?>> stream, {
+      void Function(WatchSessionEngine engine)? inspect,
+    }) async {
+      final phone = SyncSessionReconciler.fromSnapshot(
+        _payloadOf(snapshot()),
+      );
+      final engine = WatchSessionEngine(
+        InMemoryWatchSessionStore(),
+        clock: () => _now,
+      );
+      await engine.applyMessage(snapshot());
+      for (final message in stream) {
+        phone.applyMessage(message);
+        await engine.applyMessage(message);
+      }
+      inspect?.call(engine);
+      return [phone.convergedState()['status'] as String?, engine.session!.status];
+    }
+
+    test('S-14643 an earlier discard beats a later completion in either order',
+        () async {
+      final discard = ending('abandoned', 'msg-d', discardAt, origin: 'watch');
+      final finish = ending('completed', 'msg-c', finishAt, origin: 'phone');
+
+      String? keptRecord;
+      expect(
+        await statusesAfter(
+          [finish, discard],
+          inspect: (engine) => keptRecord = engine.session!.recordId,
+        ),
+        ['abandoned', 'abandoned'],
+        reason: 'S-14643 the discard was the earlier end, so the later '
+            'completion cannot store the workout on either stack',
+      );
+      expect(keptRecord, 'life-msg-d',
+          reason: 'S-14643 the wrist keeps the discard it was right about');
+      expect(
+        await statusesAfter([discard, finish]),
+        ['abandoned', 'abandoned'],
+        reason: 'S-14643 the same two endings in the other order agree',
+      );
+    });
+
+    test('S-14643 a later discard loses to an earlier completion in either order',
+        () async {
+      final finish = ending('completed', 'msg-c', discardAt, origin: 'phone');
+      final discard =
+          ending('abandoned', 'msg-d', finishAt, origin: 'watch');
+
+      expect(
+        await statusesAfter([finish, discard]),
+        ['completed', 'completed'],
+        reason: 'S-14643 the rule is the earlier instant, not a preference for '
+            'abandoned: a finish already recorded stands',
+      );
+      expect(
+        await statusesAfter([discard, finish]),
+        ['completed', 'completed'],
+        reason: 'S-14643 the same two endings in the other order agree',
+      );
+    });
+
+    test('S-14643 the shared fixture reads abandoned on both stacks', () async {
+      final fixture = fixtures.firstWhere(
+        (fixture) => (fixture['name']! as String)
+            .toLowerCase()
+            .contains('an earlier discard wins'),
+        orElse: () => throw StateError(
+          'fixtures/reconciliation/discard_before_finish.json is missing',
+        ),
+      );
+      final phone = SyncSessionReconciler.fromSnapshot(
+        _payloadOf(_asObject(fixture['snapshot'])),
+      );
+      final engine = WatchSessionEngine(
+        InMemoryWatchSessionStore(),
+        clock: () => _now,
+      );
+      await engine.applyMessage(_asObject(fixture['snapshot']));
+      for (final message in _streamOf(fixture)) {
+        phone.applyMessage(message);
+        await engine.applyMessage(message);
+      }
+
+      expect(phone.convergedState()['status'], 'abandoned');
+      expect(engine.session!.status, 'abandoned');
+      expect(
+        _structureOf(engine.session!.exercises, _payloadOf(engine.sessionSnapshot()!)),
+        _structureOf(_objectsIn(phone.convergedState()['exercises']), phone.convergedState()),
+      );
+    });
+  });
 }

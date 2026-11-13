@@ -831,6 +831,133 @@ void main() {
     });
   });
 
+  group('S-14633 a winning discard leaves no phantom workout', () {
+    const sessionId = 's-gone-1';
+
+    /// The set the wrist logged on the session the earlier discard deleted:
+    /// staged, and never applied.
+    Future<void> stageSet(WorkoutRepository repository, String entryId) =>
+        repository.stageWatchInboxEntry(
+          WatchInboxEntry(
+            entryId: entryId,
+            watchSessionId: sessionId,
+            kind: WatchInboxEntry.kindSet,
+            origin: WatchInboxEntry.originWatch,
+            payload: Map<String, dynamic>.from(
+              _set(entryId, loggedAt: '2026-09-25T10:05:00.000Z'),
+            ),
+            receivedAtMs: _phoneNow.millisecondsSinceEpoch,
+          ),
+        );
+
+    test('S-14633 an abandoned end consumes the staged set and writes no '
+        'history', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      await stageSet(repository, 'e-gone-1');
+
+      await _deliverEach(_inbox(repository, transport), sessionId, [
+        _end(
+          sessionId,
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:30:00.000Z',
+          status: 'abandoned',
+        ),
+      ]);
+
+      expect(
+        await repository.getSession(sessionId),
+        isNull,
+        reason:
+            'S-14633 the wrist discarded this workout, so the phone holds none '
+            'of it — the row the earlier discard deleted stays deleted',
+      );
+      expect(
+        await repository.getAllSessions(),
+        isEmpty,
+        reason: 'S-14633 no calendar or stats row ever appears',
+      );
+      final staged = await repository.getWatchInboxEntriesForSession(sessionId);
+      expect(
+        [for (final row in staged) row.entryId],
+        ['e-gone-1', 'end-$sessionId'],
+        reason: 'the fixture: the set and the end are both staged',
+      );
+      expect(
+        staged.map((row) => row.appliedAtMs != null),
+        everyElement(isTrue),
+        reason: 'S-14633 D-133: an abandoned session is consumed, not held',
+      );
+      expect(
+        transport.receiptedEntryIds.toSet(),
+        {'e-gone-1', 'end-$sessionId'},
+        reason: 'S-14633 every consumed row is acknowledged',
+      );
+    });
+
+    test('S-14633 a late set with no end creates no history either', () async {
+      final repository = await _repository();
+      final inbox = _inbox(repository, CaptureTransport());
+      await _deliverEach(inbox, sessionId, [
+        _end(
+          sessionId,
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:30:00.000Z',
+          status: 'abandoned',
+        ),
+      ]);
+
+      await _deliverEach(
+        inbox,
+        sessionId,
+        [_set('e-gone-late', loggedAt: '2026-09-25T10:40:00.000Z')],
+        tag: 'late',
+      );
+
+      expect(
+        await repository.getSession(sessionId),
+        isNull,
+        reason:
+            'S-14633 a set that arrives after the discard imports nothing: '
+            'without a live session it is not a workout',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-gone-late'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-14633 and it is consumed rather than retried for ever',
+      );
+      expect(await repository.getAllSessions(), isEmpty);
+    });
+
+    test('S-14633 a merge into a session whose row is gone consumes, never '
+        're-creates', () async {
+      final repository = await _repository();
+      await stageSet(repository, 'e-gone-2');
+
+      final result = await WatchSessionImporter(repository: repository)
+          .apply(sessionId, phoneOwnsSession: true);
+
+      expect(
+        await repository.getSession(sessionId),
+        isNull,
+        reason:
+            'D-14632 the winning discard deleted the row, and nothing a merge '
+            'does may write it back',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-gone-2'))?.appliedAtMs,
+        isNotNull,
+        reason: 'D-133 a row with no session to merge into is consumed',
+      );
+      expect(
+        result.historyChanged,
+        isFalse,
+        reason: 'S-14633 a consumed merge is no history change',
+      );
+      expect(await repository.getAllSessions(), isEmpty);
+    });
+  });
+
   group('S-58 a band assist crosses into history with its sign', () {
     test('S-58 a set logged at −20 kg imports at −20 kg and sums −160', () async {
       final repository = await _repository();

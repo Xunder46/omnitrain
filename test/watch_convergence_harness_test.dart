@@ -827,12 +827,25 @@ void _b2Tests() {
         isEmpty,
         reason: 'an end is final on each side\n${runner.traceText()}',
       );
+      // D-14630: under the harness's clocks the wrist's discard reads earlier
+      // than the phone's finish, so the pair converges on the discard — and the
+      // phone's finished row goes with it.
       expect(
-        [report.phoneStatus[label], report.wristStatus[label]],
-        everyElement(isNotNull),
-        reason: 'both sides end the workout\n${runner.traceText()}',
+        report.phoneStatus[label],
+        WatchSessionStatus.abandoned,
+        reason: 'the wrist\'s earlier discard wins\n${runner.traceText()}',
+      );
+      expect(
+        report.wristStatus[label],
+        WatchSessionStatus.abandoned,
+        reason: runner.traceText(),
       );
       expect(report.converged, isTrue, reason: runner.traceText());
+      expect(
+        await harness.repository.getSession(sessionId),
+        isNull,
+        reason: 'a winning discard deletes the finished workout (D-14632)',
+      );
     },
   );
 

@@ -883,9 +883,20 @@ class WatchSessionAdoptionBridge {
       // side has, so a later `completed` moves the end (and re-settles the
       // estimate). A discard adds no training time, so `abandoned` moves
       // nothing, and a session this phone ended itself keeps its own end (G1).
+      //
+      // D-14630: the earlier end instant decides between a discard and a
+      // finish, so a wrist discard stamped before the end the phone holds is
+      // not a second end at all — it is the ending that was always the truth,
+      // and the finished row goes. An equal instant is D-14601's tie-break,
+      // which `completed` wins.
       if (state == WatchLifecycleState.completed) {
         final atMs = _instantMs(_asObject(envelope['payload'])['at']);
         if (atMs != null) await target.catchUpEndedSession(atMs);
+      } else if (state == WatchLifecycleState.abandoned) {
+        final atMs = _instantMs(_asObject(envelope['payload'])['at']);
+        if (atMs != null && atMs < held.endedAtMs!) {
+          await target.discardCurrentSession();
+        }
       }
       return;
     }

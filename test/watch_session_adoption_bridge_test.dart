@@ -40,6 +40,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/block_types.dart';
 import 'package:omnitrain/core/constants/capability.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
+import 'package:omnitrain/core/services/health_platform_service.dart';
+import 'package:omnitrain/core/services/health_sync_service.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
@@ -59,7 +61,12 @@ import 'package:omnitrain/watch/session/watch_records.dart';
 import 'helpers/repository_harness.dart';
 import 'helpers/sync_protocol_harness.dart';
 import 'helpers/watch_capture_import_harness.dart'
-    show CaptureTransport, importedEfforts, importedRows, importedSegment;
+    show
+        CaptureTransport,
+        importedEfforts,
+        importedRows,
+        importedSegment,
+        observationsUp;
 
 /// The phone's clock, pinned: every row an adoption writes carries the same
 /// stamps on both implementations, which is what makes the parity dump compare.
@@ -146,7 +153,11 @@ class _Phone {
   final List<({String held, String offered})> skipped;
 }
 
-Future<_Phone> _phone(WorkoutRepository repository) async {
+Future<_Phone> _phone(
+  WorkoutRepository repository, {
+  HealthSyncService? healthSync,
+  DateTime Function()? clock,
+}) async {
   final failures = <Object>[];
   final skipped = <({String held, String offered})>[];
   final transport = CaptureTransport();
@@ -160,6 +171,7 @@ Future<_Phone> _phone(WorkoutRepository repository) async {
     transport: WatchInboxStagingTransport(inner: transport, inbox: inbox),
     snapshot: watchSessionPlaceholder,
     validator: _validator,
+    clock: clock,
   );
   final bridge = WatchSessionAdoptionBridge(
     repository: repository,
@@ -167,7 +179,7 @@ Future<_Phone> _phone(WorkoutRepository repository) async {
     onFailure: (error, stack) => failures.add(error),
     onSkipped: (held, offered) => skipped.add((held: held, offered: offered)),
   );
-  final state = WorkoutState(repository);
+  final state = WorkoutState(repository, healthSync: healthSync);
   bridge.bindWorkoutState(state);
 
   return _Phone(
@@ -318,6 +330,67 @@ List<Object?> _sentLadder(Map<String, Object?> envelope) => [
   for (final slot in (envelope['payload'] as Map)['exercises'] as List)
     (slot as Map)['sessionExerciseId'],
 ];
+
+/// One wrist `session_lifecycle`, with the instant it claims when it claims
+/// one.
+Map<String, Object?> _lifecycle(
+  String sessionId, {
+  required String state,
+  int? atMs,
+  String messageId = 'msg-lifecycle',
+}) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': 'session_lifecycle',
+  'origin': 'watch',
+  'sentAt': '2026-10-05T10:00:00Z',
+  'payload': {
+    'state': state,
+    if (atMs != null)
+      'at': DateTime.fromMillisecondsSinceEpoch(atMs, isUtc: true)
+          .toIso8601String(),
+  },
+};
+
+/// A health store that accepts every request and remembers what it was asked
+/// to do, so a test can say a workout was written and then deleted.
+class _RecordingHealthPlatform implements HealthPlatformService {
+  final List<HealthWorkoutDraft> writes = [];
+  final List<({DateTime start, DateTime end})> deletes = [];
+
+  @override
+  Future<bool> requestWritePermission() async => true;
+
+  @override
+  Future<bool> requestReadPermission() async => true;
+
+  @override
+  Future<bool> writeWorkout(HealthWorkoutDraft workout) async {
+    writes.add(workout);
+    return true;
+  }
+
+  @override
+  Future<bool> deleteWorkouts(DateTime start, DateTime end) async {
+    deletes.add((start: start, end: end));
+    return true;
+  }
+
+  @override
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  ) async => HealthEffortOutcome.written;
+
+  @override
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end) async => true;
+
+  @override
+  Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since) async =>
+      const [];
+}
 
 void main() {
   test('S-1 a wrist snapshot becomes the phone\'s in-progress session', () async {
@@ -2318,5 +2391,223 @@ void main() {
           reason: 'a plan of one is still a plan');
       expect(slotIn(projected, roundSlot)['plannedEfforts'], 1);
     });
+  });
+
+  // Plan 146c (D-14630, D-14631, D-14632) — when both devices ended the same
+  // workout, the EARLIER end decides. A discard that happened before the finish
+  // the phone recorded deletes the workout; an instant that is not earlier than
+  // that finish changes nothing (D-14601's tie-break keeps `completed`).
+  group('O-7 an earlier discard deletes a finished workout', () {
+    /// The wrist's own discard, at the instant it happened.
+    final t1 = _adoptedAt
+        .add(const Duration(minutes: 2))
+        .millisecondsSinceEpoch;
+
+    /// The phone's own finish, later than the wrist's discard.
+    final t2 = _adoptedAt
+        .add(const Duration(minutes: 5))
+        .millisecondsSinceEpoch;
+
+    /// One set the wrist logged on the adopted session.
+    Map<String, Object?> wristSet(String entryId, String loggedAt) => {
+      'entryId': entryId,
+      'eventId': entryId,
+      'kind': 'set',
+      'loggedAt': loggedAt,
+      'sessionExerciseId': 'sl-1',
+      'exerciseId': 'ex-bench',
+      'reps': 8,
+      'loadKg': 40,
+    };
+
+    /// The lifecycle frames the phone sent after [sentBefore], by session id.
+    List<Object?> lifecyclesSince(_Phone phone, int sentBefore) => [
+      for (final frame in phone.transport.sent.skip(sentBefore))
+        if (frame['type'] == 'session_lifecycle') frame['sessionId'],
+    ];
+
+    test(
+      "S-14630 the wrist's earlier discard deletes the phone's finished "
+      'workout',
+      () async {
+        final repository = await _repository();
+        final health = _RecordingHealthPlatform();
+        final phone = await _phone(
+          repository,
+          healthSync: HealthSyncService(
+            platform: health,
+            repository: repository,
+            isWriteEnabled: () => true,
+            isReadEnabled: () => false,
+          ),
+          clock: () => DateTime.fromMillisecondsSinceEpoch(t2, isUtc: true),
+        );
+        await phone.router.receive(_s1Envelope());
+        final sessionId = phone.state.currentSession!.id;
+        final startedAtMs = phone.state.currentSession!.startedAtMs;
+
+        // The wrist logs a set while the two are paired: one staged row the
+        // discard has to account for.
+        await phone.router.receive(
+          observationsUp(
+            sessionId,
+            [wristSet('e-w1-1', '2026-10-05T12:01:00Z')],
+            messageId: 'msg-set-1',
+          ),
+        );
+        expect(
+          phone.state.currentSession?.id,
+          sessionId,
+          reason: 'the fixture: a wrist set does not end the session',
+        );
+
+        // The phone finishes its copy at 12:05 — its own end, and the one
+        // Health holds a workout for.
+        await phone.state.endSession(atMs: t2);
+        expect(
+          health.writes.single.end,
+          DateTime.fromMillisecondsSinceEpoch(t2),
+          reason:
+              'the fixture: the finish wrote the workout Health must remove',
+        );
+        await phone.mirror.reportLifecycleFor(
+          sessionId,
+          WatchLifecycleState.completed,
+        );
+        expect(
+          phone.mirror.status,
+          WatchSessionStatus.completed,
+          reason: 'the fixture: the mirror holds the phone\'s own end',
+        );
+        final sentBefore = phone.transport.sent.length;
+
+        // The link rises and the wrist's earlier discard — its own act at 12:02
+        // — arrives.
+        await phone.router.receive(
+          _lifecycle(
+            sessionId,
+            state: WatchLifecycleState.abandoned,
+            atMs: t1,
+            messageId: 'msg-abandoned',
+          ),
+        );
+        await pumpEventQueue();
+
+        expect(
+          await repository.getSession(sessionId),
+          isNull,
+          reason:
+              'D-14630 the earlier end is the discard, so the phone\'s '
+              'finished row goes',
+        );
+        expect(
+          await repository.getAllSessions(),
+          isEmpty,
+          reason:
+              'S-14630 the calendar lists nothing: the workout is gone, not '
+              'merely ended',
+        );
+        expect(
+          phone.state.currentSession,
+          isNull,
+          reason: 'S-14630 the summary the finish opened is closed with the row',
+        );
+        expect(phone.state.hasActiveSession, isFalse);
+        expect(
+          health.deletes,
+          hasLength(1),
+          reason:
+              'D-14631 the delete reaches Health through onSessionDeleted, '
+              'whether or not the toggle moved since the write',
+        );
+        expect(
+          health.deletes.single.start,
+          DateTime.fromMillisecondsSinceEpoch(startedAtMs),
+        );
+        expect(
+          health.deletes.single.end,
+          DateTime.fromMillisecondsSinceEpoch(t2),
+          reason: 'D-14631 the delete\'s window is the one the write used',
+        );
+        expect(
+          phone.mirror.status,
+          WatchSessionStatus.abandoned,
+          reason: 'S-14630 the wrist reads w1 abandoned',
+        );
+
+        // Nothing of the workout may come back: the same set again finds no
+        // session to be imported into.
+        await phone.router.receive(
+          observationsUp(
+            sessionId,
+            [wristSet('e-w1-1', '2026-10-05T12:01:00Z')],
+            messageId: 'msg-set-again',
+          ),
+        );
+        expect(
+          await repository.getAllSessions(),
+          isEmpty,
+          reason: 'S-14630 a redelivered set resurrects no workout',
+        );
+        expect(
+          lifecyclesSince(phone, sentBefore),
+          isEmpty,
+          reason:
+              'S-14630 the wrist\'s own frame retired the owed end, so the '
+              'delete announces no lifecycle for w1',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-14632 an arriving discard at exactly the held end instant is ignored',
+      () async {
+        final repository = await _repository();
+        final phone = await _phone(
+          repository,
+          clock: () => DateTime.fromMillisecondsSinceEpoch(t2, isUtc: true),
+        );
+        await phone.router.receive(_s1Envelope());
+        final sessionId = phone.state.currentSession!.id;
+        await phone.state.endSession(atMs: t2);
+        await phone.mirror.reportLifecycleFor(
+          sessionId,
+          WatchLifecycleState.completed,
+        );
+        final sentBefore = phone.transport.sent.length;
+
+        await phone.router.receive(
+          _lifecycle(
+            sessionId,
+            state: WatchLifecycleState.abandoned,
+            atMs: t2,
+            messageId: 'msg-abandoned-tie',
+          ),
+        );
+        await pumpEventQueue();
+
+        expect(
+          (await repository.getSession(sessionId))?.endedAtMs,
+          t2,
+          reason:
+              'S-14632 an instant that is not earlier is no discard: the '
+              'workout stays, at the end it recorded',
+        );
+        expect(phone.state.currentSession?.id, sessionId);
+        expect(
+          phone.state.currentSession?.endedAtMs,
+          t2,
+          reason: 'S-14632 the tie moves no end either',
+        );
+        expect(
+          phone.mirror.status,
+          WatchSessionStatus.completed,
+          reason: 'D-14601 completed wins a tie, whichever frame arrives first',
+        );
+        expect(lifecyclesSince(phone, sentBefore), isEmpty);
+        expect(phone.failures, isEmpty);
+      },
+    );
   });
 }

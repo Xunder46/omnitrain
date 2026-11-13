@@ -755,30 +755,26 @@ class WatchSessionEngine {
 
     if (_isTerminal(session.status)) {
       if (!ends) return false;
-      // A completion outranks a discard whatever the two clocks say: the phone
-      // finished that workout, and a finished workout is never deleted (D-14601
-      // as amended by the Phase 1 review — the phone ignores an arriving
-      // `abandoned` for an ended row, and this is the same rule seen from the
-      // wrist's side). Instants still order two endings of the same status.
-      if (status != WatchSessionStatus.completed ||
-          session.status != WatchSessionStatus.abandoned) {
-        if (!at.isBefore(session.recordedAt)) {
-          final sameInstant = at.isAtSameMomentAs(session.recordedAt);
-          if (sameInstant &&
-              _incomingEndWinsATie(
-                held: session,
-                incomingStatus: status,
-                incomingMessageId: envelope['messageId']! as String,
-              )) {
-            // An equal instant is not a total order on its own (D-14601 as
-            // amended): the tie-break applies the incoming end, so both sides
-            // keep the same ending whichever arrived first.
-          } else {
-            // The same end delivered again: applied (nothing to write), so the
-            // caller does not read the repeat as a refusal (S-81). A later end
-            // for the same session is refused whole (D-14601).
-            return sameInstant && status == session.status;
-          }
+      // D-14630: the earlier end instant wins, whatever the two statuses are —
+      // a discard stamped before the finish the phone holds is the ending that
+      // was always the truth, so the wrist's copy reads `abandoned`. An equal
+      // instant is D-14601's tie-break, which `completed` wins.
+      if (!at.isBefore(session.recordedAt)) {
+        final sameInstant = at.isAtSameMomentAs(session.recordedAt);
+        if (sameInstant &&
+            _incomingEndWinsATie(
+              held: session,
+              incomingStatus: status,
+              incomingMessageId: envelope['messageId']! as String,
+            )) {
+          // An equal instant is not a total order on its own (D-14601 as
+          // amended): the tie-break applies the incoming end, so both sides
+          // keep the same ending whichever arrived first.
+        } else {
+          // The same end delivered again: applied (nothing to write), so the
+          // caller does not read the repeat as a refusal (S-81). A later end
+          // for the same session is refused whole (D-14601).
+          return sameInstant && status == session.status;
         }
       }
     }

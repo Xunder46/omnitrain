@@ -791,8 +791,10 @@ public final class WatchSessionEngine: ObservableObject {
     /// A session that has reached `completed` or `abandoned` never returns to
     /// `active`: a `started` — or a position change — for it is ignored whole (no
     /// row, no end), and a terminal state that arrived later than the held ending
-    /// loses to it. Only an earlier end replaces the held one, because the first
-    /// ending is the moment the workout actually finished.
+    /// loses to it. An earlier end replaces the held one whatever its status
+    /// (D-14630), because the earlier instant is the moment the workout actually
+    /// ended; an equal instant goes to `completed`, then to the smaller
+    /// `messageId` (D-14601).
     ///
     /// Nothing is echoed back — the phone is telling the watch what it decided,
     /// and answering it with the same news would be noise.
@@ -820,27 +822,24 @@ public final class WatchSessionEngine: ObservableObject {
 
         if Self.isTerminal(session.status) {
             if !ends { return false }
-            // A completion outranks a discard whatever the two clocks say: the
-            // phone finished that workout, and a finished workout is never
-            // deleted (D-14601 as amended by the Phase 1 review — the phone
-            // ignores an arriving `abandoned` for an ended row, and this is the
-            // same rule seen from the wrist's side). Instants still order two
-            // endings of the same status.
-            if status != WatchSessionStatus.completed
-                || session.status != WatchSessionStatus.abandoned {
-                if !(at < session.recordedAt) {
-                    let sameInstant = at == session.recordedAt
-                    if !(sameInstant && Self.incomingEndWinsATie(
-                        held: session,
-                        incomingStatus: status,
-                        incomingMessageId: messageId
-                    )) {
-                        // The same end delivered again: applied (nothing to
-                        // write), so the caller does not read the repeat as a
-                        // refusal. A later end for the same session is refused
-                        // whole (D-14601).
-                        return sameInstant && status == session.status
-                    }
+            // D-14630: the earlier end instant decides, whatever its status — a
+            // discard the wrist stamped before the phone's completion is the
+            // ending that was always the truth, and the finished workout must
+            // not survive. A later or equal-instant ending loses unless the tie
+            // arms the equal-instant tie-break (completed before abandoned, then
+            // the smaller messageId, D-14601).
+            if !(at < session.recordedAt) {
+                let sameInstant = at == session.recordedAt
+                if !(sameInstant && Self.incomingEndWinsATie(
+                    held: session,
+                    incomingStatus: status,
+                    incomingMessageId: messageId
+                )) {
+                    // The same end delivered again: applied (nothing to
+                    // write), so the caller does not read the repeat as a
+                    // refusal. A later end for the same session is refused
+                    // whole (D-14601).
+                    return sameInstant && status == session.status
                 }
             }
         }

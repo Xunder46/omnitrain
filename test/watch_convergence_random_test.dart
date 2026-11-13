@@ -365,8 +365,8 @@ void main() {
     );
   });
 
-  test('S-14508 the sweep can be made red: a wrist that ignores a completed '
-      'lifecycle diverges seeds that converge', () async {
+  test('S-14508 the sweep can be made red: a wrist that never hears an end '
+      'diverges seeds that converge', () async {
     const lastSeed = 60;
     final redSeeds = <int>[];
     final unmatched = <int>[];
@@ -378,12 +378,12 @@ void main() {
         seed,
         allowedActions: kShippingActions,
       );
-      final engines = <_MutationWrist>[];
+      final engines = <_DeafToEndWrist>[];
       final mutated = await ConvergenceRun.runSeed(
         seed,
         allowedActions: kShippingActions,
         engineFactory: (args) {
-          final engine = _MutationWrist(args);
+          final engine = _DeafToEndWrist(args);
           engines.add(engine);
           return engine;
         },
@@ -429,7 +429,7 @@ void main() {
       if (!clean.report.converged) return false;
       final mutated = await ConvergenceRun.replayActions(
         actions,
-        engineFactory: _MutationWrist.new,
+        engineFactory: _DeafToEndWrist.new,
       );
       return mutated.report.statusMismatches.isNotEmpty ||
           mutated.report.absorbingViolations.isNotEmpty;

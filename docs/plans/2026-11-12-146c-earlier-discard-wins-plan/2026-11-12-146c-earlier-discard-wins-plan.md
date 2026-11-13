@@ -479,11 +479,18 @@ if item 6 fixed: `.github/copilot/scripts/macos/gateway.sh test test/watch_sessi
 
 ## Progress
 
-- [ ] Phase 1: the phone obeys the owner's rule (@developer)
-- [ ] Phase 2: the twin and the contract restore the instant rule (@developer)
-- [ ] Phase 3: the Swift engine obeys the same rule (@developer)
-- [ ] Phase 4: O-6 proof and the sweep's new shape (@developer)
-- [ ] Phase 5: Health re-write after an end-time move (@developer)
+- [x] Phase 1: the phone obeys the owner's rule (@developer) — **Complete.** The ended branch deletes
+      on an earlier `abandoned`; S-14630/S-14632/S-14633 green (133 passed), S-14630 RED AT HEAD.
+- [x] Phase 2: the twin and the contract restore the instant rule (@developer) — **Complete.** Interim
+      removed, S-14640/S-14641 added, S-14512 re-pointed (`phone abandoned wrist abandoned`), new
+      fixture + manifest row + PROTOCOL bullet and version row, S-14643 cross-stack green (210 + 233
+      passed), S-14643 RED AT HEAD.
+- [x] Phase 3: the Swift engine obeys the same rule (@developer) — **Complete.** Skip removed,
+      `applySnapshotExclusive` verified no-change, S-14650 both orders added, S-14651 walks the fixture;
+      1388 Swift tests green, S-14650 RED AT HEAD.
+- [ ] Phase 4: O-6 proof and the sweep's new shape (@developer) — not started (this run stopped after
+      Phase 3, as briefed)
+- [ ] Phase 5: Health re-write after an end-time move (@developer) — not started
 
 ## Assumption Log
 
@@ -504,6 +511,27 @@ Conductor marks each RATIFIED (promote to a D-x) or REVERT (remediation).)*
 - **A-146c-04 (planner, Phase 4 items 4-5): absorbing and entries are deferred, not planned as fixes.**
   Both classes have no minimal trace under `kShippingActions` (A-146-25); planning a fix without a
   reproduction would be a guess. The phase plans the shrink-and-classify step only.
+- **A-146c-05 (executor, Phase 1): the comparison is the strict `<`.** An arriving `abandoned` at
+  exactly the held end instant is ignored, so D-14601's tie-break stays the only decider at equality;
+  `<=` was tried as a mutation and S-14632 caught it.
+- **A-146c-06 (executor, Phase 1): the delete reuses `discardCurrentSession()`.** It is the phone's one
+  discard path (in-memory rest close, row delete, `onSessionDeleted` Health delete); a bespoke delete
+  would have had to reproduce all three.
+- **A-146c-07 (executor, Phase 1): the adoption-bridge test injects the mirror's `clock`.**
+  `_phone(...)` gained `{clock}` because the mirror's default wall clock (2026-11-12) made the test's
+  `at` values read *earlier*, so S-14632 failed for a clock reason rather than the tie rule.
+- **A-146c-08 (executor, Phase 2): the new fixture carries no timer.** The plan's fixture text asked for
+  a running rest with `expected.timers: {}`, but the Dart reconciler does not stop timers on a
+  lifecycle end while the Swift engine does — one fixture cannot satisfy both walkers with a timer in
+  it. The rest was dropped (the case is about the instant rule only); everything else is as planned.
+- **A-146c-09 (executor, Phase 2): the reconciler needed no change.** `SyncSessionReconciler`'s
+  `_incomingEndWins` was already instant-based with the D-14601 tie-break — verified by reading the
+  code and by S-14643's phone half going green with no edit there.
+- **A-146c-10 (executor, Phase 2): the harness clock decides S-14512.** The wrist's discard is stamped
+  by the TestClock and the phone's finish by the device clock, so the discard reads earlier: the pair
+  converges on `abandoned` and the phone's row is deleted. Re-pointed, as A-146c-02 anticipated.
+- **A-146c-11 (executor, Phase 3): `applySnapshotExclusive` verified no-change.** Its terminal branch
+  is already `sentAt < existing.recordedAt` plus the tie-break, with no status skip.
 
 ## Feedback
 

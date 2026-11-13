@@ -1037,6 +1037,11 @@
       "property": "the first end is final, whatever arrives after it"
     },
     {
+      "path": "reconciliation/discard_before_finish.json",
+      "scenario": "S-14642",
+      "property": "an earlier discard wins over a later finish"
+    },
+    {
       "path": "reconciliation/duplicate_slot_add.json",
       "scenario": "S-005",
       "property": "a slot id can be introduced only once"

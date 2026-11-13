@@ -226,31 +226,79 @@ final class WatchEndedIsFinalTests: XCTestCase {
         XCTAssertEqual(sessionEnds(engine).count, 1, "a session has one end, whatever ends it")
     }
 
-    func testS14601ACompletionOutranksADiscardWhateverTheInstantsSay() async throws {
+    func testS14650AnEarlierDiscardBeatsALaterCompletionInEitherOrder() async throws {
         let harness = Harness()
         let (engine, t0) = await settledSession(harness)
+        let discardAt = t0.addingTimeInterval(60)
+        let finishAt = t0.addingTimeInterval(61)
 
-        let discarded = (try? await engine.applyMessage(
-            ending("s-watch-1", messageId: "msg-discard", state: WatchLifecycleState.abandoned, at: t0.addingTimeInterval(60))
-        )) ?? false
-        XCTAssertTrue(discarded)
         let finished = (try? await engine.applyMessage(
-            ending("s-watch-1", messageId: "msg-finish", state: WatchLifecycleState.completed, at: t0.addingTimeInterval(61))
+            ending("s-watch-1", messageId: "msg-finish", state: WatchLifecycleState.completed, at: finishAt)
         )) ?? false
-        XCTAssertTrue(finished, "a completion outranks a held discard: a finished workout is never deleted")
-        XCTAssertEqual(engine.session?.status, WatchSessionStatus.completed)
+        XCTAssertTrue(finished, "the first ending the phone reports applies")
+        let discarded = (try? await engine.applyMessage(
+            ending("s-watch-1", messageId: "msg-discard", state: WatchLifecycleState.abandoned, at: discardAt)
+        )) ?? false
+        XCTAssertTrue(
+            discarded,
+            "an earlier discard replaces the held completion: it is the ending that was always the truth (D-14630)"
+        )
+        XCTAssertEqual(
+            engine.session?.status,
+            WatchSessionStatus.abandoned,
+            "the later completion cannot store a workout the user had already discarded"
+        )
+        XCTAssertEqual(engine.session?.recordedAt, discardAt, "the row keeps the discard's instant")
+        XCTAssertEqual(engine.session?.recordId, "life-msg-discard", "the wrist keeps the discard it was right about")
 
+        // The same two endings in the other order reach the same state.
         let other = Harness()
         let (otherEngine, otherT0) = await settledSession(other)
-        let otherFinished = (try? await otherEngine.applyMessage(
-            ending("s-watch-1", messageId: "msg-finish", state: WatchLifecycleState.completed, at: otherT0.addingTimeInterval(60))
+        let otherDiscarded = (try? await otherEngine.applyMessage(
+            ending("s-watch-1", messageId: "msg-discard", state: WatchLifecycleState.abandoned, at: otherT0.addingTimeInterval(60))
         )) ?? false
-        XCTAssertTrue(otherFinished)
+        XCTAssertTrue(otherDiscarded)
+        let laterFinish = (try? await otherEngine.applyMessage(
+            ending("s-watch-1", messageId: "msg-finish", state: WatchLifecycleState.completed, at: otherT0.addingTimeInterval(61))
+        )) ?? true
+        XCTAssertFalse(laterFinish, "a later completion loses to the held discard")
+        XCTAssertEqual(otherEngine.session?.status, WatchSessionStatus.abandoned)
+        XCTAssertEqual(otherEngine.session?.recordedAt, otherT0.addingTimeInterval(60))
+    }
+
+    func testS14650ALaterDiscardLosesToAnEarlierCompletionInEitherOrder() async throws {
+        let harness = Harness()
+        let (engine, t0) = await settledSession(harness)
+        let finishAt = t0.addingTimeInterval(60)
+        let discardAt = t0.addingTimeInterval(61)
+
+        let finished = (try? await engine.applyMessage(
+            ending("s-watch-1", messageId: "msg-finish", state: WatchLifecycleState.completed, at: finishAt)
+        )) ?? false
+        XCTAssertTrue(finished)
+        let laterDiscard = (try? await engine.applyMessage(
+            ending("s-watch-1", messageId: "msg-discard", state: WatchLifecycleState.abandoned, at: discardAt)
+        )) ?? true
+        XCTAssertFalse(
+            laterDiscard,
+            "the rule is the earlier instant, not a preference for `abandoned`: a finish recorded first stands"
+        )
+        XCTAssertEqual(engine.session?.status, WatchSessionStatus.completed)
+        XCTAssertEqual(engine.session?.recordId, "life-msg-finish")
+
+        // The discard heard first, then the earlier completion arriving late.
+        let other = Harness()
+        let (otherEngine, otherT0) = await settledSession(other)
         let otherDiscarded = (try? await otherEngine.applyMessage(
             ending("s-watch-1", messageId: "msg-discard", state: WatchLifecycleState.abandoned, at: otherT0.addingTimeInterval(61))
-        )) ?? true
-        XCTAssertFalse(otherDiscarded, "a discard cannot delete a completion, however much later it lands")
+        )) ?? false
+        XCTAssertTrue(otherDiscarded)
+        let earlierFinish = (try? await otherEngine.applyMessage(
+            ending("s-watch-1", messageId: "msg-finish", state: WatchLifecycleState.completed, at: otherT0.addingTimeInterval(60))
+        )) ?? false
+        XCTAssertTrue(earlierFinish, "the earlier completion replaces the held discard")
         XCTAssertEqual(otherEngine.session?.status, WatchSessionStatus.completed)
+        XCTAssertEqual(otherEngine.session?.recordId, "life-msg-finish")
     }
 
     func testS14601ATiedEndingResolvesOnTheSmallerMessageId() async throws {
