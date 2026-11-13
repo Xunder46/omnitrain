@@ -389,10 +389,11 @@ public final class WatchLoggingState {
     /// energy together.
     public var sensorLabels: WatchSensorLabels {
         let readings = self.readings
+        let window = distanceWindow(for: readings.distanceMeters)
         return WatchSensorLabels(
             heartRate: readings.heartRate.map { String(Int($0.rounded())) },
-            distance: distanceLabel(for: readings.distanceMeters),
-            pace: paceLabel(for: readings.distanceMeters),
+            distance: distanceLabel(for: window?.metres),
+            pace: paceLabel(for: window),
             activeEnergy: activeEnergyLabel(for: readings.activeEnergyKcal)
         )
     }
@@ -446,6 +447,25 @@ public final class WatchLoggingState {
         return String(format: "%.1f", converted)
     }
 
+    /// The distance the header prints and the pace divides, with the instant
+    /// its window began (plan 150, D-15011).
+    ///
+    /// The Distance field's own figure wherever the surface has one — the
+    /// effort's window distance over the effort window's start (D-2205) — so
+    /// the header and the row beneath it are one number rather than two runs of
+    /// the platform counter (S-15011). Everywhere else Task D's pairing stands:
+    /// the newest stored `gps` total, timed from the first fix of its own run
+    /// (D-15007, S-15013). Nil when there is no distance at all.
+    private func distanceWindow(
+        for sessionMetres: Double?
+    ) -> (metres: Double, startedAt: Date?)? {
+        if isMeasured(WatchMetricKey.distance), let timer = workTimer {
+            return (windowDistanceMeters(), timer.startedAt)
+        }
+        guard let sessionMetres else { return nil }
+        return (sessionMetres, paceWindowStart())
+    }
+
     /// The burned total, as the wrist prints it, and only once at least half a
     /// kilocalorie has been measured (plan 134e D-13481).
     private func activeEnergyLabel(for kilocalories: Double?) -> String? {
@@ -453,27 +473,30 @@ public final class WatchLoggingState {
         return "\(Int(kilocalories.rounded())) kcal burned"
     }
 
-    /// The pace `metres` has been covered at, or nil when there is not yet a
+    /// The pace `window` has been covered at, or nil when there is not yet a
     /// distance worth dividing, no window to divide it over, or a pace slower
     /// than standing still.
     ///
-    /// The time and the distance describe ONE window (plan 150, D-15007):
-    /// `metres` is the counter the header's distance prints, and the time runs
-    /// from the first fix of the counter's current run to now. A relaunch
-    /// restarts the platform's cumulative total under the same session, so the
-    /// whole session's clock divided by the new run's metres read a short walk
-    /// as hours a mile (S-15007). Past the ceiling there is no pace to show and
-    /// the line is absent, as it is below the floor (S-15008); the format is
-    /// minutes and seconds only, so it can never print hours (S-15010).
-    private func paceLabel(for metres: Double?) -> String? {
-        guard let metres, metres >= WatchSensorPace.minDistanceMeters,
-              let windowStart = paceWindowStart()
+    /// The time and the distance describe ONE window (plan 150, D-15007,
+    /// D-15011): on a distance effort it is the effort's own, the very window
+    /// the Distance field prints (S-15012); without one it is the counter-run
+    /// pairing Task D set. A relaunch restarts the platform's cumulative total
+    /// under the same session, so the whole session's clock divided by the new
+    /// run's metres read a short walk as hours a mile (S-15007). Past the
+    /// ceiling there is no pace to show and the line is absent, as it is below
+    /// the floor (S-15008); the format is minutes and seconds only, so it can
+    /// never print hours (S-15010).
+    private func paceLabel(
+        for window: (metres: Double, startedAt: Date?)?
+    ) -> String? {
+        guard let window, window.metres >= WatchSensorPace.minDistanceMeters,
+              let windowStart = window.startedAt
         else { return nil }
 
         let elapsed = clock().timeIntervalSince(windowStart)
         guard elapsed > 0 else { return nil }
 
-        let unitsCovered = metres / WatchMetricStepping.metresPerUnit(units.distanceUnit)
+        let unitsCovered = window.metres / WatchMetricStepping.metresPerUnit(units.distanceUnit)
         let secondsPerUnit = Int((elapsed / unitsCovered).rounded())
         guard secondsPerUnit < WatchSensorPace.maxSecondsPerUnit else { return nil }
         assert(secondsPerUnit / 60 < 60, "a pace's minutes part is below sixty")

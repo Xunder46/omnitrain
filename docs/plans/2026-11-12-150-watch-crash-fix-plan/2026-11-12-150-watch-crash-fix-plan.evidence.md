@@ -240,11 +240,78 @@ Not changed: the header's distance is still the session reading and the Distance
 the effort's window (D-2205). Making the header print the effort window too is a product
 decision for the owner, not part of "pace first".
 
+## Task E — the header's distance (2026-11-14)
+
+The owner decided the two numbers must match ("Yes, match them"): after a restart the header
+read `0.1 mi` beside a field of `0.9 mi`. The header now prints the Distance row's own figure
+and the pace divides that same window (D-15011); where no such row exists it keeps Task D's
+pairing exactly (D-15012).
+
+### Where the numbers come from
+
+- The field is `measuredValue(distance)` → `windowDistanceMeters()` (`workTimer.startedAt` →
+  now, D-2205), printed by `displayValue` as `%.1f` of the unit's metres.
+- The header was `readings.distanceMeters` — `WatchSensorRecorder.readings`, the newest `gps`
+  row — a different window, so a restart made them disagree.
+- Task E introduces one private accessor, `distanceWindow(for:)`, that answers both labels:
+  the effort window when `isMeasured(distance)` and a work clock exist, else the counter
+  total plus `paceWindowStart()`. `distanceLabel` and `displayValue` format the same metres
+  with the same `%.1f`, so header and field cannot drift.
+
+### Fixture
+
+The owner's walk, with the counter restarting inside the effort window: Start, 800 m, the
+counter restarts, 0.1 mi since. The window covers 960.9 m in 240 s. Old header: the newest
+run's `0.1 mi`, paced over its two minutes — `20:00 /mi`. New: `0.6 mi`, `6:42 /mi`.
+
+### Red before the change
+
+`prove-red HEAD swift-test --filter WatchHeaderDistanceTests -- watch/watchos/Tests/WatchSessionEngineTests/WatchHeaderDistanceTests.swift`
+
+```
+gateway: prove-red: RED AT HEAD (exit 1)
+WatchHeaderDistanceTests.swift:120: error: … XCTAssertEqual failed: ("Optional("0.1")") is not equal to ("Optional("0.6")") - S-15011 the header's distance is the Distance field's own figure, got "0.1" beside "0.6"
+WatchHeaderDistanceTests.swift:126: error: … XCTAssertEqual failed: ("Optional("0.1")") is not equal to ("Optional("0.6")") - S-15011 the effort's 960.9 m window, not the counter's newest 0.1 mi run
+WatchHeaderDistanceTests.swift:147: error: … XCTAssertEqual failed: ("Optional("20:00 /mi")") is not equal to ("Optional("6:42 /mi")") - S-15012 240 s over the window's 0.597 mi, not the restart's own 20:00 /mi
+WatchHeaderDistanceTests.swift:219: error: … XCTAssertEqual failed: ("Optional("0.2")") is not equal to ("Optional("1.0")") - S-15014 kilometres: header and field are one number
+WatchHeaderDistanceTests.swift:225: error: … XCTAssertEqual failed: ("Optional("12:26 /km")") is not equal to ("Optional("4:10 /km")") - S-15014 the same window's time per kilometre
+Executed 4 tests, with 7 failures
+```
+
+S-15013 passes at HEAD because it guards the *preserved* fallback; a mutation proves it —
+`distanceWindow`'s fallback line changed from `return (sessionMetres, paceWindowStart())` to
+`return (windowDistanceMeters(), workTimer?.startedAt)`:
+
+```
+WatchHeaderDistanceTests.swift:186: error: … XCTAssertEqual failed: ("Optional("0.0")") is not equal to ("Optional("0.1")")
+WatchHeaderDistanceTests.swift:191: error: … XCTAssertNil/Equal failed: ("nil") is not equal to ("Optional("20:00 /mi"))
+Executed 1 test, with 2 failures
+```
+
+The exact original line was restored and the four tests re-ran green.
+
+### Green after the change
+
+- `swift-test --filter WatchHeaderDistanceTests` → **4 tests, 0 failures**.
+- `WatchSensorPaceTests` and `WatchSensorRecordingTests` (the 5:00 /km S-003 case) stayed
+  green unchanged in the full run.
+- Full `swift-test` → **Executed 1401 tests, with 0 failures** (11.303 s); baseline was 1397,
+  the four new scenarios are the difference. Re-run after the mutation was restored:
+  **1401 tests, 0 failures** (10.974 s).
+
+### Not changed
+
+- The heart-rate and energy parts of the header, the Distance row, `WatchSensorPace`'s floor
+  and ceiling, and the log payload all keep their rules.
+- No doc page states the header's distance or pace rule (`docs/state_management/watch_sensors.md`
+  describes the readout's storage, not its window; `docs/navigation_and_screens.md` and the
+  wrist QA walkthrough name no header figure), so no doc changed.
+
 ## Verification
 
-- Full `swift-test` after the change: **Executed 1394 tests, with 0 failures**
-  (11.081 s), including the 5 new adoption scenarios and the new race test.
-- One pre-existing test went red on the first full run and is now green:
+- Latest full `swift-test` after Task E: **Executed 1401 tests, with 0 failures**
+  (11.303 s) — 1394 after Task A, 1397 after Task D, 1401 after Task E.
+- One pre-existing test went red during Task A's first full run and is now green:
   `WatchSessionEngineTests.testS004NoMutatingOperationExistsAnywhereInTheModule`
   rejected the box's `removeAll`/`replace` names; renamed to `prune`/`fill`
   rather than touching the scan (see Task A above).

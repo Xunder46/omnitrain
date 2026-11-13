@@ -13,34 +13,23 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
   finished; after it, a nil or different session discards it as today.
 - **C** — pace `/mi` look only, no change; cause and the unavailable-pace convention
   reported.
+- **D** — the header's pace divides the metres it prints by the time of their own run, with
+  a ceiling; `watch/watchos` tests only.
+- **E** — the header's distance is the Distance field's own figure, so the two agree after
+  a restart; `watch/watchos` only.
 
 ## Decisions
 
-- **D-15001** A private `final class WatchSensorSampleLog` holds the array behind an
-  `NSLock`; `snapshot()`, `append`, `contains`, `removeAll(where:)`, `replace`. The lock
-  never wraps an `await`; the store append stays outside it.
-- **D-15002** `append` is a no-op for a `recordId` already held, matching the store's
-  own "same reading twice is a no-op" rule, so the racy read-then-append pair in
-  `appendSensorSample` can go.
-- **D-15003** Other engine arrays (`storedObservations`, `storedTimers`, `sessionRows`)
-  are inspected and reported in the evidence file, not changed: this plan is the sensor
-  list only.
-- **D-15004** The coordinator gets `adoptedBeforeRestore`, set by `recover`'s adoption,
-  cleared by `restoreFinished(_:)` or by the first non-nil session; `apply` returns
-  early only while it is set and the session is nil. `WatchWorkoutLifecycle.action` stays
-  pure and unchanged.
-- **D-15005** `ContentView.restore()` calls `workout.restoreFinished(session: engine.session)`
-  after `engine.restore()`; app-target code, not compiled by `swift test`.
-- **D-15006** `HealthKitWorkoutStore.adoptInProgress()` and `WatchAppDelegate`'s recovery
-  are read and reported, changed only if the nil-adoption cause is clear and small.
-- **D-15007** Pace divides one window by itself: the header's metres (the newest stored
-  `gps` reading) over the time since the first fix of that counter's current run — the
-  run after the last total that went backwards (D-125's restart rule). `session.startedAt`
-  is no longer read (S-15007).
-- **D-15008** `WatchSensorPace.maxSecondsPerUnit` (3600, **exclusive**) is the ceiling: at
-  or past it there is no pace and the line is absent, like a reading below the 50 m floor
-  (S-15008). The label is formatted minutes:seconds, never `WatchLoggingState.clock`, so
-  it cannot grow an hours field; the boundary is S-15010.
+- **D-15001** A private `WatchSensorSampleLog` holds the array behind an `NSLock` (`snapshot`, `append`, `contains`, `prune`, `fill`); the lock never wraps an `await`, the store append stays outside it.
+- **D-15002** `append` is a no-op for a `recordId` already held, matching the store's "same reading twice is a no-op" rule, so the racy read-then-append pair can go.
+- **D-15003** Other engine arrays (`storedObservations`, `storedTimers`, `sessionRows`) are inspected and reported in the evidence, not changed: this is the sensor list only.
+- **D-15004** The coordinator gets `adoptedBeforeRestore`, set by `recover`'s adoption and cleared by `restoreFinished(_:)` or the first non-nil session; `apply` returns early only while it is set and the session is nil. `WatchWorkoutLifecycle.action` stays pure.
+- **D-15005** `ContentView.restore()` calls `workout.restoreFinished(session: engine.session)` after `engine.restore()`; app-target code, not compiled by `swift test`.
+- **D-15006** `HealthKitWorkoutStore.adoptInProgress()` and `WatchAppDelegate`'s recovery are read and reported, changed only if the nil-adoption cause is clear and small.
+- **D-15007** Pace divides one window by itself: the header's metres (the newest stored `gps` reading) over the time since the first fix of that counter's current run — the run after the last total that went backwards (D-125). `session.startedAt` is no longer read (S-15007).
+- **D-15008** `WatchSensorPace.maxSecondsPerUnit` (3600, **exclusive**) is the ceiling: at or past it there is no pace and the line is absent, like a reading below the 50 m floor (S-15008). The label is minutes:seconds, never `clock`, so it cannot grow an hours field (S-15010).
+- **D-15011** One private `distanceWindow(for:)` answers the header's distance and its pace: with the Distance row it is `windowDistanceMeters()` over `workTimer.startedAt`, the field's own figure, so the two cannot drift (S-15011, S-15014); the pace divides that window (S-15012).
+- **D-15012** "The row exists" is `isMeasured(WatchMetricKey.distance)` plus a running work clock. Without it the header keeps D-15007/D-15008 exactly: the newest stored `gps` total over its own run (S-15013).
 
 ## Scenarios
 
@@ -59,6 +48,14 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
 - **S-15008** 160 m over two hours: the distance still shows, the pace is nil.
 - **S-15009** The existing `5:00 /km` case (`WatchSensorRecordingTests`, S-003) stays green.
 - **S-15010** Exactly an hour a unit: nil; one second inside it: `59:59 /km`.
+- **S-15011** A counter restart inside the effort window, read after a relaunch: the
+  header's distance string equals the Distance field's (`0.6 mi`, not the run's `0.1`).
+- **S-15012** That fixture's pace is the window's time over its metres (`6:42 /mi`), one
+  colon, not the restarting run's `20:00 /mi`.
+- **S-15013** No effort window (no Start): the header keeps the counter's own run
+  (`0.1 mi`, `20:00 /mi`).
+- **S-15014** The unit switch keeps header and field equal (`0.6 mi` / `1.0 km`), and the
+  pace follows (`6:42 /mi` / `4:10 /km`).
 
 ## Files
 
@@ -80,35 +77,33 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
 | B — adopted-workout hook + tests | Complete — S-15002…S-15006 green, S-15004/5 mutation-proved |
 | C — pace look | Complete — look only, cause and convention in the evidence file |
 | D — pace window + ceiling | Complete — S-15007…S-15010 green, red at HEAD; suite 1397/0 |
+| E — header distance = Distance field | Complete — S-15011…S-15014 green, red at HEAD; suite 1401/0 |
 
 ## Assumption Log
 
-- **A-15001** The box's mutators are named `prune`/`fill`, not `removeAll`/`replace`:
-  `WatchSessionEngineTests.testS004NoMutatingOperationExistsAnywhereInTheModule` forbids a
-  `func` named for a mutation anywhere in the module. The scan is a guard, so the name moved.
-- **A-15002** The fake platform logs an adoption in a separate `adopts` count rather than in
-  `calls`: the pre-existing S-1503 asserts the exact `calls` array, and an adoption is state,
-  not a call the coordinator makes.
-- **A-15003** `.claude/crew.md` was modified (+2 lines) before this run started; the pipeline
-  owns `.claude/`, so it is reported and left alone.
-- **A-15004** The second-relaunch `workout_recovered` line is the first relaunch's discard seen
-  again, not a second defect: the fix is Task B (evidence, Task B findings).
-- **A-15005** Task D's ids start at D-15007/S-15007: D-15006 and S-15006 are Task B's, and
-  renumbering committed work would break its evidence. The ceiling is Swift-only, not in
-  `watch/contract/`, since the brief is the watch's pace; the Flutter readout is untouched.
+- **A-15001** The box's mutators are `prune`/`fill`, not `removeAll`/`replace`: `testS004NoMutatingOperationExistsAnywhereInTheModule` forbids a mutation-named `func`, so the name moved.
+- **A-15002** The fake platform logs an adoption in a separate `adopts` count, not in `calls`: the pre-existing S-1503 asserts the exact `calls` array.
+- **A-15003** `.claude/crew.md` was modified (+2 lines) before this run started; the pipeline owns `.claude/`, so it is reported and left alone.
+- **A-15004** The second-relaunch `workout_recovered` line is the first relaunch's discard seen again, not a second defect (Task B).
+- **A-15005** Task D's ids start at D-15007/S-15007 so committed Task B ids keep their evidence; the ceiling is Swift-only, since the Flutter readout is untouched.
+- **A-15006** S-15013 is a preservation guard, green at HEAD by design; a fallback mutation turns it red, then the exact line is restored.
+- **A-15007** Before Start the effort window is 0 and the Distance row is absent, so the header keeps the counter's figure and no second number shows.
 
-## Task D — pace (2026-11-13)
+## Tasks D and E — pace and the header's distance (2026-11-13/14)
 
-The pace now pairs the header's distance with that counter's own window: the newest `gps`
-reading's run, timed from its first fix (D-15007), so the restarting counter can no longer
-meet the session's whole clock. Past an hour a unit (D-15008) there is no pace: absent, not
-a placeholder, and the label is minutes:seconds so it cannot print hours.
+The header now prints the Distance field's own figure (D-15011): one private accessor
+answers both labels — the effort window's metres over the effort window's start wherever
+the Distance row exists (D-15012), else Task D's pairing, the newest `gps` total timed
+from the first fix of its own run (D-15007), so a restarting counter can no longer meet
+the session's whole clock. Past an hour a unit (D-15008) there is no pace, and the label
+is minutes:seconds so it cannot print hours.
 
 - Files: `watch/watchos/Sources/WatchSessionEngine/WatchLoggingState.swift`,
-  `watch/watchos/Tests/WatchSessionEngineTests/WatchSensorPaceTests.swift` (new). No doc
-  page states the pace rule, so no doc changed; `ContentView.swift` untouched.
-- Scenarios S-15007…S-15010; red at HEAD (`3:50:00 /mi`, `12:36:15 /km`, `1:00:00 /km`),
-  green after; full suite **1397 tests, 0 failures** (evidence, Task D).
+  `WatchSensorPaceTests.swift` (D, new), `WatchHeaderDistanceTests.swift` (E, new). No doc
+  page states the header rule, so no doc changed; `ContentView.swift` untouched.
+- D: S-15007…S-15010, red at HEAD (`3:50:00 /mi`, `12:36:15 /km`, `1:00:00 /km`), green
+  after; suite 1397/0. E: S-15011…S-15014, red at HEAD (`0.1` vs `0.6`, `20:00 /mi` vs
+  `6:42 /mi`), green after; suite **1401 tests, 0 failures** (evidence, Task E).
 
 ## QA for the owner
 
@@ -117,3 +112,6 @@ a placeholder, and the label is minutes:seconds so it cannot print hours.
 2. Kill the app mid-walk and relaunch: the Fitness workout from before the relaunch must
    stay open (no `workout_end discarded` in Diagnostics) and the session must reach the
    phone.
+3. On that relaunched screen the header's distance must read the same as the Distance row
+   (`0.6 mi` beside `0.6 mi`), and its pace that window's time — about `6:42 /mi` for the
+   owner's walk, not the restarting counter's `20:00 /mi`.
