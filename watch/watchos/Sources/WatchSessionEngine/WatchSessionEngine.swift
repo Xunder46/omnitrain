@@ -62,6 +62,13 @@ public final class WatchSessionEngine: ObservableObject {
     /// which is what makes re-delivery a store no-op *and* what lets `restore`
     /// rebuild "already applied" from storage instead of from memory.
     private static let changePrefix = "chg-"
+    /// D-15403: how far apart two end instants may be and still be the same
+    /// instant. The phone and the wrist each stamp the end of one workout from
+    /// their own clock, so a second or two between the stamps is skew, not a
+    /// decision: only an end earlier by more than this replaces the held ending
+    /// on its own. Mirrors `kEndSkewToleranceMs` in `lib/core/sync_protocol/end_skew.dart`.
+    static let endSkewTolerance: TimeInterval = 2
+
     private static let snapshotPrefix = "snap-"
     static let timerPrefix = "tms-"
     static let lifecyclePrefix = "life-"
@@ -626,11 +633,14 @@ public final class WatchSessionEngine: ObservableObject {
         // payload status replaces the held one only when its instant — the
         // snapshot's `sentAt`, the D-120 end moment — is earlier than the held
         // terminal row's, or the two share an instant and the tie-break applies.
+        // D-15403: "an instant" means within `endSkewTolerance` — two clocks
+        // stamping one workout's end land a second or two apart — so only an
+        // end earlier by more than the tolerance replaces on its own.
         let terminalHeld = existing.map { Self.isTerminal($0.status) } ?? false
         var replacing = false
         if let existing, terminalHeld, Self.isTerminal(status) {
-            replacing = sentAt < existing.recordedAt
-                || (sentAt == existing.recordedAt
+            replacing = sentAt < existing.recordedAt.addingTimeInterval(-Self.endSkewTolerance)
+                || (abs(sentAt.timeIntervalSince(existing.recordedAt)) <= Self.endSkewTolerance
                     && Self.incomingEndWinsATie(
                         held: existing,
                         incomingStatus: status,
@@ -843,9 +853,12 @@ public final class WatchSessionEngine: ObservableObject {
             // ending that was always the truth, and the finished workout must
             // not survive. A later or equal-instant ending loses unless the tie
             // arms the equal-instant tie-break (completed before abandoned, then
-            // the smaller messageId, D-14601).
-            if !(at < session.recordedAt) {
-                let sameInstant = at == session.recordedAt
+            // the smaller messageId, D-14601). D-15403: an instant within
+            // `endSkewTolerance` of the held one is the same instant, so only an
+            // end earlier by more than the tolerance replaces on its own.
+            if !(at < session.recordedAt.addingTimeInterval(-Self.endSkewTolerance)) {
+                let sameInstant = abs(at.timeIntervalSince(session.recordedAt))
+                    <= Self.endSkewTolerance
                 if !(sameInstant && Self.incomingEndWinsATie(
                     held: session,
                     incomingStatus: status,

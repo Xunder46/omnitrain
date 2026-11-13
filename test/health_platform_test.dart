@@ -20,6 +20,9 @@
 //   * S-14670 / S-14671 (plan 146c) — a catch-up that moves a finished
 //     session's end rewrites its one workout to the new span, idempotently;
 //     a session the phone never wrote is left entirely alone.
+//   * S-15409 / S-15410 (plan 154 D) — a rewrite whose new write fails (false
+//     or thrown) puts the previous span back, so the delete cannot lose the
+//     workout; a rewrite whose delete is refused writes nothing back either.
 
 import 'dart:async';
 import 'dart:convert';
@@ -66,6 +69,12 @@ class _FakeHealthPlatform implements HealthPlatformService {
   bool readGranted = true;
   bool writeSucceeds = true;
   bool throwOnWrite = false;
+
+  /// Plan 154 D-15404: the `writeWorkout` call numbers (1-based) that fail or
+  /// throw, so a rewrite's own write can fail while the restore after it lands.
+  final Set<int> failWriteCalls = {};
+  final Set<int> throwWriteCalls = {};
+  int writeCalls = 0;
 
   int writePermissionRequests = 0;
   int readPermissionRequests = 0;
@@ -114,10 +123,11 @@ class _FakeHealthPlatform implements HealthPlatformService {
 
   @override
   Future<bool> writeWorkout(HealthWorkoutDraft workout) async {
-    if (throwOnWrite) {
+    writeCalls++;
+    if (throwOnWrite || throwWriteCalls.contains(writeCalls)) {
       throw Exception('platform write exploded');
     }
-    if (!writeSucceeds) return false;
+    if (!writeSucceeds || failWriteCalls.contains(writeCalls)) return false;
     writtenWorkouts.add(workout);
     store.add(workout);
     return true;
@@ -798,6 +808,84 @@ void main() {
       expect(rig.platform.deleteRequests, isEmpty);
       expect(rig.platform.writtenWorkouts, isEmpty);
       expect(await ledger(rig), isEmpty);
+    });
+
+    test('S-15409 a rewrite whose new write fails puts the previous span '
+        'back', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+      expect(rig.platform.store.single.end, at(30), reason: 'the fixture');
+      // The fixture's write is call 1; the rewrite's own write is call 2 and
+      // fails, so the restore that follows is call 3.
+      rig.platform.failWriteCalls.add(2);
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(
+        rig.platform.store,
+        hasLength(1),
+        reason: 'S-15409 the delete already ran, so the restore is what keeps '
+            'the workout there at all',
+      );
+      expect(rig.platform.store.single.start, at(0));
+      expect(
+        rig.platform.store.single.end,
+        at(30),
+        reason: 'S-15409 the span it had before the failed move',
+      );
+      expect(rig.platform.store.single.title, 'Heavy day');
+      expect(
+        [for (final c in rig.platform.effortRequests) c.$1],
+        ['clear', 'set'],
+        reason: 'S-15409 the clear took the rating off, so the restore puts it '
+            'back with the span',
+      );
+      expect(
+        await ledger(rig),
+        ['s-rewrite'],
+        reason: 'S-15409 the ledger is never touched: the session stays written',
+      );
+    });
+
+    test('S-15409 a rewrite whose new write throws restores the span too '
+        'and swallows the throw', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+      rig.platform.throwWriteCalls.add(2);
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(rig.platform.store, hasLength(1));
+      expect(rig.platform.store.single.end, at(30));
+      expect(rig.platform.store.single.start, at(0));
+      expect(await ledger(rig), ['s-rewrite']);
+    });
+
+    test('S-15410 a refused delete writes nothing back either', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+      rig.platform.deleteSucceeds = false;
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(
+        rig.platform.writeCalls,
+        1,
+        reason: 'S-15410 the fixture write is the only one: nothing was deleted, '
+            'so nothing needs restoring and the new span is not written',
+      );
+      expect(rig.platform.store.single.end, at(30));
+      expect(rig.platform.effortRequests, isEmpty);
+      expect(await ledger(rig), ['s-rewrite']);
     });
   });
 

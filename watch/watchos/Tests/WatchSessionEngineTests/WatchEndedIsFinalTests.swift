@@ -229,7 +229,7 @@ final class WatchEndedIsFinalTests: XCTestCase {
     func testS14650AnEarlierDiscardBeatsALaterCompletionInEitherOrder() async throws {
         let harness = Harness()
         let (engine, t0) = await settledSession(harness)
-        let discardAt = t0.addingTimeInterval(60)
+        let discardAt = t0.addingTimeInterval(57)
         let finishAt = t0.addingTimeInterval(61)
 
         let finished = (try? await engine.applyMessage(
@@ -255,7 +255,7 @@ final class WatchEndedIsFinalTests: XCTestCase {
         let other = Harness()
         let (otherEngine, otherT0) = await settledSession(other)
         let otherDiscarded = (try? await otherEngine.applyMessage(
-            ending("s-watch-1", messageId: "msg-discard", state: WatchLifecycleState.abandoned, at: otherT0.addingTimeInterval(60))
+            ending("s-watch-1", messageId: "msg-discard", state: WatchLifecycleState.abandoned, at: otherT0.addingTimeInterval(57))
         )) ?? false
         XCTAssertTrue(otherDiscarded)
         let laterFinish = (try? await otherEngine.applyMessage(
@@ -263,14 +263,14 @@ final class WatchEndedIsFinalTests: XCTestCase {
         )) ?? true
         XCTAssertFalse(laterFinish, "a later completion loses to the held discard")
         XCTAssertEqual(otherEngine.session?.status, WatchSessionStatus.abandoned)
-        XCTAssertEqual(otherEngine.session?.recordedAt, otherT0.addingTimeInterval(60))
+        XCTAssertEqual(otherEngine.session?.recordedAt, otherT0.addingTimeInterval(57))
     }
 
     func testS14650ALaterDiscardLosesToAnEarlierCompletionInEitherOrder() async throws {
         let harness = Harness()
         let (engine, t0) = await settledSession(harness)
         let finishAt = t0.addingTimeInterval(60)
-        let discardAt = t0.addingTimeInterval(61)
+        let discardAt = t0.addingTimeInterval(63)
 
         let finished = (try? await engine.applyMessage(
             ending("s-watch-1", messageId: "msg-finish", state: WatchLifecycleState.completed, at: finishAt)
@@ -290,7 +290,7 @@ final class WatchEndedIsFinalTests: XCTestCase {
         let other = Harness()
         let (otherEngine, otherT0) = await settledSession(other)
         let otherDiscarded = (try? await otherEngine.applyMessage(
-            ending("s-watch-1", messageId: "msg-discard", state: WatchLifecycleState.abandoned, at: otherT0.addingTimeInterval(61))
+            ending("s-watch-1", messageId: "msg-discard", state: WatchLifecycleState.abandoned, at: otherT0.addingTimeInterval(63))
         )) ?? false
         XCTAssertTrue(otherDiscarded)
         let earlierFinish = (try? await otherEngine.applyMessage(
@@ -299,6 +299,67 @@ final class WatchEndedIsFinalTests: XCTestCase {
         XCTAssertTrue(earlierFinish, "the earlier completion replaces the held discard")
         XCTAssertEqual(otherEngine.session?.status, WatchSessionStatus.completed)
         XCTAssertEqual(otherEngine.session?.recordId, "life-msg-finish")
+    }
+
+    // MARK: - D-15403: two clocks, one ending
+
+    /// D-15403: two end stamps within `kEndSkewToleranceMs` are the SAME
+    /// instant, so D-14601's tie-break decides — a finished workout is not
+    /// deleted by a second the two clocks could not have told apart. Beyond the
+    /// tolerance the earlier end wins, as D-14630 says.
+    func testS15408AnEndInsideTheToleranceIsTheSameInstantOnBothPaths() async throws {
+        for offset in [1.0, 2.0, 3.0] {
+            let withinTolerance = offset <= 2.0
+
+            // The lifecycle path: the wrist discarded, then the phone's finish
+            // arrives stamped `offset` later.
+            let lifecycleHarness = Harness()
+            let (lifecycleEngine, t0) = await settledSession(lifecycleHarness)
+            let discardAt = t0.addingTimeInterval(60)
+            let discarded = (try? await lifecycleEngine.applyMessage(
+                ending("s-watch-1", messageId: "msg-discard", state: WatchLifecycleState.abandoned, at: discardAt)
+            )) ?? false
+            XCTAssertTrue(discarded, "the wrist's own discard applies")
+            let finishAt = discardAt.addingTimeInterval(offset)
+            _ = try? await lifecycleEngine.applyMessage(
+                ending("s-watch-1", messageId: "msg-finish", state: WatchLifecycleState.completed, at: finishAt)
+            )
+            XCTAssertEqual(
+                lifecycleEngine.session?.status,
+                withinTolerance ? WatchSessionStatus.completed : WatchSessionStatus.abandoned,
+                "\(offset) s: an end inside the tolerance is the same instant, so the tie-break (completed) decides; beyond it the earlier end stands"
+            )
+
+            // The snapshot path: the phone's finish is held, then a snapshot
+            // stamped `offset` earlier claims the session was discarded.
+            let snapshotHarness = Harness()
+            let (snapshotEngine, s0) = await settledSession(snapshotHarness)
+            let finishHeld = s0.addingTimeInterval(60)
+            let finished = (try? await snapshotEngine.applyMessage(
+                ending("s-watch-1", messageId: "msg-finish", state: WatchLifecycleState.completed, at: finishHeld)
+            )) ?? false
+            XCTAssertTrue(finished, "the phone's finish applies first")
+            let snapshotAt = finishHeld.addingTimeInterval(-offset)
+            _ = try? await snapshotEngine.applyMessage(
+                snapshot(
+                    "s-watch-1",
+                    messageId: "msg-phone-snapshot",
+                    sentAt: snapshotAt,
+                    status: WatchSessionStatus.abandoned,
+                    exercises: [exercise("sx-bench")]
+                )
+            )
+            XCTAssertEqual(
+                snapshotEngine.session?.status,
+                withinTolerance ? WatchSessionStatus.completed : WatchSessionStatus.abandoned,
+                "\(offset) s: a snapshot inside the tolerance lands on the same instant and loses the tie; beyond it, the earlier end replaces the held one (D-14630)"
+            )
+            XCTAssertEqual(
+                snapshotEngine.session?.recordedAt,
+                withinTolerance ? finishHeld : snapshotAt,
+                "\(offset) s: the ending that stands keeps its own instant"
+            )
+        }
     }
 
     func testS14601ATiedEndingResolvesOnTheSmallerMessageId() async throws {

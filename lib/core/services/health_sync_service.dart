@@ -118,6 +118,11 @@ class HealthSyncService {
   /// phone draft would lose them, so such a session is left entirely alone
   /// (D-14636, S-14671). Best-effort like the other paths: nothing throws, and
   /// a delete or write the platform refuses ends the call silently.
+  ///
+  /// D-15404: the delete runs before the write, so a new write that fails —
+  /// returns false or throws — writes the span the workout had back again
+  /// instead of leaving it deleted. The ledger is not touched either way: the
+  /// session is still written, and the store still holds a workout for it.
   Future<void> rewriteWorkout(
     TrainingSession session, {
     required int previousEndedAtMs,
@@ -135,6 +140,9 @@ class HealthSyncService {
         math.max(previousEndedAtMs, endedAtMs),
       );
       final end = DateTime.fromMillisecondsSinceEpoch(endedAtMs);
+      // Read before the delete: a repository failure here must not leave the
+      // workout deleted with nothing written in its place (D-15404).
+      final activityKind = await _activityKindOf(session);
 
       final deleted = await _platform.deleteWorkouts(start, windowEnd);
       if (!deleted) return;
@@ -145,9 +153,55 @@ class HealthSyncService {
         debugPrint('Health workout effort clear skipped: $e');
       }
 
+      var written = false;
+      try {
+        written = await _platform.writeWorkout(
+          HealthWorkoutDraft(
+            activityKind: activityKind,
+            start: start,
+            end: end,
+            title: session.title,
+          ),
+        );
+      } catch (e) {
+        debugPrint('Health workout write skipped: $e');
+      }
+      if (!written) {
+        await _restorePreviousSpan(
+          session,
+          activityKind: activityKind,
+          start: start,
+          previousEndedAtMs: previousEndedAtMs,
+        );
+        return;
+      }
+
+      final rating = session.sessionFeeling;
+      final score = rating == null ? null : ratingToAppleEffort(rating);
+      if (score != null) {
+        await _platform.setWorkoutEffort(start, end, score);
+      }
+    } catch (e) {
+      debugPrint('Health workout rewrite skipped: $e');
+    }
+  }
+
+  /// D-15404: writes a failed rewrite's previous span back, with the rating it
+  /// had — the clear took that off — so the delete the rewrite already ran
+  /// cannot lose the workout (S-15409). The ledger is left as it is: the
+  /// session is still written. Best-effort, like every other path here: a
+  /// refusal or an error ends the call silently.
+  Future<void> _restorePreviousSpan(
+    TrainingSession session, {
+    required HealthActivityKind activityKind,
+    required DateTime start,
+    required int previousEndedAtMs,
+  }) async {
+    try {
+      final end = DateTime.fromMillisecondsSinceEpoch(previousEndedAtMs);
       final written = await _platform.writeWorkout(
         HealthWorkoutDraft(
-          activityKind: await _activityKindOf(session),
+          activityKind: activityKind,
           start: start,
           end: end,
           title: session.title,
@@ -161,7 +215,7 @@ class HealthSyncService {
         await _platform.setWorkoutEffort(start, end, score);
       }
     } catch (e) {
-      debugPrint('Health workout rewrite skipped: $e');
+      debugPrint('Health workout restore skipped: $e');
     }
   }
 

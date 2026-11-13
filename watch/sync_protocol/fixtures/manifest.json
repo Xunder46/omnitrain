@@ -1042,6 +1042,21 @@
       "property": "an earlier discard wins over a later finish"
     },
     {
+      "path": "reconciliation/end_within_one_second.json",
+      "scenario": "S-15405",
+      "property": "an end one second before the held one is the same instant, so the finish stands"
+    },
+    {
+      "path": "reconciliation/end_beyond_the_tolerance.json",
+      "scenario": "S-15406",
+      "property": "an end three seconds before the held one is earlier and wins"
+    },
+    {
+      "path": "reconciliation/end_exactly_at_the_tolerance.json",
+      "scenario": "S-15407",
+      "property": "the tolerance is inclusive: two seconds is the same instant"
+    },
+    {
       "path": "reconciliation/duplicate_slot_add.json",
       "scenario": "S-005",
       "property": "a slot id can be introduced only once"

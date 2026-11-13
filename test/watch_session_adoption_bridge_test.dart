@@ -2610,4 +2610,231 @@ void main() {
       },
     );
   });
+
+  // Plan 154 (D-15403) — two clocks stamp the same ending, and a second or two
+  // between their stamps is skew, not a decision. Two ends within the tolerance
+  // of each other are the SAME instant, so D-14601's tie-break decides (and a
+  // finished workout is never deleted on one); only a discard earlier by more
+  // than the tolerance is the earlier end D-14630 deletes for.
+  group('D-15403 an end within the tolerance is the same instant', () {
+    /// The phone's own finish.
+    final t2 = _adoptedAt
+        .add(const Duration(minutes: 5))
+        .millisecondsSinceEpoch;
+
+    /// A phone holding a workout it finished at [t2], with the mirror holding
+    /// the same instant.
+    Future<(WorkoutRepository, _Phone, String)> finishedPhone() async {
+      final repository = await _repository();
+      final phone = await _phone(
+        repository,
+        clock: () => DateTime.fromMillisecondsSinceEpoch(t2, isUtc: true),
+      );
+      await phone.router.receive(_s1Envelope());
+      final sessionId = phone.state.currentSession!.id;
+      await phone.state.endSession(atMs: t2);
+      await phone.mirror.reportLifecycleFor(
+        sessionId,
+        WatchLifecycleState.completed,
+      );
+      return (repository, phone, sessionId);
+    }
+
+    test('S-15405 a discard one second earlier is no earlier end', () async {
+      final (repository, phone, sessionId) = await finishedPhone();
+
+      await phone.router.receive(
+        _lifecycle(
+          sessionId,
+          state: WatchLifecycleState.abandoned,
+          atMs: t2 - 1000,
+          messageId: 'msg-skew-1s',
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(
+        (await repository.getSession(sessionId))?.endedAtMs,
+        t2,
+        reason: 'S-15405 one second between the two stamps is skew: the ends '
+            'are the same instant and the finished workout stays',
+      );
+      expect(
+        phone.mirror.status,
+        WatchSessionStatus.completed,
+        reason: 'S-15405 the tie is completed\'s, so the wrist reads finished',
+      );
+      expect(phone.state.currentSession?.id, sessionId);
+      expect(phone.failures, isEmpty);
+    });
+
+    test('S-15406 a discard three seconds earlier is the earlier end', () async {
+      final (repository, phone, sessionId) = await finishedPhone();
+
+      await phone.router.receive(
+        _lifecycle(
+          sessionId,
+          state: WatchLifecycleState.abandoned,
+          atMs: t2 - 3000,
+          messageId: 'msg-skew-3s',
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(
+        await repository.getSession(sessionId),
+        isNull,
+        reason: 'S-15406 three seconds is a decision, not skew: the earlier '
+            'discard deletes the finished workout (D-14630)',
+      );
+      expect(phone.state.currentSession, isNull);
+      expect(
+        phone.mirror.status,
+        WatchSessionStatus.abandoned,
+        reason: 'S-15406 the wrist reads the discard it sent',
+      );
+      expect(phone.failures, isEmpty);
+    });
+
+    test('S-15407 a discard exactly at the tolerance is no earlier end',
+        () async {
+      final (repository, phone, sessionId) = await finishedPhone();
+
+      await phone.router.receive(
+        _lifecycle(
+          sessionId,
+          state: WatchLifecycleState.abandoned,
+          atMs: t2 - 2000,
+          messageId: 'msg-skew-2s',
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(
+        (await repository.getSession(sessionId))?.endedAtMs,
+        t2,
+        reason: 'S-15407 the tolerance is inclusive of two seconds, so this '
+            'pair is the same instant and the finish stands',
+      );
+      expect(
+        phone.mirror.status,
+        WatchSessionStatus.completed,
+        reason: 'S-15407 and the tie-break keeps the completion',
+      );
+      expect(phone.failures, isEmpty);
+    });
+  });
+
+  // Plan 154 (D-15402) — a wrist `completed` that reaches a phone still holding
+  // the workout open ends it at the wrist's own instant. The frame is delivered
+  // long after the watch finished (the link was away), so the arrival instant
+  // is not the end: using it would inflate the duration, its estimate and the
+  // Health span. A frame without an instant keeps the phone's clock.
+  group('D-15402 the wrist\'s end instant is the phone\'s end', () {
+    test(
+      'S-15403 a completed ends the open phone session at the wrist\'s own '
+      'instant',
+      () async {
+        final repository = await _repository();
+        final health = _RecordingHealthPlatform();
+        final phone = await _phone(
+          repository,
+          healthSync: HealthSyncService(
+            platform: health,
+            repository: repository,
+            isWriteEnabled: () => true,
+            isReadEnabled: () => false,
+          ),
+        );
+        await phone.router.receive(_s1Envelope());
+        final sessionId = phone.state.currentSession!.id;
+        final startedAtMs = phone.state.currentSession!.startedAtMs;
+        final wristEnd = _adoptedAt
+            .add(const Duration(minutes: 10))
+            .millisecondsSinceEpoch;
+        expect(
+          wristEnd,
+          greaterThan(startedAtMs),
+          reason: 'the fixture: the wrist\'s end is inside the workout',
+        );
+
+        await phone.router.receive(
+          _lifecycle(
+            sessionId,
+            state: WatchLifecycleState.completed,
+            atMs: wristEnd,
+            messageId: 'msg-completed-at',
+          ),
+        );
+        await pumpEventQueue();
+
+        expect(
+          phone.state.currentSession?.endedAtMs,
+          wristEnd,
+          reason:
+              'D-15402 the held workout ends when the wrist ended it, not when '
+              'the frame arrived',
+        );
+        expect(
+          (await repository.getSession(sessionId))?.endedAtMs,
+          wristEnd,
+          reason: 'S-15403 the stored row carries the same end',
+        );
+        expect(
+          phone.mirror.status,
+          WatchSessionStatus.completed,
+          reason: 'S-15403 the wrist\'s own frame says the session is over',
+        );
+        expect(
+          health.writes,
+          isEmpty,
+          reason:
+              'the watch saved its own workout for this session, so the phone '
+              'writes no second one (plan 89c1 D-1)',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-15404 a completed with no instant ends at the arrival instant',
+      () async {
+        final repository = await _repository();
+        final phone = await _phone(repository);
+        await phone.router.receive(_s1Envelope());
+        final sessionId = phone.state.currentSession!.id;
+
+        final before = DateTime.now().millisecondsSinceEpoch;
+        await phone.router.receive(
+          _lifecycle(
+            sessionId,
+            state: WatchLifecycleState.completed,
+            messageId: 'msg-completed-no-at',
+          ),
+        );
+        final after = DateTime.now().millisecondsSinceEpoch;
+        await pumpEventQueue();
+
+        final endedAtMs = phone.state.currentSession?.endedAtMs;
+        expect(
+          endedAtMs,
+          isNotNull,
+          reason: 'S-15404 a completed ends the workout even with no instant',
+        );
+        expect(
+          endedAtMs,
+          inInclusiveRange(before, after),
+          reason:
+              'S-15404 with no `at` in the frame the phone\'s clock decides, as '
+              'it did before D-15402',
+        );
+        expect(
+          (await repository.getSession(sessionId))?.endedAtMs,
+          endedAtMs,
+          reason: 'S-15404 the stored row carries that same instant',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+  });
 }

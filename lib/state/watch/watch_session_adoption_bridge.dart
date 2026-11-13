@@ -27,6 +27,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/constants/workout_constants.dart';
 import '../../core/services/watch_routine_matcher.dart';
 import '../../core/services/watch_session_importer.dart';
+import '../../core/sync_protocol/end_skew.dart';
 import '../../core/sync_protocol/message_validator.dart';
 import '../../core/sync_protocol/phone_entries.dart';
 import '../../core/sync_protocol/wire_limits.dart';
@@ -888,13 +889,17 @@ class WatchSessionAdoptionBridge {
       // finish, so a wrist discard stamped before the end the phone holds is
       // not a second end at all — it is the ending that was always the truth,
       // and the finished row goes. An equal instant is D-14601's tie-break,
-      // which `completed` wins.
+      // which `completed` wins. D-15403: two clocks stamping one workout's end
+      // land a second or two apart, so only an end earlier by MORE than
+      // `kEndSkewToleranceMs` is that earlier ending — within it the discard is
+      // the same instant as the finish, and the tie-break keeps the finish.
       if (state == WatchLifecycleState.completed) {
         final atMs = _instantMs(_asObject(envelope['payload'])['at']);
         if (atMs != null) await target.catchUpEndedSession(atMs);
       } else if (state == WatchLifecycleState.abandoned) {
         final atMs = _instantMs(_asObject(envelope['payload'])['at']);
-        if (atMs != null && atMs < held.endedAtMs!) {
+        if (atMs != null &&
+            endsBeforeHeldMsByMoreThanSkew(atMs, held.endedAtMs!)) {
           await target.discardCurrentSession();
         }
       }
@@ -904,9 +909,14 @@ class WatchSessionAdoptionBridge {
     switch (state) {
       case WatchLifecycleState.completed:
         await _catchUpSessionRow(sessionId);
+        // D-15402: the wrist's own end instant, not the arrival one. A workout
+        // finished on the wrist while the phone was away would otherwise be
+        // stored ending when it synced, inflating its duration and its Health
+        // span. No `at` in the frame keeps the phone's clock, as before.
+        final atMs = _instantMs(_asObject(envelope['payload'])['at']);
         // The watch saved its own workout for this session: the phone's end
         // must not write a second one (plan 89c1 D-1).
-        await target.endSession(writeToHealth: false);
+        await target.endSession(writeToHealth: false, atMs: atMs);
       case WatchLifecycleState.abandoned:
         await target.discardCurrentSession();
     }

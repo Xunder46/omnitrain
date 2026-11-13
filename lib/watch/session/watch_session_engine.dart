@@ -21,6 +21,7 @@ library;
 
 import 'package:uuid/uuid.dart';
 
+import '../../core/sync_protocol/end_skew.dart';
 import '../../core/sync_protocol/message_validator.dart';
 import '../sensors/watch_platform_workout.dart';
 import 'watch_records.dart';
@@ -573,14 +574,16 @@ class WatchSessionEngine {
     // D-14601: an ended session stays ended. A snapshot keeps the held terminal
     // status against an `active` payload status, and a terminal payload status
     // replaces the held one only when its instant — the snapshot's `sentAt`,
-    // the D-120 end moment — is earlier than the held terminal row's.
+    // the D-120 end moment — is earlier than the held terminal row's. D-15403:
+    // "earlier" means earlier by more than `kEndSkewToleranceMs`; within it the
+    // two stamps are the same instant and the tie-break below decides.
     final messageStatus = payload['status']! as String;
     final terminalHeld = existing != null && _isTerminal(existing.status);
     final replacing =
         terminalHeld &&
         _isTerminal(messageStatus) &&
-        (sentAt.isBefore(existing.recordedAt) ||
-            (sentAt.isAtSameMomentAs(existing.recordedAt) &&
+        (endsBeforeHeldByMoreThanSkew(sentAt, existing.recordedAt) ||
+            (areEndsWithinSkew(sentAt, existing.recordedAt) &&
                 _incomingEndWinsATie(
                   held: existing,
                   incomingStatus: messageStatus,
@@ -768,9 +771,12 @@ class WatchSessionEngine {
       // D-14630: the earlier end instant wins, whatever the two statuses are —
       // a discard stamped before the finish the phone holds is the ending that
       // was always the truth, so the wrist's copy reads `abandoned`. An equal
-      // instant is D-14601's tie-break, which `completed` wins.
-      if (!at.isBefore(session.recordedAt)) {
-        final sameInstant = at.isAtSameMomentAs(session.recordedAt);
+      // instant is D-14601's tie-break, which `completed` wins. D-15403: an
+      // instant within `kEndSkewToleranceMs` of the held one is the same
+      // instant — two clocks stamping one workout's end land a second or two
+      // apart — so only an end earlier by more than the tolerance replaces.
+      if (!endsBeforeHeldByMoreThanSkew(at, session.recordedAt)) {
+        final sameInstant = areEndsWithinSkew(at, session.recordedAt);
         if (sameInstant &&
             _incomingEndWinsATie(
               held: session,

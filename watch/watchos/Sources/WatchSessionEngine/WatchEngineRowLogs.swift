@@ -136,24 +136,35 @@ final class WatchTimerLog {
 /// One in-flight write of an entry. A second copy waits until the first copy's
 /// row is in `WatchObservationLog`, then re-reads it instead of storing again
 /// (F-7, D-14606).
+///
+/// The flag and the waiter list live behind `lock` (D-15401): a waiter arriving
+/// while the claim is being finished must either see `finished` or be in
+/// `waiters` before the finish drains it, or it is never resumed. The lock is
+/// never held across an `await`, and the resume happens after it is released.
 final class EntryClaim {
+    private let lock = NSLock()
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var finished = false
 
     func wait() async {
-        if finished { return }
         await withCheckedContinuation { continuation in
+            lock.lock()
             if finished {
+                lock.unlock()
                 continuation.resume()
             } else {
                 waiters.append(continuation)
+                lock.unlock()
             }
         }
     }
 
     func finish() {
+        lock.lock()
         finished = true
-        for waiter in waiters { waiter.resume() }
+        let resuming = waiters
         waiters.removeAll()
+        lock.unlock()
+        for waiter in resuming { waiter.resume() }
     }
 }

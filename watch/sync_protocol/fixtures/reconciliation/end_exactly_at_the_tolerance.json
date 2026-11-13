@@ -1,0 +1,87 @@
+{
+  "protocolVersion": 1,
+  "name": "The tolerance is inclusive at exactly two seconds",
+  "description": "The tolerance covers two seconds exactly (D-15403): the wrist's discard at 20:00:58 is precisely `kEndSkewToleranceMs` before the phone's finish, so the two ends are the same instant and D-14601's tie-break keeps the finished workout. One millisecond more of separation would make the discard the earlier end (S-15406).",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-skew2-snapshot",
+    "sessionId": "s-sw-skew2",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-07-13T20:00:00Z",
+    "payload": {
+      "sessionId": "s-sw-skew2",
+      "revision": 3,
+      "status": "active",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      ],
+      "entries": [
+        {
+          "entryId": "e-skew2",
+          "eventId": "evt-skew2",
+          "kind": "set",
+          "loggedAt": "2026-07-13T19:59:00Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "reps": 5,
+          "loadKg": 80
+        }
+      ],
+      "timers": {}
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-skew2-finish",
+      "sessionId": "s-sw-skew2",
+      "type": "session_lifecycle",
+      "origin": "phone",
+      "sentAt": "2026-07-13T20:01:00Z",
+      "payload": { "state": "completed", "at": "2026-07-13T20:01:00Z" }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-skew2-discard",
+      "sessionId": "s-sw-skew2",
+      "type": "session_lifecycle",
+      "origin": "watch",
+      "sentAt": "2026-07-13T20:01:10Z",
+      "payload": { "state": "abandoned", "at": "2026-07-13T20:00:58Z" }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-sw-skew2",
+    "status": "completed",
+    "revision": 3,
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "e-skew2",
+        "eventId": "evt-skew2",
+        "kind": "set",
+        "loggedAt": "2026-07-13T19:59:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80
+      }
+    ],
+    "timers": {}
+  }
+}

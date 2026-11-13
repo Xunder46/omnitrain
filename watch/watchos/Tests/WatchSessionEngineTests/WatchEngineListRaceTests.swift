@@ -12,6 +12,8 @@
 //    S-15021 observation list, concurrent appends and reads   → `testS15021...`
 //    S-15022 timer list, concurrent starts/stops and reads     → `testS15022...`
 //    S-15023 session mirror and correction lens                → `testS15023...`
+//    S-15401 waiters racing `EntryClaim.finish()`              → `testS15401...`
+//    S-15402 a wait after the claim is finished                → `testS15402...`
 //
 
 import Foundation
@@ -36,6 +38,25 @@ final class LockedFrameSink {
         lock.lock()
         defer { lock.unlock() }
         return stored
+    }
+}
+
+/// Counts the waiters a claim has resumed, from whatever task resumed them, so
+/// the deadline in S-15401 can tell a lost wakeup from a slow one.
+final class ResumedWaiters: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    func increment() {
+        lock.lock()
+        value += 1
+        lock.unlock()
+    }
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
     }
 }
 
@@ -208,6 +229,85 @@ final class WatchEngineListRaceTests: XCTestCase {
             engine.entries.contains { $0.entryId == deleted },
             "S-15023 the deletion lens still hides the id the phone deleted"
         )
+    }
+
+    /// S-15401 (D-15401): many waiters race one `finish()`.
+    ///
+    /// The claim's flag and waiter list have no lock before this plan: a waiter
+    /// that read `finished == false` could append after `finish()` had drained
+    /// the list and never resume (the writer it belongs to hangs), and the
+    /// concurrent appends are an unsynchronized array write TSan reports. Every
+    /// waiter must resume for the poll below to see `expected`; the deadline
+    /// makes a lost wakeup a failure instead of a hung run.
+    func testS15401WaitersRacingFinishAllResume() async {
+        let rounds = 24
+        let waitersPerRound = 32
+        let expected = rounds * waitersPerRound
+        let resumed = ResumedWaiters()
+        var tasks: [Task<Void, Never>] = []
+        tasks.reserveCapacity(expected)
+
+        for round in 0..<rounds {
+            let claim = EntryClaim()
+            for _ in 0..<waitersPerRound {
+                tasks.append(
+                    Task {
+                        await claim.wait()
+                        resumed.increment()
+                    }
+                )
+            }
+            if round.isMultiple(of: 2) {
+                // A finish that races the registrations: the window the lock
+                // closes.
+                await Task.yield()
+                claim.finish()
+            } else {
+                // A finish that follows them: what a delivery task does.
+                claim.finish()
+            }
+        }
+
+        let deadline = Date().addingTimeInterval(10)
+        while resumed.count < expected && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(
+            tasks.count,
+            expected,
+            "S-15401 the fixture: every waiter is registered"
+        )
+        XCTAssertEqual(
+            resumed.count,
+            expected,
+            "S-15401 every waiter on the claim resumes: no writer waits on a "
+                + "finish that already happened"
+        )
+    }
+
+    /// S-15402: a waiter that arrives after the claim is finished does not
+    /// suspend — it resumes at once, as it did before the lock.
+    func testS15402WaitAfterFinishReturnsAtOnce() async {
+        let claim = EntryClaim()
+        claim.finish()
+        let resumed = ResumedWaiters()
+
+        let task = Task {
+            await claim.wait()
+            await claim.wait()
+            resumed.increment()
+        }
+
+        let deadline = Date().addingTimeInterval(5)
+        while resumed.count == 0 && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(
+            resumed.count,
+            1,
+            "S-15402 a finished claim answers its waiter without suspending it"
+        )
+        await task.value
     }
 
     private func deleteEntryFrame(

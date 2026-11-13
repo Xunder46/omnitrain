@@ -3440,6 +3440,176 @@ void main() {
     });
   });
 
+  // Plan 154 (D-15403) — the same tolerance the phone bridge uses, on both of
+  // the twin's earlier-end sites. Two ends within `kEndSkewToleranceMs` are the
+  // same instant, so D-14601's tie-break applies; only a terminal state earlier
+  // by MORE than the tolerance replaces the held ending (D-14630).
+  group('D-15403 the twin treats a near-tie as the same instant', () {
+    /// A wrist session the phone has already ended with a discard, and the
+    /// instant it ended at.
+    Future<(_Harness, WatchSessionEngine, DateTime)> discarded() async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-wrist-discard',
+          state: WatchLifecycleState.abandoned,
+          sentAt: '2026-07-13T06:10:00Z',
+        ),
+      );
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      return (harness, engine, engine.session!.recordedAt);
+    }
+
+    test('S-15408 a completion inside the tolerance is the same instant '
+        '(lifecycle)', () async {
+      final (harness, engine, held) = await discarded();
+      final late = held.add(const Duration(seconds: 1));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-finish',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(late),
+          at: _iso(late),
+        ),
+      );
+
+      expect(
+        applied,
+        isTrue,
+        reason: 'S-15408 1 s between two end stamps is skew: the ends are '
+            'the same instant, so the tie-break decides',
+      );
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'S-15408 and the tie-break is completed\'s (D-14601) — the '
+            'phone shows the finished workout the phone recorded',
+      );
+      expect(
+        engine.session!.recordedAt,
+        late,
+        reason: 'S-15408 the ending row records the moment it claims',
+      );
+      expect(harness.clock.now.isAfter(late), isFalse);
+    });
+
+    test('S-15408 a completion exactly at the tolerance is the same instant',
+        () async {
+      final (_, engine, held) = await discarded();
+      final late = held.add(const Duration(milliseconds: 2000));
+
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-finish',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(late),
+          at: _iso(late),
+        ),
+      );
+
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'S-15408 the tolerance is inclusive of two seconds (D-15403)',
+      );
+    });
+
+    test('S-15408 a completion beyond the tolerance loses to the held discard',
+        () async {
+      final (_, engine, held) = await discarded();
+      final late = held.add(const Duration(seconds: 3));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-finish',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(late),
+          at: _iso(late),
+        ),
+      );
+
+      expect(applied, isFalse, reason: 'a later end loses (D-14630)');
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.abandoned,
+        reason: 'S-15408 3 s is a decision: the earlier end stands',
+      );
+      expect(engine.session!.recordedAt, held);
+    });
+
+    test('S-15408 a discard one second before a finished snapshot is the same '
+        'instant (snapshot)', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 10);
+      await engine.finishSession();
+      final held = engine.session!.recordedAt;
+      final earlier = held.subtract(const Duration(seconds: 1));
+
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-phone-discard',
+          status: WatchSessionStatus.abandoned,
+          sentAt: _iso(earlier),
+        ),
+      );
+
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'S-15408 a snapshot one second earlier is the same instant, so '
+            'the tie-break keeps the completion — a finished workout is not '
+            'deleted by a stamp the two clocks could not have told apart',
+      );
+      expect(engine.session!.recordedAt, held);
+    });
+
+    test('S-15408 a discard three seconds before a finished snapshot is the '
+        'earlier end (snapshot)', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 10);
+      await engine.finishSession();
+      final held = engine.session!.recordedAt;
+      final earlier = held.subtract(const Duration(seconds: 3));
+
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-phone-discard',
+          status: WatchSessionStatus.abandoned,
+          sentAt: _iso(earlier),
+        ),
+      );
+
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.abandoned,
+        reason: 'S-15408 beyond the tolerance the earlier end wins (D-14630)',
+      );
+      expect(engine.session!.recordedAt, earlier);
+    });
+  });
+
   group('S-14608 a set is never held twice', () {
     test('S-14608 one entryId is one row, whatever carried it', () async {
       final harness = _Harness();
