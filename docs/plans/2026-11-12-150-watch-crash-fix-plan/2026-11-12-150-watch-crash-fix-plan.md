@@ -17,12 +17,16 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
   a ceiling; `watch/watchos` tests only.
 - **E** — the header's distance is the Distance field's own figure, so the two agree after
   a restart; `watch/watchos` only.
+- **F** — the engine's observation and timer lists get Task A's lock box, proved by a TSan
+  race test each, and the whole suite runs under TSan once; `watch/watchos` only.
 
 ## Decisions
 
 - **D-15001** A private `WatchSensorSampleLog` holds the array behind an `NSLock` (`snapshot`, `append`, `contains`, `prune`, `fill`); the lock never wraps an `await`, the store append stays outside it.
 - **D-15002** `append` is a no-op for a `recordId` already held, matching the store's "same reading twice is a no-op" rule, so the racy read-then-append pair can go.
-- **D-15003** Other engine arrays (`storedObservations`, `storedTimers`, `sessionRows`) are inspected and reported in the evidence, not changed: this is the sensor list only.
+- **D-15003** Other engine arrays (`storedObservations`, `storedTimers`, `sessionRows`) are inspected and reported in the evidence, not changed by Task A. *(Amended by D-15021: the first two were proven racy and boxed by Task F; the rest stay as reported.)*
+- **D-15021** `storedObservations` and `storedTimers` move into `WatchObservationLog` and `WatchTimerLog` (`WatchEngineRowLogs.swift`), D-15001's pattern: snapshot for reads, an append that ignores an id already held, and the in-flight claim made in the same operation as the "already held?" check (`claim`/`finishClaim`), so two copies of an entry cannot both store it (F-7). No lock is held across an `await`.
+- **D-15022** `sessionRows`, `current`, the correction/deletion lens and `acknowledgedObservationIds` are left plain: TSan reproduced no race on them, and an unproven race is reported, not rewritten (D-15003).
 - **D-15004** The coordinator gets `adoptedBeforeRestore`, set by `recover`'s adoption and cleared by `restoreFinished(_:)` or the first non-nil session; `apply` returns early only while it is set and the session is nil. `WatchWorkoutLifecycle.action` stays pure.
 - **D-15005** `ContentView.restore()` calls `workout.restoreFinished(session: engine.session)` after `engine.restore()`; app-target code, not compiled by `swift test`.
 - **D-15006** `HealthKitWorkoutStore.adoptInProgress()` and `WatchAppDelegate`'s recovery are read and reported, changed only if the nil-adoption cause is clear and small.
@@ -56,13 +60,25 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
   (`0.1 mi`, `20:00 /mi`).
 - **S-15014** The unit switch keeps header and field equal (`0.6 mi` / `1.0 km`), and the
   pace follows (`6:42 /mi` / `4:10 /km`).
+- **S-15021** Three logging tasks append 180 sets while three readers hammer `observations`,
+  `entries`, `pendingObservations()`, `unconfirmedObservations`, `nutritionLog` and
+  `waterLog`: no trap, and each of the 180 ids is held exactly once.
+- **S-15022** 60 start/stop rounds race readers of `timerFor`, `timerRows` and
+  `sessionSnapshot()`: `timerRows` holds 120 rows, the newest row's state is `.stopped`,
+  and nothing traps.
+- **S-15023** 80 `advanceExercise` calls and 40 `delete_entry` frames race readers of
+  `session`, `currentExercise`, `sessionSnapshot()`, `entries`, `hasEffortRating` and
+  `sensorSamples`: the session still answers `s-race` as active and the deleted id stays
+  hidden. (Green at HEAD: on the mirror and lens this is a preservation guard.)
 
 ## Files
 
 - `watch/watchos/Sources/WatchSessionEngine/WatchSensorSampleLog.swift` (new)
+- `watch/watchos/Sources/WatchSessionEngine/WatchEngineRowLogs.swift` (new, Task F)
 - `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`
 - `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift`
 - `watch/watchos/Tests/WatchSessionEngineTests/WatchSensorSampleRaceTests.swift` (new)
+- `watch/watchos/Tests/WatchSessionEngineTests/WatchEngineListRaceTests.swift` (new, Task F)
 - `watch/watchos/Tests/WatchSessionEngineTests/WatchWorkoutAdoptBeforeRestoreTests.swift` (new)
 - `watch/watchos/Tests/WatchSessionEngineTests/WatchWorkoutCoordinatorTests.swift`
 - `ios/OmniTrain Watch App/ContentView.swift`
@@ -78,6 +94,7 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
 | C — pace look | Complete — look only, cause and convention in the evidence file |
 | D — pace window + ceiling | Complete — S-15007…S-15010 green, red at HEAD; suite 1397/0 |
 | E — header distance = Distance field | Complete — S-15011…S-15014 green, red at HEAD; suite 1401/0 |
+| F — the other engine lists | Complete — audit + TSan; S-15021/S-15022 red at HEAD and clean after, S-15023 not proven; suite 1404/0, whole suite under TSan 1404/0 |
 
 ## Assumption Log
 
@@ -88,6 +105,9 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
 - **A-15005** Task D's ids start at D-15007/S-15007 so committed Task B ids keep their evidence; the ceiling is Swift-only, since the Flutter readout is untouched.
 - **A-15006** S-15013 is a preservation guard, green at HEAD by design; a fallback mutation turns it red, then the exact line is restored.
 - **A-15007** Before Start the effort window is 0 and the Distance row is absent, so the header keeps the counter's figure and no second number shows.
+- **A-15021** The observations and their in-flight claims share one box: splitting them would leave the claim a second unsynchronised list, which is the race S-15021 proves exists.
+- **A-15022** `EntryClaim` became internal and moved to `WatchEngineRowLogs.swift`, because a private class cannot be shared with the box's file; no behaviour changed.
+- **A-15023** S-15023 stays green at HEAD and is kept as the mirror/lens preservation guard, since TSan reported no race there (D-15022).
 
 ## Tasks D and E — pace and the header's distance (2026-11-13/14)
 
@@ -104,6 +124,17 @@ is minutes:seconds so it cannot print hours.
 - D: S-15007…S-15010, red at HEAD (`3:50:00 /mi`, `12:36:15 /km`, `1:00:00 /km`), green
   after; suite 1397/0. E: S-15011…S-15014, red at HEAD (`0.1` vs `0.6`, `20:00 /mi` vs
   `6:42 /mi`), green after; suite **1401 tests, 0 failures** (evidence, Task E).
+
+## Task F — the engine's other lists (2026-11-12)
+
+Every mutable stored property is audited in the evidence file (writers, readers, thread class,
+overlap). Two are proven racy under TSan at HEAD — the observation list with its in-flight claims,
+and the timer list — and both now sit behind `NSLock` boxes in `WatchEngineRowLogs.swift`
+(D-15021). The mirror, lens and acknowledgement set reproduced nothing, so they are reported, not
+rewritten (D-15022). Files: `WatchEngineRowLogs.swift` (new), `WatchEngineListRaceTests.swift`
+(new), `WatchSessionEngine.swift`, `docs/state_management/watch_sensors.md`. S-15021/S-15022 red
+at HEAD (`Swift access race` at `:1760`, `:1755`, `:2297`, then BUS in `observations.getter :203`),
+green after; suite **1404/0**, whole suite under TSan **1404/0** (17 warnings, all in test doubles).
 
 ## QA for the owner
 

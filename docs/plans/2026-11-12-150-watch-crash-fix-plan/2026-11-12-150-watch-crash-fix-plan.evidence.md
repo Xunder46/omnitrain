@@ -315,3 +315,98 @@ The exact original line was restored and the four tests re-ran green.
   `WatchSessionEngineTests.testS004NoMutatingOperationExistsAnywhereInTheModule`
   rejected the box's `removeAll`/`replace` names; renamed to `prune`/`fill`
   rather than touching the scan (see Task A above).
+
+## Task F — the engine's other lists under Thread Sanitizer (2026-11-12)
+
+`WatchSensorSampleRaceTests` was written for the sensor list alone. The audit below
+covers every mutable stored property of `WatchSessionEngine` (line numbers at
+`34e3e809`), then a TSan stress test per list that has two reachable threads.
+
+| Property | Writers (entry point) | Readers | Thread class | Overlap possible |
+|---|---|---|---|---|
+| `storedSensorSamples` | `restore`, `appendSensorSample`, `pruneSettledSensorSamples` | `sensorSamples`, `newestSensorSamples`, energy/session-end summaries | sensor stream task; main-thread screens | Yes — **already boxed** (Task A, `WatchSensorSampleLog`) |
+| `storedObservations` | `restore`, `storeSnapshotEntry`, `appendObservation`, `confirmObservations`, `trimPrunedObservations` | `observations`, `entries`/`projectedEntries`, `nutritionLog`, `waterLog`, `pendingObservations()`, `unconfirmedObservations`, `knowsObservation`, `restFollowOnEntryId`, `pruneSettledSensorSamples`, `mergeLateEntries`, `heldRecord` | phone delivery task, logging tap, receipt task, launch restore; main-thread screens | Yes — **proven, fixed** |
+| `inflightEntries` | `storeSnapshotEntry`, `appendObservation` (claim, then remove) | same two, before their append | phone delivery task, logging tap | Yes — **proven, fixed** (folded into the log's claim) |
+| `storedTimers` | `restore`, `adoptTimer`, `stopTimerFromMessage`, `appendTimer` | `timerRows`, `newestTimer` (feeds `timerFor`, `sessionSnapshot()`), `adoptTimer`/`stopTimerFromMessage` dedup | phone delivery task, logging taps, main-thread screens | Yes — **proven, fixed** |
+| `sessionRows` | `restore`, `mirrored` | `newestSessionRows()`, `creationRow`, `holdsTerminalRow` | mutex-serialised writers incl. phone frames; main-read screens via `session` | Yes in principle — **not proven** (S-15023) |
+| `current` | `restore`, `storeSessionRow`, `mirrored` | every `engine.session`, `requireSession`, `guardSession`, `currentExercise` | as above | Yes in principle — **not proven** (S-15023) |
+| `entryCorrections`, `deletedEntryIds`, `replacedEntryIds` | `storeSnapshotEntry`, `unhideTheIdTheSnapshotNames`, `applyStructureChange`'s lens, `trimPrunedObservations`, `restore` | `projectedEntries`, `carryingLens`, `heldPayload` | phone frames vs main-thread projections | Yes in principle — **not proven** (S-15023) |
+| `appliedChangeIds`, `newestSnapshotAt` | `restore`, the snapshot/apply paths | the apply paths | mutex-serialised writers; launch | No reachable reader outside those paths — **not proven** |
+| `acknowledgedObservationIds` | `restore`, `confirmObservations` | `knowsObservation`, `isEndAcknowledgedWhereOwed` | receipt task vs main-thread `hasEffortRating` | Yes in principle — **not proven** |
+| `energyAnnouncedSession/Kcal/At` | `announceEnergy` only | `announceEnergy` only | the energy stream's chained write task | No — one writer and one reader, the same call (`WatchSensorWrites` chains it) |
+| `announcedCountdownKeys` | `WatchTimerHaptics` | `WatchLoggingState` | main thread only | No |
+
+No property is `@MainActor`: nothing in the package is actor-isolated, so the thread
+classes above are the entry points' own, read off their call sites.
+
+### Proven at HEAD (TSan, current sources before the fix)
+
+`swift-test --sanitize=thread --filter WatchEngineListRaceTests` (three tests, the first
+report aborts the process, so each list was run on its own filter):
+
+```
+S-15021 — testS15021ObservationListSurvivesConcurrentWritersAndReaders
+SUMMARY: ThreadSanitizer: Swift access race WatchSessionEngine.swift:1760 in WatchSessionEngine.appendObservation(_:sessionId:)
+SUMMARY: ThreadSanitizer: Swift access race WatchSessionEngine.swift:1755 in WatchSessionEngine.appendObservation(_:sessionId:)
+SUMMARY: ThreadSanitizer: BUS (libsystem_malloc.dylib:arm64e+0x1e658) in _malloc_type_malloc_outlined+0x40
+    #12 WatchSessionEngine.observations.getter WatchSessionEngine.swift:203
+S-15022 — testS15022TimerListSurvivesConcurrentWritersAndReaders
+WARNING: ThreadSanitizer: Swift access race
+  Modifying access: #0 WatchSessionEngine.appendTimer(_:) WatchSessionEngine.swift
+  Previous read:    #0 WatchSessionEngine.newestTimer(kind:) WatchSessionEngine.swift:2297
+                    #1 WatchSessionEngine.timersJson()  WatchSessionEngine.swift:1432
+                    #2 WatchSessionEngine.sessionSnapshot(messageId:) WatchSessionEngine.swift:312
+SUMMARY: ThreadSanitizer: Swift access race WatchSessionEngine.swift in WatchSessionEngine.appendTimer(_:)
+Swift/ContiguousArrayBuffer.swift:692: Fatal error: Index out of range
+```
+
+Without TSan the same two tests trap at HEAD
+(`Object … _ContiguousArrayStorage deallocated with non-zero retain count 2`, then
+`Fatal error: Index out of range`), which is the owner's SIGABRT shape.
+
+`gateway.sh prove-red HEAD swift-test --filter WatchEngineListRaceTests -- watch/watchos/Tests/WatchSessionEngineTests/WatchEngineListRaceTests.swift`:
+
+```
+Test Case … testS15021ObservationListSurvivesConcurrentWritersAndReaders]' started.
+Object 0xbf73a0000 of class _ContiguousArrayStorage deallocated with non-zero retain count 2 …
+gateway: prove-red: RED AT HEAD (exit 1).
+```
+
+S-15023 is green at HEAD and green after: no TSan report, no trap, no lost row. The
+session mirror is only written inside `WatchAsyncMutex` and the readers ran between
+writes, so TSan found no overlapping pair in 80 advances and 40 frames.
+
+### The change
+
+New `watch/watchos/Sources/WatchSessionEngine/WatchEngineRowLogs.swift`:
+`WatchObservationLog` (rows + in-flight claims) and `WatchTimerLog` (rows), each an
+`NSLock` box in `WatchSensorSampleLog`'s shape — `snapshot` for every read, `append`
+that ignores an id already held, `contains`, `prune`, `map`, `fill`. The claim is one
+operation with the "already held?" check (`claim` returns the claim to wait on or nil
+when this writer owns it, `finishClaim` removes and resumes), so two copies of one
+entry can no longer both store (F-7); the lock is never taken across an `await`.
+`storedObservations` and `storedTimers` became `observationLog` and `timerLog`, and
+`EntryClaim` moved to the new file as an internal class.
+
+### Green after
+
+- `swift-test --sanitize=thread --filter WatchEngineListRaceTests` →
+  **Executed 3 tests, with 0 failures**; no TSan report, no trap.
+- Whole suite under TSan (`swift-test --sanitize=thread`) →
+  **Executed 1404 tests, with 0 failures**, `ThreadSanitizer: reported 17 warnings`,
+  **none of them in `Sources/`**: `WatchConnectivityBridgeTests.swift:1464` and `:1528`
+  (the gated transports' own locals), `WatchDistanceTrackerTests.swift` ×14 in
+  `ScriptedRawFixSource.rawFixes()` and ×1 at `:322` in the stream-finish test. The
+  remaining reports are test doubles' state, not the engine's.
+- Whole suite without the sanitizer → **Executed 1404 tests, with 0 failures**
+  (11.785 s); baseline 1401, the three new scenarios are the difference.
+- `docs/state_management/watch_sensors.md` "One writer" paragraph now names the two
+  boxes and the two tests that prove them.
+
+### Not fixed, and why
+
+`sessionRows`, `current`, the correction/deletion lens and `acknowledgedObservationIds`
+keep their plain fields: S-15023 could not make TSan report them, and D-15003's rule is
+that an unproven race is reported, not rewritten. A main-actor isolation pass over the
+engine would close them and is a separate plan.
+

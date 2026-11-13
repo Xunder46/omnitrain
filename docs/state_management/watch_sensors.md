@@ -316,7 +316,13 @@ engine and its store are built for one writer, so the recorder chains its writes
 the stored readings on the main thread while they are being appended, so the
 engine's own sample list is held behind a lock (`WatchSensorSampleLog`) that is
 never taken across an `await` (`WatchSensorSampleRaceTests.swift`
-`testS15001ConcurrentAppendsAndReadsAreSafe`).
+`testS15001ConcurrentAppendsAndReadsAreSafe`). The engine's stored observation
+rows and timer rows have the same split — a phone frame's delivery task, a
+sensor stream and a logging tap write them while a screen reads them — so each
+list is behind its own lock too (`WatchObservationLog`, `WatchTimerLog` in
+`WatchEngineRowLogs.swift`), the observation one holding the in-flight claims in
+the same box (`WatchEngineListRaceTests.testS15021ObservationListSurvivesConcurrentWritersAndReaders`,
+`…testS15022TimerListSurvivesConcurrentWritersAndReaders`).
 
 **The workout is continued when it can be, recovered when it cannot.** A kill
 cannot be caught, so the next launch, and the system's workout-recovery relaunch

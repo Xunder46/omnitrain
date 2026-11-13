@@ -67,13 +67,12 @@ public final class WatchSessionEngine: ObservableObject {
     static let lifecyclePrefix = "life-"
 
     private var sessionRows: [WatchSessionRecord] = []
-    private var storedObservations: [WatchObservationRecord] = []
 
-    /// The entries whose write is in flight, by the id the writer claimed — the
-    /// row is not in `storedObservations` until its append returns, so a second
-    /// copy of the same entry waits here instead of storing it again (F-7).
-    private var inflightEntries: [String: EntryClaim] = [:]
-    private var storedTimers: [WatchTimerRecord] = []
+    /// The stored observations and timer rows, behind a lock each: a phone
+    /// frame's delivery task, a sensor stream and a logging tap write them while
+    /// the screens read them on the main thread (`WatchEngineRowLogs`).
+    private let observationLog = WatchObservationLog()
+    private let timerLog = WatchTimerLog()
 
     /// The raw readings, behind one lock: the platform writes them on its own
     /// threads while the logging screen reads them on the main thread
@@ -163,8 +162,8 @@ public final class WatchSessionEngine: ObservableObject {
         let contents = await store.readAll()
 
         sessionRows = contents.sessions
-        storedObservations = contents.observations
-        storedTimers = contents.timers
+        observationLog.fill(with: contents.observations)
+        timerLog.fill(with: contents.timers)
         storedSensorSamples.fill(with: contents.sensorSamples)
         acknowledgedObservationIds = Set(contents.confirmations.flatMap(\.observationIds))
 
@@ -200,7 +199,7 @@ public final class WatchSessionEngine: ObservableObject {
 
     /// The current session's observations, in the order they were logged.
     public var observations: [WatchObservationRecord] {
-        storedObservations.filter { $0.sessionId == current?.sessionId }
+        observationLog.snapshot().filter { $0.sessionId == current?.sessionId }
     }
 
     /// The readings the platform sensors produced for the current session, in
@@ -247,7 +246,8 @@ public final class WatchSessionEngine: ObservableObject {
     /// the history a round's pauses are read back from (D-122 c), where
     /// `timerFor` gives only the row that applies now.
     public func timerRows(_ kind: String) -> [WatchTimerRecord] {
-        storedTimers
+        timerLog
+            .snapshot()
             .filter { $0.sessionId == current?.sessionId && $0.kind == kind }
             .sorted { $0.sequence < $1.sequence }
     }
@@ -267,7 +267,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// `entries` for any session the store holds — what a session end
     /// summarises, whichever session the watch is on when it ends.
     private func projectedEntries(_ sessionId: String) -> [WatchObservationRecord] {
-        storedObservations
+        observationLog.snapshot()
             .filter { $0.sessionId == sessionId && !deletedEntryIds.contains($0.entryId) }
             .map { observation in
                 guard let correction = entryCorrections[observation.entryId] else {
@@ -689,12 +689,12 @@ public final class WatchSessionEngine: ObservableObject {
         _ sessionId: String,
         _ entryMaps: [[String: Any]]
     ) async -> Bool {
-        let rows = storedObservations.count
+        let rows = observationLog.count
         let corrections = entryCorrections.count
         for entry in entryMaps {
             await storeSnapshotEntry(sessionId, entry)
         }
-        return storedObservations.count != rows || entryCorrections.count != corrections
+        return observationLog.count != rows || entryCorrections.count != corrections
     }
 
     /// Whether any row the wrist holds for `sessionId` has ended it — the test
@@ -1012,7 +1012,7 @@ public final class WatchSessionEngine: ObservableObject {
         recordId: String,
         recordedAt: Date
     ) async -> TimerAdoption {
-        guard !storedTimers.contains(where: { $0.recordId == recordId }) else {
+        guard !timerLog.contains(where: { $0.recordId == recordId }) else {
             return TimerAdoption()
         }
 
@@ -1052,7 +1052,7 @@ public final class WatchSessionEngine: ObservableObject {
             )
         )
         guard let row = stored.timerRow else { return TimerAdoption() }
-        storedTimers.append(row)
+        timerLog.append(row)
         return TimerAdoption(
             changed: true,
             jump: jumpTarget(
@@ -1110,7 +1110,7 @@ public final class WatchSessionEngine: ObservableObject {
         guard let timer = newestTimer(kind: kind),
               timer.state != WatchTimerState.stopped,
               timer.sessionId == sessionId,
-              !storedTimers.contains(where: { $0.recordId == recordId })
+              !timerLog.contains(where: { $0.recordId == recordId })
         else { return false }
 
         let stored = await store.append(
@@ -1124,7 +1124,7 @@ public final class WatchSessionEngine: ObservableObject {
             )
         )
         guard let row = stored.timerRow else { return false }
-        storedTimers.append(row)
+        timerLog.append(row)
         return true
     }
 
@@ -1172,21 +1172,16 @@ public final class WatchSessionEngine: ObservableObject {
 
         // F-7: a burst delivered without awaiting each frame can hand this engine
         // two copies of one entry, and both would miss the other's row — the row
-        // only reaches `storedObservations` once its append returns — while the
+        // only reaches the observation list once its append returns — while the
         // store, which keeps one row per id, hands the same row back twice. The id
         // is claimed before the write is awaited, so the second copy waits for the
         // first and is then re-stated rather than stored again.
-        if let inflight = inflightEntries[entryId] {
+        if let inflight = observationLog.claim(entryId) {
             await inflight.wait()
             return await storeSnapshotEntry(sessionId, entry)
         }
 
-        let claim = EntryClaim()
-        inflightEntries[entryId] = claim
-        defer {
-            inflightEntries.removeValue(forKey: entryId)
-            claim.finish()
-        }
+        defer { observationLog.finishClaim(entryId) }
         let stored = await store.append(
             .observation(
                 WatchObservationRecord(
@@ -1199,7 +1194,7 @@ public final class WatchSessionEngine: ObservableObject {
             )
         )
         guard let row = stored.observationRow else { return }
-        storedObservations.append(row)
+        observationLog.append(row)
     }
 
     /// Shows `entry`'s id again — the tombstone it carried no longer stands —
@@ -1234,7 +1229,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// names the same entry by `entryId`, so one entry may be held under either
     /// (D-14606).
     private func heldRecord(_ entryId: String) -> WatchObservationRecord? {
-        for row in storedObservations
+        for row in observationLog.snapshot()
         where row.recordId == entryId || row.payload["entryId"] as? String == entryId {
             return row
         }
@@ -1676,7 +1671,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// Read back out of the rows storage already held, which is what makes the
     /// food that moves to the top of the wrist's list survive a relaunch.
     public var nutritionLog: [WatchObservationRecord] {
-        storedObservations.filter { $0.kind == WatchObservationKind.nutritionQuickLog }
+        observationLog.snapshot().filter { $0.kind == WatchObservationKind.nutritionQuickLog }
     }
 
     /// Persists one glass of water added or removed on the wrist, and emits it
@@ -1707,7 +1702,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// The water taps the wrist has stored, in store order, confirmed or not —
     /// what the wrist's water count folds over (plan 95 D-25).
     public var waterLog: [WatchObservationRecord] {
-        storedObservations.filter { $0.kind == WatchObservationKind.waterGlass }
+        observationLog.snapshot().filter { $0.kind == WatchObservationKind.waterGlass }
     }
 
     /// Storage first, emission second — the order every log on the watch
@@ -1749,20 +1744,17 @@ public final class WatchSessionEngine: ObservableObject {
         }
 
         // F-7, as in `storeSnapshotEntry`: a second copy of the same entry that
-        // lands before the first copy's row is in `storedObservations` waits for
+        // lands before the first copy's row is in the observation list waits for
         // it and then finds it held — nothing is stored twice, nothing is
         // announced twice.
-        if let inflight = inflightEntries[recordId] {
+        if let inflight = observationLog.claim(recordId) {
             await inflight.wait()
             return try await appendObservation(event, sessionId: sessionId)
         }
-        let claim = EntryClaim()
-        inflightEntries[recordId] = claim
         let stored = await store.append(.observation(record))
-        inflightEntries.removeValue(forKey: recordId)
-        claim.finish()
+        observationLog.finishClaim(recordId)
         guard let row = stored.observationRow else { return record }
-        storedObservations.append(row)
+        observationLog.append(row)
         emit(envelope)
         return row
     }
@@ -1874,7 +1866,7 @@ public final class WatchSessionEngine: ObservableObject {
     @discardableResult
     public func pruneSettledSensorSamples() async -> [String] {
         let awaitingReceipt = Set(
-            storedObservations.filter { $0.confirmedAt == nil }.map(\.sessionId)
+            observationLog.snapshot().filter { $0.confirmedAt == nil }.map(\.sessionId)
         )
 
         let settled = newestSessionRows().values
@@ -1917,7 +1909,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// no session (S-006) is owed like any other, under the id it was stored
     /// with.
     public func pendingObservations() -> [[String: Any]] {
-        storedObservations
+        observationLog.snapshot()
             .filter { $0.confirmedAt == nil }
             .map { observation in
                 observationsUp(
@@ -1934,7 +1926,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// wrist's "waiting for your phone" line (plan 51d D-2). A receipt
     /// (`confirmObservations`) removes an entry from it.
     public var unconfirmedObservations: [WatchObservationRecord] {
-        storedObservations.filter { $0.confirmedAt == nil }
+        observationLog.snapshot().filter { $0.confirmedAt == nil }
     }
 
     // MARK: - Session end
@@ -2084,7 +2076,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// acknowledged and pruned since.
     private func knowsObservation(_ recordId: String) -> Bool {
         acknowledgedObservationIds.contains(recordId)
-            || storedObservations.contains { $0.recordId == recordId }
+            || observationLog.contains { $0.recordId == recordId }
     }
 
     /// The prune gate's extra step for a session the wrist created: its
@@ -2234,7 +2226,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// observation → nil, and the rest is not emitted.
     private func restFollowOnEntryId(before timerRow: WatchTimerRecord) -> WatchObservationRecord? {
         var newest: WatchObservationRecord?
-        for observation in storedObservations {
+        for observation in observationLog.snapshot() {
             if observation.sessionId != timerRow.sessionId { continue }
             if observation.sequence >= timerRow.sequence { continue }
             guard WatchObservationKind.efforts.contains(observation.kind) else { continue }
@@ -2274,7 +2266,7 @@ public final class WatchSessionEngine: ObservableObject {
     private func appendTimer(_ row: WatchTimerRecord) async -> WatchTimerRecord {
         let stored = await store.append(.timer(row))
         guard let timer = stored.timerRow else { return row }
-        storedTimers.append(timer)
+        timerLog.append(timer)
         emit(
             timerState(
                 sessionId: timer.sessionId,
@@ -2294,7 +2286,7 @@ public final class WatchSessionEngine: ObservableObject {
 
     private func newestTimer(kind: String?) -> WatchTimerRecord? {
         var newest: WatchTimerRecord?
-        for timer in storedTimers {
+        for timer in timerLog.snapshot() {
             if timer.sessionId != current?.sessionId { continue }
             if let kind, timer.kind != kind { continue }
             if newest.map({ timer.sequence > $0.sequence }) ?? true { newest = timer }
@@ -2343,7 +2335,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// drop across a relaunch, without rewriting an observation.
     public func confirmObservations(_ entryIds: [String]) async -> [String] {
         let wanted = Set(entryIds)
-        let acknowledged = storedObservations.filter {
+        let acknowledged = observationLog.snapshot().filter {
             wanted.contains($0.entryId) && $0.confirmedAt == nil
         }
         guard !acknowledged.isEmpty else { return [] }
@@ -2365,7 +2357,7 @@ public final class WatchSessionEngine: ObservableObject {
 
         let acknowledgedIds = Set(acknowledged.map(\.recordId))
         acknowledgedObservationIds.formUnion(acknowledgedIds)
-        storedObservations = storedObservations.map { observation in
+        observationLog.map { observation in
             acknowledgedIds.contains(observation.recordId)
                 ? observation.withConfirmation(now)
                 : observation
@@ -2394,7 +2386,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// Takes the rows a prune dropped out of memory too.
     private func trimPrunedObservations(_ pruned: [String]) {
         let dropped = Set(pruned)
-        storedObservations.removeAll { dropped.contains($0.recordId) }
+        observationLog.prune(dropped)
         // D-52: a pruned row takes its projection lens with it. A correction or
         // deletion marker left behind would override or hide the fresh row when
         // the same id is re-carried.
@@ -2539,30 +2531,5 @@ private extension StoredWatchRecord {
     var sensorSampleRow: WatchSensorSampleRecord? {
         if case .sensorSample(let row) = self { return row }
         return nil
-    }
-}
-
-/// One in-flight write of an entry. A second copy waits until the first copy's
-/// row is in `storedObservations`, then re-reads it instead of storing again
-/// (F-7, D-14606).
-private final class EntryClaim {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var finished = false
-
-    func wait() async {
-        if finished { return }
-        await withCheckedContinuation { continuation in
-            if finished {
-                continuation.resume()
-            } else {
-                waiters.append(continuation)
-            }
-        }
-    }
-
-    func finish() {
-        finished = true
-        for waiter in waiters { waiter.resume() }
-        waiters.removeAll()
     }
 }
