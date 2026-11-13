@@ -223,10 +223,10 @@ class SyncSessionReconciler {
   /// deleted by a discard that lands at the same moment — and a still-tied
   /// pair resolves on the lexicographically smaller messageId, so both sides
   /// keep the same ending whichever order the frames arrived in. A missing
-  /// instant or id never wins: the held ending stands. D-15403: an instant
-  /// within `kEndSkewToleranceMs` of the held one is the same instant, so the
-  /// two clocks' disagreement never decides on its own; only an end earlier by
-  /// more than the tolerance is the earlier ending that replaces.
+  /// instant or id never wins: the held ending stands. D-15403: a finish
+  /// against a discard within `kEndSkewToleranceMs` is a tie, so the two
+  /// clocks' disagreement never decides on its own; a same-status end is
+  /// compared exactly (`orderEnds`).
   bool _incomingEndWins({
     required String status,
     required DateTime? at,
@@ -234,8 +234,13 @@ class SyncSessionReconciler {
   }) {
     final held = _endedAt;
     if (held == null || at == null) return false;
-    if (endsBeforeHeldByMoreThanSkew(at, held)) return true;
-    if (!areEndsWithinSkew(at, held)) return false;
+    final order = orderEnds(
+      incoming: at,
+      held: held,
+      sameStatus: status == _status,
+    );
+    if (order == EndOrder.earlier) return true;
+    if (order == EndOrder.later) return false;
     if (status != _status) return status == 'completed';
     final heldMessageId = _endMessageId;
     if (heldMessageId == null || messageId == null) return false;

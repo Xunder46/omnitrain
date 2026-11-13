@@ -639,8 +639,13 @@ public final class WatchSessionEngine: ObservableObject {
         let terminalHeld = existing.map { Self.isTerminal($0.status) } ?? false
         var replacing = false
         if let existing, terminalHeld, Self.isTerminal(status) {
-            replacing = sentAt < existing.recordedAt.addingTimeInterval(-Self.endSkewTolerance)
-                || (abs(sentAt.timeIntervalSince(existing.recordedAt)) <= Self.endSkewTolerance
+            let order = Self.orderEnds(
+                incoming: sentAt,
+                held: existing.recordedAt,
+                sameStatus: status == existing.status
+            )
+            replacing = order == .earlier
+                || (order == .tied
                     && Self.incomingEndWinsATie(
                         held: existing,
                         incomingStatus: status,
@@ -736,6 +741,26 @@ public final class WatchSessionEngine: ObservableObject {
             nulls[kind] = value
         }
         return nulls
+    }
+
+    /// How an incoming end orders against the held one (D-15403). Two ends of
+    /// DIFFERENT status are compared through `endSkewTolerance` — within it they
+    /// are `.tied`, so skew between two clocks never deletes a finished workout;
+    /// two ends of the SAME status are compared exactly, as before the
+    /// tolerance, so the earlier wins deterministically and only an exactly
+    /// equal pair reaches the messageId tie-break (S-15411). Mirrors
+    /// `orderEnds` in `lib/core/sync_protocol/end_skew.dart`.
+    enum EndOrder { case earlier, tied, later }
+
+    static func orderEnds(incoming: Date, held: Date, sameStatus: Bool) -> EndOrder {
+        if sameStatus {
+            if incoming < held { return .earlier }
+            if incoming == held { return .tied }
+            return .later
+        }
+        if incoming < held.addingTimeInterval(-endSkewTolerance) { return .earlier }
+        if abs(incoming.timeIntervalSince(held)) <= endSkewTolerance { return .tied }
+        return .later
     }
 
     /// Whether an ending that arrives at the same instant as the held one
@@ -856,10 +881,13 @@ public final class WatchSessionEngine: ObservableObject {
             // the smaller messageId, D-14601). D-15403: an instant within
             // `endSkewTolerance` of the held one is the same instant, so only an
             // end earlier by more than the tolerance replaces on its own.
-            if !(at < session.recordedAt.addingTimeInterval(-Self.endSkewTolerance)) {
-                let sameInstant = abs(at.timeIntervalSince(session.recordedAt))
-                    <= Self.endSkewTolerance
-                if !(sameInstant && Self.incomingEndWinsATie(
+            let order = Self.orderEnds(
+                incoming: at,
+                held: session.recordedAt,
+                sameStatus: status == session.status
+            )
+            if order != .earlier {
+                if !(order == .tied && Self.incomingEndWinsATie(
                     held: session,
                     incomingStatus: status,
                     incomingMessageId: messageId
@@ -868,7 +896,7 @@ public final class WatchSessionEngine: ObservableObject {
                     // write), so the caller does not read the repeat as a
                     // refusal. A later end for the same session is refused
                     // whole (D-14601).
-                    return sameInstant && status == session.status
+                    return order == .tied && status == session.status
                 }
             }
         }

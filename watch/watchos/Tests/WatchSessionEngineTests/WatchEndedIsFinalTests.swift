@@ -362,6 +362,33 @@ final class WatchEndedIsFinalTests: XCTestCase {
         }
     }
 
+    /// S-15411: the tolerance applies between a finish and a discard only. Two
+    /// ends of the SAME status compare exactly, so an end a second later never
+    /// wins on its messageId, and an earlier one always does. (The Dart twin's
+    /// harness trace went flaky when a same-status near-tie fell to a random id.)
+    func testS15411TwoEndsOfTheSameStatusCompareExactly() async throws {
+        let harness = Harness()
+        let (engine, t0) = await settledSession(harness)
+        let held = t0.addingTimeInterval(60)
+        let first = (try? await engine.applyMessage(
+            ending("s-watch-1", messageId: "msg-m", state: WatchLifecycleState.completed, at: held)
+        )) ?? false
+        XCTAssertTrue(first, "the first finish applies")
+
+        let later = (try? await engine.applyMessage(
+            ending("s-watch-1", messageId: "msg-a", state: WatchLifecycleState.completed, at: held.addingTimeInterval(1))
+        )) ?? true
+        XCTAssertFalse(later, "a later end of the same status is refused whole, whatever its messageId sorts like")
+        XCTAssertEqual(engine.session?.recordedAt, held, "the held end stands")
+
+        let earlierAt = held.addingTimeInterval(-1)
+        let earlier = (try? await engine.applyMessage(
+            ending("s-watch-1", messageId: "msg-z", state: WatchLifecycleState.completed, at: earlierAt)
+        )) ?? false
+        XCTAssertTrue(earlier, "an earlier end of the same status replaces the held one")
+        XCTAssertEqual(engine.session?.recordedAt, earlierAt, "the earlier of two same-status ends wins")
+    }
+
     func testS14601ATiedEndingResolvesOnTheSmallerMessageId() async throws {
         let harness = Harness()
         let (engine, t0) = await settledSession(harness)

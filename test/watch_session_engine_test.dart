@@ -3610,6 +3610,79 @@ void main() {
     });
   });
 
+  // Plan 154 follow-up (S-15411): the tolerance applies between a finish and a
+  // discard only. Two ends of the SAME status compare exactly, so an end a
+  // fraction of a second later never wins on a random messageId (the harness
+  // trace S-14502 went flaky when it did).
+  group('S-15411 two ends of the same status compare exactly', () {
+    Future<(WatchSessionEngine, DateTime)> finished() async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-m',
+          state: WatchLifecycleState.completed,
+          sentAt: '2026-07-13T06:10:00Z',
+          at: '2026-07-13T06:10:00Z',
+        ),
+      );
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      return (engine, engine.session!.recordedAt);
+    }
+
+    test('S-15411 a later completion with a smaller messageId does not '
+        'replace the held one', () async {
+      final (engine, held) = await finished();
+      final later = held.add(const Duration(seconds: 1));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-a',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(later),
+          at: _iso(later),
+        ),
+      );
+
+      expect(applied, isFalse, reason: 'S-15411 a later end is refused whole');
+      expect(
+        engine.session!.recordedAt,
+        held,
+        reason: 'S-15411 the held end stands whatever the ids sort like',
+      );
+    });
+
+    test('S-15411 an earlier completion with a larger messageId replaces the '
+        'held one', () async {
+      final (engine, held) = await finished();
+      final earlier = held.subtract(const Duration(seconds: 1));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-z',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(earlier),
+          at: _iso(earlier),
+        ),
+      );
+
+      expect(applied, isTrue);
+      expect(
+        engine.session!.recordedAt,
+        earlier,
+        reason: 'S-15411 the earlier of two same-status ends wins, as before '
+            'the tolerance',
+      );
+    });
+  });
+
   group('S-14608 a set is never held twice', () {
     test('S-14608 one entryId is one row, whatever carried it', () async {
       final harness = _Harness();

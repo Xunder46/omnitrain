@@ -52,3 +52,7 @@ Owner said "Fix 1-4 now" on 2026-11-13. Findings 5-9 are NOT in this plan.
   is the only delete API and resolving a workout id needs native plugin code, which D-15404 says to report
   rather than write. The window delete stays; the restore closes the data loss. Reported to the governor.
 
+
+## Amendment (same day, after the first commit)
+
+- **D-15405** The tolerance applies between ends of DIFFERENT status only. Same-status ends compare exactly (`orderEnds` in `end_skew.dart`, mirrored in `WatchSessionEngine`). Why: D-15403 as first built sent a same-status end within 2 s to the messageId tie-break; the harness's message ids are random, so the Dart twin's trace in `S-14502` varied run to run (about half the runs failed). The first verification of plan 154 passed that test by luck. (S-15411, Dart and Swift.)

@@ -35,3 +35,31 @@ bool endsBeforeHeldMsByMoreThanSkew(int incomingMs, int heldMs) =>
 /// instant for the reconciliation rules.
 bool areEndsWithinSkew(DateTime a, DateTime b) =>
     a.difference(b).inMicroseconds.abs() <= kEndSkewToleranceMs * 1000;
+
+/// How an incoming end orders against the held one.
+enum EndOrder { earlier, tied, later }
+
+/// Orders [incoming] against [held] for D-14601/D-14630.
+///
+/// Two ends of DIFFERENT status (a finish against a discard) are compared
+/// through the tolerance: within it they are `tied`, and the tie-break (a
+/// finish wins) decides, so clock skew never deletes a finished workout
+/// (D-15403). Two ends of the SAME status are compared exactly, as before the
+/// tolerance: nothing is at stake between them but the end time, the earlier
+/// one wins deterministically, and only an exactly equal pair reaches the
+/// messageId tie-break — so a skew of a few hundred milliseconds never makes
+/// the outcome depend on which random message id sorts first (S-15411).
+EndOrder orderEnds({
+  required DateTime incoming,
+  required DateTime held,
+  required bool sameStatus,
+}) {
+  if (sameStatus) {
+    if (incoming.isBefore(held)) return EndOrder.earlier;
+    if (incoming.isAtSameMomentAs(held)) return EndOrder.tied;
+    return EndOrder.later;
+  }
+  if (endsBeforeHeldByMoreThanSkew(incoming, held)) return EndOrder.earlier;
+  if (areEndsWithinSkew(incoming, held)) return EndOrder.tied;
+  return EndOrder.later;
+}

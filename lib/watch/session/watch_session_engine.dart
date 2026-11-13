@@ -93,6 +93,7 @@ class WatchSessionEngine {
 
   final List<WatchSessionRecord> _sessionRows = [];
   final List<WatchObservationRecord> _observations = [];
+
   /// The entries whose row is being written right now, by `entryId` (F-7).
   final Map<String, Future<WatchObservationRecord>> _inflightEntries = {};
   final List<WatchTimerRecord> _timers = [];
@@ -540,7 +541,6 @@ class WatchSessionEngine {
       return _mergeLateEntries(sessionId, entryMaps);
     }
 
-
     // A snapshot naming another session is refused whole while the wrist is
     // running a workout of its own: the user is in the middle of it, and
     // nothing — no row, no message — may come of a frame that is not about it
@@ -575,20 +575,20 @@ class WatchSessionEngine {
     // status against an `active` payload status, and a terminal payload status
     // replaces the held one only when its instant — the snapshot's `sentAt`,
     // the D-120 end moment — is earlier than the held terminal row's. D-15403:
-    // "earlier" means earlier by more than `kEndSkewToleranceMs`; within it the
-    // two stamps are the same instant and the tie-break below decides.
+    // for a different status "earlier" means earlier by more than
+    // `kEndSkewToleranceMs` (within it the tie-break decides); a same-status
+    // end is compared exactly (see `orderEnds`).
     final messageStatus = payload['status']! as String;
     final terminalHeld = existing != null && _isTerminal(existing.status);
     final replacing =
         terminalHeld &&
         _isTerminal(messageStatus) &&
-        (endsBeforeHeldByMoreThanSkew(sentAt, existing.recordedAt) ||
-            (areEndsWithinSkew(sentAt, existing.recordedAt) &&
-                _incomingEndWinsATie(
-                  held: existing,
-                  incomingStatus: messageStatus,
-                  incomingMessageId: messageId,
-                )));
+        _incomingEndReplaces(
+          held: existing,
+          incomingStatus: messageStatus,
+          incomingAt: sentAt,
+          incomingMessageId: messageId,
+        );
     final row = WatchSessionRecord(
       recordId: '$_snapshotPrefix$messageId',
       sessionId: sessionId,
@@ -663,6 +663,29 @@ class WatchSessionEngine {
     for (final entry in timers.entries)
       if (entry.value == null) entry.key: null,
   };
+
+  /// Whether an incoming end replaces the held terminal row: it is earlier
+  /// (D-14630), or tied and the tie-break applies it (D-14601). `orderEnds`
+  /// decides what "earlier" and "tied" mean for the two statuses (D-15403).
+  static bool _incomingEndReplaces({
+    required WatchSessionRecord held,
+    required String incomingStatus,
+    required DateTime incomingAt,
+    required String incomingMessageId,
+  }) {
+    final order = orderEnds(
+      incoming: incomingAt,
+      held: held.recordedAt,
+      sameStatus: incomingStatus == held.status,
+    );
+    return order == EndOrder.earlier ||
+        (order == EndOrder.tied &&
+            _incomingEndWinsATie(
+              held: held,
+              incomingStatus: incomingStatus,
+              incomingMessageId: incomingMessageId,
+            ));
+  }
 
   /// Whether an ending that arrives at the same instant as the held one
   /// replaces it (D-14601 as amended by the lead review): `completed` wins a
@@ -775,9 +798,13 @@ class WatchSessionEngine {
       // instant within `kEndSkewToleranceMs` of the held one is the same
       // instant — two clocks stamping one workout's end land a second or two
       // apart — so only an end earlier by more than the tolerance replaces.
-      if (!endsBeforeHeldByMoreThanSkew(at, session.recordedAt)) {
-        final sameInstant = areEndsWithinSkew(at, session.recordedAt);
-        if (sameInstant &&
+      final order = orderEnds(
+        incoming: at,
+        held: session.recordedAt,
+        sameStatus: status == session.status,
+      );
+      if (order != EndOrder.earlier) {
+        if (order == EndOrder.tied &&
             _incomingEndWinsATie(
               held: session,
               incomingStatus: status,
@@ -790,7 +817,7 @@ class WatchSessionEngine {
           // The same end delivered again: applied (nothing to write), so the
           // caller does not read the repeat as a refusal (S-81). A later end
           // for the same session is refused whole (D-14601).
-          return sameInstant && status == session.status;
+          return order == EndOrder.tied && status == session.status;
         }
       }
     }
