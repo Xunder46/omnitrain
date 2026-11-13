@@ -206,6 +206,43 @@ time after a middle delete`. It asserts the `00:45` readout off `startedAtMs: Da
 real-clock threshold, which the repo's rules forbid precisely because load moves it; run alone it is
 `+4: All tests passed!`. Not touched by this diff, not edited.
 
+### Phase 5 (developer run 2026-11-13, PR 3 — Health re-write after an end-time move)
+
+**Files changed.** `lib/core/services/health_sync_service.dart` (new `rewriteWorkout`, `dart:math`),
+`lib/state/workout/session_core_lifecycle.dart` (`catchUpEndedSession` triggers it),
+`lib/core/services/watch_session_importer.dart` (`WatchSessionImport.endMovedFromMs`, `_Pass`, `_catchUpEnd`),
+`lib/state/watch/watch_session_inbox.dart` (`_rewriteHealth`, `_settleNow`),
+`test/health_platform_test.dart` (+8 tests, the fake's effort/delete recording),
+`test/watch_session_import_test.dart` (+1 test, `_RewriteSpy`, `_inbox(healthSync: …)`),
+`docs/state_management/services_and_utils.md`, `docs/state_management/workout_state.md`.
+
+**Suites (real counts).**
+
+| Check | Command | Result |
+|---|---|---|
+| Phase 5 Done Criteria | `gateway.sh test test/health_platform_test.dart test/watch_session_import_test.dart test/watch_session_finish_test.dart` | **158 passed, 0 failed** (~1 s; `.work/gateway/test-20261113-003215-32439.log`) |
+| Brief's extra files | `gateway.sh test test/watch_convergence_harness_test.dart test/watch_convergence_random_test.dart test/docs_indexing_contract_test.dart test/ui_standards_contract_test.dart` | **95 passed, 1 skipped, 0 failed** (27 s; `.work/gateway/test-20261113-003225-32600.log`) |
+| Lint | `gateway.sh lint` | **181 issues** = baseline; `grep` for the six touched files in the log: no matches |
+| UI standards | inside the extra-files run | 41 passed |
+| Full suite | not run (brief; the lead runs it) | — |
+
+**Red before implementation.** `prove-red HEAD` cannot compile these tests (the production API is new), so
+each guard was proven by mutation — original line recorded, changed, run, restored exactly, re-run green.
+
+| Mutation | Original line | Observed red |
+|---|---|---|
+| M1 drop D-14636's ledger gate | `if (!await _ledgerContains(session.id)) return;` → `… && false)` | `S-14671 a session the phone never wrote is left alone…` — `Expected: empty / Actual: [(09:00, 09:40)]`, reason `S-14671 the watch's own workout is never deleted`; also `S-14671 the phone's catch-up writes nothing…` (2 failures) |
+| M2 drop the phone trigger | `await _healthSync?.rewriteWorkout(updatedSession, previousEndedAtMs: heldEndMs);` → commented | `S-14670 the phone's own catch-up rewrites the workout it wrote` — `Expected: 09:40 / Actual: 09:30` |
+| M3 drop the importer report | `endMovedFromMs = row;` → `endMovedFromMs = null;` | `plan 146c: a moved end reaches the Health rewrite` — `Expected: [(s-cap-1, 1790333700000)] / Actual: []`, reason `S-14670 the pass reports the end it moved from, once` |
+
+After each restore, the named file(s) went green again (the 158-pass run above is post-restore).
+
+**Scenario coverage.** S-14670: two moves leave one workout over the new span and the effort on it;
+a move with no rating writes no effort; an unchanged end sends nothing; a refused delete writes nothing
+and keeps the ledger; the phone's catch-up rewrites; the inbox asks once with the end it moved from.
+S-14671: the service arm and the phone arm both send nothing (no delete, no write) for a session the
+ledger does not name, and a move with `Write workouts` off sends nothing.
+
 ## Governor actions
 
 *(recorded by the planner when the work needs something its tools deny)*

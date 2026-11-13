@@ -94,6 +94,13 @@ and D-14610.. (plan 149b) are taken; this plan uses **D-14630..**, stable and ne
   (`lib/state/workout/session_core_lifecycle.dart` :14-62), which persists open rests as history but
   never stops the live in-memory rest the way a discard does (D-14603c closes them;
   `persistOpenRests` does not). Fix only if the red run confirms the seam.
+- **D-14636 (a wrist-saved workout is never rewritten — SAFETY, binding).** `rewriteWorkout` acts only
+  when the ledger names the session. A workout the wrist saved carries heart rate, active energy and a
+  route; the phone's bare draft carries none of them, so replacing it would destroy what the user
+  recorded. With no ledger entry the call returns before any platform call: no delete, no write, no
+  effort. The `Write workouts` gate and a missing end are checked first, so a move with the toggle off
+  sends nothing either. Enforced in `HealthSyncService.rewriteWorkout`; verified by S-14671 in
+  `test/health_platform_test.dart` (the service arm, the toggle-off arm and the phone's own catch-up).
 
 ## Feature Invariants
 
@@ -409,25 +416,28 @@ if item 6 fixed: `.github/copilot/scripts/macos/gateway.sh test test/watch_sessi
 (item 6 only) `lib/state/workout/session_core_lifecycle.dart`, `test/watch_session_finish_test.dart`.
 
 ### Phase 5: Health re-write after an end-time move (@developer) — BLOCKED by Phase 1; runs last (owner: "we can do it at the end"; owner to confirm)
-1. [ ] `HealthSyncService.rewriteWorkout(TrainingSession session, {required int previousEndedAtMs})`:
+1. [x] `HealthSyncService.rewriteWorkout(TrainingSession session, {required int previousEndedAtMs})`:
        delete the workouts in `[startedAtMs, max(previousEndedAtMs, endedAtMs)]` (one window covers the
        old write), clear the effort in the same window, write the new draft
        (`_activityKindOf` reused), re-rate when `sessionFeeling` maps; never touch the ledger —
        `lib/core/services/health_sync_service.dart` (new method after `onSessionCompleted`, :104) —
-       D-14634.
-2. [ ] Trigger on the phone's catch-up: `catchUpEndedSession` calls `_healthSync?.rewriteWorkout` when
+       D-14634. Done, with D-14636's ledger gate first inside the `try`.
+2. [x] Trigger on the phone's catch-up: `catchUpEndedSession` calls `_healthSync?.rewriteWorkout` when
        the end actually moved (it already has `_activeEnergy` beside it) —
-       `lib/state/workout/session_core_lifecycle.dart` (`catchUpEndedSession`, :223).
-3. [ ] Trigger on the importer's catch-up: `_catchUpEnd` reports the move (a new `WatchSessionImport`
+       `lib/state/workout/session_core_lifecycle.dart` (`catchUpEndedSession`, :223). Done; the catch
+       block now returns so a failed save triggers no rewrite.
+3. [x] Trigger on the importer's catch-up: `_catchUpEnd` reports the move (a new `WatchSessionImport`
        field, e.g. `endMovedFromMs`), and `WatchSessionInbox._settleNow` calls
        `_healthSync?.rewriteWorkout` for it (the inbox already holds `_healthSync` for ratings) —
        `lib/core/services/watch_session_importer.dart` (`_catchUpEnd`, :661; `WatchSessionImport`,
-       :34), `lib/state/watch/watch_session_inbox.dart` (`_settleNow`, :467).
-4. [ ] Tests S-14670 and S-14671 (one workout after a move and after two moves; a never-written session
+       :34), `lib/state/watch/watch_session_inbox.dart` (`_settleNow`, :467). Done as named.
+4. [x] Tests S-14670 and S-14671 (one workout after a move and after two moves; a never-written session
        writes nothing) — `test/health_platform_test.dart` (the `HealthSyncService` group, the pattern
-       at :177).
-5. [ ] Assumption Log entries + the owner-confirmation note (this phase is vetoable as a whole; if the
+       at :177). Done: 8 tests (6 service-arm, 2 phone-arm); S-14670/S-14671 also proven at the inbox
+       boundary in `test/watch_session_import_test.dart`.
+5. [x] Assumption Log entries + the owner-confirmation note (this phase is vetoable as a whole; if the
        owner defers it, it moves to its own follow-up PR with D-14634 and S-14670/S-14671 unchanged).
+       Done (A-146c-18 to A-146c-22, and D-14636 recorded in the decisions ledger).
 
 **Done Criteria**: `.github/copilot/scripts/macos/gateway.sh lint`;
 `.github/copilot/scripts/macos/gateway.sh test test/health_platform_test.dart test/watch_session_import_test.dart test/watch_session_finish_test.dart`.
@@ -494,7 +504,10 @@ if item 6 fixed: `.github/copilot/scripts/macos/gateway.sh test test/watch_sessi
       seed 111, entries = 5-action seed 857, timers not reproduced (D-14635 deferred, no code touched).
       S-14660 RED and skipped: the wrist's own workout never gets a `session_end` row to import — a
       protocol change, listed in `## Open Items`.
-- [ ] Phase 5: Health re-write after an end-time move (@developer) — not started
+- [x] Phase 5: Health re-write after an end-time move (@developer) — **Complete.** `rewriteWorkout`
+      behind D-14636's ledger gate, both triggers wired (phone catch-up, inbox settle), 8 service/phone
+      tests + 1 inbox test; 158 passed across the phase's three files, mutation-proved (ledger guard,
+      phone trigger, inbox report), lint 181 = baseline.
 
 ## Assumption Log
 
@@ -554,6 +567,23 @@ Conductor marks each RATIFIED (promote to a D-x) or REVERT (remediation).)*
 - **A-146c-17 (executor, Phase 4 item 5): the `entries` trace is a phone→wrist loss.** The phone's set
   never reaches the wrist, then the phone discards and starts a new session; the wrist keeps the old
   session's entries as residue. Recorded for whoever takes `entries` — it is not this PR's seam.
+- **A-146c-18 (executor, Phase 5): `rewriteWorkout` reads the ledger, it does not write it.** The session
+  stays "written" so the delete path, a later rating and a repeated catch-up all keep their meaning;
+  the alternative (clear then re-remember) would let a failed write erase the session from the ledger.
+- **A-146c-19 (executor, Phase 5): the ordering is delete → clear effort → write → re-rate.** Delete
+  first so the store never holds two overlapping workouts (the house rule this phase serves); the
+  effort clear is best-effort inside its own try so an iOS-only channel failure cannot skip the write.
+- **A-146c-20 (executor, Phase 5): the guard is `endedAtMs <= previousEndedAtMs`, not `< `.** A move
+  "forward" to the end it already had is not a move; the strict form makes a repeated catch-up with
+  the same instant send nothing (S-14670's unchanged-end arm), the delete-then-write covering repeats.
+- **A-146c-21 (executor, Phase 5): the importer reports the move on `WatchSessionImport`, not a
+  callback.** `_catchUpEnd` runs inside `_Pass`, which owns no health service; `endMovedFromMs` rides
+  the result the inbox already reads (`sensorSummaryAttached`, `appliedRating`) and `_settleNow` makes
+  the call, so the importer keeps zero knowledge of Health.
+- **A-146c-22 (executor, Phase 5): the phone's catch-up awaits the rewrite outside its `try`.** The
+  service never throws (D-14636's file contract), so the await belongs after the save's failure
+  handling: a failed `updateSession` returns before any Health call, and a slow store never turns the
+  session's own catch-up into an error.
 
 ## Open Items
 
@@ -562,7 +592,8 @@ Conductor marks each RATIFIED (promote to a D-x) or REVERT (remediation).)*
   `session_end` and `WatchSessionImporter.apply` imports nothing (evidence `### Phase 4`, item 2).
   Needs the wrist to re-offer a completed session's entries — a `watch/sync_protocol/` change: re-plan.
 - `absorbing` (seed 111, 4 actions) and `entries` (seed 857, 5 actions) have minimal traces but no owner.
-- `timers` does not reproduce (D-14635's `endSession` seam unconfirmed); Phase 5 (Health re-write) unstarted.
+- `timers` does not reproduce (D-14635's `endSession` seam unconfirmed). Phase 5 is done; the owner's
+  confirmation of D-14634/D-14636 (vetoable as a whole) is the only open question on it.
 
 ## Feedback
 

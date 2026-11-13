@@ -6,7 +6,10 @@
 //     exactly once (gated by the `Write workouts` toggle, idempotent per
 //     session id, S-008); deleting a finished session asks the store to
 //     remove its workout again (plan 89, same toggle); a finished session's
-//     rating becomes its workout's Workout Effort (plan 90, same toggle).
+//     rating becomes its workout's Workout Effort (plan 90, same toggle);
+//     a catch-up that moves a finished session's end rewrites its workout to
+//     the new window (plan 146c D-14634), never one the wrist saved
+//     (D-14636).
 //   * read   — body weight comes back on app foreground (gated by the
 //     `Read body weight` toggle) and is merged into the stored
 //     measurement history.
@@ -23,6 +26,7 @@
 // pushing the result into `ProfileState`. The caller owns the refresh.
 
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
@@ -96,6 +100,68 @@ class HealthSyncService {
       await _rememberWritten(session.id);
     } catch (e) {
       debugPrint('Health workout write skipped: $e');
+    }
+  }
+
+  /// Rewrites the workout of a finished session whose end moved later
+  /// (D-14634), so the store's span follows the session (S-14670).
+  ///
+  /// The delete asks for `[startedAtMs, max(previousEndedAtMs, endedAtMs)]`:
+  /// the old window is inside the new one, so one delete covers the workout an
+  /// earlier write left and a repeated move leaves exactly one. The rating is
+  /// re-applied over the new span; a session with no rating writes none. The
+  /// ledger is never touched — the session stays written, and a repeated
+  /// catch-up with the same end sends nothing.
+  ///
+  /// Only a session the ledger names is rewritten: a workout the wrist saved
+  /// carries heart rate, energy and a route, and replacing it with a bare
+  /// phone draft would lose them, so such a session is left entirely alone
+  /// (D-14636, S-14671). Best-effort like the other paths: nothing throws, and
+  /// a delete or write the platform refuses ends the call silently.
+  Future<void> rewriteWorkout(
+    TrainingSession session, {
+    required int previousEndedAtMs,
+  }) async {
+    final endedAtMs = session.endedAtMs;
+    if (endedAtMs == null) return;
+    if (!_isWriteEnabled()) return;
+    if (endedAtMs <= previousEndedAtMs) return;
+
+    try {
+      if (!await _ledgerContains(session.id)) return;
+
+      final start = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
+      final windowEnd = DateTime.fromMillisecondsSinceEpoch(
+        math.max(previousEndedAtMs, endedAtMs),
+      );
+      final end = DateTime.fromMillisecondsSinceEpoch(endedAtMs);
+
+      final deleted = await _platform.deleteWorkouts(start, windowEnd);
+      if (!deleted) return;
+
+      try {
+        await _platform.clearWorkoutEffort(start, windowEnd);
+      } catch (e) {
+        debugPrint('Health workout effort clear skipped: $e');
+      }
+
+      final written = await _platform.writeWorkout(
+        HealthWorkoutDraft(
+          activityKind: await _activityKindOf(session),
+          start: start,
+          end: end,
+          title: session.title,
+        ),
+      );
+      if (!written) return;
+
+      final rating = session.sessionFeeling;
+      final score = rating == null ? null : ratingToAppleEffort(rating);
+      if (score != null) {
+        await _platform.setWorkoutEffort(start, end, score);
+      }
+    } catch (e) {
+      debugPrint('Health workout rewrite skipped: $e');
     }
   }
 

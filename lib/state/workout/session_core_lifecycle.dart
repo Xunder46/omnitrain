@@ -229,8 +229,9 @@ extension SessionCoreLifecycleMethods on SessionCore {
     if (endMs == heldEndMs) return;
 
     _clearError();
+    late final TrainingSession updatedSession;
     try {
-      final updatedSession = TrainingSession(
+      updatedSession = TrainingSession(
         id: session.id,
         ownerUserId: session.ownerUserId,
         routineTemplateId: session.routineTemplateId,
@@ -260,7 +261,16 @@ extension SessionCoreLifecycleMethods on SessionCore {
       _notify();
     } catch (e) {
       _setError('Failed to catch up the session end: $e');
+      return;
     }
+
+    // D-14634: the moved end moves the session's Health workout with it. The
+    // service is contract-bound never to throw and rewrites only a workout
+    // the phone itself wrote (D-14636), so this stays outside the catch above.
+    await _healthSync?.rewriteWorkout(
+      updatedSession,
+      previousEndedAtMs: heldEndMs,
+    );
   }
 
   Future<void> updateSessionFeeling(

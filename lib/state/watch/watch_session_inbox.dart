@@ -469,6 +469,28 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     }
   }
 
+  /// Rewrites the Health workout of a session a pass moved the end of
+  /// (plan 146c D-14634) — the service itself decides whether the phone wrote
+  /// it (D-14636). A failed read only means no rewrite.
+  Future<void> _rewriteHealth(
+    String sessionId, {
+    required int previousEndedAtMs,
+  }) async {
+    final healthSync = _healthSync;
+    if (healthSync == null) return;
+    try {
+      final session = await _repository.getSession(sessionId);
+      if (session != null) {
+        await healthSync.rewriteWorkout(
+          session,
+          previousEndedAtMs: previousEndedAtMs,
+        );
+      }
+    } catch (_) {
+      // The import is written; the store's span only lags behind.
+    }
+  }
+
   Future<List<String>> _settleNow(
     Iterable<String> sessionIds, {
     List<Object?> redelivered = const [],
@@ -494,6 +516,10 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
       }
       if (pass.sensorSummaryAttached) {
         await _onSensorSummaryAttached?.call(sessionId);
+      }
+      final endMovedFromMs = pass.endMovedFromMs;
+      if (endMovedFromMs != null) {
+        await _rewriteHealth(sessionId, previousEndedAtMs: endMovedFromMs);
       }
       // D-13420: this pass may have created the session finished or landed
       // the wrist's timed and round instances, so settle its energy again

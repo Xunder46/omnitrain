@@ -38,6 +38,7 @@ class WatchSessionImport {
     this.historyChanged = false,
     this.appliedRating,
     this.sensorSummaryAttached = false,
+    this.endMovedFromMs,
   });
 
   /// The wrist entries this pass applied — materialised or discarded. What the
@@ -60,6 +61,11 @@ class WatchSessionImport {
   /// (plan 71, D-5), or the end's measured active energy (plan 134c,
   /// D-13463): a screen showing the session can re-read it.
   final bool sensorSummaryAttached;
+
+  /// The end this pass moved out to a later instant (D-14604), or null when
+  /// the end stayed where it was. The caller rewrites whatever hangs on the
+  /// window — the Health workout (plan 146c D-14634) — from it.
+  final int? endMovedFromMs;
 }
 
 /// A wrist session's rows, applied to history.
@@ -232,6 +238,7 @@ class WatchSessionImporter {
       historyChanged: pass.changed,
       appliedRating: pass.ratingWritten,
       sensorSummaryAttached: pass.summaryWritten,
+      endMovedFromMs: pass.endMovedFromMs,
     );
   }
 
@@ -479,6 +486,10 @@ class _Pass {
   /// Whether this pass stored a session-scope summary (plan 71, D-5).
   bool summaryWritten = false;
 
+  /// The end this pass moved out to a later instant, when it moved one
+  /// (D-14604); the caller reads it to rewrite the window's other reader.
+  int? endMovedFromMs;
+
   /// Whether the pass created, changed or removed any history row.
   bool get changed => writes > 0;
 
@@ -677,6 +688,7 @@ class _Pass {
         'updated_at_ms': latest,
       }),
     );
+    endMovedFromMs = row;
     changed = true;
   }
 

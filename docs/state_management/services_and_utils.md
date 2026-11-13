@@ -109,10 +109,12 @@ Owns the two opt-in platform-health pipelines (Apple Health / Health Connect):
 writing a completed session out, and reading body weight back in. Constructed
 in `main.dart` and injected into `WorkoutState` (via `SessionCore`, which calls
 `onSessionCompleted` after a successful session save — except for a session the
-watch runs, whose workout the watch saves (plan 89c1) — and `onSessionDeleted`,
+watch runs, whose workout the watch saves (plan 89c1) — and `rewriteWorkout`
+after a `catchUpEndedSession` moved the held session's end (plan 146c), and `onSessionDeleted`,
 un-awaited, after a successful discard, and `onSessionRated`, un-awaited, after
 a saved rating of a finished session; `WatchSessionInbox` also calls it for an
-import that applied a rating, plan 90) and into the app-lifetime
+import that applied a rating, plan 90, and for an import that moved a finished
+session's end out, plan 146c) and into the app-lifetime
 `AppLifecycleListener` (which calls `syncOnForeground`).
 
 Layering rationale — the plugin boundary is deliberately narrow:
@@ -155,6 +157,21 @@ Invariants:
   `omnitrain/health_effort` (`ios/Runner/HealthEffortChannel.swift`, iOS 18+); every other platform answers `unavailable`. Verified by `test/health_effort_test.dart` (`S-90-2` to `S-90-6`).
 - Imported body-weight rows use deterministic ids derived from the platform
   sample, so a repeated foreground read upserts instead of duplicating.
+- A finished session whose end moved later — a catch-up (D-14604) or an import
+  carrying a wrist set past the end — has its workout rewritten to the new span:
+  one delete over `[startedAtMs, max(previousEndedAtMs, endedAtMs)]`, the draft
+  written again, then the rating re-applied over the new span. The ledger is
+  never touched, so the session stays written and a repeated catch-up with the
+  same end sends nothing. Only a session the ledger names is rewritten: a
+  workout the wrist saved carries heart rate, energy and a route a bare phone
+  draft would lose, so it is left entirely alone — no delete, no write (plan
+  146c D-14634, D-14636). Verified by `test/health_platform_test.dart` (group
+  `plan 146c: a moved end rewrites the Health workout` › `S-14670 a moved end
+  rewrites the one workout, and a second move again`, `S-14671 a session the
+  phone never wrote is left alone, whatever its end does`) and by
+  `test/watch_session_import_test.dart` (group `plan 146c: a moved end reaches
+  the Health rewrite` › `S-14670 the inbox asks for a rewrite only when the end
+  moved, and names the end it moved from`).
 - Toggle state lives in the normal preference store (`HealthPrefs` keys), so a
   reinstall resets both toggles to off.
 

@@ -76,6 +76,7 @@ WatchSessionInbox _inbox(
   CaptureTransport transport, {
   Future<void> Function()? onHistoryChanged,
   DateTime Function()? clock,
+  HealthSyncService? healthSync,
 }) {
   var ids = 0;
   return WatchSessionInbox(
@@ -85,6 +86,7 @@ WatchSessionInbox _inbox(
     clock: clock ?? () => _phoneNow,
     idFactory: () => 'msg-phone-${++ids}',
     onHistoryChanged: onHistoryChanged,
+    healthSync: healthSync,
     // A failure inside the inbox fails the test where it happened.
     onFailure: Error.throwWithStackTrace,
   );
@@ -338,6 +340,28 @@ class _RecordingHealthPlatform implements HealthPlatformService {
   @override
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since) async =>
       const [];
+}
+
+/// Records the end rewrites the inbox asks the health sync for (plan 146c):
+/// the trigger is asserted without a platform behind it.
+class _RewriteSpy extends HealthSyncService {
+  _RewriteSpy(MockWorkoutRepository repository)
+    : super(
+        platform: const UnavailableHealthPlatformService(),
+        repository: repository,
+        isWriteEnabled: () => true,
+        isReadEnabled: () => false,
+      );
+
+  final List<(String, int)> rewrites = [];
+
+  @override
+  Future<void> rewriteWorkout(
+    TrainingSession session, {
+    required int previousEndedAtMs,
+  }) async {
+    rewrites.add((session.id, previousEndedAtMs));
+  }
 }
 
 void main() {
@@ -1513,6 +1537,61 @@ void main() {
         end,
         reason: 'S-14610 an earlier instant never shortens the end',
       );
+    });
+  });
+
+  group('plan 146c: a moved end reaches the Health rewrite', () {
+    test('S-14670 the inbox asks for a rewrite only when the end moved, and '
+        'names the end it moved from', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final spy = _RewriteSpy(repository);
+      final inbox = _inbox(repository, transport, healthSync: spy);
+
+      await _deliverEach(inbox, _capId, captureEvents('full'));
+      final imported = (await repository.getAllSessions()).single;
+      final end = imported.endedAtMs!;
+      final template = captureEvents(
+        'full',
+      ).firstWhere((event) => event['kind'] == 'set');
+
+      Map<String, Object?> lateSet(String entryId, int loggedAt) => {
+        ...template,
+        'entryId': entryId,
+        'eventId': entryId,
+        'loggedAt': utcIso(
+          DateTime.fromMillisecondsSinceEpoch(loggedAt, isUtc: true),
+        ),
+      };
+
+      await inbox.receive(
+        observationsUp(
+          _capId,
+          [lateSet('cx-rewrite-early', end - 60000)],
+          messageId: 'msg-rewrite-early',
+        ),
+      );
+      expect(
+        spy.rewrites,
+        isEmpty,
+        reason: 'S-14670 an end that did not move asks for no rewrite',
+      );
+
+      final movedTo = end + 5000;
+      await inbox.receive(
+        observationsUp(
+          _capId,
+          [lateSet('cx-rewrite-move', movedTo)],
+          messageId: 'msg-rewrite-move',
+        ),
+      );
+
+      expect(
+        spy.rewrites,
+        [(_capId, end)],
+        reason: 'S-14670 the pass reports the end it moved from, once',
+      );
+      expect((await repository.getSession(_capId))!.endedAtMs, movedTo);
     });
   });
 
