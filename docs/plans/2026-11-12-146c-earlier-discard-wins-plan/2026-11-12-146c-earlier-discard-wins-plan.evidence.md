@@ -74,6 +74,138 @@ Footprint (`gateway.sh git-diff --stat`): 13 files, +~940/-~60. All inside the p
 for Phases 1-3, plus the new fixture file and one helper-signature change inside a predicted test file
 (`_phone(..., clock:)`).
 
+### Phase 4 (developer run 2026-11-13, PR 3)
+
+Phase 4 measures; it was predicted to fix nothing (A-146c-03, A-146c-04). No `lib/` file changed in this
+phase — the diff is two convergence test files and one import test file.
+
+**Item 1 — O-6 (a proof, not a fix).** New group
+`O-6 the wrist's own workout is its own finished row` →
+`O-6 a completed wrist session imports as its own row while the phone holds another workout` in
+`test/watch_session_import_test.dart`: the phone holds an open `s-o6-p1`, the wrist stages a set and a
+`completed` end for `s-o6-w2`, `WatchSessionImporter.apply(..., phoneOwnsSession: false)`. It asserts the
+wrist's row exists **finished**, with its set and its load; the phone's row is untouched and still open;
+both ids are on the phone; every staged row is applied.
+
+```
+gateway.sh test test/watch_session_import_test.dart --plain-name "O-6"   →  00:00 +1: All tests passed!
+```
+
+`prove-red HEAD` is not the instrument here: O-6 exercises behaviour that already exists end to end
+(A-146c-03), so HEAD-relative redness would only restate that. Proved by mutation instead — the
+`phoneOwnsSession` dispatch in `WatchSessionImporter.apply`
+(`if (phoneOwnsSession) return _mergeHeld(watchSessionId, rows);`) was inverted to
+`if (!phoneOwnsSession)`:
+
+```
+00:00 +0 -1: O-6 … [E]
+  Expected: not null
+    Actual: <null>
+  O-6 the wrist's workout is saved as its own finished workout: the phone adopting nothing for it
+  does not make it history-less
+  test/watch_session_import_test.dart 1013:7
+```
+
+The exact original line was restored and O-6 re-ran green. No mutation is left applied.
+
+**Item 2 — S-14660, the pair-harness trace: RED, and blocked.**
+`S-14660 the wrist's own workout is saved as its own finished workout while the phone's stays open` in
+`test/watch_convergence_harness_test.dart` (phone starts p1 and logs a set → wrist free-starts w2 and
+logs a set → wrist finishes → the link rises → heal). It fails `Expected: not null / Actual: <null>` at
+the wrist workout's phone-side row. The assertion was **not** weakened; the test carries `skip:` with the
+reason and the plan reference, so the file stays green without hiding the finding.
+
+Root cause (read, not inferred): the wrist's terminal lifecycle for its own session calls
+`_withdrawOnWristQueue` and drops that session's queued `session_snapshot`, and
+`WatchSessionInbox._stageable` accepts only `observations_up` and watch-origin `session_snapshot` — a
+`session_lifecycle` carries `{state, at}` and never the session's `startedAt`. `WatchInboxEntry.kindSessionEnd`
+requires `startedAt`/`endedAt`/`status`, so no `session_end` row is ever created and
+`WatchSessionImporter.apply` has nothing to import. Fixing it means making the wrist re-offer a completed
+session's entries: a **protocol** change, outside Phase 4. → plan `## Open Items`.
+
+**Item 3 — the sweep and the soak, with the band re-owned.**
+
+| Run | Before (Phase 5.Z / plan 146) | Phase 4 |
+|---|---|---|
+| 200 seeds, shipping trace | 42 then 39 (A-146-15), 18 after 5.Z | **12** then 12 again (`[29, 43, 94, 95, 111, 117, 124, 134, 149, 152, 161, 193]`) |
+| 200 seeds, heal stall alone | — | **2** (`[86, 142]`, `[86, 184]`, `[17, 184]` across runs — the known flake) |
+| 200 seeds, harness-only | — | **3** (`[33, 138, 183]`) |
+| 2000 seeds, shipping trace | 146 diverge / 1777 converge | **125** diverge / **1801** converge |
+| 2000 seeds, by class | `{status: 166, absorbing: 21, heal: 32, entries: 11, timers: 2}` | `{status: 137, absorbing: 22, heal: 34, entries: 14, timers: 2}` |
+
+Real output lines:
+
+```
+S-14509 contract: 200 seeds; 183 converge on every trace; 12 diverge on a trace the shipping app can
+perform [29, 43, 94, 95, 111, 117, 124, 134, 149, 152, 161, 193]; 2 on a heal stall alone [86, 142];
+3 only after the harness-only re-assert [33, 138, 183]
+S-14509 contract: by class {status: 13, heal: 3, absorbing: 2}
+```
+
+`.github/copilot/scripts/macos/gateway.sh test test/watch_convergence_random_test.dart
+--dart-define=CONVERGENCE_SEEDS=2000` → **15 passed, 0 failed**, 3m23s (`.work/gateway/test-20261113-000657-11670.log`).
+
+`status` improved (166 → 137 at 2000, 14 → 12 at 200) — the owner's "an earlier discard wins" case itself
+no longer diverges — so the sweep did not trip the stop-and-report rule. `absorbing` (+1), `entries` (+3)
+and `heal` (+2) are the same classes at the same order of magnitude, not a new class.
+
+`shippingRatchet` moved from `(kSeedCount * 18 / 200).ceil()` to `(kSeedCount * 14 / 200).ceil()`
+(14 at 200, 140 at 2000) — the measured 12 plus two seeds of headroom for the clock-skew movement A-146-15
+records (12 and 13 were observed on two 200-seed runs). Proved by mutation: the ratchet set to
+`(kSeedCount * 1 / 200).ceil()` (1 at 200) fails the contract test
+`Expected: a value less than or equal to <1> / Actual: <12>`; the exact original was restored and the test
+re-ran `+1: All tests passed!`. `knownClasses` was rewritten for `status`, `absorbing`, `timers` and
+`entries` to name this phase's measurements.
+
+**Items 4-5 — the shrink-and-classify traces** (temporary probe in the sweep file, removed afterwards;
+log `.work/gateway/test-20261113-001151-14848.log`):
+
+`absorbing`, seed 111 → a **4-action** minimal trace:
+
+```
+1. wrist starts a Free workout
+2. a live frame from the wrist refused
+3. wrist finishes
+4. wrist starts a Free workout
+→ absorbing=[session 1 was completed on the wrist and reports active again]
+  phoneStatus={session 1: completed, session 2: null}
+  wristStatus={session 1: completed, session 2: abandoned}
+```
+
+`entries`, seed 857 → a **5-action** minimal trace (from 39 actions):
+
+```
+1. a live frame from the phone refused (session_snapshot)
+2. wrist starts a Free workout
+3. phone logs a set
+4. phone discards
+5. phone starts a session
+→ entries=[session 1: the wrist never held entry-sx-ex-run-1-1]
+  phoneStatus={session 1: abandoned, session 2: active}
+  wristStatus={session 1: abandoned, session 2: active}
+```
+
+`timers`, seed 1814 → **not reproduced**: replayed alone it prints `kinds=[] … converges`, and the soak
+found 2 timer-diverging seeds out of 2000 (the phase's rows) with no repeatable trace. D-14635's
+`endSession`-live-rest seam is therefore unconfirmed (A-146c-16): no fix written, no code touched.
+
+**Phase 4 suites (real counts).**
+
+| Check | Command | Result |
+|---|---|---|
+| Phase 4 Done Criteria (random + harness) | `gateway.sh test test/watch_convergence_harness_test.dart test/watch_convergence_random_test.dart` | **54 passed, 1 skipped, 0 failed** (28 s) |
+| O-6 | `gateway.sh test test/watch_session_import_test.dart --plain-name "O-6"` | **1 passed** |
+| Docs | `gateway.sh test test/docs_indexing_contract_test.dart` | pass |
+| UI standards | `gateway.sh test test/ui_standards_contract_test.dart` | **41 passed** |
+| Lint | `gateway.sh lint` | **181 issues** — the baseline, nothing in a touched file |
+| Full suite | `gateway.sh test` | **7465 passed, 4 skipped, 1 failed** (`.work/gateway/test-20261113-001659-18723.log`) |
+
+The one full-suite failure is pre-existing and unrelated:
+`test/delete_focused_timer_test.dart` → `S-4905 a running later interval keeps running and keeps its own
+time after a middle delete`. It asserts the `00:45` readout off `startedAtMs: DateTime.now()…`, i.e. a
+real-clock threshold, which the repo's rules forbid precisely because load moves it; run alone it is
+`+4: All tests passed!`. Not touched by this diff, not edited.
+
 ## Governor actions
 
 *(recorded by the planner when the work needs something its tools deny)*

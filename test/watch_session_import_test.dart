@@ -958,6 +958,113 @@ void main() {
     });
   });
 
+  group('O-6 the wrist’s own workout is its own finished row', () {
+    const wristId = 's-o6-w2';
+    const phoneId = 's-o6-p1';
+    final phoneStartedAt = _msOf('2026-09-25T10:00:00.000Z');
+
+    /// The phone's own workout, open and held on screen while the wrist ran its
+    /// own: the state D-14633's O-6 sentence starts from.
+    Future<void> createPhoneWorkout(WorkoutRepository repository) =>
+        repository.createSession(
+          TrainingSession(
+            id: phoneId,
+            ownerUserId: 'u-o6',
+            startedAtMs: phoneStartedAt,
+            createdAtMs: phoneStartedAt,
+            updatedAtMs: phoneStartedAt,
+          ),
+        );
+
+    Future<void> stage(WorkoutRepository repository, Map<String, Object?> event) =>
+        repository.stageWatchInboxEntry(
+          WatchInboxEntry(
+            entryId: event['entryId']! as String,
+            watchSessionId: wristId,
+            kind: event['kind']! as String,
+            origin: WatchInboxEntry.originWatch,
+            payload: Map<String, dynamic>.of(event),
+            receivedAtMs: _phoneNow.millisecondsSinceEpoch,
+          ),
+        );
+
+    test('O-6 a completed wrist session imports as its own row while the '
+        'phone holds another workout', () async {
+      final repository = await _repository();
+      await createPhoneWorkout(repository);
+      await stage(
+        repository,
+        _set('e-o6-1', loggedAt: '2026-09-25T10:35:00.000Z'),
+      );
+      await stage(
+        repository,
+        _end(
+          wristId,
+          startedAt: '2026-09-25T10:10:00.000Z',
+          endedAt: '2026-09-25T10:40:00.000Z',
+        ),
+      );
+
+      final result = await WatchSessionImporter(
+        repository: repository,
+      ).apply(wristId, phoneOwnsSession: false);
+
+      final imported = await repository.getSession(wristId);
+      expect(
+        imported,
+        isNotNull,
+        reason:
+            'O-6 the wrist\'s workout is saved as its own finished workout: '
+            'the phone adopting nothing for it does not make it history-less',
+      );
+      expect(imported!.startedAtMs, _msOf('2026-09-25T10:10:00.000Z'));
+      expect(imported.endedAtMs, _msOf('2026-09-25T10:40:00.000Z'));
+      expect(
+        result.historyChanged,
+        isTrue,
+        reason: 'O-6 the import is a history change',
+      );
+
+      final bench = WatchSessionImporter.effortIdFor(
+        wristId,
+        'sx-bench',
+        'ex-bench',
+        'set',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'reps'))?.valueInt,
+        5,
+        reason: 'O-6 the set the wrist logged comes with the workout',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        80.0,
+        reason: 'O-6 with its own load',
+      );
+
+      final phoneRow = await repository.getSession(phoneId);
+      expect(phoneRow, isNotNull, reason: 'O-6 the phone keeps its own workout');
+      expect(
+        phoneRow!.endedAtMs,
+        isNull,
+        reason: 'O-6 the phone\'s own workout stays open: nothing was adopted '
+            'and nothing was ended',
+      );
+      expect(
+        (await repository.getAllSessions()).map((row) => row.id).toSet(),
+        {phoneId, wristId},
+        reason: 'O-6 two workouts, one open and one finished, nothing deleted',
+      );
+
+      final staged = await repository.getWatchInboxEntriesForSession(wristId);
+      expect(
+        staged.map((row) => row.appliedAtMs != null),
+        everyElement(isTrue),
+        reason: 'O-6 every staged row is consumed by the import',
+      );
+    });
+  });
+
   group('S-58 a band assist crosses into history with its sign', () {
     test('S-58 a set logged at −20 kg imports at −20 kg and sums −160', () async {
       final repository = await _repository();

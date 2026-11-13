@@ -170,21 +170,21 @@ void main() {
       // cannot arrive silently (D-14508: the report is the product).
       const knownClasses = <String, String>{
         'status':
-            'PR 3 — the owner\'s "an earlier discard wins over a later finish" '
-            'needs the phone to delete a finished workout (A-146-15, A-146-20)',
+            'PR 3 landed — 137 of 2000 (166 before Phases 1-3), 12 of 200: the '
+            'remainder is unclassified (A-146c-13); the owner\'s "an earlier '
+            'discard wins" case itself no longer appears',
         'absorbing':
-            'open — the wrist keeps work a session the phone ended handed it on '
-            'a handful of seeds (24 of 2000 in the Phase 5.Z soak, seed 111 '
-            'first; it does not reproduce under kShippingActions, so no minimal '
-            'trace isolates it — A-146-25)',
+            'minimal trace found after PR 3 (seed 111 → 4 actions, A-146c-14): '
+            'the wrist completes a session then starts its next Free workout and '
+            'the same session reports active again (22 of 2000)',
         'timers':
-            'D-14603 residue — 1 of 2000 seeds (1814) still shows a rest running '
-            'after an end on both sides: the end arrives at the phone from the '
-            'wrist, and the phone\'s own session keeps the rest it started '
-            '(A-146-29)',
+            'does not reproduce — 0 traces confirmed at 2000 seeds in Phase 4 '
+            'and seed 1814 converges when replayed alone (A-146c-16); D-14635\'s '
+            'seam is unconfirmed and the residue is deferred',
         'entries':
-            'open — a late-merged entry (D-14605) is still missed on 4 of 2000 '
-            'seeds after the harness reads the wrist store (A-146-24)',
+            'minimal trace found after PR 3 (seed 857 → 5 actions, A-146c-15): a '
+            'phone set never reaches the wrist after the wrist refuses a phone '
+            'snapshot (14 of 2000)',
         'heal':
             'flake class — the heal exchange never settles on a handful of '
             'seeds (the same class test/watch_convergence_harness_test.dart '
@@ -199,9 +199,11 @@ void main() {
       // *kind* is caught by `unknown` below. Heal stalls are excluded: they are
       // not deterministic.
       // Per 200 seeds, so the 2000-seed soak measures instead of failing on a
-      // count that only grows with the seed total: 18 measured on 1..200 in
-      // Phase 5.Z, which is 180 at 2000 (this run: 147).
-      final shippingRatchet = (kSeedCount * 18 / 200).ceil();
+      // count that only grows with the seed total: 12 and 13 observed on two
+      // Phase 4 runs of 1..200, 125 at 1..2000 (down from 18/147 in Phase 5.Z).
+      // 14 keeps one seed of headroom for the clock-skew movement A-146-15
+      // records; 140 at 2000.
+      final shippingRatchet = (kSeedCount * 14 / 200).ceil();
 
       final shippingKinds = <int, List<String>>{};
       final syntheticOnly = <int>[];

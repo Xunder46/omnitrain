@@ -488,8 +488,12 @@ if item 6 fixed: `.github/copilot/scripts/macos/gateway.sh test test/watch_sessi
 - [x] Phase 3: the Swift engine obeys the same rule (@developer) — **Complete.** Skip removed,
       `applySnapshotExclusive` verified no-change, S-14650 both orders added, S-14651 walks the fixture;
       1388 Swift tests green, S-14650 RED AT HEAD.
-- [ ] Phase 4: O-6 proof and the sweep's new shape (@developer) — not started (this run stopped after
-      Phase 3, as briefed)
+- [x] Phase 4: O-6 proof and the sweep's new shape (@developer) — **Complete for items 1, 3, 4, 5 and
+      item 6's measurement; item 2 Blocked (scope).** O-6 green (1 passed, mutation-proved); sweep
+      12/200, soak 125/2000, ratchet 18 → 14 per 200, `knownClasses` re-owned; absorbing = 4-action
+      seed 111, entries = 5-action seed 857, timers not reproduced (D-14635 deferred, no code touched).
+      S-14660 RED and skipped: the wrist's own workout never gets a `session_end` row to import — a
+      protocol change, listed in `## Open Items`.
 - [ ] Phase 5: Health re-write after an end-time move (@developer) — not started
 
 ## Assumption Log
@@ -532,6 +536,33 @@ Conductor marks each RATIFIED (promote to a D-x) or REVERT (remediation).)*
   converges on `abandoned` and the phone's row is deleted. Re-pointed, as A-146c-02 anticipated.
 - **A-146c-11 (executor, Phase 3): `applySnapshotExclusive` verified no-change.** Its terminal branch
   is already `sentAt < existing.recordedAt` plus the tie-break, with no status skip.
+- **A-146c-12 (executor, Phase 4 item 2): S-14660 is skipped, not weakened.** It is red for a protocol
+  gap (a wrist session the phone never held emits no `session_end` row), not for the rule this plan
+  landed. Weakening it would have hidden a real hole: the wrist's finished workout never becomes history.
+- **A-146c-13 (executor, Phase 4 item 3): `status` is re-owned as the unclassified remainder.** 166 → 137
+  at 2000 and 14 → 12 at 200; the owner's discard-vs-complete case no longer diverges. The rest are
+  clock-skew and multi-rest traces not yet minimized, so they are named, not called fixed.
+- **A-146c-14 (executor, Phase 4 item 3): the ratchet is 14 per 200, not the measured 12.** Two runs of
+  1..200 gave 12 and 13 (A-146-15's clock skew), so 12 has no headroom; 14 keeps two seeds and still
+  tightens 18 → 14.
+- **A-146c-15 (executor, Phase 4 item 4): `absorbing` seed 111 is classified, not diagnosed.** The
+  4-action trace is the wrist completing a session then starting its next Free workout while the phone
+  still holds the finished one; defect or harness fault is not decided here (A-146c-04 deferred it).
+- **A-146c-16 (executor, Phase 4 item 6): D-14635 deferred, `session_core_lifecycle.dart` untouched.**
+  Seed 1814 converges when replayed alone; no repeatable `timers` trace at 200 (0) or 2000 (2). A fix
+  without a reproduction would be a guess.
+- **A-146c-17 (executor, Phase 4 item 5): the `entries` trace is a phone→wrist loss.** The phone's set
+  never reaches the wrist, then the phone discards and starts a new session; the wrist keeps the old
+  session's entries as residue. Recorded for whoever takes `entries` — it is not this PR's seam.
+
+## Open Items
+
+- **S-14660 / a wrist session the phone never held never becomes a phone row.** The wrist's
+  `session_lifecycle` carries `{state, at}` and not `startedAt`, so `WatchSessionInbox` stages no
+  `session_end` and `WatchSessionImporter.apply` imports nothing (evidence `### Phase 4`, item 2).
+  Needs the wrist to re-offer a completed session's entries — a `watch/sync_protocol/` change: re-plan.
+- `absorbing` (seed 111, 4 actions) and `entries` (seed 857, 5 actions) have minimal traces but no owner.
+- `timers` does not reproduce (D-14635's `endSession` seam unconfirmed); Phase 5 (Health re-write) unstarted.
 
 ## Feedback
 

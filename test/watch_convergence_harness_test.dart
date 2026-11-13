@@ -849,6 +849,122 @@ void _b2Tests() {
     },
   );
 
+  test(
+    'S-14660 the wrist\'s own workout is saved as its own finished workout '
+    'while the phone\'s stays open',
+    () async {
+      final harness = await WatchPairHarness.build();
+      final runner = harness.runner;
+
+      // Two workouts open at once, one per device (O-6): the link is down while
+      // each side starts its own, so neither start reaches the other.
+      await runner.perform(runner.linkDrops());
+      await runner.perform(runner.phoneStartsSession());
+      final p1 = harness.phone.currentSession!.id;
+      await runner.perform(runner.phoneLogsSet());
+      await runner.perform(runner.wristStartsFreeWorkout());
+      final w2 = harness.wristEngine.session!.sessionId;
+      expect(
+        w2,
+        isNot(p1),
+        reason: 'the wrist started its own workout\n${runner.traceText()}',
+      );
+      const wristSet = 'w-entry-1';
+      await runner.perform(runner.wristLogsSet());
+      await runner.perform(runner.wristFinishes());
+      await runner.perform(runner.linkRises());
+
+      final heal = await runner.heal();
+      final report = await runner.checkConvergence();
+      final phoneLabel = harness.labelFor(p1);
+      final wristLabel = harness.labelFor(w2);
+
+      expect(
+        harness.phone.currentSession?.id,
+        p1,
+        reason:
+            'O-6 the phone keeps its own open workout, still on screen\n'
+            '${runner.traceText()}',
+      );
+      expect(
+        (await harness.repository.getSession(p1))?.endedAtMs,
+        isNull,
+        reason:
+            'O-6 nothing adopted the wrist\'s workout, and the phone\'s own '
+            'was never ended\n${runner.traceText()}',
+      );
+      expect(
+        report.phoneStatus[phoneLabel],
+        WatchSessionStatus.active,
+        reason:
+            'O-6 the phone\'s own workout is still the open one\n'
+            '${runner.traceText()}',
+      );
+
+      final saved = await harness.repository.getSession(w2);
+      expect(
+        saved,
+        isNotNull,
+        reason:
+            'O-6 the wrist\'s workout is saved as its own finished workout\n'
+            '${runner.traceText()}',
+      );
+      expect(
+        saved!.endedAtMs,
+        isNotNull,
+        reason: 'O-6 with the wrist\'s own end\n${runner.traceText()}',
+      );
+      expect(
+        report.phoneStatus[wristLabel],
+        WatchSessionStatus.completed,
+        reason: 'O-6 finished on the phone\n${runner.traceText()}',
+      );
+      expect(
+        report.wristStatus[wristLabel],
+        WatchSessionStatus.completed,
+        reason: 'O-6 finished on the wrist\n${runner.traceText()}',
+      );
+      expect(
+        runner.phoneEntryIds[w2],
+        contains(wristSet),
+        reason:
+            'O-6 the set the wrist logged reaches the imported workout\n'
+            '${runner.traceText()}',
+      );
+      expect(
+        runner.wristEntryIds[w2],
+        contains(wristSet),
+        reason: 'O-6 and stays in the wrist\'s own record',
+      );
+      expect(
+        report.entryMismatches,
+        isEmpty,
+        reason: 'O-6 no set is missing on either side\n${runner.traceText()}',
+      );
+      expect(
+        report.absorbingViolations,
+        isEmpty,
+        reason:
+            'O-6 nothing is deleted and nothing reopens\n${runner.traceText()}',
+      );
+      expect(
+        report.statusMismatches,
+        isEmpty,
+        reason: 'O-6 the two sides agree\n${runner.traceText()}',
+      );
+      expect(heal.converged, isTrue, reason: runner.traceText());
+    },
+    // Blocked: this trace is red, and the assertion is kept as written. The
+    // wrist's terminal lifecycle supersedes its queued snapshot, and the
+    // phone's inbox stages only entries — a lifecycle carries `state` and `at`,
+    // never the session's start — so a session the phone does not hold reaches
+    // it with no `session_end` row and the importer has nothing to import.
+    // See plan 146c's Open Items; the fix is the wrist re-offering a completed
+    // session's entries, which is a protocol change, not a seam fix.
+    skip: 'S-14660 blocked — plan 146c Open Items: a wrist session the phone '
+        'does not hold never reaches it with a session_end row',
+  );
+
   test('S-14513 an owed W1 end survives W2 starting on the wrist', () async {
     final harness = await WatchPairHarness.build();
     final runner = harness.runner;
