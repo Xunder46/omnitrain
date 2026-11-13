@@ -22,6 +22,10 @@ import Foundation
 final class WatchObservationLog {
     private let lock = NSLock()
     private var rows: [WatchObservationRecord] = []
+    /// The ids `rows` holds, so an append is a lookup rather than a scan of
+    /// every entry ever stored (D-15604). Exact: `append`, `prune` and `fill`
+    /// are its only writers; `map` keeps each row's id.
+    private var ids: Set<String> = []
     private var inflight: [String: EntryClaim] = [:]
 
     /// The rows as they were when the lock was taken. The copy belongs to the
@@ -44,8 +48,9 @@ final class WatchObservationLog {
     func append(_ row: WatchObservationRecord) {
         lock.lock()
         defer { lock.unlock() }
-        guard !rows.contains(where: { $0.recordId == row.recordId }) else { return }
+        guard !ids.contains(row.recordId) else { return }
         rows.append(row)
+        ids.insert(row.recordId)
     }
 
     func contains(where predicate: (WatchObservationRecord) -> Bool) -> Bool {
@@ -55,10 +60,11 @@ final class WatchObservationLog {
     }
 
     /// The rows whose ids are in `ids` are gone — the store dropped them.
-    func prune(_ ids: Set<String>) {
+    func prune(_ prunedIds: Set<String>) {
         lock.lock()
         defer { lock.unlock() }
-        rows.removeAll { ids.contains($0.recordId) }
+        rows.removeAll { prunedIds.contains($0.recordId) }
+        ids = Set(rows.map(\.recordId))
     }
 
     /// Applies `transform` to every row, as a receipt's stamp does.
@@ -73,6 +79,7 @@ final class WatchObservationLog {
         lock.lock()
         defer { lock.unlock() }
         rows = stored
+        ids = Set(stored.map(\.recordId))
     }
 
     /// Claims `recordId` for one writer. Nil means this writer now owns it and
@@ -103,6 +110,9 @@ final class WatchObservationLog {
 final class WatchTimerLog {
     private let lock = NSLock()
     private var rows: [WatchTimerRecord] = []
+    /// The ids `rows` holds, so an append is a lookup rather than a scan
+    /// (D-15604).
+    private var ids: Set<String> = []
 
     func snapshot() -> [WatchTimerRecord] {
         lock.lock()
@@ -115,8 +125,9 @@ final class WatchTimerLog {
     func append(_ row: WatchTimerRecord) {
         lock.lock()
         defer { lock.unlock() }
-        guard !rows.contains(where: { $0.recordId == row.recordId }) else { return }
+        guard !ids.contains(row.recordId) else { return }
         rows.append(row)
+        ids.insert(row.recordId)
     }
 
     func contains(where predicate: (WatchTimerRecord) -> Bool) -> Bool {
@@ -130,6 +141,7 @@ final class WatchTimerLog {
         lock.lock()
         defer { lock.unlock() }
         rows = stored
+        ids = Set(stored.map(\.recordId))
     }
 }
 

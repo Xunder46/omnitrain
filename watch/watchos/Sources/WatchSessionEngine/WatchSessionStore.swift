@@ -31,9 +31,11 @@ public struct WatchStoreContents {
     public let timers: [WatchTimerRecord]
     public let confirmations: [WatchConfirmationRecord]
 
-    /// The readings the platform sensors produced, oldest first. Sensor rows are
-    /// never pruned: they are small, they are the session's measurement, and the
-    /// phone has no receipt for them to be gated on.
+    /// The readings the platform sensors produced, oldest first. A reading has
+    /// no receipt of its own — the phone has no field for one — so what gates it
+    /// is its session: `pruneSensorSamples` drops a session's readings once the
+    /// session is over and the phone holds what was computed from them, or once
+    /// the session is too old to still be owed (D-15602).
     public let sensorSamples: [WatchSensorSampleRecord]
 
     /// The reference data the phone sent down, oldest first. The newest row is
@@ -228,9 +230,25 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
     private var rows: [StoredWatchRecord] = []
     private var sequence = 0
 
+    /// The in-memory twin of the file store's lock. A prune the consumer asks
+    /// for off its own turn (D-15601) runs beside the caller's next append, and
+    /// the file store has always been safe against that; this one has to be too,
+    /// or the twin would disagree with the store it stands in for.
+    private let lock = NSLock()
+
     public init() {}
 
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+
     public func append(_ record: StoredWatchRecord) async -> StoredWatchRecord {
+        locked { appendLocked(record) }
+    }
+
+    private func appendLocked(_ record: StoredWatchRecord) -> StoredWatchRecord {
         for row in rows
         where row.recordId == record.recordId && row.recordType == record.recordType {
             return row
@@ -243,6 +261,10 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
     }
 
     public func readAll() async -> WatchStoreContents {
+        locked { contentsLocked() }
+    }
+
+    private func contentsLocked() -> WatchStoreContents {
         var sessions: [WatchSessionRecord] = []
         var observations: [WatchObservationRecord] = []
         var timers: [WatchTimerRecord] = []
@@ -293,7 +315,11 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
     }
 
     public func pruneConfirmed() async -> [String] {
-        let contents = await readAll()
+        locked { pruneConfirmedLocked() }
+    }
+
+    private func pruneConfirmedLocked() -> [String] {
+        let contents = contentsLocked()
         let confirmed = contents.observations
             .filter { $0.confirmedAt != nil }
             .map(\.recordId)
@@ -306,6 +332,10 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
     }
 
     public func pruneSensorSamples(_ sessionIds: [String]) async -> [String] {
+        locked { pruneSensorSamplesLocked(sessionIds) }
+    }
+
+    private func pruneSensorSamplesLocked(_ sessionIds: [String]) -> [String] {
         let sessions = Set(sessionIds)
         guard !sessions.isEmpty else { return [] }
 
@@ -324,6 +354,10 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
     }
 
     public func pruneExerciseBatches(keepingVersion: String) async -> [String] {
+        locked { pruneExerciseBatchesLocked(keepingVersion) }
+    }
+
+    private func pruneExerciseBatchesLocked(_ keepingVersion: String) -> [String] {
         let dropped = rows.compactMap { row -> String? in
             if case .exerciseBatch(let value) = row,
                value.catalogVersion != keepingVersion { return value.recordId }
@@ -340,6 +374,10 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
     }
 
     public func pruneBests(keepingRecordId: String) async -> [String] {
+        locked { pruneBestsLocked(keepingRecordId) }
+    }
+
+    private func pruneBestsLocked(_ keepingRecordId: String) -> [String] {
         let stored = rows.contains { row in
             if case .bests(let value) = row { return value.recordId == keepingRecordId }
             return false
@@ -362,6 +400,10 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
     }
 
     public func pruneWater(keepingRecordId: String) async -> [String] {
+        locked { pruneWaterLocked(keepingRecordId) }
+    }
+
+    private func pruneWaterLocked(_ keepingRecordId: String) -> [String] {
         let stored = rows.contains { row in
             if case .water(let value) = row { return value.recordId == keepingRecordId }
             return false
@@ -384,7 +426,11 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
     }
 
     public func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String] {
-        let dropped = confirmedWaterTapIds(in: await readAll().observations, loggedBefore: cutoff)
+        locked { pruneWaterTapsLocked(cutoff) }
+    }
+
+    private func pruneWaterTapsLocked(_ cutoff: Date) -> [String] {
+        let dropped = confirmedWaterTapIds(in: contentsLocked().observations, loggedBefore: cutoff)
         let drop = Set(dropped)
         rows.removeAll { row in
             if case .observation(let value) = row { return drop.contains(value.recordId) }

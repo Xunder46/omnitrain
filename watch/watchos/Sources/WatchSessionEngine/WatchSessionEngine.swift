@@ -963,7 +963,14 @@ public final class WatchSessionEngine: ObservableObject {
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         let entryIds = (payload["entryIds"] as? [Any] ?? []).compactMap { $0 as? String }
         guard !entryIds.isEmpty else { return false }
-        return !(await confirmObservations(entryIds)).isEmpty
+        let acknowledged = !(await confirmObservations(entryIds)).isEmpty
+        // D-15601: the receipt that clears a finished workout's last owed entry
+        // is what makes its readings safe to drop, so the release rides on the
+        // phone's own receipt instead of waiting for the next launch — a wrist
+        // can run for weeks without one. Receipts are rare, so the release runs
+        // on this frame's turn; anything it misses the next launch prunes.
+        if acknowledged { await pruneSettledSensorSamples() }
+        return acknowledged
     }
 
     /// Applies an incremental timer update: the kinds it names are adopted or
@@ -1893,6 +1900,12 @@ public final class WatchSessionEngine: ObservableObject {
         emit(envelope)
     }
 
+    /// How long an ended session the phone has not taken keeps its raw readings
+    /// (D-15602). Long enough for a phone that was left in a locker, off, or out
+    /// of range to come back; short enough that a watch whose phone never comes
+    /// does not carry every workout forever.
+    private static let unacknowledgedReadingsRetention: TimeInterval = 14 * 24 * 60 * 60
+
     /// Drops the raw sensor log of every session that is over and whose entries
     /// the phone has recorded in full.
     ///
@@ -1909,18 +1922,38 @@ public final class WatchSessionEngine: ObservableObject {
     /// `session_end` is stored and acknowledged (D-129). The summaries are
     /// computed from these readings, so the readings stay until the phone holds
     /// what was computed from them — whichever order the prunes run in.
+    ///
+    /// The phone never coming is the one case that would hold them forever, so
+    /// time ends it (D-15602): an ended session keeps its readings for
+    /// `unacknowledgedReadingsRetention` after its own last row and releases them
+    /// after that, acknowledged or not. The summaries rode on the end, so what
+    /// the wrist has already shown is stored with the session either way.
+    ///
+    /// Serialised with the engine's session writers: it reads the session rows
+    /// and prunes a log, and a receipt can ask for it while another turn is
+    /// writing (D-15601).
     @discardableResult
     public func pruneSettledSensorSamples() async -> [String] {
+        await mutex.exclusive { await pruneSettledSensorSamplesLocked() }
+    }
+
+    private func pruneSettledSensorSamplesLocked() async -> [String] {
         let awaitingReceipt = Set(
             observationLog.snapshot().filter { $0.confirmedAt == nil }.map(\.sessionId)
         )
+        let now = clock()
 
         let settled = newestSessionRows().values
             .filter { session in
-                session.status != WatchSessionStatus.active
-                    && !awaitingReceipt.contains(session.sessionId)
+                guard session.status != WatchSessionStatus.active,
+                      storedSensorSamples.contains(where: { $0.sessionId == session.sessionId })
+                else { return false }
+
+                let acknowledged = !awaitingReceipt.contains(session.sessionId)
                     && isEndAcknowledgedWhereOwed(session.sessionId)
-                    && storedSensorSamples.contains { $0.sessionId == session.sessionId }
+                return acknowledged
+                    || now.timeIntervalSince(session.recordedAt)
+                        >= Self.unacknowledgedReadingsRetention
             }
             .map(\.sessionId)
 

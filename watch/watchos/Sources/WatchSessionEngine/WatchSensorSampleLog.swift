@@ -21,6 +21,10 @@ import Foundation
 final class WatchSensorSampleLog {
     private let lock = NSLock()
     private var rows: [WatchSensorSampleRecord] = []
+    /// The ids `rows` holds, so an append is a lookup rather than a scan of
+    /// every reading ever stored (D-15604). Exact: `append`, `prune` and `fill`
+    /// are its only writers.
+    private var ids: Set<String> = []
 
     /// The rows as they were when the lock was taken. The copy belongs to the
     /// caller, so filtering or scanning it needs no lock.
@@ -37,8 +41,9 @@ final class WatchSensorSampleLog {
     func append(_ row: WatchSensorSampleRecord) {
         lock.lock()
         defer { lock.unlock() }
-        guard !rows.contains(where: { $0.recordId == row.recordId }) else { return }
+        guard !ids.contains(row.recordId) else { return }
         rows.append(row)
+        ids.insert(row.recordId)
     }
 
     func contains(where predicate: (WatchSensorSampleRecord) -> Bool) -> Bool {
@@ -51,6 +56,7 @@ final class WatchSensorSampleLog {
         lock.lock()
         defer { lock.unlock() }
         rows.removeAll(where: predicate)
+        ids = Set(rows.map(\.recordId))
     }
 
     /// Fills the log with what storage holds, as `restore` does.
@@ -58,5 +64,6 @@ final class WatchSensorSampleLog {
         lock.lock()
         defer { lock.unlock() }
         rows = stored
+        ids = Set(stored.map(\.recordId))
     }
 }

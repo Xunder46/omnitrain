@@ -360,6 +360,12 @@ final class WatchAppHost: ObservableObject {
         // A stranded workout must end before a restored session can open one.
         await recoverStrandedWorkout()
         await engine.restore()
+        // The launch prune (D-15601): a session the phone has taken in full gives
+        // up its raw readings. Nothing else in a launch drops them, so without
+        // this the store keeps every workout's readings for the life of the
+        // install. The confirmed-row prune stays out of the launch (plan 96
+        // D-43): it would drop water taps the water count still reads.
+        await engine.pruneSettledSensorSamples()
         // The session is restored: a workout adopted above is settled against
         // it now, so the emission that precedes this point is no longer able
         // to discard it (plan 150 D-15005).

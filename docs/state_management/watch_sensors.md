@@ -530,6 +530,19 @@ Verified by
 storage API`) and by watchOS
 `WatchSessionEngineTests.testS004NoMutatingOperationExistsAnywhereInTheModule` and
 the `S-237` cases in `WatchSensorRecordingTests`.
+- **The readings the wrist stores are bounded, and an append does not grow with
+them.** A reading leaves when the wrist launches
+(`WatchSessionEngineTests.testS15601TheLaunchPruneReleasesFinishedReadingsOnly`,
+`…testS15601TheLaunchRestoreAsksForThePrunes` for the launch call itself), when
+the receipt for its workout arrives
+(`…testS15602TheLastReceiptReleasesTheReadingsInPlace`), and — for a workout the
+phone never confirms — once it is older than
+`WatchSessionEngine.unacknowledgedReadingsRetention`
+(`…testS15603AnUnacknowledgedWorkoutKeepsItsReadingsForFourteenDays`); a prune
+with nothing to drop does not rewrite the file
+(`…testS15604APruneThatDropsNothingDoesNotRewriteTheFile`), and 20,000 appends
+stay inside a fixed budget because no append scans what is already stored
+(`…testS15605TwentyThousandAppendsStayInsideTheBound`).
 - **A prune that cannot be written replaces nothing, and a pruned row takes its
 lens with it.** The file keeps its rows and the cache keeps reading them, with no
 staging file left in the store's directory (`WatchFileStoreTests`

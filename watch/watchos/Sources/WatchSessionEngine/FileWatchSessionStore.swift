@@ -30,6 +30,25 @@ public final class FileWatchSessionStore: WatchSessionStore {
     /// The file's rows, loaded once on first use and kept in step with every
     /// append, so `nextSequence()` never re-reads the file.
     private var rows: [StoredWatchRecord]?
+    /// The key of every row in `rows`, by record type (D-15604), so the
+    /// duplicate check in `appendLocked` is a lookup instead of a scan of the
+    /// whole file. Exact: `loadRows` fills it and `adopt` rebuilds it after a
+    /// prune, so a store that dropped a workout's readings stops holding their
+    /// keys too. A hit is still confirmed against the rows themselves.
+    private var heldIds: Set<String> = []
+
+    /// Takes a compacted file's survivors as the rows, and rebuilds the index
+    /// from them. A prune already paid a full pass to rewrite the file.
+    private func adopt(_ survivors: [StoredWatchRecord]) {
+        rows = survivors
+        heldIds = Set(survivors.map(Self.rowKey))
+    }
+
+    /// One row per record type and id — the key `heldIds` is indexed by, matching
+    /// the duplicate check `appendLocked` makes.
+    private static func rowKey(_ record: StoredWatchRecord) -> String {
+        "\(record.recordType)\u{1F}\(record.recordId)"
+    }
 
     /// Whether the file still needs its format marker — true for a store that
     /// has never been written and for a file that has lost its marker.
@@ -95,13 +114,14 @@ public final class FileWatchSessionStore: WatchSessionStore {
     // MARK: - The store's operations
 
     private func appendLocked(_ record: StoredWatchRecord) -> StoredWatchRecord {
-        let loaded = loadRows()
+        // No local copy of the rows may live past this check: a second reference
+        // to the array's buffer makes the `rows?.append` below copy the whole
+        // file's rows on every append (copy on write), which is a cost that
+        // grows with the store (D-15604).
+        _ = loadRows()
         guard !unsupported else { return record }
 
-        for row in loaded
-        where row.recordId == record.recordId && row.recordType == record.recordType {
-            return row
-        }
+        if let existing = heldRow(for: record) { return existing }
 
         let stored = record.withSequence(nextSequence())
         guard let line = rowLine(stored) else { return record }
@@ -112,6 +132,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
         // engine keeps the newest row and one sequence 0 would lose that tie.
         guard prepareFile(), appendLine(line) else { return stored }
         rows?.append(stored)
+        heldIds.insert(Self.rowKey(stored))
         fileHasContent = true
         return stored
     }
@@ -190,8 +211,12 @@ public final class FileWatchSessionStore: WatchSessionStore {
             return !dropped.contains(value.recordId)
         }
 
+        // A prune that finds nothing is not a write (D-3821, D-15603): the launch
+        // prunes run on every launch, and a rewrite per launch costs a full copy
+        // of a file that can be tens of megabytes.
+        guard !confirmed.isEmpty else { return [] }
         guard compact(survivors) else { return [] }
-        rows = survivors
+        adopt(survivors)
         return confirmed
     }
 
@@ -213,8 +238,12 @@ public final class FileWatchSessionStore: WatchSessionStore {
             return !named.contains(value.sessionId)
         }
 
+        // A prune that finds nothing is not a write (D-3821, D-15603): the launch
+        // prunes run on every launch, and a rewrite per launch costs a full copy
+        // of a file that can be tens of megabytes.
+        guard !dropped.isEmpty else { return [] }
         guard compact(survivors) else { return [] }
-        rows = survivors
+        adopt(survivors)
         return dropped
     }
 
@@ -237,7 +266,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
         // every byte it had, marker and torn tail included.
         guard !dropped.isEmpty else { return [] }
         guard compact(survivors) else { return [] }
-        rows = survivors
+        adopt(survivors)
         return dropped
     }
 
@@ -266,7 +295,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
         // every byte it had, marker and torn tail included.
         guard !dropped.isEmpty else { return [] }
         guard compact(survivors) else { return [] }
-        rows = survivors
+        adopt(survivors)
         return dropped
     }
 
@@ -295,7 +324,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
         // every byte it had, marker and torn tail included.
         guard !dropped.isEmpty else { return [] }
         guard compact(survivors) else { return [] }
-        rows = survivors
+        adopt(survivors)
         return dropped
     }
 
@@ -325,7 +354,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
         // every byte it had, marker and torn tail included.
         guard !dropped.isEmpty else { return [] }
         guard compact(survivors) else { return [] }
-        rows = survivors
+        adopt(survivors)
         return dropped
     }
 
@@ -365,6 +394,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
 
         let resolved = blocked ? [] : loaded
         rows = resolved
+        heldIds = Set(resolved.map(Self.rowKey))
         needsMarker = !sawMarker
         unsupported = blocked
         tornTail = !blocked && !data.isEmpty && data.last != 0x0A
@@ -396,6 +426,15 @@ public final class FileWatchSessionStore: WatchSessionStore {
 
     /// One row as a JSON line, or nil when it cannot be serialised — a row that
     /// cannot be written is not stored, so the file never carries a half row.
+    /// The row already held for `record`'s type and id, or nil. The index says
+    /// whether a scan can find one; only a hit scans (D-15604).
+    private func heldRow(for record: StoredWatchRecord) -> StoredWatchRecord? {
+        guard heldIds.contains(Self.rowKey(record)), let held = rows else { return nil }
+        return held.first {
+            $0.recordId == record.recordId && $0.recordType == record.recordType
+        }
+    }
+
     private func rowLine(_ record: StoredWatchRecord) -> Data? {
         guard let line = try? JSONSerialization.data(
             withJSONObject: record.toJson(),
