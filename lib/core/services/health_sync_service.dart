@@ -26,7 +26,6 @@
 // pushing the result into `ProfileState`. The caller owns the refresh.
 
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
@@ -106,10 +105,11 @@ class HealthSyncService {
   /// Rewrites the workout of a finished session whose end moved later
   /// (D-14634), so the store's span follows the session (S-14670).
   ///
-  /// The delete asks for `[startedAtMs, max(previousEndedAtMs, endedAtMs)]`:
-  /// the old window is inside the new one, so one delete covers the workout an
-  /// earlier write left and a repeated move leaves exactly one. The rating is
-  /// re-applied over the new span; a session with no rating writes none. The
+  /// The delete and the effort clear ask for `[startedAtMs, startedAtMs + 1 s)`
+  /// — the start the write used and nothing that starts later (D-15501), so a
+  /// workout this app wrote for a later session inside the old extended window
+  /// is never touched, and a repeated move still leaves exactly one. The rating
+  /// is re-applied over the new span; a session with no rating writes none. The
   /// ledger is never touched — the session stays written, and a repeated
   /// catch-up with the same end sends nothing.
   ///
@@ -136,9 +136,10 @@ class HealthSyncService {
       if (!await _ledgerContains(session.id)) return;
 
       final start = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
-      final windowEnd = DateTime.fromMillisecondsSinceEpoch(
-        math.max(previousEndedAtMs, endedAtMs),
-      );
+      // D-15501: the session's own start only, so a workout this app wrote for
+      // a later session is never deleted; the 1 s margin absorbs the store's
+      // date rounding.
+      final windowEnd = start.add(const Duration(seconds: 1));
       final end = DateTime.fromMillisecondsSinceEpoch(endedAtMs);
       // Read before the delete: a repository failure here must not leave the
       // workout deleted with nothing written in its place (D-15404).

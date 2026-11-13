@@ -637,6 +637,24 @@ void main() {
           'ended_at_ms': at(endMinute).millisecondsSinceEpoch,
         });
 
+    /// A second finished phone session at 09:35–09:45, written to the store and
+    /// the ledger the same way [written] writes the first one.
+    Future<TrainingSession> nextSession(_Rig rig) async {
+      final session = TrainingSession(
+        id: 's-next',
+        ownerUserId: 'u-1',
+        startedAtMs: at(35).millisecondsSinceEpoch,
+        endedAtMs: at(45).millisecondsSinceEpoch,
+        modality: Modality.resistanceLifting,
+        title: 'Next session',
+        createdAtMs: at(35).millisecondsSinceEpoch,
+        updatedAtMs: at(45).millisecondsSinceEpoch,
+      );
+      await rig.repo.createSession(session);
+      await rig.sync.onSessionCompleted(session);
+      return session;
+    }
+
     test('S-14670 a moved end rewrites the one workout, and a second move '
         'again', () async {
       final rig = await _Rig.create(writeEnabled: true);
@@ -659,8 +677,9 @@ void main() {
       expect(rig.platform.store.single.title, 'Heavy day');
       expect(
         rig.platform.deleteRequests,
-        [(at(0), at(40))],
-        reason: 'S-14670 the window covers the old write and the new span',
+        [(at(0), at(0).add(const Duration(seconds: 1)))],
+        reason: 'S-14670 the delete covers only the session\'s own start '
+            '(plan 155 D-15501)',
       );
       expect([for (final c in rig.platform.effortRequests) c.$1], [
         'clear',
@@ -673,7 +692,11 @@ void main() {
 
       expect(rig.platform.store, hasLength(1), reason: 'S-14670 idempotent');
       expect(rig.platform.store.single.end, at(50));
-      expect(rig.platform.deleteRequests.last, (at(0), at(50)));
+      expect(
+        rig.platform.deleteRequests.last,
+        (at(0), at(0).add(const Duration(seconds: 1))),
+        reason: 'S-14670 the delete window does not grow with the moved end',
+      );
       expect(
         [for (final c in rig.platform.effortRequests) c.$1],
         ['clear', 'set', 'clear', 'set'],
@@ -793,7 +816,9 @@ void main() {
       expect(rig.workoutState.currentSession!.endedAtMs, at(40).millisecondsSinceEpoch);
       expect(rig.platform.store, hasLength(1));
       expect(rig.platform.store.single.end, at(40));
-      expect(rig.platform.deleteRequests, [(at(0), at(40))]);
+      expect(rig.platform.deleteRequests, [
+        (at(0), at(0).add(const Duration(seconds: 1))),
+      ]);
     });
 
     test('S-14671 the phone\'s catch-up writes nothing for a session the phone '
@@ -886,6 +911,69 @@ void main() {
       expect(rig.platform.store.single.end, at(30));
       expect(rig.platform.effortRequests, isEmpty);
       expect(await ledger(rig), ['s-rewrite']);
+    });
+
+    test('S-15501 a late end deletes only the moved session\'s own workout, '
+        'never the next session\'s', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final a = await written(rig, feeling: 4); // 09:00–09:30
+      final b = await nextSession(rig); // 09:35–09:45
+      expect(
+        rig.platform.store,
+        hasLength(2),
+        reason: 'the fixture: two own workouts',
+      );
+
+      // A's end moves to 09:40, past B's 09:35 start — inside the
+      // `[09:00, 09:40)` window the rewrite asked for before D-15501.
+      await rig.sync.rewriteWorkout(
+        moved(a, 40),
+        previousEndedAtMs: a.endedAtMs!,
+      );
+
+      expect(rig.platform.deleteRequests, [
+        (at(0), at(0).add(const Duration(seconds: 1))),
+      ], reason: 'S-15501 the delete window is the session\'s own start only');
+      expect(
+        rig.platform.store,
+        hasLength(2),
+        reason: 'S-15501 B is a workout of its own and is not deleted',
+      );
+      expect(
+        rig.platform.store
+            .where((w) => w.start.millisecondsSinceEpoch == b.startedAtMs)
+            .single
+            .end,
+        at(45),
+        reason: 'S-15501 B keeps its own span',
+      );
+      expect(
+        rig.platform.store.where((w) => w.start == at(0)).single.end,
+        at(40),
+        reason: 'S-15501 A is rewritten to its moved end',
+      );
+    });
+
+    test('S-15502 the delete and the effort clear ask for exactly '
+        '[start, start + 1 s)', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      final window = (at(0), at(0).add(const Duration(seconds: 1)));
+      expect(rig.platform.deleteRequests, [window]);
+      final clear = rig.platform.effortRequests.firstWhere(
+        (call) => call.$1 == 'clear',
+      );
+      expect(
+        (clear.$2, clear.$3),
+        window,
+        reason: 'S-15502 the effort clear uses the same narrow window',
+      );
     });
   });
 

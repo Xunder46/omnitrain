@@ -159,7 +159,8 @@ Invariants:
   sample, so a repeated foreground read upserts instead of duplicating.
 - A finished session whose end moved later — a catch-up (D-14604) or an import
   carrying a wrist set past the end — has its workout rewritten to the new span:
-  one delete over `[startedAtMs, max(previousEndedAtMs, endedAtMs)]` (the
+  one delete and one effort clear over `[startedAtMs, startedAtMs + 1 s)` — the
+  session's own start and nothing that starts later (plan 155 D-15501; the
   platform contract exposes no workout id, so the delete stays a window), the
   draft written again, then the rating re-applied over the new span. The
   activity kind is read before the delete, and a new write that returns false
@@ -170,12 +171,17 @@ Invariants:
   same end sends nothing. Only a session the ledger names is rewritten: a
   workout the wrist saved carries heart rate, energy and a route a bare phone
   draft would lose, so it is left entirely alone — no delete, no write (plan
-  146c D-14634, D-14636). Verified by `test/health_platform_test.dart` (group
+  146c D-14634, D-14636). Known limit, unchanged: a session whose start was
+  edited after the write is not found by this narrow window, so its re-write
+  adds a second workout (plan 155 D-15504). Verified by
+  `test/health_platform_test.dart` (group
   `plan 146c: a moved end rewrites the Health workout` › `S-14670 a moved end
   rewrites the one workout, and a second move again`, `S-14671 a session the
   phone never wrote is left alone, whatever its end does`, `S-15409 a rewrite
   whose new write fails puts the previous span back`, `S-15410 a refused delete
-  writes nothing back either`) and by
+  writes nothing back either`, `S-15501 a late end deletes only the moved
+  session's own workout, never the next session's`, `S-15502 the delete and the
+  effort clear ask for exactly [start, start + 1 s)`) and by
   `test/watch_session_import_test.dart` (group `plan 146c: a moved end reaches
   the Health rewrite` › `S-14670 the inbox asks for a rewrite only when the end
   moved, and names the end it moved from`).

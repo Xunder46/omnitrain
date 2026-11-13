@@ -32,4 +32,6 @@ Plan 154 assumed an id-scoped delete needs native plugin code. Reading `health` 
 
 Predicted files: `lib/core/services/health_sync_service.dart`, `test/health_platform_test.dart`, one doc line in `docs/state_management/services_and_utils.md`.
 Done Criteria: `flutter test test/health_platform_test.dart test/watch_session_import_test.dart test/docs_indexing_contract_test.dart test/ui_standards_contract_test.dart`; S-15501 red at HEAD with the failing line pasted, green after; `flutter analyze` stays 181; full `flutter test` run by the lead.
-Budget: far under `.github/copilot/pr-scope-budget.md` (about 60 lines).
+## Progress
+
+- Phase 1 (developer) — **Complete**. `rewriteWorkout` now deletes and clears over `[startedAtMs, startedAtMs + 1 s)` (D-15501); S-15501/S-15502 added, S-15501 red at HEAD, green after; `health_platform_test.dart` 63/63, the brief's five test files 236/236, `flutter analyze` 181 (baseline). Evidence: [evidence file](2026-11-13-155-health-rewrite-narrow-delete-plan.evidence.md).
