@@ -1569,6 +1569,15 @@ class HarnessRunner {
         timerDisagreements += _timerDisagreements(id);
       }
       if (!shared) continue;
+      // A discarded workout is deleted with its sets (owner O-7, plan 146c
+      // D-14632): nothing it held is owed to the other side, so check 3 does
+      // not apply to a session either side reads `abandoned`. Seed 857's
+      // phone set, logged on a workout the phone then discarded, is this case
+      // (plan 151 investigation A2, reclassified).
+      if (phoneStatus == WatchSessionStatus.abandoned ||
+          wristStatus == WatchSessionStatus.abandoned) {
+        continue;
+      }
       final phoneIds = phoneEntryIds[id] ?? const <String>{};
       final wristIds = wristEntryIds[id] ?? const <String>{};
       final missingOnWrist = phoneIds.difference(wristIds).toList()..sort();

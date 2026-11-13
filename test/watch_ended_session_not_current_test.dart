@@ -8,8 +8,8 @@
 //           → `S-15101 ...`
 //   S-15101 the Phase 4 four-action trace (refuse a wrist frame, finish, start
 //           again) stays converged → `S-15101 ...`
-//   S-15102 the per-session newest-snapshot marker → skipped, see the note on
-//           the skipped group below.
+//   S-15102 seed 857's trace converges: a discarded workout owes nothing →
+//           `S-15102 ...`
 //
 // The defect these tests hold down was found by the convergence sweep
 // (`.work/2026-11-10-145-convergence-test`): the wrist kept a `completed` row
@@ -296,27 +296,23 @@ void main() {
     });
   });
 
-  group(
-    'S-15102 the newest-snapshot marker is per session',
-    () {
-      test('S-15102 a drained snapshot older than another session\'s still '
-          'merges its entries', () async {
-        final run = await ConvergenceRun.replayActions([
-          RefuseLiveFrame(serial: 1, from: PairActor.phone),
-          WristStartsFreeWorkout(serial: 2),
-          PhoneLogsSet(serial: 3),
-          PhoneDiscards(serial: 4),
-          PhoneStartsSession(serial: 5),
-        ]);
+  group('S-15102 a discarded workout owes the other side nothing', () {
+    // Seed 857 (plan 151 investigation A2) was first read as a lost set; the
+    // phone had logged it on a workout it then discarded, and a discarded
+    // workout is deleted with its sets (owner O-7, plan 146c D-14632). Check 3
+    // therefore skips an abandoned session, and this trace converges.
+    test('S-15102 a set on a workout the phone then discards is not owed to '
+        'the wrist', () async {
+      final run = await ConvergenceRun.replayActions([
+        RefuseLiveFrame(serial: 1, from: PairActor.phone),
+        WristStartsFreeWorkout(serial: 2),
+        PhoneLogsSet(serial: 3),
+        PhoneDiscards(serial: 4),
+        PhoneStartsSession(serial: 5),
+      ]);
 
-        expect(run.failures, isEmpty, reason: 'the trace: ${run.failures}');
-        expect(run.converged, isTrue);
-      });
-    },
-    skip: 'Blocked (scope) on plan 63 D-1: `WatchStaleSnapshotTests.swift` '
-        'S-9312 (`...AnOlderSnapshotOfAnotherWorkoutIsRefusedToo`) and '
-        '`WatchInboundLaneWiringSourceTests` pin the single device-wide '
-        '`newestSnapshotAt` and its exact source line. Re-plan needed; see the '
-        'report for plan 151.',
-  );
+      expect(run.failures, isEmpty, reason: 'the trace: ${run.failures}');
+      expect(run.converged, isTrue);
+    });
+  });
 }
