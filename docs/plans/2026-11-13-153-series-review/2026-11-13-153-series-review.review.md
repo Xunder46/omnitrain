@@ -1,0 +1,25 @@
+# Series review, plans 145-152a (2026-11-13)
+
+Range `afb3c405^..3d88c92a` (27 commits). Two independent reviews: a Copilot code-reviewer run (it could not write its findings file, so its chat report is the source) and the lead's own read. Findings below are what each side established by reading code; none has a failing test yet unless stated. Statuses: OPEN unless marked.
+
+## Major
+1. **EntryClaim has unsynchronized state** (`watch/watchos/Sources/WatchSessionEngine/WatchEngineRowLogs.swift`, `EntryClaim.wait/finish`): `finished` and `waiters` are read/mutated from different tasks without a lock; a `wait()` that appends after `finish()` has drained `waiters` is never resumed (lost wakeup: a writer hangs), and concurrent append/iterate can tear the array. Found by both reviews. Fix: an NSLock inside the claim, resume outside the lock. OPEN.
+2. **A late wrist `completed` ends the phone's workout at the arrival instant** (`lib/state/watch/watch_session_adoption_bridge.dart:909` calls `endSession(writeToHealth: false)` without `atMs`; the `atMs` parameter added by plan 146 Phase 3 is never passed by any caller; `catchUpEndedSession` only moves an end LATER). A workout finished on the watch while the phone is away is stored as ending when it syncs: inflated duration/calories/Health span. Copilot finding 5, verified by the lead (grep: the only caller omits it). Fix: pass the lifecycle's `at`. OPEN.
+3. **Cross-device clocks decide an irreversible deletion** (`_routeLifecycleToHeld`, `atMs < held.endedAtMs!` -> `discardCurrentSession()`; and the wrist engines' earlier-end rule): a discard stamped a fraction of a second before the phone's end (clock skew) deletes a finished workout and its sets. No tolerance. Lead finding. Fix: require the discard to be earlier by more than a skew tolerance (e.g. 2 s); equal/near instants keep the finish. OPEN.
+4. **Health re-write order loses data on a failed write** (`HealthSyncService.rewriteWorkout`): delete then write; if the write returns false the session has no Health workout and the ledger still says written, so it never retries. Also the delete is time-range based, not id-scoped (can touch an overlapping workout of the same app identity). Both reviews. Fix: restore the previous span on a failed write; resolve the workout id for the delete. OPEN.
+5. **The harness still lets live divergences through** (`test/watch_convergence_random_test.dart` ratchet): 2000-seed soak after plan 151: 116 shipping divergers, by class {status 151, heal 26, absorbing 6, entries 8}. `absorbing` is a finished workout reading active again (the headline rule) and is not yet explained (seed 111 is fixed); `entries` 8 unexplained. The ratchet records, it does not fix. Copilot finding 1, lead agrees. Next: shrink and classify the 6 absorbing seeds first. OPEN.
+
+## Minor
+6. A later end time is applied with no upper bound (`catchUpEndedSession`, `_catchUpEnd`): a wrong watch clock or bad frame stretches the phone's workout into the future. Fix: clamp to now plus a tolerance. OPEN (lead).
+7. Performance on a store that only grows: `WatchSensorSampleLog.append` and `WatchObservationLog.append` do a linear duplicate scan under the lock; every main-thread read copies the whole list; `paceWindowStart()` sorts all GPS samples per label read. The clean-ups `pruneSettledSensorSamples` and `pruneConfirmed` have no callers in Sources or the app (lead grep). Needs an id index in the boxes, cached projections and calling the prune functions. OPEN (separate PR).
+8. Harness check 3 skips an abandoned session, and a vanished phone row reads `abandoned`: an accidental phone-side delete is indistinguishable from the designed one (documented in plan 151 A2).
+9. Parity nits: Dart `messageId!` / unparsable `sentAt` throw where Swift falls back (upstream validation holds today).
+
+## Rejected
+- Copilot finding 3 ("`_catchUpEnd` moves the end to any entry's timestamp, e.g. a water glass"): the importer's list is filtered to effort kinds (`_effortKinds.contains(row.kind)`, `watch_session_importer.dart` ~190-195), so a water or food entry never reaches it. False alarm.
+
+## Verified sound (Copilot, line by line unless noted)
+Tie-break and terminal rules agree across the Swift engine, the Dart twin and the reconciler; late-entry merge and union by entryId symmetric; `adoptedBeforeRestore` cannot leak; the F-7 claim protocol has no await between claim and append; `plannedEfforts` wiring, schema minimum and fixtures; rest labels keep no-plan behaviour; the Swift replay table is empty (16/16 match); S-14660's skip reason is accurate; S-14508/S-14509 re-basing is honest; PROTOCOL.md and docs match the code. The lead found nothing wrong in the coordinator flag, the rest labels or the pace/header changes.
+
+## Not reviewed
+Several Swift suites line by line; whether the iOS system recovery relaunch always reaches `ContentView.restore()`; plan 146c Open Items beyond pointers. Outside this series, the owner shared a separate review (watch store only grows, Audio and location background modes, watchOS 26.4 minimum, no Discard on the watch): only the prune-callers claim was checked here.
