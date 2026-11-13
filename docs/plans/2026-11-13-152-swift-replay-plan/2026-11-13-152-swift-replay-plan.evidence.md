@@ -111,3 +111,151 @@ Additive, every hook behind `recordReplay` (default false). New, untracked:
 `seed-1814.json` listed for deletion in the plan's `## Feedback`).
 
 No `lib/`, `watch/watchos/Sources/` or `ios/` file changed.
+
+## Phases 3–4 — the Swift replay, the run, the docs
+
+### What the Swift half does
+
+`watch/watchos/Tests/WatchSessionEngineTests/WatchReplayTests.swift` (new, 628 lines) loads every
+recording through `Fixtures.json("fixtures/replay/<file>")` and replays it into a fresh
+`WatchSessionEngine` over an `InMemoryWatchSessionStore`: `TestClock` set from the event's
+`clockMs`, counter id and session factories (`rec-<n>`, `s-w-<n>`), `frame` → `applyMessage`
+(a thrown `WatchEmissionRejected` is counted, not fatal — the Dart replayer swallows the same
+refusal), `action` → `createSession`/`appendObservation`/`finishSession`/`abandonSession`/
+`startTimer` behind the same no-op guards `HarnessRunner.perform` applies, `kill` → a new engine
+over the same store plus `restore()`. The end state is read back from `store.readAll()` through
+D-15205's rule (newest session row per id for the status, stored observations for the entry set,
+newest row per kind for the timers, `engine.session` for `current`), with A-152a's session-end ids
+excluded, and compared with the recording's `expected` block, bucketed into the manifest's classes.
+
+Implementation names differ from the plan's shorthand: the loader is `corpus()`/`recording(named:)`
+(not `loadCorpus`), the comparator is `outcome(_:expected:)` (not `compare(_:expected:recording:)`),
+the reader is `readSummary(_:current:excludingSessionEnd:)`. Same items, same tests.
+
+### The sweep: every recording, no divergence
+
+`testS15208EveryRecordingReplaysWithNamedOutcome`, whole corpus, unmutated engine:
+
+```
+trace-s14501 classes=
+trace-s14503 classes=
+trace-f2 classes=
+trace-f3 classes=
+trace-f4 classes=
+trace-f5 classes=
+trace-f6 classes=
+trace-f7 classes=
+trace-a1 classes=
+trace-a2 classes=
+seed-1 classes=
+seed-7 classes=
+seed-50 classes=
+seed-111 classes=
+seed-408 classes=
+seed-857 classes=
+classes: none
+```
+
+16/16 identical to the Dart `expected` summary. No `refused=` annotation printed on any line, so no
+frame was rejected on either side. Consequences for the plan's scenarios:
+
+- **S-15205** (`trace-s14501`, no-fault story): green — one session, status `completed`, three
+  entries, no timer, on both engines.
+- **S-15206** (`trace-f2`): the recording does **not** carry F-2's absorbing signature, because the
+  corpus is recorded post-146/146c. Both engines hold the session `completed`; the test asserts that
+  shared end rather than a revival (A-152-10). A Swift revival would show as `status`.
+- **S-15209** (A1/A2/A3): `trace-a1` and `trace-a2` replay clean on Swift — plan 151's ended-session
+  fix is mirrored, so neither A1's absorbing shape nor A2's entry loss reproduces. A3 (the timer
+  stop at a lifecycle end, A-152-01) is `trace-f3`, and its `timers` class is empty too.
+- **Findings: none.** The `findings` table in the test file is empty because no recording diverged;
+  it exists so the next divergence is recorded as data (name → class set) that goes red when the
+  engine aligns (A-152-08).
+
+### Sensitivity: the guards were proved red, not assumed
+
+The comparison cannot be green because it looks at nothing: both mutations below are one-line edits,
+restored byte-identically afterwards, and every run is pasted from the gateway.
+
+**Mutation A — the applier drops frames** (records that the sweep reads real store rows):
+
+```
+-                try await rig.engine.applyMessage(envelope)
++                _ = envelope // MUTANT-A: frames not applied
+```
+
+```
+testS15205TheNoFaultStoryReplaysGreen: error: XCTAssertTrue failed - trace-s14501 diverges
+  [current,status]: current: Swift nil vs Dart x-2
+testS15208…: trace-s14501 diverges [current,status] … trace-f6 diverges [status]: x-2: Swift
+  holds no session … seed-408 diverges [current,status,timers] … seed-857 diverges
+  [entries,status]
+Executed 4 tests, with 19 failures (0 unexpected)
+```
+
+Restored → `Executed 4 tests, with 0 failures`. All four classes (`current`, `status`, `entries`,
+`timers`) were produced by real store differences, so each is reachable.
+
+**Mutation B — the session-end filter off** (S-15210's guard, red naming A-152a):
+
+```
+-        excludingSessionEnd: Bool = true
++        excludingSessionEnd: Bool = false // MUTANT-B
+```
+
+```
+testS15205TheNoFaultStoryReplaysGreen: trace-s14501 diverges [entries]: x-2: entries Swift
+  [end-x-2,w-entry-1,…] vs Dart [w-entry-1,…] (extra on Swift ["end-x-2"])
+testS15206F2ReproducesItsFinding: trace-f2 diverges [entries]: s-w-1: entries Swift
+  [end-s-w-1] vs Dart []
+testS15210TheAllowlistIsStructural: XCTAssertEqual failed (filtered vs result.summary)
+classes: entries=16
+Executed 4 tests, with 19 failures (0 unexpected)
+```
+
+Restored → 4 tests, 0 failures, `classes: none`. In-test positive control (no mutation needed):
+`testS15210TheAllowlistIsStructural` reads the same store with the filter off and prints
+`S-15210 filter-off classes=entries diffs=["x-2: entries Swift [end-x-2,w-entry-1,w-entry-2,x-7]
+vs Dart [w-entry-1,w-entry-2,x-7] … extra on Swift [\"end-x-2\"]"]`.
+
+### Suites and lint
+
+| Check | Command | Result |
+|---|---|---|
+| Swift, focused | `gateway.sh swift-test --filter WatchReplayTests` | `Executed 4 tests, with 0 failures` (0.066 s) |
+| Swift, package | `gateway.sh swift-test` | `Executed 1412 tests, with 0 failures (0 unexpected) in 11.810 s` — 1408 before, +4 new |
+| Dart, full | `gateway.sh test` | `04:59 +7486 ~6: All tests passed!` (exit 0, 5 min 17 s wall) |
+| Docs + UI contracts | `gateway.sh test test/docs_indexing_contract_test.dart test/ui_standards_contract_test.dart` | `+54: All tests passed!` |
+| Lint | `gateway.sh lint` | `181 issues found` — the plan's baseline exactly (all `test/` notices) |
+
+The Dart suite's plan-146 close baseline was `+7441 ~2`; this tree reads `+7486 ~6` because other
+work landed since (this plan's 7 corpus tests plus the docs/standards tests other PRs added).
+No existing test was edited or weakened; nothing went red.
+
+### Docs
+
+`docs/state_management/watch_surface_transport.md`: new `### Differential Swift replay` subsection
+directly after `### Convergence testing` — 197 → 236 lines, and the docs contract's ceiling and
+warning-band assertions pass. It states what the corpus is, the regeneration define, how to run and
+read the Swift sweep, A-152a's session-end exclusion (naming
+`testS15210TheAllowlistIsStructural`), and D-15211's cannot-catch list. Every behavioural sentence
+names a test that exists: `S-15207 the corpus is fresh: every file matches a fresh recording`,
+`testS15205TheNoFaultStoryReplaysGreen`, `testS15206F2ReproducesItsFinding`,
+`testS15208EveryRecordingReplaysWithNamedOutcome`, `testS15210TheAllowlistIsStructural`.
+
+### Footprint
+
+`gateway.sh git-diff --stat` over tracked files after Phases 3–4:
+
+```
+.claude/crew.md                                    |  2 +      (not this plan's)
+.../2026-11-13-152-swift-replay-plan.md            | 22 +++++++---
+docs/state_management/watch_surface_transport.md   | 49 ++++++++++++++++++++++
+```
+
+Plus this evidence file and the new untracked
+`watch/watchos/Tests/WatchSessionEngineTests/WatchReplayTests.swift`. That is the union of Phases 3
+and 4's Predicted Files (`WatchReplayTests.swift`, the evidence file, the docs page; the manifest's
+`classes` needed no addition because no new class surfaced). Nothing under `lib/`, `ios/`,
+`watch/sync_protocol/` or `watch/watchos/Sources/` changed. `.claude/crew.md` and the untracked
+`test/stats_gallery_render_test.dart` predate this run and are not touched.
+

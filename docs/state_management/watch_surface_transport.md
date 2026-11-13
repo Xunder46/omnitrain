@@ -195,3 +195,52 @@ reported as such (`F-2`'s shrunk trace does; the shipping flavour of the same
 hole is seed 50 in the plan's evidence file). A phone app killed and relaunched
 is not modelled either — only `WristKilled` exists — so nothing here covers the
 phone losing a session to its own process death.
+
+### Differential Swift replay
+
+The same recordings are replayed on the shipping watch engine, so the Dart wrist
+and the Swift wrist are held to one file. `watch/sync_protocol/fixtures/replay/`
+holds a recording per source — ten scripted traces and six seeds, captured
+through the real harness — plus `manifest.json`, which names every file, its
+coverage tags, the comparison `classes` (`status`, `entries`, `timers`, `current`)
+and the allowlist. A recording is a closed schema: `source`, `gridStartMs`, the
+`events` (`frame`, `action`, `kill`, each with the `clockMs` it happened at) and
+the `expected` summary the Dart wrist held at the close. Ids are canonicalized
+and off-grid instants aliased, which is what makes a file byte-stable.
+
+The default Dart run re-records every source and compares it with the checked-in
+file, naming the stale one — `S-15207 the corpus is fresh: every file matches a
+fresh recording`. Regeneration is that same test under
+`--dart-define=REPLAY_CORPUS_WRITE=true`, after an intentional behaviour change;
+CI never sets it.
+
+`watch/watchos/Tests/WatchSessionEngineTests/WatchReplayTests.swift` is the Swift
+half — run it with `.github/copilot/scripts/macos/gateway.sh swift-test --filter WatchReplayTests`.
+It loads each recording through `Fixtures.json` and replays it into a fresh
+`WatchSessionEngine` over an `InMemoryWatchSessionStore`, setting the clock per
+event, applying the actions the way the harness does (a `start` while a session
+is live is a no-op; `logSet`/`finish`/`discard`/`restStart` need a session), and
+turning a `kill` into a new engine over the same store plus `restore()`. The end
+state is read back through the store-based rule the Dart recorder uses — newest
+row per session for the status, the stored observations for the entry set, the
+newest row per kind for the timers, the held session for `current` — and compared
+with `expected`. `testS15208EveryRecordingReplaysWithNamedOutcome` replays all
+sixteen and prints one `<name> classes=<classes>` line per file plus a `classes:`
+count line; `testS15205TheNoFaultStoryReplaysGreen` is `trace-s14501` alone and
+`testS15206F2ReproducesItsFinding` is F-2's story.
+
+A difference that fits no class fails with the recording name and the diff, so a
+new shape of divergence cannot be absorbed silently. An accepted difference is
+instead an entry in the file's `findings` table, which asserts the exact class set
+that difference produces: when the engine is fixed the finding goes red and is
+deleted. The one allowlist entry in play is A-152a — the Swift store holds a
+`session_end` observation the Dart twin does not, so both summaries drop
+`WatchSessionCapture.sessionEndId(sessionId)`; `testS15210TheAllowlistIsStructural`
+proves the exclusion is doing the work by reading the same store with the filter
+off and asserting the extra id appears under `entries`.
+
+The replay cannot see what a recording does not contain: the radio and its
+threads, HealthKit, an app killed and relaunched, the UI, and every layer above
+the engine in Dart. It replays the wrist's engine against stored rows — the
+boundary the two implementations were split at.
+

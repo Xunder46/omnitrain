@@ -316,29 +316,29 @@ None — no screens, no shared pieces, no new widgets.
 
 ### Phase 3: the Swift replay (@developer — watch track)
 
-1. [ ] `watch/watchos/Tests/WatchSessionEngineTests/WatchReplayTests.swift`: load the corpus via
+1. [x] `watch/watchos/Tests/WatchSessionEngineTests/WatchReplayTests.swift`: load the corpus via
        `Fixtures.json("fixtures/replay/…")` + `Fixtures.json("fixtures/replay/manifest.json")`
        (`Fixtures.swift:113`), decode events into typed values —
        `WatchReplayTests.loadCorpus` (new file)
-2. [ ] The applier (D-15207 rig): a `TestClock` set per event, counter id/session factories
+2. [x] The applier (D-15207 rig): a `TestClock` set per event, counter id/session factories
        (`Harness.newEngine()` pattern, `WatchSessionEngineTests.swift:46-66`); `frame` →
        `try await engine.applyMessage(envelope)`; `action` → `createSession(modality:exercises:)` /
        `appendObservation` / `finishSession` / `abandonSession` / `startTimer`; `kill` → new engine
        over the same store + `restore()` — `WatchReplayTests.apply(_:to:)`
-3. [ ] The Swift summary reader: the same store-based rule as `WristSummary` (D-15205) from
+3. [x] The Swift summary reader: the same store-based rule as `WristSummary` (D-15205) from
        `store.readAll()` + the held session, with A-152a's session-end ids excluded —
        `WatchReplayTests.summary(engine:store:)`
-4. [ ] The comparator and bucketing: Swift summary vs `expected` per session, bucketed into the
+4. [x] The comparator and bucketing: Swift summary vs `expected` per session, bucketed into the
        manifest's `classes`; a class-less mismatch `XCTFail`s with the recording name and the diff —
        `WatchReplayTests.compare(_:expected:recording:)`
-5. [ ] S-15205 as a test: `trace-s14501` replays green (identical summary) —
+5. [x] S-15205 as a test: `trace-s14501` replays green (identical summary) —
        `testS15205TheNoFaultStoryReplaysGreen`
-6. [ ] S-15206 as a test: `trace-f2` replays and the outcome is stated and bucketed (the absorbing
+6. [x] S-15206 as a test: `trace-f2` replays and the outcome is stated and bucketed (the absorbing
        signature reproduced on Swift, or a genuine Dart-vs-Swift difference reported) —
        `testS15206F2ReproducesItsFinding`
-7. [ ] S-15210 as a test: the session-end filter is structural — mutation (drop the filter) goes red
+7. [x] S-15210 as a test: the session-end filter is structural — mutation (drop the filter) goes red
        naming A-152a, then restored — `testS15210TheAllowlistIsStructural`
-8. [ ] S-15208 as the sweep: every corpus recording replays; per-recording `name classes=…` lines;
+8. [x] S-15208 as the sweep: every corpus recording replays; per-recording `name classes=…` lines;
        a class-less mismatch fails — `testS15208EveryRecordingReplaysWithNamedOutcome`
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh swift-test --filter WatchReplayTests`, then the whole package `.github/copilot/scripts/macos/gateway.sh swift-test` (existing 1388 tests green unchanged — counts pasted); the S-15210 mutation shown red and restored in the evidence file; the sweep's class-count lines pasted.
@@ -347,23 +347,23 @@ None — no screens, no shared pieces, no new widgets.
 
 ### Phase 4: run, findings, docs (@developer + lead)
 
-1. [ ] Full Dart suite `.github/copilot/scripts/macos/gateway.sh test` (expect the plan-146 close
+1. [x] Full Dart suite `.github/copilot/scripts/macos/gateway.sh test` (expect the plan-146 close
        baseline `+7441 ~2` plus the new tests; any red is triaged, never weakened) and
        `.github/copilot/scripts/macos/gateway.sh lint` (baseline 181 issues) — counts pasted into
        the evidence file
-2. [ ] S-15209: replay the A1/A2/A3 recordings on Swift, state each outcome, and write the findings
+2. [x] S-15209: replay the A1/A2/A3 recordings on Swift, state each outcome, and write the findings
        (with the recording names and the diff lines) into the evidence file — no fix in this plan —
        `docs/plans/2026-11-13-152-swift-replay-plan/2026-11-13-152-swift-replay-plan.evidence.md` · findings section
-3. [ ] Any NEW divergence class the corpus surfaced (beyond the manifest's list) is written to the
+3. [x] Any NEW divergence class the corpus surfaced (beyond the manifest's list) is written to the
        evidence file with its recording and added to the manifest's classes with the PR-152b pointer —
        `watch/sync_protocol/fixtures/replay/manifest.json` · classes
-4. [ ] Docs: a "Differential Swift replay" subsection in
+4. [x] Docs: a "Differential Swift replay" subsection in
        `docs/state_management/watch_surface_transport.md` directly after "Convergence testing"
        (:144) — what the corpus is, the regeneration define, how to run the Swift replay, how to
        read a class line, and the cannot-catch list of D-15211 (~18 lines; page 198 lines → the
        implementer re-measures before and after and records both sizes) —
        `docs/state_management/watch_surface_transport.md` · "Differential Swift replay"
-5. [ ] Residue sweep: grep the touched test files and docs for any reader of a representation this
+5. [x] Residue sweep: grep the touched test files and docs for any reader of a representation this
        plan replaced (there is none — the plan adds, it does not replace) and verify the footprint:
        `gateway.sh git-diff --stat` equals the union of all phases' Predicted Files; anything
        out-of-bounds is a finding — evidence file · footprint section
@@ -416,8 +416,14 @@ PR 152c (planned, D-15210): `test/helpers/watch_pair_harness.dart` (`PhoneKilled
       `test/helpers/watch_replay_recorder.dart`, hooks in the harness default off; see evidence.
 - [x] Phase 2 — the corpus and its guards (@developer) — complete: 16 sources checked in; S-15201…
       S-15204, S-15207 green; one orphan file needs a governor delete (see Feedback).
-- [ ] Phase 3 — the Swift replay (@developer)
-- [ ] Phase 4 — run, findings, docs (@developer + lead)
+- [x] Phase 3 — the Swift replay (@developer) — complete: `WatchReplayTests.swift` (4 tests);
+      all 16 recordings replay to the Dart `expected` with no divergence, so `findings` is empty;
+      package 1412 tests green. See evidence.
+- [x] Phase 4 — run, findings, docs (@developer + lead) — complete: no finding (16/16 recordings
+      align); full Dart suite `+7486 ~6` green, lint 181, Swift 1412, docs page +39 lines (236). See
+      evidence.
+
+**Status: Complete.** Phases 1–4 done; PR 152c (S-15211, phone kill) remains as planned.
 
 ## Assumption Log
 
@@ -452,10 +458,17 @@ REVERT.)*
   deletion.
 - A-152-07 (executor, 2026-11-13, phase 2): `refused-queued` cannot be read off a file, so S-15207's
   re-recording is the only check it survives; S-15204's floor asserts the *declared* coverage only.
+- A-152-08 (executor, 2026-11-13, phase 3): a known divergence is an entry in the test file's
+  `findings` table (recording name → finding id, class set, note) with exact-class equality, not
+  `XCTExpectFailure` (unused in this package, and it would absorb any same-class divergence). The
+  table is empty: no recording diverged, so no finding exists to hold.
+- A-152-09 (executor, 2026-11-13, phase 3): A-152-01's timer-stop asymmetry is aligned — `trace-f3`,
+  the recording that carries it, replays with no `timers` class; `seed-7` and `seed-408` likewise.
+- A-152-10 (executor, 2026-11-13, phase 3): `trace-f2` does **not** carry F-2's absorbing signature,
+  because the corpus records after the 146/146c fixes: its `expected` status is `completed` and Swift
+  holds `completed`. `testS15206F2ReproducesItsFinding` asserts that shared end, not a revival.
 
 ## Feedback
 
-Phases 1–2 are complete except one governor action: delete
-`watch/sync_protocol/fixtures/replay/seed-1814.json` — the recording A-152-06 retires. Until it is
-gone, S-15204's "every file is in the manifest" assertion reports it as an extra file; every other
-assertion in the file is green.
+The orphan `watch/sync_protocol/fixtures/replay/seed-1814.json` (A-152-06) is gone — the directory
+lists the 16 manifest files only — so the governor deletion is done and S-15204 is green.
