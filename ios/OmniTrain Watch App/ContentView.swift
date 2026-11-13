@@ -311,7 +311,8 @@ final class WatchAppHost: ObservableObject {
         // by the time a subscription starts the builder, the permission outcome
         // and the feed exist. The subscription's first emission is the empty
         // session before `restore()`, which the lifecycle rule answers with
-        // `.none`, so it is left as it is.
+        // `.none` — and a workout the launch adopted is held until the restore
+        // finishes, so that emission cannot discard it (plan 150 D-15004).
         $revision
             .sink { [weak self] _ in
                 Task { @MainActor in
@@ -359,6 +360,10 @@ final class WatchAppHost: ObservableObject {
         // A stranded workout must end before a restored session can open one.
         await recoverStrandedWorkout()
         await engine.restore()
+        // The session is restored: a workout adopted above is settled against
+        // it now, so the emission that precedes this point is no longer able
+        // to discard it (plan 150 D-15005).
+        await workout.restoreFinished(session: engine.session)
         await nutrition.restore()
         await water.restore()
         await paths.restore()

@@ -312,7 +312,11 @@ and from `HealthKitWorkoutStore.refreshHeartRate`'s wake
 **One writer.** Every sensor streams on a task of its own — with steps recorded
 in every session the user allows it for, at least two run at once — and the
 engine and its store are built for one writer, so the recorder chains its writes
-(`WatchSensorWrites`).
+(`WatchSensorWrites`). Readers are not on that task: the logging screen reads
+the stored readings on the main thread while they are being appended, so the
+engine's own sample list is held behind a lock (`WatchSensorSampleLog`) that is
+never taken across an `await` (`WatchSensorSampleRaceTests.swift`
+`testS15001ConcurrentAppendsAndReadsAreSafe`).
 
 **The workout is continued when it can be, recovered when it cannot.** A kill
 cannot be caught, so the next launch, and the system's workout-recovery relaunch
@@ -324,9 +328,14 @@ keeps its collected totals, the feed is pointed at it again, and nothing is
 saved or restarted, so one session stays one Fitness workout. A workout that is
 not live, or a store that cannot adopt, falls back to ending it: saved when the
 persisted session is still active (the reopened app then opens a new workout for
-the rest of it, OQ-1) and discarded otherwise. The logged entries are in storage
-either way. Verified by `WatchContinueRecoveredWorkoutTests` (`S-14001` to
-`S-14005`) and, for the ending path,
+the rest of it, OQ-1) and discarded otherwise. An adopted workout is held until
+the launch's own `restore()` has read the session: the screen's refresh runs
+before that and sees no session yet, so it must not close what the launch just
+adopted (`WatchWorkoutAdoptBeforeRestoreTests.swift`
+`testS15002ARefreshBeforeRestoreKeepsTheAdoptedWorkout`,
+`testS15004RestoreFinishingWithNoSessionDiscardsTheAdoptedWorkout`). The logged
+entries are in storage either way. Verified by `WatchContinueRecoveredWorkoutTests`
+(`S-14001` to `S-14005`) and, for the ending path,
 `test/watch_sensor_recording_test.dart` (`S-005`), by watchOS
 `WatchSensorRecordingTests.testS005TheNextLaunchEndsTheWorkoutTheKillLeftBehind`,
 `WatchFitnessFollowsSessionTests` (S-89-2) and the source guards

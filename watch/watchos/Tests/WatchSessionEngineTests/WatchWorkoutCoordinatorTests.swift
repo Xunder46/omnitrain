@@ -47,6 +47,10 @@ final class ScriptedPlatformStore: WatchPlatformWorkoutStore {
     /// to overlap (S-1508), so the test and the coordinator do reach it together.
     private struct State {
         var stranded: [String]
+        /// What a launch adopt may take over, until it does (plan 140).
+        var adopt: String?
+        /// How many times a launch asked to adopt a workout.
+        var adopts = 0
         var begins: [String] = []
         var ends = 0
         var savings: [Bool] = []
@@ -73,8 +77,12 @@ final class ScriptedPlatformStore: WatchPlatformWorkoutStore {
     /// health permission is (S-1505).
     let deniesBegins: Bool
 
-    init(inProgress: [String] = [], deniesBegins: Bool = false) {
-        self.state = State(stranded: inProgress)
+    init(
+        inProgress: [String] = [],
+        deniesBegins: Bool = false,
+        adoptsInProgress: String? = nil
+    ) {
+        self.state = State(stranded: inProgress, adopt: adoptsInProgress)
         self.deniesBegins = deniesBegins
     }
 
@@ -119,6 +127,9 @@ final class ScriptedPlatformStore: WatchPlatformWorkoutStore {
         parked?.resume()
     }
 
+    /// How many times a launch asked to adopt a workout (plan 140, plan 150 B).
+    var adopted: Int { withState { $0.adopts } }
+
     func begin(_ activityType: String) async {
         let parked = withState { state -> Bool in
             state.enter("begin(\(activityType))")
@@ -148,6 +159,16 @@ final class ScriptedPlatformStore: WatchPlatformWorkoutStore {
             state.savings.append(saving)
             if !state.stranded.isEmpty { state.stranded.removeFirst() }
             state.settle()
+        }
+    }
+
+    func adoptInProgress() async -> String? {
+        withState { state in
+            state.adopts += 1
+            guard let adopt = state.adopt else { return nil }
+            state.adopt = nil
+            state.stranded.removeAll { $0 == adopt }
+            return adopt
         }
     }
 

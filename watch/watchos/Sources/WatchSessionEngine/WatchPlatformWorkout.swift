@@ -469,6 +469,14 @@ public final class WatchWorkoutCoordinator {
     /// replaced by the phone's reset (S-1504).
     private(set) var openedForSessionId: String?
 
+    /// Whether `openedForSessionId` names a workout this launch adopted rather
+    /// than opened, and the engine's `restore()` has not finished yet (plan 150
+    /// D-15004). While it is set, a refresh carrying no session is the empty
+    /// emission from before `restore()`, not the adopted session's end — the
+    /// device log's `workout_adopted running` followed at once by
+    /// `workout_end discarded`.
+    private var adoptedBeforeRestore = false
+
     /// Whether the platform's last registration failed (plan 82 D-3). Read
     /// under no lock: the value changes only inside the serial `enqueue` chain,
     /// and the host reads it on the main actor after `await workout.refresh`.
@@ -481,6 +489,17 @@ public final class WatchWorkoutCoordinator {
     /// Brings the workout in line with `session`, whatever it is now.
     public func refresh(_ session: WatchSessionRecord?) async {
         await enqueue { await self.apply(session) }.value
+    }
+
+    /// The engine's `restore()` has finished: from here a nil session is the
+    /// session's own end, not the empty emission that precedes the restore
+    /// (D-15004). The session is applied at once so nothing waits for the next
+    /// revision to settle the workout.
+    public func restoreFinished(session: WatchSessionRecord?) async {
+        await enqueue {
+            self.adoptedBeforeRestore = false
+            await self.apply(session)
+        }.value
     }
 
     /// Closes whatever a previous process left open, before a session can open
@@ -496,6 +515,15 @@ public final class WatchWorkoutCoordinator {
     }
 
     private func apply(_ session: WatchSessionRecord?) async {
+        if adoptedBeforeRestore {
+            // Before `restore()` the engine has no session yet, so the adopted
+            // workout's session is not known to this call — it is nil whatever
+            // the adopted session is. Only a real session answers it; the
+            // restore-finished call is what settles a nil one (D-15004).
+            guard session != nil else { return }
+            adoptedBeforeRestore = false
+        }
+
         if let opened = openedForSessionId, opened != session?.sessionId {
             // Replaced: whether the old session completed is unknown here, so
             // its workout is discarded (plan 89 D-2).
@@ -530,10 +558,12 @@ public final class WatchWorkoutCoordinator {
         // killed process left running, one Fitness workout for one session.
         if stillActive, let stored, await platform.continueInProgress() {
             openedForSessionId = stored.sessionId
+            adoptedBeforeRestore = true
             return
         }
         await platform.recoverInProgress(saving: stillActive)
         openedForSessionId = nil
+        adoptedBeforeRestore = false
     }
 
     /// Runs `work` after every call enqueued before it; awaiting the returned

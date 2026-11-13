@@ -74,7 +74,11 @@ public final class WatchSessionEngine: ObservableObject {
     /// copy of the same entry waits here instead of storing it again (F-7).
     private var inflightEntries: [String: EntryClaim] = [:]
     private var storedTimers: [WatchTimerRecord] = []
-    private var storedSensorSamples: [WatchSensorSampleRecord] = []
+
+    /// The raw readings, behind one lock: the platform writes them on its own
+    /// threads while the logging screen reads them on the main thread
+    /// (`WatchSensorSampleLog`).
+    private let storedSensorSamples = WatchSensorSampleLog()
 
     /// The structure changes this watch has already applied, by `changeId`.
     /// Rebuilt from storage by `restore`, so a relaunch cannot apply one twice
@@ -161,7 +165,7 @@ public final class WatchSessionEngine: ObservableObject {
         sessionRows = contents.sessions
         storedObservations = contents.observations
         storedTimers = contents.timers
-        storedSensorSamples = contents.sensorSamples
+        storedSensorSamples.fill(with: contents.sensorSamples)
         acknowledgedObservationIds = Set(contents.confirmations.flatMap(\.observationIds))
 
         current = contents.sessions.max { $0.sequence < $1.sequence }
@@ -206,7 +210,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// rate on the wrist is the newest row that reached the store, so a relaunch
     /// shows what the watch measured instead of starting from nothing.
     public var sensorSamples: [WatchSensorSampleRecord] {
-        storedSensorSamples.filter { $0.sessionId == current?.sessionId }
+        storedSensorSamples.snapshot().filter { $0.sessionId == current?.sessionId }
     }
 
     /// The newest reading of `kind` for the current session, or nil when there
@@ -224,7 +228,7 @@ public final class WatchSessionEngine: ObservableObject {
     public func newestSensorSamples() -> [String: WatchSensorSampleRecord] {
         var newest: [String: WatchSensorSampleRecord] = [:]
 
-        for sample in storedSensorSamples where sample.sessionId == current?.sessionId {
+        for sample in storedSensorSamples.snapshot() where sample.sessionId == current?.sessionId {
             if let existing = newest[sample.kind], existing.sequence >= sample.sequence {
                 continue
             }
@@ -1791,9 +1795,8 @@ public final class WatchSessionEngine: ObservableObject {
             value: value
         )
 
-        let alreadyStored = storedSensorSamples.contains { $0.recordId == record.recordId }
         let stored = await store.append(.sensorSample(record))
-        if !alreadyStored, case .sensorSample(let row) = stored {
+        if case .sensorSample(let row) = stored {
             storedSensorSamples.append(row)
         }
         return stored.sensorSampleRow ?? record
@@ -1822,7 +1825,7 @@ public final class WatchSessionEngine: ObservableObject {
         // workout) is summed the way the session end sums it. With no stored
         // sample inside the window (a caller that announces without recording) the
         // raw value is the total.
-        let samples = storedSensorSamples.filter { $0.sessionId == row.sessionId }
+        let samples = storedSensorSamples.snapshot().filter { $0.sessionId == row.sessionId }
         let total = WatchSensorSummaries.activeEnergy(samples, from: row.startedAt, through: at) ?? kilocalories
         if energyAnnouncedSession == row.sessionId,
            let lastKcal = energyAnnouncedKcal,
@@ -1887,7 +1890,7 @@ public final class WatchSessionEngine: ObservableObject {
 
         let pruned = await store.pruneSensorSamples(settled)
         let dropped = Set(pruned)
-        storedSensorSamples.removeAll { dropped.contains($0.recordId) }
+        storedSensorSamples.prune { dropped.contains($0.recordId) }
         return pruned
     }
 
@@ -1978,7 +1981,7 @@ public final class WatchSessionEngine: ObservableObject {
         let sessionId = origin.sessionId
         let startedAt = WatchSensorSummaries.wireInstant(origin.startedAt)
         let end = WatchSensorSummaries.wireInstant(endedAt)
-        let samples = storedSensorSamples.filter { $0.sessionId == sessionId }
+        let samples = storedSensorSamples.snapshot().filter { $0.sessionId == sessionId }
         let id = WatchSessionCapture.sessionEndId(sessionId)
 
         var event: [String: Any] = [
