@@ -1,6 +1,6 @@
 {
   "protocolVersion": 1,
-  "description": "Conformance fixture register. Every fixture file in this directory is listed here exactly once; the Dart validator, the watchOS suite, and the Wear OS suite walk this manifest rather than a hardcoded list. Every reconciliation fixture is replayed by the conformance test and must converge on its `expected` state; each entry under `scenarios` records the property the fixture pins, and the plan scenario it belongs to where there is one (`scenario` is null for fixtures that pin a protocol rule rather than a plan scenario).",
+  "description": "Conformance fixture register. Every fixture file in this directory is listed here exactly once (the `replay/` subdirectory holds the plan-152 replay corpus and is listed in its own `replay/manifest.json`, not here); the Dart validator, the watchOS suite, and the Wear OS suite walk this manifest rather than a hardcoded list. Every reconciliation fixture is replayed by the conformance test and must converge on its `expected` state; each entry under `scenarios` records the property the fixture pins, and the plan scenario it belongs to where there is one (`scenario` is null for fixtures that pin a protocol rule rather than a plan scenario).",
   "valid": [
     { "path": "valid/routines_down.json", "type": "routines_down" },
     { "path": "valid/foods_down.json", "type": "foods_down" },

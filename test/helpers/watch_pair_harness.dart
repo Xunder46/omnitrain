@@ -685,7 +685,10 @@ class WatchPairHarness {
     required this.failures,
     required this.validator,
     this.engineFactory,
-  });
+    this.recordReplay = false,
+  }) : gridStartMs = clock.now.millisecondsSinceEpoch {
+    clockGrid.add(gridStartMs);
+  }
 
   /// The instant both halves read.
   final TestClock clock;
@@ -705,6 +708,28 @@ class WatchPairHarness {
 
   /// The seam that builds the wrist's engine; null builds the production one.
   final WristEngineFactory? engineFactory;
+
+  /// Whether the run records the wrist's input timeline — the frames it was
+  /// handed, its own actions and its kills (plan 152 D-15201…D-15203).
+  ///
+  /// Off by default: with the switch off nothing is captured and every existing
+  /// test runs exactly as it did.
+  final bool recordReplay;
+
+  /// The raw events recorded so far, in the order the wrist saw them. The
+  /// canonicalizer runs at close (`ReplayRecording.capture`).
+  final List<Map<String, Object?>> replayEvents = [];
+
+  /// The instant the run's clock started at: the corpus's `gridStartMs`.
+  final int gridStartMs;
+
+  /// Every instant the run's own clock held. A timestamp on this grid is the
+  /// run's own and records verbatim; an instant off it came from the phone's
+  /// real clock and is aliased (D-15204).
+  final Set<int> clockGrid = {};
+
+  /// Notes the instant the clock holds now as part of the run's grid.
+  void noteClockGrid() => clockGrid.add(clock.now.millisecondsSinceEpoch);
 
   final InMemoryWatchSessionStore _store = InMemoryWatchSessionStore();
   late WatchSessionEngine _engine;
@@ -741,6 +766,7 @@ class WatchPairHarness {
     String exerciseName = 'Run',
     List<String> capabilities = const ['time', 'distance'],
     WristEngineFactory? engineFactory,
+    bool recordReplay = false,
   }) async {
     final clock = TestClock(start ?? DateTime.utc(2026, 11, 10, 9));
     final repository = MockWorkoutRepository();
@@ -791,6 +817,7 @@ class WatchPairHarness {
       failures: failures,
       validator: validator,
       engineFactory: engineFactory,
+      recordReplay: recordReplay,
     );
     await harness._launchWrist();
     return harness;
@@ -839,6 +866,9 @@ class WatchPairHarness {
       return;
     }
     if (request != null) return;
+    if (recordReplay && kReplayFrameTypes.contains(frame['type'])) {
+      recordReplayFrame(frame);
+    }
     try {
       await _orchestrator.receive(frame);
     } on WatchEmissionRejected catch (error, stack) {
@@ -904,7 +934,66 @@ class WatchPairHarness {
 
   /// Every session id the run has named, in first-appearance order.
   List<String> get sessionIds => _sessionLabels.keys.toList();
+
+  // ── Recording (plan 152, D-15202) ────────────────────────────────────────
+
+  /// Appends one replay event, stamped with the instant the run's clock holds.
+  ///
+  /// The payload is deep-copied: an event records what the wrist was handed,
+  /// not a map the engine may still mutate.
+  void _recordReplayEvent(
+    String t, [
+    Map<String, Object?> payload = const {},
+  ]) {
+    if (!recordReplay) return;
+    noteClockGrid();
+    replayEvents.add(
+      PairRadio._copy({
+        't': t,
+        'clockMs': clock.now.millisecondsSinceEpoch,
+        ...payload,
+      }),
+    );
+  }
+
+  /// Records the phone→wrist frame the wrist is about to receive.
+  void recordReplayFrame(Map<String, Object?> frame) =>
+      _recordReplayEvent('frame', {'envelope': frame});
+
+  /// Records one wrist action, carrying exactly the arguments the harness
+  /// passed the engine.
+  void recordReplayAction(
+    String name, {
+    Object? modality,
+    List<Map<String, Object?>>? exercises,
+    Map<String, Object?>? event,
+    String? kind,
+  }) => _recordReplayEvent('action', {
+    'name': name,
+    'modality': ?modality,
+    'exercises': ?exercises,
+    'event': ?event,
+    'kind': ?kind,
+  });
+
+  /// Records the wrist's process death — the one event with no arguments.
+  void recordReplayKill() => _recordReplayEvent('kill');
 }
+
+/// The phone→wrist types the wrist's session surface consumes — the seven the
+/// orchestrator routes to the engine (`watch_sync_orchestrator.dart:129-160`).
+///
+/// A request, `routines_down` and `foods_down` change no session state and are
+/// not recorded (D-15202).
+const Set<String> kReplayFrameTypes = {
+  'exercise_push',
+  'session_snapshot',
+  'structure_change',
+  'session_lifecycle',
+  'timer_state',
+  'receipt',
+  'observations_up',
+};
 
 /// The action kinds that end or restart nothing: link flaps, refused frames,
 /// app kills and time. S-14515's fixture space, shared with the random run's
@@ -1041,14 +1130,20 @@ class HarnessRunner {
           await _wristLogsSet();
         case WristFinishes():
           if (harness.wristEngine.session != null) {
+            harness.recordReplayAction('finish');
             await harness.wristEngine.finishSession();
           }
         case WristDiscards():
           if (harness.wristEngine.session != null) {
+            harness.recordReplayAction('discard');
             await harness.wristEngine.abandonSession();
           }
         case WristStartsRest():
           if (harness.wristEngine.session != null) {
+            harness.recordReplayAction(
+              'restStart',
+              kind: WatchTimerKind.rest,
+            );
             await harness.wristEngine.startTimer(WatchTimerKind.rest);
           }
         case LinkDrops():
@@ -1059,9 +1154,11 @@ class HarnessRunner {
         case RefuseLiveFrame(:final from, :final type):
           _refuseNext(from, type);
         case WristKilled():
+          harness.recordReplayKill();
           await harness.relaunchWrist();
         case TimeAdvances(:final seconds):
           clock.advance(Duration(seconds: seconds));
+          harness.noteClockGrid();
       }
     } finally {
       await harness.settle();
@@ -1332,6 +1429,7 @@ class HarnessRunner {
     var previous = '';
     for (var round = 1; round <= healRoundLimit; round++) {
       clock.advance(const Duration(seconds: 31));
+      harness.noteClockGrid();
       final before = radio.frames.length;
       await radio.drainQueues();
       await harness.wristOrchestrator.sync(reconnect: true);
@@ -1678,9 +1776,11 @@ class HarnessRunner {
       await harness.settle();
       return;
     }
+    final exercises = [harness.slot()];
+    harness.recordReplayAction('start', exercises: exercises);
     await harness.wristEngine.createSession(
       modality: null,
-      exercises: [harness.slot()],
+      exercises: exercises,
     );
     await harness.settle();
   }
@@ -1701,7 +1801,7 @@ class HarnessRunner {
       'hold' => WatchObservationKind.hold,
       _ => WatchObservationKind.set,
     };
-    await engine.appendObservation({
+    final event = <String, Object?>{
       'entryId': entryId,
       'eventId': entryId,
       'kind': kind,
@@ -1716,7 +1816,9 @@ class HarnessRunner {
         'endedAt': utcIso(end),
         if (kind == WatchObservationKind.round) 'roundNumber': 1,
       },
-    });
+    };
+    harness.recordReplayAction('logSet', event: event);
+    await engine.appendObservation(event);
     await harness.settle();
   }
 
@@ -1791,11 +1893,15 @@ class ConvergenceRun {
     int? length,
     WristEngineFactory? engineFactory,
     bool drainOnlyHeal = false,
+    bool recordReplay = false,
   }) async {
     final random = Random(seed);
     final steps =
         length ?? (minLength + random.nextInt(maxLength - minLength + 1));
-    final pair = await WatchPairHarness.build(engineFactory: engineFactory);
+    final pair = await WatchPairHarness.build(
+      engineFactory: engineFactory,
+      recordReplay: recordReplay,
+    );
     pair.drainOnlyHeal = drainOnlyHeal;
     final runner = pair.runner;
     final actions = <PairAction>[];
@@ -1817,8 +1923,12 @@ class ConvergenceRun {
     int seed = -1,
     WristEngineFactory? engineFactory,
     bool drainOnlyHeal = false,
+    bool recordReplay = false,
   }) async {
-    final pair = await WatchPairHarness.build(engineFactory: engineFactory);
+    final pair = await WatchPairHarness.build(
+      engineFactory: engineFactory,
+      recordReplay: recordReplay,
+    );
     pair.drainOnlyHeal = drainOnlyHeal;
     final runner = pair.runner;
     for (final action in actions) {

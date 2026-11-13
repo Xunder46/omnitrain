@@ -1,0 +1,52 @@
+{
+  "formatVersion": 1,
+  "source": {"kind":"seed","name":"seed-7"},
+  "gridStartMs": 1794301200000,
+  "events": [
+    {"t":"action","clockMs":1794301282000,"name":"start","exercises":[{"sessionExerciseId":"sx-ex-run-1","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"]}]},
+    {"t":"action","clockMs":1794301282000,"name":"finish"},
+    {"t":"action","clockMs":1794301282000,"name":"logSet","event":{"entryId":"w-entry-1","eventId":"w-entry-1","kind":"timed","loggedAt":"2026-11-10T09:01:22.000Z","sessionExerciseId":"sx-ex-run-1","exerciseId":"ex-run","startedAt":"2026-11-21T22:46:40.000Z","endedAt":"2026-11-10T09:01:22.000Z"}},
+    {"t":"frame","clockMs":1794301282000,"envelope":{"protocolVersion":1,"messageId":"x-1","sessionId":"x-2","type":"session_snapshot","origin":"phone","sentAt":"2026-11-21T22:46:42.000Z","payload":{"sessionId":"x-2","status":"active","revision":2,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"x-3","exerciseId":"ex-run","name":"Run","effortKind":"set","capabilities":["time","distance"],"plannedSets":[{"reps":10},{"reps":6}]}],"entries":[{"entryId":"x-4","eventId":"x-4","kind":"set","loggedAt":"2026-11-21T22:46:41.000Z","sessionExerciseId":"x-3","exerciseId":"ex-run","reps":6}],"timers":{"rest":{"kind":"rest","state":"running","startedAt":"2026-11-21T22:46:42.000Z","accumulatedPauseMs":0}}}}},
+    {"t":"frame","clockMs":1794301282000,"envelope":{"protocolVersion":1,"messageId":"x-5","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:44.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:44.000Z"}}},
+    {"t":"frame","clockMs":1794301282000,"envelope":{"protocolVersion":1,"messageId":"x-6","sessionId":"x-7","type":"timer_state","origin":"phone","sentAt":"2026-11-21T22:46:44.000Z","payload":{"timers":{"rest":{"kind":"rest","state":"running","startedAt":"2026-11-21T22:46:43.000Z","accumulatedPauseMs":0}}}}},
+    {"t":"frame","clockMs":1794301282000,"envelope":{"protocolVersion":1,"messageId":"x-8","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:43.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:43.000Z"}}},
+    {"t":"frame","clockMs":1794301282000,"envelope":{"protocolVersion":1,"messageId":"x-9","sessionId":"x-7","type":"session_snapshot","origin":"phone","sentAt":"2026-11-21T22:46:43.000Z","payload":{"sessionId":"x-7","status":"active","revision":3,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"x-10","exerciseId":"ex-run","name":"Run","effortKind":"set","capabilities":["time","distance"],"plannedSets":[{"reps":10}]}],"entries":[],"timers":{"rest":{"kind":"rest","state":"running","startedAt":"2026-11-21T22:46:43.000Z","accumulatedPauseMs":0}}}}},
+    {"t":"frame","clockMs":1794301282000,"envelope":{"protocolVersion":1,"messageId":"x-11","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:45.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:45.000Z"}}},
+    {"t":"frame","clockMs":1794301313000,"envelope":{"protocolVersion":1,"messageId":"x-12","sessionId":"x-7","type":"session_snapshot","origin":"phone","sentAt":"2026-11-21T22:46:46.000Z","payload":{"sessionId":"x-7","status":"active","revision":3,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"x-10","exerciseId":"ex-run","name":"Run","effortKind":"set","capabilities":["time","distance"],"plannedSets":[{"reps":10}]}],"entries":[],"timers":{"rest":{"kind":"rest","state":"running","startedAt":"2026-11-21T22:46:43.000Z","accumulatedPauseMs":0}}}}},
+    {"t":"frame","clockMs":1794301344000,"envelope":{"protocolVersion":1,"messageId":"x-13","sessionId":"x-7","type":"session_snapshot","origin":"phone","sentAt":"2026-11-21T22:46:47.000Z","payload":{"sessionId":"x-7","status":"active","revision":3,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"x-10","exerciseId":"ex-run","name":"Run","effortKind":"set","capabilities":["time","distance"],"plannedSets":[{"reps":10}]}],"entries":[],"timers":{"rest":{"kind":"rest","state":"running","startedAt":"2026-11-21T22:46:43.000Z","accumulatedPauseMs":0}}}}}
+  ],
+  "expected": {
+    "current": "x-7",
+    "sessions": {
+      "s-w-1": {
+        "status": "completed",
+        "entries": [
+          "w-entry-1"
+        ],
+        "timers": {}
+      },
+      "x-2": {
+        "status": "abandoned",
+        "entries": [
+          "x-4"
+        ],
+        "timers": {
+          "rest": {
+            "state": "stopped",
+            "startedAtMs": 1795301202000
+          }
+        }
+      },
+      "x-7": {
+        "status": "active",
+        "entries": [],
+        "timers": {
+          "rest": {
+            "state": "running",
+            "startedAtMs": 1795301203000
+          }
+        }
+      }
+    }
+  }
+}

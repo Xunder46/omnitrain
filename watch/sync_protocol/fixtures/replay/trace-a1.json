@@ -1,0 +1,36 @@
+{
+  "formatVersion": 1,
+  "source": {"kind":"trace","name":"trace-a1"},
+  "gridStartMs": 1794301200000,
+  "events": [
+    {"t":"action","clockMs":1794301200000,"name":"start","exercises":[{"sessionExerciseId":"sx-ex-run-1","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"]}]},
+    {"t":"action","clockMs":1794301200000,"name":"finish"},
+    {"t":"action","clockMs":1794301200000,"name":"start","exercises":[{"sessionExerciseId":"sx-ex-run-2","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"]}]},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-1","sessionId":"s-w-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:40.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:40.000Z"}}},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-2","sessionId":"s-w-1","type":"session_snapshot","origin":"phone","sentAt":"2026-11-21T22:46:40.000Z","payload":{"sessionId":"s-w-1","status":"active","revision":1,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"sx-ex-run-1","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"],"plannedEfforts":1}],"entries":[],"timers":{}}}},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-3","sessionId":"s-w-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:40.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:40.000Z"}}},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-4","sessionId":"s-w-1","type":"session_snapshot","origin":"phone","sentAt":"2026-11-21T22:46:40.000Z","payload":{"sessionId":"s-w-1","status":"active","revision":1,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"sx-ex-run-1","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"],"plannedEfforts":1}],"entries":[],"timers":{}}}},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-5","sessionId":"s-w-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:41.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:41.000Z"}}},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-6","sessionId":"s-w-1","type":"session_snapshot","origin":"phone","sentAt":"2026-11-21T22:46:41.000Z","payload":{"sessionId":"s-w-1","status":"active","revision":1,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"sx-ex-run-1","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"],"plannedEfforts":1}],"entries":[],"timers":{}}}},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-7","sessionId":"s-w-1","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:42.000Z","payload":{"state":"completed","at":"2026-11-21T22:46:42.000Z"}}},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-8","sessionId":"s-w-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:43.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:43.000Z"}}},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-9","sessionId":"s-w-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:43.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:43.000Z"}}},
+    {"t":"frame","clockMs":1794301262000,"envelope":{"protocolVersion":1,"messageId":"x-10","sessionId":"s-w-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:44.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:44.000Z"}}},
+    {"t":"frame","clockMs":1794301262000,"envelope":{"protocolVersion":1,"messageId":"x-11","sessionId":"s-w-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:44.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:44.000Z"}}}
+  ],
+  "expected": {
+    "current": "s-w-2",
+    "sessions": {
+      "s-w-1": {
+        "status": "completed",
+        "entries": [],
+        "timers": {}
+      },
+      "s-w-2": {
+        "status": "abandoned",
+        "entries": [],
+        "timers": {}
+      }
+    }
+  }
+}

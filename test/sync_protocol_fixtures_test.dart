@@ -153,7 +153,14 @@ void main() {
               .whereType<File>()
               .map((file) => file.path.substring(fixturesRoot.length))
               .where(
-                (path) => path != 'manifest.json' && path.endsWith('.json'),
+                (path) =>
+                    path != 'manifest.json' &&
+                    path.endsWith('.json') &&
+                    // The replay corpus (plan 152) is a different kind of
+                    // file: recordings, not conformance fixtures. It has its
+                    // own manifest, and `test/watch_replay_corpus_test.dart`
+                    // checks it against its directory (S-15204).
+                    !path.startsWith('replay/'),
               )
               .toList()
             ..sort();

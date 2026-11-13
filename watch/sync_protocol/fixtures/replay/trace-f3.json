@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "source": {"kind":"trace","name":"trace-f3"},
+  "gridStartMs": 1794301200000,
+  "events": [
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-1","sessionId":"x-2","type":"session_snapshot","origin":"phone","sentAt":"2026-11-21T22:46:40.000Z","payload":{"sessionId":"x-2","status":"active","revision":1,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"x-3","exerciseId":"ex-run","name":"Run","effortKind":"set","capabilities":["time","distance"],"plannedSets":[{"reps":10}]}],"entries":[],"timers":{}}}},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-4","sessionId":"x-2","type":"timer_state","origin":"phone","sentAt":"2026-11-21T22:46:41.000Z","payload":{"timers":{"rest":{"kind":"rest","state":"running","startedAt":"2026-11-21T22:46:41.000Z","accumulatedPauseMs":0}}}}},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-5","sessionId":"x-2","type":"session_snapshot","origin":"phone","sentAt":"2026-11-21T22:46:42.000Z","payload":{"sessionId":"x-2","status":"active","revision":1,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"x-3","exerciseId":"ex-run","name":"Run","effortKind":"set","capabilities":["time","distance"],"plannedSets":[{"reps":10}]}],"entries":[],"timers":{"rest":{"kind":"rest","state":"running","startedAt":"2026-11-21T22:46:41.000Z","accumulatedPauseMs":0}}}}},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-6","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:43.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:43.000Z"}}},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-7","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:44.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:44.000Z"}}},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-8","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:44.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:44.000Z"}}},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-9","sessionId":"x-2","type":"timer_state","origin":"phone","sentAt":"2026-11-21T22:46:45.000Z","payload":{"timers":{"rest":null}}}},
+    {"t":"frame","clockMs":1794301262000,"envelope":{"protocolVersion":1,"messageId":"x-10","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:46.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:46.000Z"}}},
+    {"t":"frame","clockMs":1794301262000,"envelope":{"protocolVersion":1,"messageId":"x-11","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-21T22:46:46.000Z","payload":{"state":"abandoned","at":"2026-11-21T22:46:46.000Z"}}}
+  ],
+  "expected": {
+    "current": "x-2",
+    "sessions": {
+      "x-2": {
+        "status": "abandoned",
+        "entries": [],
+        "timers": {
+          "rest": {
+            "state": "stopped",
+            "startedAtMs": 1795301201000
+          }
+        }
+      }
+    }
+  }
+}
