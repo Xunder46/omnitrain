@@ -188,6 +188,22 @@ the old instant. Verified by `WatchInboundLaneTests` (S-9310),
 `WatchStaleSnapshotTests` (S-9311..S-9314) and
 `WatchInboundLaneWiringSourceTests` (S-9315).
 
+**A session the wrist has already ended never comes back**, and it does not
+depend on what the wrist is holding: an `active` snapshot naming an ended
+session merges its entries by `entryId` and changes no row, status, structure,
+revision or timer — whether the wrist currently runs another workout, holds
+another ended one, or has nothing current at all. An ended session is never
+adopted as the current one by a late snapshot, so a phone that keeps sending its
+stale `active` copy cannot resurrect a session the wrist finished. Verified by
+`WatchEndedSessionNotCurrentTests`
+(`testS15101ALateSnapshotCannotReviveAnEndedSession`,
+`testS15101ALateSnapshotForAnEndedSessionStillMergesItsEntries`,
+`testS15101TheA1ShapeKeepsTheLiveWorkoutCurrent`,
+`testS15101ALiveWristWorkoutStillRefusesAForeignSnapshot`) and, for the Dart
+twin, by `test/watch_ended_session_not_current_test.dart`
+(`S-15101 a snapshot for an ended, non-current session keeps the end` and
+`S-15101 the Phase 4 four-action trace`).
+
 ## The wrist's start surface, and what an arrival does to it
 
 **A push with no session to land in is read and dropped.** The wrist's start

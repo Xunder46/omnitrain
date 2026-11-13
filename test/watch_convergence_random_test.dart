@@ -456,13 +456,19 @@ void main() {
     final redSeeds = <int>[];
     final divergedSomewhere = <int>[];
     for (var seed = 1; seed <= kSeedCount; seed++) {
+      // Plan 151: the product no longer needs the heal's re-offer on any seed
+      // (the resurrection it repaired is prevented at apply time), so the
+      // measurement uses a wrist that ignores `completed` lifecycles
+      // (`_MutationWrist`): only a heal that re-offers snapshots repairs it.
       final full = await ConvergenceRun.runSeed(
         seed,
         allowedActions: kShippingActions,
+        engineFactory: _MutationWrist.new,
       );
       final drained = await ConvergenceRun.runSeed(
         seed,
         allowedActions: kShippingActions,
+        engineFactory: _MutationWrist.new,
         drainOnlyHeal: true,
       );
       if (!drained.report.converged) divergedSomewhere.add(seed);
@@ -484,8 +490,9 @@ void main() {
       redSeeds,
       isNotEmpty,
       reason:
-          'measured: ${redSeeds.length} of $kSeedCount seeds converge with '
-          'the full heal and fail check 1 or 2 on the drain alone, so the '
+          'measured: ${redSeeds.length} of $kSeedCount seeds, with a wrist that ignores '
+          'completed lifecycles, converge with the full heal and fail check 1 or 2 '
+          'on the drain alone, so the '
           're-offer is load-bearing and not a redundant extra round. Seeds: '
           '$redSeeds. If this ever comes back empty, the finding has moved: '
           're-read this reason and record why in the evidence file.',

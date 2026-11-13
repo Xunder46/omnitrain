@@ -585,6 +585,17 @@ public final class WatchSessionEngine: ObservableObject {
         let existing = current?.sessionId == sessionId ? current : nil
         let status = (payload["status"] as? String) ?? WatchSessionStatus.active
 
+        // D-15101: a snapshot naming a session the wrist has already ended may
+        // never bring it back — not while the wrist runs a workout of its own
+        // (D-78), and not while it holds only an ended one, or nothing current
+        // at all. Its entries are the only news such a frame can carry, and
+        // they merge (D-14605); no row, status, structure, revision or timer
+        // changes. Like the D-78 guard, this runs before `captureSessionEnd`,
+        // so a late snapshot ends nothing.
+        if existing == nil, holdsTerminalRow(sessionId) {
+            return await mergeLateEntries(sessionId, entryMaps) ? TimerAdoption() : nil
+        }
+
         // A snapshot naming another session is refused whole while the wrist is
         // running a workout of its own: the user is in the middle of it, and
         // nothing — no end, no row, no message — may come of a frame that is not

@@ -250,3 +250,134 @@ ledger does not name, and a move with `Write workouts` off sends nothing.
 ## Lead note: S-14508 re-based (2026-11-13)
 After phases 1-3 the S-14508 mutation proof (a wrist that ignores `completed` lifecycles) turned red on 0 of 60 seeds (it was 7, 9, 40 before): the new rule lets the heal repair that wrist through snapshots, so the proof no longer proved the sweep can fail. Re-based on `_DeafToEndWrist` (refuses completed lifecycles AND completed snapshots, the same mutation S-14510 uses): red on seeds [1, 11, 46, 52, 55, 56, 57]. A stronger mutation, not a weaker assertion. The developer run had reported all suites green without running this file.
 Lead-verified: focused Flutter suites 491 passed; Swift full 1388 passed; new tests fail on the old sources (Dart 4 failures, Swift 3).
+
+## Investigation 2026-11-13 (brief `.work/2026-11-10-145-convergence-test/brief-developer-confirm.md`)
+
+Investigation only: no product file changed, no plan decision taken. Method — replay the recorded
+shrink traces and the seeds through `ConvergenceRun.replayActions` / `runSeed(seed, allowedActions:
+kShippingActions)` on the pair harness, dump per action the phone/wrist status, the wrist rows, the
+absorbing set and the snapshot payloads, then re-deliver a drained frame into the wrist engine as-is
+and with a bumped `sentAt`; plus a static read of the Swift engine, the inbound lane, the bridge, the
+sensor recorder and the app host. Scratch probe `test/zz_investigation_a.dart`, deleted after the
+runs; the raw output is in the logs named per item.
+
+### A1 — seed 111's absorbing class (4-action trace)
+
+**Confirmed; exact trace reproduces 4/4, failure `session 1 was completed on the wrist and reports
+active again`.** The *seed* is not a stable reproduction: seed 111 under `kShippingActions` is 22
+actions and converged in my process (`test-20261113-090156-67691.log`) while the S-14509 contract in
+the same session still lists 111 among the 12 shipping divergers — the phone's real clock (A-145-02)
+changes the `sentAt` values the trace carries, so seed membership is not process-stable. A1's evidence
+below therefore comes from the phase-4 action trace (its recorded 4-action list, replayed identically),
+which is stable: `test-20261113-090712-69744.log`, repeats 1-3 all `converged=false` with that line.
+
+Mechanism, read from the trace plus `_applySnapshot`: the phone never adopts the wrist's finish, ends
+session 2 itself, then sends two `active` snapshots for session 1. The cross-session guard in
+`_applySnapshot` (`held.status == active && held.exercises.isNotEmpty && held.sessionId != sessionId`)
+does not fire, because the held session at that moment is session 2 and already terminal; the session-1
+snapshot is therefore applied whole and appends `session 1:active` rows although a `completed` row for
+session 1 exists. `_holdsTerminalRow` (D-14605) is consulted only *inside* that guard, so D-14601's
+"an ended session stays ended" is not enforced for a session the wrist has moved past.
+
+```
+wrist rows=[session 1:active, session 1:completed, session 2:active, session 2:abandoned, session 1:active, session 1:active]
+absorbing=[session 1 was completed on the wrist and reports active again]
+```
+
+Confidence: high on reproduction and on the code path; no clock dependency (three independent runs).
+
+### A2 — seed 857's entries class (5-action trace)
+
+**Confirmed; reproduces 4/4, `session 1: the wrist never held entry-sx-ex-run-1-1`.** The seed itself
+(39 actions) converged in my process in the same run, for the same clock reason as A1; the recorded
+5-action trace is stable and is what the probe below uses.
+
+Mechanism: the one frame carrying the set is refused live and queued; by the time it drains, the
+phone's snapshot for session 2 has advanced `_newestSnapshotAt`, so D-127 refuses the older frame
+whole — entries included — and the phone's later session-1 snapshots carry `entries=[]`. Direct
+probe: re-applying the drained frame as-is returns `changed=false, observations=0/4`; the identical
+payload with a later `sentAt` is **accepted** and the entry stored (`changed=true, observations=1,
+ids=[entry-sx-ex-run-1-1]`, `test-20261113-090740-69987.log`). So the cause is the single, never-reset,
+cross-session `_newestSnapshotAt`, not the D-78 merge: `_mergeLateEntries` is never reached, which
+makes D-14605's late-entries merge unreachable whenever another session's newer snapshot was applied
+first.
+
+Confidence: high on reproduction and on the D-127 mechanism (probe, not inference); the reach of the
+loss is open — whether the phone still holds the entry is not established, so this is either a
+convergence failure or also data loss.
+
+### A3 — seed 1814's timers class
+
+**Confirmed reproducible alone; phase 4's "replayed alone it converges" is stale.** Shipping trace,
+31 actions: 4 absorbing plus 2 timers —
+`session 1: a rest timer runs on the phone although the session is completed` and the same on the
+wrist. Full action space (which may draw `PhoneReassertsLive`) converges in 31 actions, so the
+earlier check was the full-space replay, not the shipping one. Prefixing seed 1813 changes nothing
+(same 6 failures), so no cross-seed state leak. Confidence: high.
+
+The absorbing failures are A1's signature (`session 1` completed then reopened), so the timers
+failures may be downstream of the same resurrection; D-14635's `endSession`-live-rest seam is neither
+proven nor refuted here.
+
+### `status` class (137/2000 in phase 4)
+
+**Confirmed, one signature.** Six representatives under `kShippingActions` — 29, 43, 94, 95, 117, 124
+— each fail with exactly one check, `session N: phone abandoned vs wrist completed` (94 is
+`session 2`, the rest `session 1`). That is the A-146-15 / D-14630 shape: the wrist keeps an earlier
+completion while the phone keeps a later discard. Not shrunk and the phone's discard path not read, so
+the mechanism is suspected, not verified. Confidence: high on the signature (6/6 identical wording),
+low on the mechanism.
+
+### B1 — thread/actor audit
+
+**The engine carries unprotected mutable state and at least one writer path runs off the main actor.**
+`WatchSessionEngine` is `public final class … : ObservableObject` with no `@MainActor`/`actor`
+annotation and no internal lock. Unprotected: `sessionRows`, `current`, `appliedChangeIds`,
+`newestSnapshotAt`, `entryCorrections`, `deletedEntryIds`, `replacedEntryIds`,
+`acknowledgedObservationIds`, `announcedCountdownKeys`, `energyAnnounced*`. Only plan 150's
+`storedObservations` / `storedTimers` / sensor samples sit behind the `NSLock` boxes in
+`WatchEngineRowLogs.swift`.
+
+`WatchInboundLane` serialises frames but `drain()` is an unstructured `Task {}` in a non-isolated
+class, and `WatchConnectivityBridge.onIncoming` is a plain closure; the app's `WatchAppHost` is
+`@MainActor` and wraps the handler body in `await MainActor.run { … }` (`ios/OmniTrain Watch
+App/ContentView.swift`), so inbound writes do land on the main actor — nominally safe, but nothing in
+the type system holds that. The sensor path does not hop: `WatchSensorRecorder.consume` starts plain
+`Task { for await … }` from a non-isolated class (`WatchSensorRecording.swift`), and those elements
+write the engine, concurrently with main-actor UI writes. So the suspected race is sensor-vs-main, not
+inbound-vs-main.
+
+Confidence: medium-high (static call path); the app target's whole call graph was not audited.
+
+### B2 — strong TSan stress test
+
+**Not established — not written.** The brief's ~60-minute stop and the remaining write-up took
+priority; no `.swift` file was added, so the package suite is untouched (1404). Design for the
+follow-up: an `async` test that starts a detached loop driving `appendSensorSample`/`announceEnergy`
+while the main actor starts, logs, finishes and applies phone snapshots (touching `sessionRows` and
+`current` on both paths), repeated inside one test; run with `swift test --sanitize=thread --filter
+WatchEngineSessionStateRaceTests`. Keep it only if TSan reports engine state; otherwise record "no
+report in N runs" and delete it. The gateway exposes no TSan flag, so this needs a governor action or
+a manual command.
+
+### Could not be established
+
+- Whether the phone keeps a discarded session's entries (A2's reach: convergence-only or data loss).
+- The `status` class mechanism (phone-side discard path not read; no shrink).
+- Whether A3's timers failures are downstream of the A1 reopen.
+- Any TSan report, and whether the sensor task is the only off-main writer of engine state.
+- Whether the Swift twin shares the per-process `_newestSnapshotAt` and the terminal-row gap (not read).
+
+### Evidence runs
+
+| Log | Contents |
+|---|---|
+| `.work/gateway/test-20261113-090156-67691.log` | seeds 111 (22 actions) and 857 (39) converge under shipping actions |
+| `.work/gateway/test-20261113-090244-68137.log` | A1 4-action trace (absorbing + rows); A2 5-action trace; drained frame carries `entries=[entry-sx-ex-run-1-1]` |
+| `.work/gateway/test-20261113-090421-68753.log` | same, plus `redeliver … => changed=false observations=4` / `0` |
+| `.work/gateway/test-20261113-090712-69744.log` | A1 ×3 and A2 ×3 `converged=false`; A3 shipping alone `converged=false` (4 absorbing, 2 timers), full alone `converged=true actions=31`, after 1813 `converged=false`; six `status` seeds |
+| `.work/gateway/test-20261113-090740-69987.log` | `redeliver the same payload with a newer sentAt => changed=true observations=1 ids=[entry-sx-ex-run-1-1]` |
+
+No product file changed in this investigation; the final runs are the three stable files named in the
+brief (`test/watch_convergence_harness_test.dart`, `test/watch_convergence_random_test.dart`,
+`test/docs_indexing_contract_test.dart`).
