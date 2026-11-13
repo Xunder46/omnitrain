@@ -78,6 +78,7 @@ and the amended `lifecycle_started.json`) are the cross-stack parity register: P
   `watch_session_importer.dart`); O-7's earlier-abandon-deletes-later-finish (blocked on the owner's O-7
   confirmation); a Health re-write after an end-time move (default: skip); an abandoned-but-kept
   representation on the phone (only if the owner confirms literal O-4 — see D-14607).
+  PR 3: planned: `docs/plans/2026-11-12-146c-earlier-discard-wins-plan/2026-11-12-146c-earlier-discard-wins-plan.md`
 
 # PR 1 — contract + Dart twin + phone: a finished workout is final
 
