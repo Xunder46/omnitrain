@@ -322,7 +322,14 @@ sensor stream and a logging tap write them while a screen reads them — so each
 list is behind its own lock too (`WatchObservationLog`, `WatchTimerLog` in
 `WatchEngineRowLogs.swift`), the observation one holding the in-flight claims in
 the same box (`WatchEngineListRaceTests.testS15021ObservationListSurvivesConcurrentWritersAndReaders`,
-`…testS15022TimerListSurvivesConcurrentWritersAndReaders`).
+`…testS15022TimerListSurvivesConcurrentWritersAndReaders`). The lens `entries`
+folds over the stored rows — the phone's corrections, deletions and replacements
+— and the ids it has acknowledged are written by that same delivery task while
+`entries` and the effort-rating prompt read them, so each has a lock of its own
+(`WatchEntryLensLog`, `WatchAcknowledgementLog` in `WatchEntryLensLog.swift`),
+and a projection reads the whole lens under one acquisition rather than three
+(`WatchEngineSessionStateRaceTests.testS15032CorrectionLensSurvivesConcurrentFramesAndProjections`,
+`…testS15034AcknowledgementSetSurvivesConcurrentReceiptsAndReads`).
 
 **The workout is continued when it can be, recovered when it cannot.** A kill
 cannot be caught, so the next launch, and the system's workout-recovery relaunch

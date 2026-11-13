@@ -26,7 +26,7 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
 - **D-15002** `append` is a no-op for a `recordId` already held, matching the store's "same reading twice is a no-op" rule, so the racy read-then-append pair can go.
 - **D-15003** Other engine arrays (`storedObservations`, `storedTimers`, `sessionRows`) are inspected and reported in the evidence, not changed by Task A. *(Amended by D-15021: the first two were proven racy and boxed by Task F; the rest stay as reported.)*
 - **D-15021** `storedObservations` and `storedTimers` move into `WatchObservationLog` and `WatchTimerLog` (`WatchEngineRowLogs.swift`), D-15001's pattern: snapshot for reads, an append that ignores an id already held, and the in-flight claim made in the same operation as the "already held?" check (`claim`/`finishClaim`), so two copies of an entry cannot both store it (F-7). No lock is held across an `await`.
-- **D-15022** `sessionRows`, `current`, the correction/deletion lens and `acknowledgedObservationIds` are left plain: TSan reproduced no race on them, and an unproven race is reported, not rewritten (D-15003).
+- **D-15022** `sessionRows`, `current`, the correction/deletion lens and `acknowledgedObservationIds` are left plain: TSan reproduced no race on them, and an unproven race is reported, not rewritten (D-15003). *(Amended by D-15031: the lens and the acknowledgement set were proven by Task G's stronger thread layout and are boxed; the mirror and rows stay plain — D-15032.)*
 - **D-15004** The coordinator gets `adoptedBeforeRestore`, set by `recover`'s adoption and cleared by `restoreFinished(_:)` or the first non-nil session; `apply` returns early only while it is set and the session is nil. `WatchWorkoutLifecycle.action` stays pure.
 - **D-15005** `ContentView.restore()` calls `workout.restoreFinished(session: engine.session)` after `engine.restore()`; app-target code, not compiled by `swift test`.
 - **D-15006** `HealthKitWorkoutStore.adoptInProgress()` and `WatchAppDelegate`'s recovery are read and reported, changed only if the nil-adoption cause is clear and small.
@@ -34,6 +34,8 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
 - **D-15008** `WatchSensorPace.maxSecondsPerUnit` (3600, **exclusive**) is the ceiling: at or past it there is no pace and the line is absent, like a reading below the 50 m floor (S-15008). The label is minutes:seconds, never `clock`, so it cannot grow an hours field (S-15010).
 - **D-15011** One private `distanceWindow(for:)` answers the header's distance and its pace: with the Distance row it is `windowDistanceMeters()` over `workTimer.startedAt`, the field's own figure, so the two cannot drift (S-15011, S-15014); the pace divides that window (S-15012).
 - **D-15012** "The row exists" is `isMeasured(WatchMetricKey.distance)` plus a running work clock. Without it the header keeps D-15007/D-15008 exactly: the newest stored `gps` total over its own run (S-15013).
+- **D-15031** The correction/deletion lens (`entryCorrections`, `deletedEntryIds`, `replacedEntryIds`) and `acknowledgedObservationIds` move into `WatchEntryLensLog` and `WatchAcknowledgementLog` (`WatchEntryLensLog.swift`), D-15001's pattern: a projection takes one `snapshot()` of all three lens parts, so it cannot fold a lens that moved between parts, and no lock is held across an `await`. Both were proven racy by S-15032/S-15034, which amends D-15022.
+- **D-15032** `sessionRows` and `current` stay plain: the stronger stress test reproduced no race on them (S-15031/S-15033 green under TSan), so they stay reported, not rewritten.
 
 ## Scenarios
 
@@ -70,15 +72,33 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
   `session`, `currentExercise`, `sessionSnapshot()`, `entries`, `hasEffortRating` and
   `sensorSamples`: the session still answers `s-race` as active and the deleted id stays
   hidden. (Green at HEAD: on the mirror and lens this is a preservation guard.)
+- **S-15031** A wrist "tap" task (`advanceExercise` + `appendObservation`) and a phone
+  `structure_change` task rewrite the mirror while three real GCD threads read `session`,
+  `currentExercise`, `sessionSnapshot()` and `entries`, each writer looping for the whole
+  window: the session still answers `s-race` as active and every logged set is held.
+- **S-15032** A phone `correct_entry` + `delete_entry` task rewrites the lens while three
+  GCD threads project `entries`, `pendingObservations()` and `sessionSnapshot()`: the
+  projection never traps, the session still answers, and every id the phone deleted stays
+  hidden.
+- **S-15033** A sensor-stream task (`appendSensorSample` then `announceEnergy`, off the
+  main actor) and a tap task race three GCD threads reading `sensorSamples`,
+  `newestSensorSamples()`, `session` and `currentExercise`: every reading is held once and
+  the mirror still answers.
+- **S-15034** A receipt task (`confirmObservations`) races three GCD threads reading
+  `hasEffortRating`, `pendingObservations()` and `unconfirmedObservations`: every
+  acknowledged entry stays acknowledged and the mirror still answers.
 
 ## Files
 
 - `watch/watchos/Sources/WatchSessionEngine/WatchSensorSampleLog.swift` (new)
 - `watch/watchos/Sources/WatchSessionEngine/WatchEngineRowLogs.swift` (new, Task F)
+- `watch/watchos/Sources/WatchSessionEngine/WatchEntryLensLog.swift` (new, Task G)
 - `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`
 - `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift`
 - `watch/watchos/Tests/WatchSessionEngineTests/WatchSensorSampleRaceTests.swift` (new)
 - `watch/watchos/Tests/WatchSessionEngineTests/WatchEngineListRaceTests.swift` (new, Task F)
+- `watch/watchos/Tests/WatchSessionEngineTests/WatchEngineSessionStateRaceTests.swift`
+  (new, Task G)
 - `watch/watchos/Tests/WatchSessionEngineTests/WatchWorkoutAdoptBeforeRestoreTests.swift` (new)
 - `watch/watchos/Tests/WatchSessionEngineTests/WatchWorkoutCoordinatorTests.swift`
 - `ios/OmniTrain Watch App/ContentView.swift`
@@ -95,6 +115,7 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
 | D — pace window + ceiling | Complete — S-15007…S-15010 green, red at HEAD; suite 1397/0 |
 | E — header distance = Distance field | Complete — S-15011…S-15014 green, red at HEAD; suite 1401/0 |
 | F — the other engine lists | Complete — audit + TSan; S-15021/S-15022 red at HEAD and clean after, S-15023 not proven; suite 1404/0, whole suite under TSan 1404/0 |
+| G — session-record state under a real thread layout | Complete — S-15031/S-15033 not proven (left plain, D-15032); S-15032/S-15034 red at HEAD under TSan and clean after; suite 1416/0, whole suite under TSan 1416/0 (16 warnings, all in test doubles) |
 
 ## Assumption Log
 
@@ -108,6 +129,9 @@ relaunch, plus a pace readout to diagnose. Swift only: `watch/watchos` and one
 - **A-15021** The observations and their in-flight claims share one box: splitting them would leave the claim a second unsynchronised list, which is the race S-15021 proves exists.
 - **A-15022** `EntryClaim` became internal and moved to `WatchEngineRowLogs.swift`, because a private class cannot be shared with the box's file; no behaviour changed.
 - **A-15023** S-15023 stays green at HEAD and is kept as the mirror/lens preservation guard, since TSan reported no race there (D-15022).
+- **A-15031** Task G's tests run every reader on a real GCD thread and every writer as its own task for a 1.5 s window each, because S-15023's in-group readers never overlapped its writers; the tests assert outcomes rather than a race, so only TSan makes them red at HEAD.
+- **A-15032** `WatchEngineSessionStateRaceTests` and S-15032/S-15034 are the guards, not S-15023: the old lens assertion in S-15023 stays as the preservation check it was written as.
+- **A-15033** The lens box keeps its mutators named `merge`/`restate`/`hide`/`show`/`prune`/`fill`, following A-15001. No migration, schema or Flutter change was needed: the lens and the acknowledgement set are memory only.
 
 ## Tasks D and E — pace and the header's distance (2026-11-13/14)
 
@@ -135,6 +159,29 @@ rewritten (D-15022). Files: `WatchEngineRowLogs.swift` (new), `WatchEngineListRa
 (new), `WatchSessionEngine.swift`, `docs/state_management/watch_sensors.md`. S-15021/S-15022 red
 at HEAD (`Swift access race` at `:1760`, `:1755`, `:2297`, then BUS in `observations.getter :203`),
 green after; suite **1404/0**, whole suite under TSan **1404/0** (17 warnings, all in test doubles).
+
+## Task G — the session-record state under the real thread layout (2026-11-13)
+
+Task F's readers ran between writes inside one task group, so `sessionRows`, `current`, the lens and
+the acknowledgement set reproduced nothing. Task G's `WatchEngineSessionStateRaceTests` puts each
+reader on its own GCD thread and each writer on its own task for the whole window (1.5 s, hundreds
+of rounds), in the shipping layout: main-actor taps, the phone's receive path, the sensor stream's
+tasks. Two properties are proven and fixed:
+
+- **S-15032, the lens.** Under TSan at HEAD: `Swift access race` in `ladderAfter` against
+  `projectedEntries` (`:271`); without TSan the same test crashed the process inside
+  `projectedEntries` (`-[NSTaggedPointerString member:]`, a `Set` torn by a concurrent insert).
+- **S-15034, the acknowledgement set.** Under TSan at HEAD: `Swift access race` in
+  `confirmObservations` against `knowsObservation` (`:2089`, reached from `hasEffortRating` on a
+  reader thread).
+
+Both now sit behind `NSLock` boxes in `WatchEntryLensLog.swift` (D-15031), and `projectedEntries`
+reads the three lens parts in one acquisition. `sessionRows`/`current` (S-15031) and the sensor
+task's reads (S-15033) reproduced nothing and stay plain (D-15032). Files: `WatchEntryLensLog.swift`
+(new), `WatchEngineSessionStateRaceTests.swift` (new), `WatchSessionEngine.swift`,
+`docs/state_management/watch_sensors.md`. Green: suite **1416/0**; whole suite under TSan
+**1416/0**, 16 warnings, all in test doubles (`GatedTransport`, `ScriptedRawFixSource`), none in
+`Sources/`. Evidence: `.evidence.md`, "Task G".
 
 ## QA for the owner
 

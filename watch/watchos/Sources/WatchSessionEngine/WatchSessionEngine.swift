@@ -90,22 +90,22 @@ public final class WatchSessionEngine: ObservableObject {
     private var newestSnapshotAt: Date?
 
     /// The phone's corrections to entries the watch holds, keyed by `entryId`,
-    /// and the ones it deleted. The stored row is never rewritten — these are
-    /// what `entries` folds in.
-    private var entryCorrections: [String: [String: Any]] = [:]
-    private var deletedEntryIds: Set<String> = []
-
-    /// The ids whose held row the phone **replaced** rather than corrected: its
+    /// the ids it deleted, and the ones it **replaced** rather than corrected: a
     /// snapshot re-stated the id with a different `loggedAt`, which is a
     /// different entry reusing a minted number (D-113.3). A correction merges
-    /// into the held payload; a replacement is the whole payload.
-    private var replacedEntryIds: Set<String> = []
+    /// into the held payload; a replacement is the whole payload. The stored row
+    /// is never rewritten — these are what `entries` folds in, behind one lock,
+    /// because the delivery task writes them while the screens read them
+    /// (`WatchEntryLensLog`).
+    private let lensLog = WatchEntryLensLog()
 
     /// Every observation the phone has acknowledged, by record id — including
     /// the ones pruned since. A confirmation row outlives the observation it
     /// names, which is what lets "this session's end was acknowledged" and "this
-    /// session already has one" be answered after a prune.
-    private var acknowledgedObservationIds: Set<String> = []
+    /// session already has one" be answered after a prune. Behind a lock, because
+    /// a receipt writes it on the delivery task while the effort-rating prompt
+    /// reads it on the main thread (`WatchAcknowledgementLog`).
+    private let acknowledgementLog = WatchAcknowledgementLog()
 
     /// The two statuses a session ends in, and the source a session the wrist
     /// itself created carries.
@@ -165,7 +165,7 @@ public final class WatchSessionEngine: ObservableObject {
         observationLog.fill(with: contents.observations)
         timerLog.fill(with: contents.timers)
         storedSensorSamples.fill(with: contents.sensorSamples)
-        acknowledgedObservationIds = Set(contents.confirmations.flatMap(\.observationIds))
+        acknowledgementLog.fill(with: Set(contents.confirmations.flatMap(\.observationIds)))
 
         current = contents.sessions.max { $0.sequence < $1.sequence }
         appliedChangeIds = Set(
@@ -180,7 +180,7 @@ public final class WatchSessionEngine: ObservableObject {
 
         // D-113.1: the deletion lens is read back from the newest row, so a
         // relaunch hides the same entries the killed process hid.
-        deletedEntryIds = Set(current?.deletedEntryIds ?? [])
+        lensLog.fill(hidden: Set(current?.deletedEntryIds ?? []))
     }
 
     /// The newest session the store holds, read without restoring anything
@@ -267,16 +267,17 @@ public final class WatchSessionEngine: ObservableObject {
     /// `entries` for any session the store holds — what a session end
     /// summarises, whichever session the watch is on when it ends.
     private func projectedEntries(_ sessionId: String) -> [WatchObservationRecord] {
-        observationLog.snapshot()
-            .filter { $0.sessionId == sessionId && !deletedEntryIds.contains($0.entryId) }
+        let lens = lensLog.snapshot()
+        return observationLog.snapshot()
+            .filter { $0.sessionId == sessionId && !lens.deleted.contains($0.entryId) }
             .map { observation in
-                guard let correction = entryCorrections[observation.entryId] else {
+                guard let correction = lens.corrections[observation.entryId] else {
                     return observation
                 }
                 // D-113.3: a re-stated id with a new stamp **is** the whole
                 // entry, so the held row's keys it does not carry are gone with
                 // it.
-                if replacedEntryIds.contains(observation.entryId) {
+                if lens.replaced.contains(observation.entryId) {
                     return observation.withPayload(correction)
                 }
                 return observation.withPayload(
@@ -701,11 +702,11 @@ public final class WatchSessionEngine: ObservableObject {
         _ entryMaps: [[String: Any]]
     ) async -> Bool {
         let rows = observationLog.count
-        let corrections = entryCorrections.count
+        let corrections = lensLog.correctionCount
         for entry in entryMaps {
             await storeSnapshotEntry(sessionId, entry)
         }
-        return observationLog.count != rows || entryCorrections.count != corrections
+        return observationLog.count != rows || lensLog.correctionCount != corrections
     }
 
     /// Whether any row the wrist holds for `sessionId` has ended it — the test
@@ -1171,13 +1172,10 @@ public final class WatchSessionEngine: ObservableObject {
                 // a different entry. A merge would keep a field the new entry
                 // does not carry — the dead entry's Load. The correction is the
                 // whole entry.
-                entryCorrections[entryId] = entry
-                replacedEntryIds.insert(entryId)
+                lensLog.restate(entryId, with: entry)
                 return
             }
-            entryCorrections[entryId] = (entryCorrections[entryId] ?? [:])
-                .merging(entry) { _, corrected in corrected }
-            replacedEntryIds.remove(entryId)
+            lensLog.merge(entryId, with: entry)
             return
         }
 
@@ -1223,7 +1221,7 @@ public final class WatchSessionEngine: ObservableObject {
         if let held = heldPayload(entryId), Self.sameStamp(held["loggedAt"], entry["loggedAt"]) {
             return
         }
-        deletedEntryIds.remove(entryId)
+        lensLog.show(entryId)
     }
 
     /// The payload `entries` shows for `entryId` right now, before any deletion
@@ -1231,7 +1229,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// wrist holds no row for it.
     private func heldPayload(_ entryId: String) -> [String: Any]? {
         guard let row = heldRecord(entryId) else { return nil }
-        guard let correction = entryCorrections[entryId] else { return row.payload }
+        guard let correction = lensLog.correction(entryId) else { return row.payload }
         return row.payload.merging(correction) { _, corrected in corrected }
     }
 
@@ -1263,7 +1261,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// writer, so no path that appends a session row can lose it.
     private func carryingLens(_ row: WatchSessionRecord) -> WatchSessionRecord {
         var carried = row.deletedEntryIds
-        for id in deletedEntryIds.sorted() where !carried.contains(id) {
+        for id in lensLog.hiddenIds() where !carried.contains(id) {
             carried.append(id)
         }
         return row.withDeletedEntryIds(carried)
@@ -1344,13 +1342,9 @@ public final class WatchSessionEngine: ObservableObject {
             case "correct_entry":
                 let entryId = change["entryId"] as? String ?? ""
                 let correction = (change["correction"] as? [String: Any]) ?? [:]
-                entryCorrections[entryId] = (entryCorrections[entryId] ?? [:])
-                    .merging(correction) { _, corrected in corrected }
+                lensLog.merge(entryId, with: correction)
             case "delete_entry":
-                let entryId = change["entryId"] as? String ?? ""
-                entryCorrections.removeValue(forKey: entryId)
-                replacedEntryIds.remove(entryId)
-                deletedEntryIds.insert(entryId)
+                lensLog.hide(change["entryId"] as? String ?? "")
             default:
                 continue
             }
@@ -2086,7 +2080,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// Whether the watch has held the observation `recordId` — still stored, or
     /// acknowledged and pruned since.
     private func knowsObservation(_ recordId: String) -> Bool {
-        acknowledgedObservationIds.contains(recordId)
+        acknowledgementLog.contains(recordId)
             || observationLog.contains { $0.recordId == recordId }
     }
 
@@ -2097,7 +2091,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// (plan 71 D-3).
     private func isEndAcknowledgedWhereOwed(_ sessionId: String) -> Bool {
         guard creationRow(sessionId)?.source == Self.wristSource else { return true }
-        return acknowledgedObservationIds.contains(WatchSessionCapture.sessionEndId(sessionId))
+        return acknowledgementLog.contains(WatchSessionCapture.sessionEndId(sessionId))
     }
 
     // MARK: - Timers
@@ -2367,7 +2361,7 @@ public final class WatchSessionEngine: ObservableObject {
         )
 
         let acknowledgedIds = Set(acknowledged.map(\.recordId))
-        acknowledgedObservationIds.formUnion(acknowledgedIds)
+        acknowledgementLog.acknowledge(acknowledgedIds)
         observationLog.map { observation in
             acknowledgedIds.contains(observation.recordId)
                 ? observation.withConfirmation(now)
@@ -2401,11 +2395,7 @@ public final class WatchSessionEngine: ObservableObject {
         // D-52: a pruned row takes its projection lens with it. A correction or
         // deletion marker left behind would override or hide the fresh row when
         // the same id is re-carried.
-        for recordId in dropped {
-            entryCorrections.removeValue(forKey: recordId)
-            replacedEntryIds.remove(recordId)
-            deletedEntryIds.remove(recordId)
-        }
+        lensLog.prune(dropped)
     }
 
     // MARK: - Emission

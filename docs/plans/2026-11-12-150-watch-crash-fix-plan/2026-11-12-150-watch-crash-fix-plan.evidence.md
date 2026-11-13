@@ -408,5 +408,83 @@ entry can no longer both store (F-7); the lock is never taken across an `await`.
 `sessionRows`, `current`, the correction/deletion lens and `acknowledgedObservationIds`
 keep their plain fields: S-15023 could not make TSan report them, and D-15003's rule is
 that an unproven race is reported, not rewritten. A main-actor isolation pass over the
-engine would close them and is a separate plan.
+engine would close them and is a separate plan. *(Amended by Task G: the lens and the
+acknowledgement set are proven and boxed there; `sessionRows`/`current` stay plain.)*
+
+## Task G — the session-record state under the real thread layout (2026-11-13)
+
+### The thread layout the test reproduces
+
+| State | Writers (thread) | Writers' call sites | Readers (thread) | Readers' call sites |
+|---|---|---|---|---|
+| `current`, `sessionRows` | main actor (SwiftUI taps); phone delivery task | `createSession`, `advanceExercise`, `selectExercise`, `finishSession`/`abandonSession`, `storeSessionRow`/`mirrored` from `applyMessage` | main thread | `session`, `currentExercise`, `sessionSnapshot()`, `entries`, `hasEffortRating`, screen bodies |
+| lens (`entryCorrections`, `deletedEntryIds`, `replacedEntryIds`) | phone delivery task; prune paths | `ladderAfter` (`correct_entry`, `delete_entry`), `storeSnapshotEntry`, `unhideTheIdTheSnapshotNames`, `trimPrunedObservations` | main thread | `entries` → `projectedEntries`, `sessionSnapshot()`, `pendingObservations()`, `heldPayload` |
+| `acknowledgedObservationIds` | phone delivery task | `confirmObservations` (receipt) | main thread | `hasEffortRating` → `knowsObservation`, `isEndAcknowledgedWhereOwed` |
+| sensor log | `WatchSensorRecorder.consume`'s `Task {}`, `WatchSensorWrites` chain | `appendSensorSample` | main thread | `sensorSamples`, `newestSensorSamples()` |
+| `energyAnnounced*` | same sensor task | `announceEnergy` | — | (written and read only by its writer) |
+
+The delivery task's off-main hop is the host's: `ContentView`'s frame handler hands the
+frame to the orchestrator off the main actor, and only `revision`/`syncProgress` hop back
+via `MainActor.run`.
+
+### Why S-15023 could not see it
+
+Its readers were `group.addTask` children looping `await Task.yield()` between reads; with
+four children on a small cooperative pool they mostly ran while the writer was suspended,
+and `Task.yield()` between accesses means an access never straddles a write. Task G's
+readers are `DispatchQueue.global().async` blocks (real threads, unparked by the
+cooperative pool) and its writers re-enter for the whole window.
+
+### Per-property verdicts
+
+| Id | Property | Verdict | Evidence |
+|---|---|---|---|
+| S-15031 | mirror under taps + frames | **not proven** (left plain) | TSan clean, 3 runs; test still asserts `s-race`/active and every logged set held |
+| S-15032 | lens under phone frames | **PROVEN** | TSan `Swift access race` in `ladderAfter` vs `projectedEntries` (`:271`); and a hard crash at HEAD without TSan: `-[NSTaggedPointerString member:]` inside `projectedEntries` |
+| S-15033 | sensor task reads the mirror | **not proven** (left plain) | TSan clean, 3 runs; readings held once, mirror answers |
+| S-15034 | acknowledgement set under receipts | **PROVEN** | TSan `Swift access race` in `confirmObservations` vs `knowsObservation` (`:2089`) |
+
+### prove-red lines
+
+```
+$ gateway.sh prove-red HEAD swift-test --sanitize=thread --filter testS15034AcknowledgementSetSurvivesConcurrentReceiptsAndReads -- watch/watchos/Tests/WatchSessionEngineTests/WatchEngineSessionStateRaceTests.swift
+SUMMARY: ThreadSanitizer: Swift access race WatchSessionEngine.swift in WatchSessionEngine.confirmObservations(_:)
+gateway: prove-red: RED AT HEAD (exit 1).
+
+$ gateway.sh prove-red HEAD swift-test --sanitize=thread --filter testS15032CorrectionLensSurvivesConcurrentFramesAndProjections -- watch/watchos/Tests/WatchSessionEngineTests/WatchEngineSessionStateRaceTests.swift
+SUMMARY: ThreadSanitizer: Swift access race WatchSessionEngine.swift in WatchSessionEngine.ladderAfter(exercises:index:changes:)
+gateway: prove-red: RED AT HEAD (exit 1).
+```
+
+Without `--sanitize=thread` the same file is **GREEN AT HEAD** (`prove-red` said so), because
+a race is not an assertion failure — which is why the guard is the TSan run.
+
+### The fix (D-15031)
+
+`WatchEntryLensLog` (corrections + hidden + replaced, read in one `snapshot()`) and
+`WatchAcknowledgementLog`, `NSLock` boxes in `WatchSensorSampleLog`'s shape. Writers name the
+operation (`merge`, `restate`, `hide`, `show`, `prune`, `fill`, `acknowledge`); no lock is
+held across an `await`; `projectedEntries` projects one acquired lens instead of three live
+fields. Engine diff +32/−40 lines, no public API change.
+
+### Green after
+
+- `swift-test --sanitize=thread --filter WatchEngineSessionStateRaceTests` → **4 tests, 0
+  failures**, no TSan report (run 3×, plus once inside the whole-suite TSan run).
+- Whole suite under TSan → **Executed 1416 tests, with 0 failures** (45.5 s),
+  `ThreadSanitizer: reported 16 warnings`, **none in `Sources/`**:
+  `WatchConnectivityBridgeTests.swift:1464`, `:1528` (`GatedTransport`/`GatedRequestTransport`
+  locals), `WatchDistanceTrackerTests.swift` ×13 in `ScriptedRawFixSource.rawFixes()` and ×1 at
+  `:322` in the stream-finish test.
+- Whole suite without the sanitizer → **Executed 1416 tests, with 0 failures** (18.3 s);
+  baseline 1412, the four new scenarios are the difference.
+
+### Not fixed, and why
+
+`sessionRows` and `current` (S-15031/S-15033): no TSan report on three runs with hundreds of
+overlapping rounds, so D-15032 leaves them as reported. The unguarded read of `current` in
+`requireSession()` from the sensor task's `appendSensorSample` is the likeliest candidate if a
+later run ever proves one; closing it needs either a main-actor hop of the recorder's work or
+boxing the mirror, and neither is justified without a report.
+
 
