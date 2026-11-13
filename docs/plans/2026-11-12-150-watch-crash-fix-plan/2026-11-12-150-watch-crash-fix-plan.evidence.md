@@ -176,6 +176,70 @@ label is simply absent from `WatchSensorLabels` and the row is not drawn, the
 way `activeEnergyLabel` gates on 0.5 kcal. What is missing is a *ceiling*, not a
 floor, and a format that cannot grow an hours field.
 
+## Task D — the pace (2026-11-13)
+
+The owner's outdoor walk read `127 bpm · 0.1 mi · 6:38:33 /mi` beside a Distance row of
+`0.9 mi`. Task C found the cause: the numerator was the whole session's clock since
+`session.startedAt`, the denominator the newest stored distance reading — two different
+windows — and `WatchLoggingState.clock(_:)` grew an hours field.
+
+### Where the numbers come from
+
+- The header's distance is `WatchLoggingState.sensorLabels` (`distanceLabel(for:)`) over
+  `readings.distanceMeters` = `WatchSensorRecorder.readings` (`WatchSensorRecording.swift`):
+  the newest stored `gps` sample, else the settled `distance` sample. It carries no window.
+- The distance FIELD beside it is the effort's own window (`windowDistanceMeters()`,
+  `workTimer.startedAt` → now, D-2205) — a third value, which is why the header and the
+  field disagreed before the fix as well.
+- Task D reads the stored `gps` samples (the same rows the reading's value belongs to) to
+  recover the window: the first fix of the counter's newest run, where a total below the
+  one before it marks a restart (the steps rule, D-125). Elapsed = `clock()` − that fix.
+
+### Red before the change
+
+`prove-red HEAD swift-test --filter WatchSensorPaceTests -- watch/watchos/Tests/WatchSessionEngineTests/WatchSensorPaceTests.swift`
+
+```
+gateway: prove-red: RED AT HEAD (exit 1)
+WatchSensorPaceTests.swift:96: error: XCTAssertEqual failed: ("Optional("3:50:00 /mi")") is not equal to ("Optional("20:00 /mi")") - S-15007 …
+WatchSensorPaceTests.swift:101: error: XCTAssertEqual failed: ("Optional(2)") is not equal to ("Optional(1)") - S-15007 a pace is minutes and seconds …
+WatchSensorPaceTests.swift:129: error: XCTAssertNil failed: "12:36:15 /km" - S-15008 standing still has no pace to show
+WatchSensorPaceTests.swift:150: error: XCTAssertNil failed: "1:00:00 /km" - S-15010 exactly one hour a kilometre is the ceiling…
+```
+
+Same fixture, before → after:
+
+| Scenario | Before | After |
+|---|---|---|
+| S-15007 restart (0.1 mi, 120 s since the restart, session 23 min old) | `3:50:00 /mi` (two colons) | `20:00 /mi` |
+| S-15008 160 m over 2 h | `12:36:15 /km` | nil |
+| S-15009 existing 5:00 /km (`WatchSensorRecordingTests` S-003) | `5:00 /km` | `5:00 /km` |
+| S-15010 exactly 3600 s/km | `1:00:00 /km` | nil |
+| S-15010 3599 s/km | `59:59 /km` (unchanged) | `59:59 /km` |
+
+### Green after the change
+
+- `swift-test --filter WatchSensorPaceTests` → **3 tests, 0 failures**.
+- `swift-test --filter "WatchSensorRecordingTests|WatchGpsDistanceTileTests|WatchGpsByExerciseTests|WatchLoggingStatusTests|WatchSensorSummaryTests"` → **93 tests, 0 failures** (the S-003 5:00 /km case among them).
+- Full `swift-test` → **Executed 1397 tests, with 0 failures** (11.090 s); baseline was 1394,
+  the three new scenarios are the difference.
+
+### Design (D-15007, D-15008)
+
+`paceLabel(for:)` no longer reads `engine.session?.startedAt`. `paceWindowStart()` walks the
+stored `gps` samples in `(recordedAt, sequence)` order and keeps the first fix of the newest
+run — the sample after the last total that went backwards. Elapsed is `clock()` minus that
+instant; metres stay the value the header prints, so the two describe one window.
+
+`WatchSensorPace.maxSecondsPerUnit = 3600` is the ceiling and is **exclusive**: the label is
+formatted minutes:seconds directly (not through the duration formatter), so the minutes part
+is always below 60 and an hours field is impossible; an `assert` states it. Sample count is
+unchanged: the pace still appears only at or above the 50 m floor.
+
+Not changed: the header's distance is still the session reading and the Distance row is still
+the effort's window (D-2205). Making the header print the effort window too is a product
+decision for the owner, not part of "pace first".
+
 ## Verification
 
 - Full `swift-test` after the change: **Executed 1394 tests, with 0 failures**

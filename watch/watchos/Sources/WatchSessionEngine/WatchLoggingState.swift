@@ -135,6 +135,13 @@ public struct WatchMetricField: Equatable {
 /// disagree about when a pace appears.
 public enum WatchSensorPace {
     public static let minDistanceMeters = 50.0
+
+    /// The ceiling: a pace at or past an hour per display unit is not a pace at
+    /// all, it is a watch left running while its owner stood still (plan 150,
+    /// D-15008). Exclusive, so the label's minutes part is always below sixty
+    /// and a pace can never grow an hours field; S-15010 holds the boundary and
+    /// S-15008 the standing-still case.
+    public static let maxSecondsPerUnit = 60 * 60
 }
 
 /// How long the "New PR" banner stays up (plan 87b D-7), read by the view and
@@ -423,11 +430,13 @@ public final class WatchLoggingState {
     public var liveDistanceLabel: String? { sensorLabels.distance }
 
     /// Minutes per display unit of distance, or nil when there is not yet a
-    /// distance and an elapsed time to divide it by.
+    /// distance to divide, no window to divide it over, or a pace slower than
+    /// standing still — the absence an unavailable reading always takes.
     ///
     /// Pace is derived on read rather than stored: it is a ratio of two things
-    /// the watch already keeps — the distance measured and the session's own
-    /// clock — and a stored pace would be wrong the moment either moved.
+    /// the watch already keeps — the distance measured and the clock over the
+    /// window that distance belongs to — and a stored pace would be wrong the
+    /// moment either moved.
     public var paceLabel: String? { sensorLabels.pace }
 
     /// The distance in the saved unit, as the wrist prints it.
@@ -445,18 +454,52 @@ public final class WatchLoggingState {
     }
 
     /// The pace `metres` has been covered at, or nil when there is not yet a
-    /// distance worth dividing and a time to divide it by.
+    /// distance worth dividing, no window to divide it over, or a pace slower
+    /// than standing still.
+    ///
+    /// The time and the distance describe ONE window (plan 150, D-15007):
+    /// `metres` is the counter the header's distance prints, and the time runs
+    /// from the first fix of the counter's current run to now. A relaunch
+    /// restarts the platform's cumulative total under the same session, so the
+    /// whole session's clock divided by the new run's metres read a short walk
+    /// as hours a mile (S-15007). Past the ceiling there is no pace to show and
+    /// the line is absent, as it is below the floor (S-15008); the format is
+    /// minutes and seconds only, so it can never print hours (S-15010).
     private func paceLabel(for metres: Double?) -> String? {
         guard let metres, metres >= WatchSensorPace.minDistanceMeters,
-              let startedAt = engine.session?.startedAt
+              let windowStart = paceWindowStart()
         else { return nil }
 
-        let elapsed = clock().timeIntervalSince(startedAt)
+        let elapsed = clock().timeIntervalSince(windowStart)
         guard elapsed > 0 else { return nil }
 
-        let unit = units.isMiles ? "mi" : "km"
         let unitsCovered = metres / WatchMetricStepping.metresPerUnit(units.distanceUnit)
-        return "\(Self.clock(elapsed / unitsCovered)) /\(unit)"
+        let secondsPerUnit = Int((elapsed / unitsCovered).rounded())
+        guard secondsPerUnit < WatchSensorPace.maxSecondsPerUnit else { return nil }
+        assert(secondsPerUnit / 60 < 60, "a pace's minutes part is below sixty")
+
+        let unit = units.isMiles ? "mi" : "km"
+        return "\(secondsPerUnit / 60):\(String(format: "%02d", secondsPerUnit % 60)) /\(unit)"
+    }
+
+    /// The instant the counter the live distance reading belongs to began: the
+    /// first fix of the newest run of stored `gps` samples. A total smaller than
+    /// the one before it means the platform's cumulative counter restarted — the
+    /// steps rule (D-125) — so the run after the last such drop is the one the
+    /// newest reading belongs to. Nil with no fix: there is no window to time.
+    private func paceWindowStart() -> Date? {
+        let fixes = engine.sensorSamples
+            .filter { $0.kind == WatchSensorKind.gps && $0.value.isFinite }
+            .sorted { ($0.recordedAt, $0.sequence) < ($1.recordedAt, $1.sequence) }
+        guard let first = fixes.first else { return nil }
+
+        var start = first
+        var previous = first.value
+        for fix in fixes.dropFirst() {
+            if fix.value < previous { start = fix }
+            previous = fix.value
+        }
+        return start.recordedAt
     }
 
     /// The newest timer of `kind`, which is the one that applies.
