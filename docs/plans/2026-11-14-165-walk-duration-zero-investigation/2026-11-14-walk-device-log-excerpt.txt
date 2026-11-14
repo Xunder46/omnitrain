@@ -1,0 +1,24 @@
+OWNER WALK 2026-11-14, session F138694B-F211-4A00-919E-4D3EEE9C709D (watch routine "Walk" > "Brisk Walk"; phone app suspended/unreached all walk)
+Times UTC; local = UTC-5 (23:06Z = 6:06 PM). Diagnostics copied 2026-11-14T23:22:11Z.
+
+[watch] 22:17:21Z frame_sent s:F138694B session_lifecycle live        (started)
+[watch] 22:17:21Z frame_sent s:F138694B session_snapshot live
+[watch] 22:17:21Z workout_begin s:F138694B running                      <- HK type "running" chosen at start
+[watch] 22:17:33Z-22:17:37Z frame_send_refused 7017 Transfer timed out (phone unreachable)
+[watch] 22:18..22:41 energy_live live x3..x11 roughly every minute
+[watch] 22:42:46Z scene background
+[watch] 22:42:48Z launch previous=scene/background@22:42:46Z ; recovery_relaunch
+[watch] 22:42:49Z workout_adopted running                               <- the recovered HK workout is adopted
+[watch] 22:42:50Z workout_begin s:F138694B running                      <- a SECOND begin, 2 s later
+[watch] 22:42:53Z scene background ; 22:43:00Z launch previous=scene/background@22:42:54Z (2nd launch) ; workout_adopted running
+[watch] 22:57:26Z observations_up + timer_state frames (the set/round entries)
+[watch] 22:57:33Z session_lifecycle live (completed) ; workout_end saving   <- the ONLY workout_end
+[watch] 22:57:51Z observations_up queued x4 (phone unreachable)
+[phone] 23:06:55Z launch previous=app_lifecycle/paused@22:02:07Z  <- first time the phone hears anything of this session
+[phone] 23:06:55Z frame_received s:F138694B session_lifecycle, session_snapshot, timer_state, energy_live x1, request:routines/session_snapshot (about 25 duplicate pairs), observations_up x4+, session_lifecycle -- all within 2 seconds
+[phone] 23:06:55..56Z frame_sent preferences_down/foods_down/planned_down/water_down/bests_down "undelivered" about 12 times each (duplicate replies to the queued requests), receipt queued
+[phone] 23:21:53Z frame_received session_snapshot, observations_up x2, session_lifecycle again; receipts delivered
+
+Arithmetic: 22:17:21 -> 22:57:33 = 40m12s (matches the phone's "Total time 40m 4s" round).
+22:42:50 -> 22:57:33 = 14m43s (matches Apple Fitness "0:15").
+Phone summary: date "Nov 14 at 6:06 PM" (= 23:06Z, the phone's first contact), Duration 0s.
