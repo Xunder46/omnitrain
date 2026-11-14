@@ -18,6 +18,21 @@ extension SessionCoreLifecycleMethods on SessionCore {
     _clearError();
 
     try {
+      // D-10: Finish always finishes. A failing drop leaves the placeholders
+      // where they are and never turns the end into an error.
+      // D-11: a session the watch had a part in keeps its planned sets: the
+      // wrist's own sets can still be on their way and would have no exercise
+      // to land in. The wrist's own end, a session the wrist runs, and a
+      // session with a staged wrist row all count as the watch's part.
+      try {
+        final wristHadAHand =
+            !writeToHealth ||
+            wristSavesWorkout ||
+            (await _repository.getWatchInboxEntriesForSession(
+              _currentSession!.id,
+            )).any((row) => row.origin == WatchInboxEntry.originWatch);
+        if (!wristHadAHand) await _dropUnloggedSets();
+      } catch (_) {}
       await _timerManager.persistActiveRounds();
       await _timerManager.persistActiveTimedEntries();
 
@@ -67,6 +82,63 @@ extension SessionCoreLifecycleMethods on SessionCore {
     final completedSession = _currentSession;
     if (completedSession != null && writeToHealth && !wristSavesWorkout) {
       await _healthSync?.onSessionCompleted(completedSession);
+    }
+  }
+
+  /// Plan 157a: Finish keeps only the sets that were logged (D-1..D-7).
+  ///
+  /// A `set` entry is logged exactly when an `EntryRest` sits at its position
+  /// + 1 (the session screen's `_isSetLogged`); one carrying the skip marker is
+  /// kept (it counts for nothing). Every other `set` entry is a planned set
+  /// nobody did and goes, highest position first so the rests below it never
+  /// move. A set exercise left with no entry is removed. Quiet: no listener is
+  /// told here, `endSession` notifies once.
+  ///
+  /// Not run for a session the watch had a part in (D-11); see endSession.
+  Future<void> _dropUnloggedSets() async {
+    for (final effortList in _efforts.values) {
+      for (final effort in List<SegmentEffort>.of(effortList)) {
+        if (effort.effortKind != 'set') continue;
+        // D-9: the store is the truth (the watch importer writes a wrist set's
+        // rest straight to it); refresh the caches before deciding anything.
+        final rows = List<EffortObservation>.of(
+          await _repository.getEffortObservations(effort.id),
+        );
+        _observations[effort.id] = rows;
+        _timerManager.setEntryRests(
+          effort.id,
+          await _repository.getEntryRests(effort.id),
+        );
+
+        final groups = EntryRows.setGroups(rows);
+        final marked = {
+          for (final rest in _timerManager.getEntryRests(effort.id))
+            rest.entryIndex,
+        };
+        var kept = groups.length;
+        var dropped = 0;
+        for (var position = groups.length - 1; position >= 0; position--) {
+          final group = groups[position];
+          final skipped = group.rowFor(MetricIds.reps)?.valueBool ?? false;
+          if (marked.contains(position + 1) || skipped) continue;
+
+          final doomed = {for (final row in group.rows) row.id};
+          for (final id in doomed) {
+            await _repository.deleteObservation(id);
+          }
+          rows.removeWhere((row) => doomed.contains(row.id));
+          await _timerManager.rekeyEntryRestsAfterDelete(effort.id, position);
+          kept--;
+          dropped++;
+        }
+
+        if (dropped > 0 && kept == 0) {
+          await _repository.deleteEffort(effort.id);
+          _observations.remove(effort.id);
+          _timerManager.removeEffort(effort.id);
+          effortList.removeWhere((e) => e.id == effort.id);
+        }
+      }
     }
   }
 

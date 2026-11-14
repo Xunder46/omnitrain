@@ -43,6 +43,7 @@ Future<_SessionHarness> _pumpSession(
   bool endSessionFirst = false,
   bool emptySession = false,
   String chosenMetric = 'reps',
+  bool logSet = false,
 }) async {
   final workoutState = WorkoutState(repo);
   final routineState = RoutineState(repo);
@@ -59,6 +60,14 @@ Future<_SessionHarness> _pumpSession(
       orElse: () => exercises.first,
     );
     await workoutState.addExerciseToSession(first, chosenMetric: chosenMetric);
+    // Plan 157a: Finish drops an unlogged set; a caller whose flow needs the
+    // seeded set to survive Finish logs it the way the screen does.
+    if (logSet) {
+      await workoutState.recordRestStart(
+        workoutState.getExercisesWithEntries().first['id'] as String,
+        1,
+      );
+    }
   }
 
   final screen = WorkoutSessionScreen(
@@ -568,7 +577,7 @@ void main() {
         final repo = await _freshRepo();
         // Edit mode is a review mount: an ended session whose row carries a
         // feeling (the shape the summary's historical view hands it, D-179).
-        final harness = await _pumpSession(repo, editMode: true);
+        final harness = await _pumpSession(repo, editMode: true, logSet: true);
         final sessionId = harness.workoutState.currentSession!.id;
         await harness.workoutState.updateSessionFeeling(sessionId, 4);
         await harness.workoutState.endSession();

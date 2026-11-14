@@ -16,6 +16,8 @@ The screen keeps existing summary navigation actions (edit, save as routine, dis
 
 A post-workout summary reports the finished session to its `onSessionSaved` hook (which links a planned session) once, when the screen opens — not on Done — so leaving with Back completes the plan too. A historical summary never calls it.
 
+A set the user never logged is not stored at Finish of a session the watch had no part in, so it is never in this summary's sets, volume or bests, and a set exercise left with no logged set is removed at Finish (an exercise that never held a set stays, with zero sets; plan 157a, `test/finish_drops_unlogged_sets_test.dart` `S-15708`, `test/finish_drops_unlogged_sets_screen_test.dart` `S-15709`).
+
 ### Effort Rating Capture
 
 The **session effort rating** is how hard the whole session was: 1 is the easiest, 5 the hardest. It is stored in `TrainingSession.sessionFeeling` — the field name is historical; it is not a feeling score. Ratings recorded before the redefinition (when the prompt asked how the session felt) are read as effort ratings on the same scale with no conversion: an owner decision (Stats redesign D-5, `docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md`).

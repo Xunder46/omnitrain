@@ -3616,6 +3616,7 @@ void main() {
         final exercises = await repo.getExercises();
         final effortId = await state.addExerciseToSession(exercises.first);
         await state.assignEffortToBlock(effortId, blockId);
+        await state.recordRestStart(effortId, 1);
 
         await state.endSession();
 

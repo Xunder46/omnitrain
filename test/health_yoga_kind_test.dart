@@ -111,9 +111,9 @@ class _Rig {
   }
 
   /// Adds the bundled exercise [id] to the running session.
-  Future<void> addExercise(String id) async {
+  Future<String> addExercise(String id) async {
     final exercise = (await repo.getExerciseById(id))!;
-    await workoutState.addExerciseToSession(exercise);
+    return workoutState.addExerciseToSession(exercise);
   }
 
   /// The activity kind of the one workout this session wrote.
@@ -178,7 +178,11 @@ void main() {
     test('E: a Free session of poses records as yoga', () async {
       final rig = await _Rig.create(writeEnabled: true);
       await rig.workoutState.createNewSession();
-      await rig.addExercise('exercise-tree-pose');
+      final effortId = await rig.addExercise('exercise-tree-pose');
+      // Plan 157a: Finish keeps only logged sets, and a set exercise nobody
+      // logged leaves the session, so the pose is logged the way the screen
+      // logs it (a rest at position + 1).
+      await rig.workoutState.recordRestStart(effortId, 1);
       await rig.workoutState.endSession();
 
       expect(rig.writtenKind, equals(HealthActivityKind.yoga));

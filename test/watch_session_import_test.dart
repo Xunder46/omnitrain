@@ -1945,6 +1945,9 @@ void main() {
         await workout.updateEntryValue(bench, 0, 'weight', 80.0);
         final pushup = await add('ex-pushup', 'set');
         await workout.updateEntryValue(pushup, 0, 'reps', 5);
+        // The phone side holds only logged work, as the wrist side does.
+        await workout.recordRestStart(bench, 1);
+        await workout.recordRestStart(pushup, 1);
         final run = await add('ex-run', 'timed');
         await workout.setTimedEntryDuration(run, 0, 1200);
         final plank = await add('ex-plank', 'drill');
