@@ -171,6 +171,34 @@ an entry merged for a session the wrist has already ended (the late-entry merge)
 is held but is not in that session's projection, so a sweep that sampled only the
 projection reported it as never held.
 
+The entry check compares wrist rows with wrist rows. Until plan 161 the sample
+also counted the phone's own annotation frames — its deletion and insertion rows
+for a set the phone already owns — so a set the wrist never needed read as the
+wrist missing data (8 of 2000 seeds, plan 158 §3). The sample now keeps only
+kinds outside `WatchInboxEntry.phoneKinds`: `S-16101 check 3 compares wrist
+entries with wrist entries` (red before the filter on the two
+`phone-change-del-…` ids, green after) and `S-16102 the filter hides no wrist
+entry the phone lost` (a wrist set whose live frame the wrist refuses after the
+heal still mismatches).
+
+The pair's clocks are seams. `createWatchSync(frameClock:)` stamps the mirror's
+frames (the snapshot's `sentAt`, a lifecycle `at`, the rating's `loggedAt`) and
+the harness pins it to its own `TestClock`, while the ledger keeps its separate
+`clock:`. Production passes neither, so both stay `_utcNow`. With the frames on
+the harness grid a seed's class no longer moves with the seed total: the 200- and
+2000-seed sweeps report the same shipping seeds
+(`S-14509 every random seed converges, or diverges inside a class the plan
+names`).
+
+Two ends that land within `kEndSkewToleranceMs` of each other are recorded as a
+tie, not a mismatch: `endsWithinSkewToleranceMs` (the millisecond twin of
+`areEndsWithinSkew`) puts the pair in `ConvergenceReport.withinSkewEndTies`,
+counted in the report but not failing — `S-16103 two ends within the skew
+tolerance are a tie`, owner to confirm — while a gap outside the tolerance stays
+a reported status mismatch: `S-16104 a discard three seconds before the finish
+is outside the tolerance`. The product rule is unchanged; the tie is the
+harness's reading of it, and D-14603 still decides which end wins on the wrist.
+
 A failing trace is made readable before it is written down: `Shrinker.shrink`
 removes actions one at a time while the named check still fails, and
 `Shrinker.describeTrace` renders what is left as numbered sentences —

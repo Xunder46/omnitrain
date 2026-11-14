@@ -116,6 +116,7 @@
       "file": "trace-a2.json",
       "tags": [
         "multi-session",
+        "entry",
         "refused-queued"
       ]
     },

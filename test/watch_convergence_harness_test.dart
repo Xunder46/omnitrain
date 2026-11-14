@@ -18,6 +18,7 @@
 // engine's and the graph's real awaits never complete.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/platform/watch_delivery.dart';
+import 'package:omnitrain/core/sync_protocol/end_skew.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
 import 'package:omnitrain/watch/session/watch_session_engine.dart';
@@ -27,6 +28,7 @@ import 'helpers/watch_pair_harness.dart';
 void main() {
   _triageFaultTests();
   _b2Tests();
+  _plan161Tests();
   test(
     'D-14512 a live frame withdraws the older queued copy it replaces',
     () async {
@@ -827,9 +829,17 @@ void _b2Tests() {
         isEmpty,
         reason: 'an end is final on each side\n${runner.traceText()}',
       );
-      // D-14630: under the harness's clocks the wrist's discard reads earlier
-      // than the phone's finish, so the pair converges on the discard — and the
-      // phone's finished row goes with it.
+      // Plan 161 (D-16102) put the wrist and the phone's frames on the pair's
+      // one clock; the phone's own session row is still stamped by
+      // `WorkoutState`'s wall clock, which no seam reaches (A-161-05). Re-read
+      // on the grid the ends are therefore ordered as follows:
+      // - the wrist's discard is on the pair's grid, the finished row's end is
+      //   the wall clock, so D-14630 still reads the discard as the earlier end
+      //   and the finished row goes — the phone reads `abandoned`;
+      // - the phone's `completed` frame carries the same grid instant as the
+      //   wrist's discard, so D-14601's tie-break keeps the finish on the wrist.
+      // The check reports that disagreement; it is not a within-tolerance tie
+      // (the two stamps are nearly four days apart). Recorded as residue.
       expect(
         report.phoneStatus[label],
         WatchSessionStatus.abandoned,
@@ -837,10 +847,18 @@ void _b2Tests() {
       );
       expect(
         report.wristStatus[label],
-        WatchSessionStatus.abandoned,
-        reason: runner.traceText(),
+        WatchSessionStatus.completed,
+        reason:
+            'the phone\'s finish and the wrist\'s discard are one instant, '
+            'so the finish wins\n${runner.traceText()}',
       );
-      expect(report.converged, isTrue, reason: runner.traceText());
+      expect(
+        report.statusMismatches,
+        hasLength(1),
+        reason: 'the pair disagrees, and the check says so: '
+            '${runner.traceText()}',
+      );
+      expect(report.converged, isFalse, reason: runner.traceText());
       expect(
         await harness.repository.getSession(sessionId),
         isNull,
@@ -1280,6 +1298,259 @@ void _b2Tests() {
       );
     },
   );
+}
+
+// Plan 161 Phase 2 (D-16101): check 3 compares wrist entries with wrist entries.
+// The phone records every deletion it announces in its own inbox under
+// `phone-change-<changeId>-<index>`, and the harness unioned every inbox id into
+// the phone's entry set — so a deletion the phone announced for a wrist session
+// made check 3 unsatisfiable (plan 158 §3).
+void _plan161Tests() {
+  group('S-16101 check 3 compares wrist entries with wrist entries', () {
+    test(
+      'S-16101 a phone deletion annotation for a wrist set is not a wrist '
+      'entry the wrist owes',
+      () async {
+        // Plan 158 §3's shrunk trace: the wrist starts a workout, one live
+        // frame of its is refused, and it logs two sets.
+        final run = await ConvergenceRun.replayActions([
+          WristStartsFreeWorkout(serial: 1),
+          RefuseLiveFrame(
+            serial: 2,
+            from: PairActor.wrist,
+            type: 'observations_up',
+          ),
+          WristLogsSet(serial: 3),
+          WristLogsSet(serial: 4),
+        ]);
+        final sessionId = run.pair.wristEngine.session!.sessionId;
+        final label = run.pair.labelFor(sessionId);
+        final inbox = await run.pair.repository.getWatchInboxEntriesForSession(
+          sessionId,
+        );
+        expect(
+          inbox.map((entry) => entry.entryId),
+          anyElement(startsWith('phone-change-')),
+          reason:
+              'the phone really did announce a deletion for the wrist '
+              'session, so the filter has an id to keep out\n${run.trace}',
+        );
+
+        final phoneIds = run.runner.phoneEntryIds[sessionId] ?? const <String>{};
+        final wristIds = run.runner.wristEntryIds[sessionId] ?? const <String>{};
+        print('S-16101 $label phone=$phoneIds wrist=$wristIds');
+        expect(
+          phoneIds.where((id) => id.startsWith('phone-change-')),
+          isEmpty,
+          reason:
+              'D-16101: a phone record about a wrist entry is not a wrist '
+              'entry\n${run.trace}',
+        );
+        expect(
+          phoneIds,
+          containsAll(wristIds),
+          reason:
+              'the sets the wrist logged still reached the phone\n${run.trace}',
+        );
+        expect(run.report.entryMismatches, isEmpty, reason: '${run.failures}');
+        expect(run.converged, isTrue, reason: run.trace);
+      },
+    );
+  });
+
+  group('S-16102 the filter hides no wrist entry the phone lost', () {
+    test(
+      'S-16102 a wrist set whose live frame is refused after the heal is '
+      'still owed to the phone',
+      () async {
+        final harness = await WatchPairHarness.build();
+        final runner = harness.runner;
+
+        await runner.perform(runner.wristStartsFreeWorkout());
+        await runner.heal();
+        await runner.perform(
+          runner.refuseNext(from: PairActor.wrist, type: 'observations_up'),
+        );
+        await runner.perform(runner.wristLogsSet());
+        final entryId = harness.wristEngine.entries.last.entryId;
+
+        final report = await runner.checkConvergence();
+        print('S-16102 entry mismatches: ${report.entryMismatches}');
+        expect(
+          report.entryMismatches,
+          contains(
+            contains('the phone never held $entryId'),
+          ),
+          reason:
+              'a wrist entry the phone never received is still a mismatch '
+              '(D-16101 keeps only the phone\'s own annotation ids out)\n'
+              '${runner.traceText()}',
+        );
+        expect(
+          report.entryMismatches.any(
+            (line) => line.contains('phone-change-'),
+          ),
+          isFalse,
+          reason:
+              'no phone annotation is reported as a wrist entry\n'
+              '${runner.traceText()}',
+        );
+      },
+    );
+  });
+
+  group('S-16103 two ends within the skew tolerance are a tie', () {
+    test(
+      'S-16103 the phone discards and the wrist finishes at the same instant: '
+      'the ends tie, they do not disagree (owner to confirm)',
+      () async {
+        // Plan 158 §5's shrunk status trace, with no time advance: the phone's
+        // discard and the wrist's finish are stamped from the same clock, so
+        // D-15403 cannot tell the two orders apart — the tie-break keeps the
+        // wrist's finish, and the phone's row is gone (D-14632).
+        final run = await ConvergenceRun.replayActions([
+          WristStartsFreeWorkout(serial: 1),
+          LinkDrops(serial: 2),
+          PhoneDiscards(serial: 3),
+          WristFinishes(serial: 4),
+        ]);
+        final sessionId = run.pair.sessionIds.single;
+        final label = run.pair.labelFor(sessionId);
+        final phoneEnd = run.runner.phoneEndAtMs[sessionId];
+        final wristEnd = run.runner.wristEndAtMs[sessionId];
+        print('S-16103 $label phoneEnd=$phoneEnd wristEnd=$wristEnd');
+        expect(
+          phoneEnd,
+          isNotNull,
+          reason: 'the phone stamps the discard it performed\n${run.trace}',
+        );
+        expect(
+          wristEnd,
+          isNotNull,
+          reason: 'the wrist stamps the row it ended\n${run.trace}',
+        );
+        expect(
+          endsWithinSkewToleranceMs(phoneEnd!, wristEnd!),
+          isTrue,
+          reason:
+              'the two ends are inside kEndSkewToleranceMs, which is what '
+              'makes this a tie rather than a disagreement (owner to '
+              'confirm)\n${run.trace}',
+        );
+        expect(
+          run.report.phoneStatus[label],
+          WatchSessionStatus.abandoned,
+          reason: 'the discarded row is gone\n${run.trace}',
+        );
+        expect(
+          run.report.wristStatus[label],
+          WatchSessionStatus.completed,
+          reason:
+              'D-15403\'s tie-break keeps the finish on the wrist\n'
+              '${run.trace}',
+        );
+        expect(
+          run.report.withinSkewEndTies,
+          [label],
+          reason:
+              'the disagreement is reported as an end tie, not as a status '
+              'mismatch (owner to confirm: is a tie convergence?)',
+        );
+        expect(run.report.statusMismatches, isEmpty, reason: run.trace);
+        expect(run.converged, isTrue, reason: run.trace);
+      },
+    );
+
+    test(
+      'S-16104 a discard three seconds before the finish is outside the '
+      'tolerance: the tie does not swallow it, the mismatch is reported',
+      () async {
+        // S-16103's trace with the wrist's finish three seconds later. Both ends
+        // are known and 3000 ms apart, so D-16105's tie does not apply and the
+        // disagreement stays in `statusMismatches`.
+        //
+        // Observed, and not what the plan derived (A-161-06): the link is down
+        // when the phone discards, so the abandonment reaches the wrist only as
+        // the mirror's **re-offer**, which plan 128 D-1 stamps with the mirror's
+        // own clock at offer time — 09:00:03 here, the wrist's finish instant.
+        // The wrist therefore sees a product-level tie and D-14603's tie-break
+        // keeps its finish, while the harness compares the instants the two ends
+        // were performed at (t0 vs t3). That gap is a residue of this plan, not
+        // of the harness: it is reported, never swallowed.
+        final run = await ConvergenceRun.replayActions([
+          WristStartsFreeWorkout(serial: 1),
+          LinkDrops(serial: 2),
+          PhoneDiscards(serial: 3),
+          TimeAdvances(serial: 4, seconds: 3),
+          WristFinishes(serial: 5),
+        ]);
+        final sessionId = run.pair.sessionIds.single;
+        final label = run.pair.labelFor(sessionId);
+        final phoneEnd = run.runner.phoneEndAtMs[sessionId];
+        final wristEnd = run.runner.wristEndAtMs[sessionId];
+        print('S-16104 $label phoneEnd=$phoneEnd wristEnd=$wristEnd');
+        for (final frame in run.pair.radio.frames) {
+          if (frame.lane != PairLane.phoneToWrist) continue;
+          if (frame.type != 'session_lifecycle') continue;
+          final payload = frame.frame['payload'];
+          print(
+            'S-16104 phone→wrist lifecycle '
+            '${payload is Map ? payload['state'] : null} '
+            'at=${payload is Map ? payload['at'] : null} '
+            '${frame.outcome}',
+          );
+        }
+        expect(
+          phoneEnd,
+          isNotNull,
+          reason: 'the phone stamps the discard\n${run.trace}',
+        );
+        expect(
+          wristEnd,
+          isNotNull,
+          reason: 'the wrist stamps the finish it took\n${run.trace}',
+        );
+        expect(
+          wristEnd! - phoneEnd!,
+          greaterThan(kEndSkewToleranceMs),
+          reason:
+              'this trace is the outside-the-tolerance case\n${run.trace}',
+        );
+        expect(
+          endsWithinSkewToleranceMs(phoneEnd, wristEnd),
+          isFalse,
+          reason: 'a three-second gap is not a tie\n${run.trace}',
+        );
+        expect(
+          run.report.withinSkewEndTies,
+          isEmpty,
+          reason:
+              'the tie only absorbs ends within kEndSkewToleranceMs: '
+              '${run.report.withinSkewEndTies}',
+        );
+        expect(
+          run.report.statusMismatches,
+          hasLength(1),
+          reason: 'the disagreement is reported\n${run.trace}',
+        );
+        expect(
+          run.report.statusMismatches.single,
+          '$label: phone ${WatchSessionStatus.abandoned} '
+          'vs wrist ${WatchSessionStatus.completed}',
+          reason:
+              'the phone deleted its row and the wrist kept its finish '
+              '(A-161-06)\n${run.trace}',
+        );
+        expect(
+          run.converged,
+          isFalse,
+          reason:
+              'a real disagreement outside the tolerance is never converged\n'
+              '${run.trace}',
+        );
+      },
+    );
+  });
 }
 
 /// One wrist `energy_live` frame: the live holder's frame that makes the phone

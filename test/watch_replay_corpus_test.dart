@@ -252,7 +252,7 @@ const List<_Source> kCorpusSources = [
       _Step('phoneDiscard'),
       _Step('phoneStart'),
     ],
-    tags: ['multi-session', 'refused-queued'],
+    tags: ['multi-session', 'entry', 'refused-queued'],
   ),
   _Source(
     'seed-1',

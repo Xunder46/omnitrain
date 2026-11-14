@@ -34,9 +34,12 @@ import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_link_info.dart';
 import 'package:omnitrain/core/platform/watch_link_source.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
+import 'package:omnitrain/core/sync_protocol/end_skew.dart'
+    show kEndSkewToleranceMs;
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/core/utils/entry_rows.dart' show EntryRows;
-import 'package:omnitrain/data/models/models.dart' show Exercise, SegmentEffort;
+import 'package:omnitrain/data/models/models.dart'
+    show Exercise, SegmentEffort, WatchInboxEntry;
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
@@ -793,6 +796,7 @@ class WatchPairHarness {
       settingsState: settings,
       transport: radio,
       clock: clock.call,
+      frameClock: clock.call,
       onFailure: (error, stack) => failures.add(error),
       validator: validator,
     ))!;
@@ -1253,7 +1257,14 @@ class HarnessRunner {
   /// the phone answer "not held" for a row it has.
   Future<String?> _phoneStatusOf(String sessionId) async {
     final row = await harness.repository.getSession(sessionId);
-    if (row?.endedAtMs != null) return WatchSessionStatus.completed;
+    if (row?.endedAtMs != null) {
+      // D-16104: the phone's own row end. It is stamped by the app's wall clock,
+      // which no seam reaches (A-161-05); a discard's instant is the pair clock
+      // in `_phoneDiscards`, so the two ends are not comparable — the tie below
+      // simply never fires across them.
+      phoneEndAtMs.putIfAbsent(sessionId, () => row!.endedAtMs!);
+      return WatchSessionStatus.completed;
+    }
     if (row == null) {
       if (harness.phoneDiscardedSessions.contains(sessionId) ||
           _phoneHeld.contains(sessionId)) {
@@ -1268,6 +1279,14 @@ class HarnessRunner {
   /// The sessions this run saw the phone hold as its current session.
   final Set<String> _phoneHeld = {};
 
+  /// Each side's end instant for a session, in ms (D-16104): the phone's from its
+  /// discard or its ended row, the wrist's from the row the end was written on
+  /// (`recordedAt`, the engine's own clock). Read only by the within-tolerance
+  /// tie (D-16105); a session with no entry has an unknown instant, and a
+  /// disagreement about it stays a mismatch.
+  final Map<String, int> phoneEndAtMs = {};
+  final Map<String, int> wristEndAtMs = {};
+
   /// The wrist's status for [sessionId]: the held session's own (the engine
   /// holds one at a time); for a session the wrist has moved on from, the status
   /// of its newest stored row (the wrist keeps every row, so an end applied while
@@ -1277,14 +1296,30 @@ class HarnessRunner {
   Future<String?> _wristStatusOf(String sessionId) async {
     final session = harness.wristEngine.session;
     if (session != null && session.sessionId == sessionId) {
+      _noteWristEnd(sessionId, session.status, session.recordedAt);
       return session.status;
     }
     final stored = await harness.wristStore.readAll();
-    String? newest;
+    WatchSessionRecord? newest;
     for (final row in stored.sessions) {
-      if (row.sessionId == sessionId) newest = row.status;
+      if (row.sessionId == sessionId) newest = row;
     }
-    return newest;
+    if (newest == null) return null;
+    _noteWristEnd(sessionId, newest.status, newest.recordedAt);
+    return newest.status;
+  }
+
+  /// D-16104: the wrist's end instant is the `recordedAt` of the row that carried
+  /// its terminal status — the engine's clock at that write, which in the harness
+  /// is the pair's clock. Sampling runs after every action, so the first sample
+  /// that sees a terminal status is the one the end was written on. An active row
+  /// records nothing, and [Map.putIfAbsent] keeps the first end seen.
+  void _noteWristEnd(String sessionId, String status, DateTime recordedAt) {
+    final terminal =
+        status == WatchSessionStatus.completed ||
+        status == WatchSessionStatus.abandoned;
+    if (!terminal) return;
+    wristEndAtMs.putIfAbsent(sessionId, () => recordedAt.millisecondsSinceEpoch);
   }
 
   Future<void> _sampleEntries() async {
@@ -1297,7 +1332,12 @@ class HarnessRunner {
       final inbox = await harness.repository.getWatchInboxEntriesForSession(id);
       if (inbox.isEmpty) continue;
       _addEntries(phoneEntryIds, id, [
-        for (final entry in inbox) entry.entryId,
+        for (final entry in inbox)
+          // D-16101 (plan 158 §3): the phone stages its own rating, correction
+          // and deletion annotations in the same inbox under
+          // `phone-change-*`. They are phone records *about* a wrist entry, so
+          // they can never be a wrist entry check 3 expects the wrist to hold.
+          if (!WatchInboxEntry.phoneKinds.contains(entry.kind)) entry.entryId,
       ]);
     }
     final mirrorState = harness.graph.mirror.state;
@@ -1532,6 +1572,7 @@ class HarnessRunner {
     final entryMismatches = <String>[];
     final phoneOnlySessions = <String>[];
     final wristOnlySessions = <String>[];
+    final withinSkewEndTies = <String>[];
     var timerDisagreements = 0;
     for (final id in ids) {
       final label = harness.labelFor(id);
@@ -1549,10 +1590,19 @@ class HarnessRunner {
         if (wristHeld) wristOnlySessions.add(label);
       }
       if (shared && phoneStatus != wristStatus) {
-        statusMismatches.add(
-          '$label: phone ${phoneStatus ?? 'not held'} '
-          'vs wrist ${wristStatus ?? 'not held'}',
-        );
+        // D-16105: the two ends are the same instant within the protocol's skew
+        // tolerance — the wrist finished milliseconds before the phone's discard
+        // frame landed, so neither side held a disagreeing status in the end.
+        // Reported as a tie, not a failure; the owner confirms whether that is
+        // convergence (A-161-04).
+        if (_terminalTie(id, phoneStatus, wristStatus)) {
+          withinSkewEndTies.add(label);
+        } else {
+          statusMismatches.add(
+            '$label: phone ${phoneStatus ?? 'not held'} '
+            'vs wrist ${wristStatus ?? 'not held'}',
+          );
+        }
       }
       final ended = _endedStatus(phoneStatus, wristStatus);
       if (ended != null) {
@@ -1609,6 +1659,7 @@ class HarnessRunner {
       timerDisagreements: timerDisagreements,
       phoneOnlySessions: phoneOnlySessions,
       wristOnlySessions: wristOnlySessions,
+      withinSkewEndTies: withinSkewEndTies,
       healRounds: _lastHeal?.rounds.length ?? 0,
       healConverged: _lastHeal?.converged ?? false,
     );
@@ -1618,12 +1669,25 @@ class HarnessRunner {
 
   static String? _endedStatus(String? phone, String? wrist) {
     for (final status in [phone, wrist]) {
-      if (status == WatchSessionStatus.completed ||
-          status == WatchSessionStatus.abandoned) {
-        return status;
-      }
+      if (_isTerminal(status)) return status;
     }
     return null;
+  }
+
+  static bool _isTerminal(String? status) =>
+      status == WatchSessionStatus.completed ||
+      status == WatchSessionStatus.abandoned;
+
+  /// D-16105: whether a status disagreement is two ends of the same instant —
+  /// one side finished, the other discarded, and the protocol's skew tolerance
+  /// (D-15403) cannot tell the two orders apart. Both statuses must be terminal
+  /// and both instants known (D-16104); anything else is a real mismatch.
+  bool _terminalTie(String id, String? phoneStatus, String? wristStatus) {
+    if (!_isTerminal(phoneStatus) || !_isTerminal(wristStatus)) return false;
+    final phoneMs = phoneEndAtMs[id];
+    final wristMs = wristEndAtMs[id];
+    if (phoneMs == null || wristMs == null) return false;
+    return endsWithinSkewToleranceMs(phoneMs, wristMs);
   }
 
   /// That side's timers for [sessionId], empty when the side holds another
@@ -1745,6 +1809,12 @@ class HarnessRunner {
     // The shipping UI offers no discard for a workout that has ended — the
     // summary screen follows an end (A-145-22).
     if (phone.currentSession?.endedAtMs != null) return;
+    // D-16104: the pair clock is the only instant a discarded row leaves behind —
+    // the discard deletes the row rather than stamping it.
+    phoneEndAtMs.putIfAbsent(
+      sessionId,
+      () => clock.now.millisecondsSinceEpoch,
+    );
     await phone.discardCurrentSession();
     harness.phoneDiscardedSessions.add(sessionId);
     await graph.autoPush.flush();
@@ -2080,6 +2150,13 @@ class HealReport {
       'after ${rounds.length} round(s)';
 }
 
+/// D-16105: whether two end instants are the same instant for the convergence
+/// checks — within [kEndSkewToleranceMs], the tolerance the reconciliation
+/// rules themselves use (D-15403), so the harness and the product agree on
+/// when two ends of different statuses are indistinguishable.
+bool endsWithinSkewToleranceMs(int aMs, int bMs) =>
+    (aMs - bMs).abs() <= kEndSkewToleranceMs;
+
 /// The four checks of D-14507 over one healing run (read per D-14514).
 ///
 /// [converged] is the whole verdict: no status mismatch, no absorbing end, no
@@ -2100,6 +2177,7 @@ class ConvergenceReport {
     required this.timerDisagreements,
     required this.phoneOnlySessions,
     required this.wristOnlySessions,
+    required this.withinSkewEndTies,
     required this.healRounds,
     required this.healConverged,
   });
@@ -2127,6 +2205,13 @@ class ConvergenceReport {
   /// owner's question (A-145-21).
   final List<String> phoneOnlySessions;
   final List<String> wristOnlySessions;
+
+  /// Session labels whose status disagreement is two ends inside the protocol's
+  /// skew tolerance — one side finished, the other discarded, at the same
+  /// instant (D-16105). **Owner to confirm** that this is convergence: it is
+  /// reported here and kept out of [failures], so the verdict is unchanged by
+  /// clock skew the protocol itself cannot resolve (A-161-04).
+  final List<String> withinSkewEndTies;
 
   /// The gap both lists describe, for a report line: "unshared 0", or the
   /// counts when a side never held a session.
@@ -2159,6 +2244,8 @@ class ConvergenceReport {
   String toString() => converged
       ? 'converged: $sessionCount session(s), '
             '${phoneStatus.values.toList()} on both sides '
-            '($unsharedSummary)'
+            '($unsharedSummary'
+            '${withinSkewEndTies.isEmpty ? '' : ', '
+                      '${withinSkewEndTies.length} end tie(s) within skew'})'
       : 'DIVERGED ($unsharedSummary):\n  ${failures.join('\n  ')}';
 }

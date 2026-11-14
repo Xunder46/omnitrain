@@ -211,8 +211,11 @@ class _WiringAdoptionBridge extends WatchSessionAdoptionBridge {
 /// without a wrist — see `createPlatformWatchTransport`.
 ///
 /// [clock] is the phone's wall clock for everything the graph stamps; tests
-/// pin it. [onHistoryChanged] runs once whenever a wrist session changes the
-/// phone's history — the calendar's refresh in the shipping app (D-142).
+/// pin it. [frameClock] is the mirror's frame-stamp clock alone (`sentAt`,
+/// lifecycle `at`, rating `loggedAt`); null keeps today's behaviour — the real
+/// clock (D-16102). [onHistoryChanged] runs once whenever a wrist session
+/// changes the phone's history — the calendar's refresh in the shipping app
+/// (D-142).
 /// [onSkipped] observes a refused adoption (D-10) — the phone kept the session
 /// it was already running — which is not a failure: left out, the bridge logs
 /// it once in debug.
@@ -223,6 +226,7 @@ Future<WatchSyncGraph?> createWatchSync({
   required SettingsState settingsState,
   WatchTransport? transport,
   DateTime Function()? clock,
+  DateTime Function()? frameClock,
   Future<void> Function()? onHistoryChanged,
   void Function(Object error, StackTrace stack)? onFailure,
   void Function(String heldSessionId, String offeredSessionId)? onSkipped,
@@ -291,8 +295,12 @@ Future<WatchSyncGraph?> createWatchSync({
     transport: WatchInboxStagingTransport(inner: resolved, inbox: inbox),
     snapshot: watchSessionPlaceholder,
     // The graph's clock drives the ledger's `since`, repeat window and 24 h
-    // bound only (plan 128 D-1/D-2a); frame stamps keep the mirror's own clock
-    // so a graph clock that stands still cannot defeat plan 127's snapshot order.
+    // bound only (plan 128 D-1/D-2a). Frame stamps read `frameClock` alone
+    // (D-16102): production passes none, so the mirror keeps its own `_utcNow`,
+    // and the guard against a graph clock that stands still defeating plan 127's
+    // snapshot order lives in that default and in `ledgerClock`'s separate seam.
+    // Tests that hold one clock for both halves pin `frameClock` too (D-16103).
+    clock: frameClock,
     ledgerClock: clock,
     // Every ladder this phone asserts — a request answered or a wrist snapshot
     // re-asserted — is composed from the phone's own session, never from the

@@ -70,6 +70,11 @@ enum MirrorOutcome {
 const String watchSessionPlaceholderId = 's-phone-unjoined';
 
 class LiveSessionMirrorState extends ChangeNotifier {
+  /// [clock] stamps every frame this mirror writes — `sentAt`, a lifecycle
+  /// `at`, a rating `loggedAt`; null is the real clock. [ledgerClock] is the
+  /// unconfirmed-end ledger's separate seam (plan 128 D-1/D-2a) and stays apart
+  /// on purpose: a graph clock that stands still would stop the wrist's
+  /// strictly-older snapshot refusal from telling frames apart (plan 127 D-8).
   LiveSessionMirrorState({
     required WatchMirrorTransport transport,
     required Map<String, Object?> snapshot,

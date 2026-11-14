@@ -170,21 +170,26 @@ void main() {
       // cannot arrive silently (D-14508: the report is the product).
       const knownClasses = <String, String>{
         'status':
-            'PR 3 landed — 137 of 2000 (166 before Phases 1-3), 12 of 200: the '
-            'remainder is unclassified (A-146c-13); the owner\'s "an earlier '
-            'discard wins" case itself no longer appears',
+            'plan 161 Phases 1-3 landed — 94 kind-hits over 73 seeds at 2000 and '
+            '7 over 5 at 200 (149/112 before): the remainder is the A-161-05 '
+            'residue, the phone\'s own session row is stamped by the wall clock '
+            '(`session_core_lifecycle.endSession`), so its end can never tie with a '
+            'grid-stamped wrist end (S-14512 records the permanent case)',
         'absorbing':
             'minimal trace found after PR 3 (seed 111 → 4 actions, A-146c-14): '
             'the wrist completes a session then starts its next Free workout and '
-            'the same session reports active again (22 of 2000)',
+            'the same session reports active again (5 of 2000 after plan 161, 22 '
+            'before)',
         'timers':
             'does not reproduce — 0 traces confirmed at 2000 seeds in Phase 4 '
             'and seed 1814 converges when replayed alone (A-146c-16); D-14635\'s '
             'seam is unconfirmed and the residue is deferred',
         'entries':
-            'minimal trace found after PR 3 (seed 857 → 5 actions, A-146c-15): a '
-            'phone set never reaches the wrist after the wrist refuses a phone '
-            'snapshot (14 of 2000)',
+            'mostly fixed by plan 161 Phase 2 — 14 at 2000 before, 0 in one run '
+            'and 2 (seeds 499, 819) in the next after: check 3 ignores the '
+            'phone\'s own annotation kinds (`WatchInboxEntry.phoneKinds`), and what '
+            'is left is a wrist-vs-wrist entry difference that moves between runs '
+            '(plan 161 Residue)',
         'heal':
             'flake class — the heal exchange never settles on a handful of '
             'seeds (the same class test/watch_convergence_harness_test.dart '
@@ -199,11 +204,13 @@ void main() {
       // *kind* is caught by `unknown` below. Heal stalls are excluded: they are
       // not deterministic.
       // Per 200 seeds, so the 2000-seed soak measures instead of failing on a
-      // count that only grows with the seed total: 12 and 13 observed on two
-      // Phase 4 runs of 1..200, 125 at 1..2000 (down from 18/147 in Phase 5.Z).
-      // 14 keeps one seed of headroom for the clock-skew movement A-146-15
-      // records; 140 at 2000.
-      final shippingRatchet = (kSeedCount * 14 / 200).ceil();
+      // count that only grows with the seed total. Plan 161 re-measured after
+      // the frame clock and the entry filter: 5 on both 200-seed runs (seeds
+      // 29, 43, 94, 162, 169) and 73, then 75, at 1..2000. 8 is that
+      // measurement plus two seeds of headroom in 200-seed units, 80 at 2000,
+      // and it is the lowest constant that keeps the soak green; 14 was the
+      // pre-161 budget.
+      final shippingRatchet = (kSeedCount * 8 / 200).ceil();
 
       final shippingKinds = <int, List<String>>{};
       final syntheticOnly = <int>[];
