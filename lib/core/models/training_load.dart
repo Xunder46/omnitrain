@@ -71,18 +71,27 @@ class MixWeek {
 /// the week's summed [sessionLoadMinutes] — the same load definition the Mix
 /// layer uses, so the weekly figure is shared and never re-derived. A session
 /// counts in the week its own start falls in. [hasRatedSession] is true when a
-/// completed rated session starts in the week. A week with no work is present
-/// with `loadMinutes: 0` and `hasRatedSession: false`, never dropped.
+/// completed rated session starts in the week. [hasSessions] is true when any
+/// completed session starts in the week (plan 157c). A week with no work is
+/// present with `loadMinutes: 0`, `hasRatedSession: false` and
+/// `hasSessions: false`, never dropped; a week that held sessions but no rated
+/// one is [isUnrated]: its load is zero because load needs a rating, not
+/// because the user rested.
 class WeeklyLoad {
   final DateTime weekStart;
   final double loadMinutes;
   final bool hasRatedSession;
+  final bool hasSessions;
 
   const WeeklyLoad({
     required this.weekStart,
     required this.loadMinutes,
     required this.hasRatedSession,
+    this.hasSessions = false,
   });
+
+  /// A week that held sessions but no rated one: its load is unknown, not zero.
+  bool get isUnrated => hasSessions && !hasRatedSession;
 }
 
 /// The whole payload the Mix layer renders (D-916, D-917).

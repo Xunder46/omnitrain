@@ -579,8 +579,28 @@ Future<void> _seedFLift(WorkoutRepository repo) async {
 /// would put cardio load into whichever week the session's day count lands in,
 /// and that week moves with the weekday — which is what left the streak short
 /// of five on some days.
+///
+/// Plan 157c: a week that holds sessions but none rated is left out of the
+/// Sustained High Load baseline, and the unrated cardio sessions can land in
+/// F-9A's two quiet weeks (6 and 7 weeks ago, whichever the weekday). So the
+/// quiet weeks hold a rated session of no time: they stay rated weeks of zero
+/// load, the baseline keeps its twelve weeks and the usual stays `200`.
 Future<void> _seedFTwo(WorkoutRepository repo) async {
   await _seedF9A(repo);
+  await _seedWeekSession(
+    repo,
+    id: 'w11-quiet',
+    weeksAgo: 7,
+    minutes: 0,
+    rating: 1,
+  );
+  await _seedWeekSession(
+    repo,
+    id: 'w12-quiet',
+    weeksAgo: 6,
+    minutes: 0,
+    rating: 1,
+  );
   await _seedPeriod(repo, name: 'Test Block', daysAgo: 20);
   await _clearConsumedFoods(repo);
   await _seedCardio(repo, rating: null);

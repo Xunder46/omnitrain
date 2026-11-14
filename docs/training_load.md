@@ -178,7 +178,7 @@ before `now`'s: the week containing `now` is never an entry.
 `baselineBlockStarts`. The Sustained High Load rule reads
 `kTrainingLoadBaselineWeeks` weeks immediately before a candidate run as
 neighbours in the same series, so its usual load is that window's sum divided by
-the twelve weeks, an empty week counting as zero. The baseline period above is
+the twelve weeks less any week that held only unrated sessions, an empty week counting as zero. The baseline period above is
 anchored to a window's start day and serves the Mix layer's window comparison;
 the two are separate reads of separate spans and neither is derived from the
 other.

@@ -531,6 +531,7 @@ it costs no extra repository read.
   before `now`'s, with empty weeks present** as zero load and no rated session.
   The week containing `now` is never returned, whatever it holds, and an empty
   history yields an empty list.
+- **Each entry also says whether the week held any session** (`hasSessions`); a week with sessions but no rated one is unrated, its zero load is unknown, and the Sustained High Load baseline leaves it out (plan 157c).
 - **The boundaries follow the saved start-of-week setting**, so a week here is
   the user's own week rather than an always-Monday one.
 
@@ -540,7 +541,10 @@ list`, `S-2401 the service returns the seventeen completed weeks`, `S-2411 the
 incomplete current week is never counted`, `S-2411 the current week holding
 nothing changes nothing`, `S-2413 the saved start-of-week moves the boundaries`,
 `S-2413 SettingsState writes the value the service reads`, `S-2414 Hive and Mock
-return identical week lists`, over both repository implementations).
+return identical week lists`, over both repository implementations), and by
+`test/sustained_high_load_unrated_weeks_test.dart` (`S-15906 …: weeklyLoads
+marks which weeks held sessions` — as `S-15906 ${harness.name}` over both
+harnesses — and `S-15901 unrated weeks are left out of the baseline divisor`).
 
 `interferenceSessions()` returns one `InterferenceSession` per completed session
 in the cached history, ordered by start and then by id — the signal layer's only

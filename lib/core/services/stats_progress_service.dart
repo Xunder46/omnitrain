@@ -601,6 +601,7 @@ class StatsProgressService {
 
     final loadByWeekStartMs = <int, double>{};
     final ratedWeekStartsMs = <int>{};
+    final sessionWeekStartsMs = <int>{};
     int? earliestWeekStartMs;
 
     for (final session in history.sessions) {
@@ -615,6 +616,7 @@ class StatsProgressService {
           (loadByWeekStartMs[weekStartMs] ?? 0.0) +
           split.loadBySection.values.fold<double>(0, (a, b) => a + b);
       if (session.sessionFeeling != null) ratedWeekStartsMs.add(weekStartMs);
+      sessionWeekStartsMs.add(weekStartMs);
       if (earliestWeekStartMs == null || weekStartMs < earliestWeekStartMs) {
         earliestWeekStartMs = weekStartMs;
       }
@@ -636,6 +638,7 @@ class StatsProgressService {
           weekStart: weekStart,
           loadMinutes: loadByWeekStartMs[weekStartMs] ?? 0.0,
           hasRatedSession: ratedWeekStartsMs.contains(weekStartMs),
+          hasSessions: sessionWeekStartsMs.contains(weekStartMs),
         ),
       );
       weekStart = DateTime(weekStart.year, weekStart.month, weekStart.day + 7);
@@ -1458,8 +1461,11 @@ class StatsProgressService {
 
   // ── The native value, per section ──────────────────────────────────────────
 
-  /// The exercise ids among [exerciseIds] that hold a bodyweight set anywhere
-  /// in their **full** history — the axis rule `computeProgressData` shares.
+  /// The exercise ids among [exerciseIds] that sit on the reps axis: those whose
+  /// zero-weight entries (at least one rep, no load) strictly outnumber their
+  /// loaded entries across the **full** history — the one axis rule
+  /// `computeProgressData` shares (plan 157b D-4). One stray zero-weight set
+  /// never moves a lift off Est. 1RM, and a tie reads Est. 1RM.
   ///
   /// The walk ignores the caller's range on purpose: the axis is a property of
   /// the exercise, so a range that happens to hold only loaded sets does not

@@ -34,11 +34,12 @@ easier week in the run, and proposes a caution card.
 - **The baseline.** A candidate run's baseline is the
   `kTrainingLoadBaselineWeeks` weeks immediately before it, pooled and strictly
   earlier, so a run can never inflate its own baseline. The usual is that window's
-  summed load divided by the twelve weeks — an empty week counts as zero, never
-  the mean of the rated weeks alone. A candidate with fewer than twelve weeks
+  summed load divided by the twelve weeks less the weeks that held only unrated sessions — an empty week counts as zero.
+  A candidate with fewer than twelve weeks
   before it has no baseline and cannot qualify. Verified by
   `test/sustained_high_load_test.dart` (`the baseline stage abstains below twelve
-  earlier weeks`).
+  earlier weeks`) and `test/sustained_high_load_unrated_weeks_test.dart`
+  (`S-15901`..`S-15906`).
 - **The rated-history floor.** The candidate's baseline needs at least
   `kSustainedHighLoadMinRatedWeeks` weeks carrying a rated session, the boundary
   inclusive. Verified by `test/sustained_high_load_test.dart` (`S-2404 the
@@ -64,7 +65,7 @@ easier week in the run, and proposes a caution card.
   `the card does not appear and the layer is quiet`).
 - **The history fact.** An easier week is one at or below
   `kSustainedHighLoadEasierPercent` of the usual, inclusive, and an empty week
-  counts as an easier week. The fact reports the median gap between the easier
+  counts as an easier week, while a week that held only unrated sessions is neither. The fact reports the median gap between the easier
   weeks strictly before the run when at least `kSustainedHighLoadMinEasierGaps`
   gaps exist and every gap lies between `kSustainedHighLoadGapMinWeeks` and
   `kSustainedHighLoadGapMaxWeeks` weeks; an even number of gaps reports the lower
