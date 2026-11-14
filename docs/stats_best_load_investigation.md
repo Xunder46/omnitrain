@@ -119,7 +119,7 @@ There are **six**. Four are live; two are deleted.
 - **Location:** `lib/core/services/stats_progress_service.dart:371`, `:378`.
 - **What it actually computes:** an **estimated one-rep maximum** — the maximum Epley e1RM
   across the day's sets, one point per training day. Epley is
-  `weight × (1 + reps / 30)` (`:944–947`).
+  `weight × (1 + min(reps, 12) / 30)` (`:944–947`; a set counts at most 12 reps).
 - **This is an estimate, not a lifted weight.** A 100 kg × 10 set yields 133.3, a number the
   lifter has never had on the bar.
 - **VERIFIED — how:** direct read of `:369–382` and `:944–947`.

@@ -210,11 +210,15 @@ public final class WatchPersonalBests {
 // MARK: - The pieces both the live path and the rebuild use
 
 extension WatchPersonalBests {
+    /// The most reps of one set the estimate counts: the phone's
+    /// `StatsProgressService.kEpleyMaxReps` (plan 157b D-2).
+    private static let epleyMaxReps = 12
+
     /// Epley, in the phone's operation order (`StatsProgressService.epley1RM`):
-    /// `weight * (1 + reps / 30.0)`. The order is the point — a set equal to
-    /// the frame's must compare equal to it bit for bit.
+    /// `weight * (1 + min(reps, 12) / 30.0)`. The order is the point — a set
+    /// equal to the frame's must compare equal to it bit for bit.
     private static func estimateOneRepMax(loadKg: Double, reps: Int) -> Double {
-        loadKg * (1 + Double(reps) / 30.0)
+        loadKg * (1 + Double(min(reps, epleyMaxReps)) / 30.0)
     }
 
     /// Folds one logged set into the own bests, on the axis its verdict used:

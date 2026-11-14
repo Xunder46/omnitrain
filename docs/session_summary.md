@@ -351,7 +351,7 @@ File: lib/core/services/session_summary_service.dart
 Key public methods:
 
 - compareGroupsToPreviousSession
-- computePRs — records PRs using the **Epley e1RM** formula (`StatsProgressService.epley1RM = weight × (1 + reps / 30)`), the same definition the in-workout toast uses. The screen passes its own session id so the just-finished workout's PRs are not compared against themselves. See `docs/plans/summary-pr-parity-plan.md`.
+- computePRs — records PRs using the **Epley e1RM** formula (`StatsProgressService.epley1RM = weight × (1 + min(reps, 12) / 30)`), the same definition the in-workout toast uses. The screen passes its own session id so the just-finished workout's PRs are not compared against themselves. See `docs/plans/summary-pr-parity-plan.md`.
 
   The returned list is collapsed to at most one `PRAchievement` per
   exercise — when the same exercise appears in more than one block

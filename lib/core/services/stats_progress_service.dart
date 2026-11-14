@@ -321,6 +321,7 @@ class StatsProgressService {
       completed,
       topLiftIds,
     );
+    final repsAxis = await _repsAxisExercises(topLiftIds.toSet());
     // Build LiftProgress + collect PRs.
     final topLifts = <LiftProgress>[];
     final allPRs = <StatsPR>[];
@@ -330,18 +331,12 @@ class StatsProgressService {
       final setDayMap = fullSetsByExercise[exerciseId] ?? const {};
       final repsDayMap = fullRepsByExercise[exerciseId] ?? const {};
 
-      // ── Per-exercise axis decision ──
-      // An exercise is reps-axis if it has ANY bodyweight set
-      // (`weight == 0`) in its history; otherwise it is
-      // weight-axis. The decision is per-exercise, not per-set —
-      // a mixed history never produces both an e1RM card and a
-      // reps card; the reps axis wins the moment any bodyweight
-      // set exists, and any added weight on weighted sets
-      // becomes a per-day annotation on the reps trend. See the
-      // Push-Up mixed-axis bug fix in
-      // `docs/plans/stats-summary-fix-pack-plan.md`
-      // and the user report "Push-Up weight-based stats".
-      final isRepsAxis = repsDayMap.isNotEmpty;
+      // ── Per-exercise axis decision (plan 157b D-4, D-5) ──
+      // The axis is a property of the exercise, decided once over its whole
+      // history by `_repsAxisExercises`: reps-axis only when its zero-weight
+      // entries outnumber its loaded ones, so one stray zero-weight set never
+      // moves a lift off Est. 1RM. A reps-axis exercise always has reps data.
+      final isRepsAxis = repsAxis.contains(exerciseId);
 
       // ── Reps-axis trend (bodyweight + weighted bodyweight) ──
       final repsTrend = <TrendPoint>[];
@@ -1472,36 +1467,32 @@ class StatsProgressService {
   /// carries the same metric.
   Future<Set<String>> _repsAxisExercises(Set<String> exerciseIds) async {
     final history = await _loadHistory();
-    final repsAxis = <String>{};
+    final bodyweight = <String, int>{};
+    final loaded = <String, int>{};
     for (final session in history.sessions) {
       if (session.endedAtMs == null) continue;
       for (final segment in history.segmentsOf(session.id)) {
         for (final effort in history.effortsOf(segment.id)) {
           if (effort.effortKind != 'set') continue;
           final exerciseId = effort.exerciseId;
-          if (exerciseId == null ||
-              !exerciseIds.contains(exerciseId) ||
-              repsAxis.contains(exerciseId)) {
-            continue;
-          }
-          if (_hasBodyweightEntry(history.observationsOf(effort.id))) {
-            repsAxis.add(exerciseId);
+          if (exerciseId == null || !exerciseIds.contains(exerciseId)) continue;
+          for (final entry in ObservationGrouper.groupByEffortKind(
+            'set',
+            history.observationsOf(effort.id),
+          )) {
+            final reps = entry['reps'] as int? ?? 0;
+            if (reps <= 0) continue;
+            final weight = (entry['weight'] as num?)?.toDouble() ?? 0.0;
+            final tally = weight > 0 ? loaded : bodyweight;
+            tally[exerciseId] = (tally[exerciseId] ?? 0) + 1;
           }
         }
       }
     }
-    return repsAxis;
-  }
-
-  /// True when a set effort holds an entry of at least one rep and no load —
-  /// the shape that puts an exercise on the reps axis.
-  static bool _hasBodyweightEntry(List<EffortObservation> rows) {
-    for (final entry in ObservationGrouper.groupByEffortKind('set', rows)) {
-      final reps = entry['reps'] as int? ?? 0;
-      if (reps <= 0) continue;
-      if (((entry['weight'] as num?)?.toDouble() ?? 0.0) <= 0) return true;
-    }
-    return false;
+    return {
+      for (final id in bodyweight.keys)
+        if (bodyweight[id]! > (loaded[id] ?? 0)) id,
+    };
   }
 
   /// The section an exercise sits in: the effort kind it was logged under most
@@ -2262,7 +2253,12 @@ class StatsProgressService {
     return days;
   }
 
-  /// Epley 1-rep-max estimate: weight × (1 + reps / 30).
+  /// The most reps of one set the estimate counts: Epley overstates a long
+  /// set (30 reps would double the bar), so a set of 13 or more reads like a
+  /// set of 12 at the same weight (plan 157b D-1).
+  static const int kEpleyMaxReps = 12;
+
+  /// Epley 1-rep-max estimate: weight × (1 + min(reps, [kEpleyMaxReps]) / 30).
   /// Returns null when weight or reps is zero/negative.
   ///
   /// **Source of truth.** The Stats screen (`computeProgressData`'s
@@ -2272,7 +2268,8 @@ class StatsProgressService {
   /// the formula in one place so the two surfaces cannot drift.
   static double? epley1RM(double weight, int reps) {
     if (weight <= 0 || reps <= 0) return null;
-    return weight * (1 + reps / 30.0);
+    final counted = reps > kEpleyMaxReps ? kEpleyMaxReps : reps;
+    return weight * (1 + counted / 30.0);
   }
 
   /// Returns the highest [epley1RM] ever logged for [exerciseId]

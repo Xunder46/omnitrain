@@ -361,9 +361,13 @@ section is read by; null bounds mean all history. Two of its rules are the ones
 they cannot drift:
 
 - **The axis is a property of the exercise, not of the range or the day.** An
-  exercise is on the reps axis when any bodyweight set appears anywhere in its
+  exercise is on the reps axis when its bodyweight sets outnumber its loaded sets across its
   history, so a range holding only loaded sets does not move it onto the weight
-  axis and one series never mixes metrics.
+  axis and one series never mixes metrics. A tie reads Est. 1RM and a single
+  stray weightless set never moves a lift off it. Verified by
+  `test/est_1rm_cap_and_axis_test.dart` (`S-15805 a tie of zero-weight and
+  loaded sets reads Est. 1RM`, `S-15803 one stray zero-weight set leaves Squat
+  on Est. 1RM`).
 - **The round predicate is `SessionSummaryBuilder`'s** — finished, started, and
   with an end stamp — rather than the stored `completed` flag, because a round
   stopped early still happened.
@@ -376,7 +380,10 @@ in kilograms for a loaded exercise, the rep count for a bodyweight one — and
 `getAllTimeBests()` is the same pair for every exercise in one pass over the
 cached history, which is what the wrist's `bests_down` frame is built from; a
 caller needing all of them would otherwise re-walk the whole history once per
-exercise. An exercise appears in the bulk map only when one of its axes is
+exercise. Epley counts at most 12 reps of a set, so a 30-rep set reads like a 12-rep set at the same weight (plan 157b); the wrist's copy of the formula caps the same way. The cap is verified by
+`test/est_1rm_cap_and_axis_test.dart` (`S-15801 epley1RM counts at most 12 reps
+of a set`, `S-15802 a 100 kg x 30 set reads 140.0 on both best reads`).
+An exercise appears in the bulk map only when one of its axes is
 above zero, and an in-progress session contributes nothing, exactly as in the
 two per-exercise walks. Verified by `test/stats_bests_builder_test.dart`, group
 `StatsProgressService.getAllTimeBests`, the parity test `S-87a-5 parity: every

@@ -312,7 +312,7 @@ and shows nothing. Verified by `WatchPersonalRecordBannerTests`
 
 **The rule is the phone's "Congrats! New PR" toast, mirrored.** Only a `set`
 effort counts. A loaded set is compared by its estimated one-rep max in
-kilograms — `loadKg * (1 + reps / 30)`, the phone's own Epley order — and a set
+kilograms — `loadKg * (1 + min(reps, 12) / 30)`, the phone's own Epley order — and a set
 with no weight or a band assist by reps; the comparison is strict, so an equal
 set is no record. The best is the larger of the phone's copy and the wrist's own
 earlier sets, which stops one set firing twice — after a relaunch too, and
@@ -324,8 +324,9 @@ limits") and in the QA walkthrough's gaps. Verified by
 `WatchPersonalBestsTests.testS87b1AnEqualSetIsNotARecordAndAHeavierOneIs`,
 `testS87b2AWristThatNeverReceivedAFrameSaysNothing`,
 `testS87b5TheSameSetTwiceIsOneRecordAndAHeavierOneIsTheNext`,
-`testS87b7OnlySetEffortsGetAVerdictOrMoveTheOwnBest` and
-`testS87b16AnAssistedSetWinsOnTheRepsAxis`.
+`testS87b7OnlySetEffortsGetAVerdictOrMoveTheOwnBest`,
+`testS87b16AnAssistedSetWinsOnTheRepsAxis` and
+`testS15810AnEstimateCountsAtMostTwelveReps`.
 
 **The wrist's surfaces speak to VoiceOver.** The rest clock reads "Rest time"
 with a spoken value ("2 minutes 5 seconds", via `WatchSpokenText.duration`)

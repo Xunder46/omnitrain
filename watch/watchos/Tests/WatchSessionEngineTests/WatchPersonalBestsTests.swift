@@ -164,6 +164,54 @@ final class WatchPersonalBestsTests: XCTestCase {
         )
     }
 
+    // MARK: - S-15810 the estimate counts at most 12 reps
+
+    func testS15810AnEstimateCountsAtMostTwelveReps() async {
+        let frame = bestsFrame(
+            [["exerciseId": "ex-bench", "e1rmKg": 100.0 * (1 + 12.0 / 30.0)]],
+            generatedAt: "2026-10-27T09:00:00Z",
+            messageId: "msg-157b-1"
+        )
+
+        // `noteLogged` remembers its own best inside one holder, so each of
+        // the four sets is judged by a fresh holder holding the same frame.
+        let holder30 = bestsHolder(InMemoryWatchSessionStore())
+        _ = await holder30.applyBestsDown(frame)
+        XCTAssertFalse(
+            holder30.noteLogged(
+                kind: WatchObservationKind.set, exerciseId: "ex-bench", reps: 30, loadKg: 100
+            ),
+            "S-15810 100 x 30 counts as 100 x 12 (140.0), not above the held 140.0"
+        )
+
+        let holder13 = bestsHolder(InMemoryWatchSessionStore())
+        _ = await holder13.applyBestsDown(frame)
+        XCTAssertFalse(
+            holder13.noteLogged(
+                kind: WatchObservationKind.set, exerciseId: "ex-bench", reps: 13, loadKg: 100
+            ),
+            "S-15810 100 x 13 counts as 100 x 12 (140.0), not above the held 140.0"
+        )
+
+        let holder12 = bestsHolder(InMemoryWatchSessionStore())
+        _ = await holder12.applyBestsDown(frame)
+        XCTAssertFalse(
+            holder12.noteLogged(
+                kind: WatchObservationKind.set, exerciseId: "ex-bench", reps: 12, loadKg: 100
+            ),
+            "S-15810 100 x 12 is exactly the held 140.0: equal is not a record"
+        )
+
+        let holderHeavier = bestsHolder(InMemoryWatchSessionStore())
+        _ = await holderHeavier.applyBestsDown(frame)
+        XCTAssertTrue(
+            holderHeavier.noteLogged(
+                kind: WatchObservationKind.set, exerciseId: "ex-bench", reps: 12, loadKg: 101
+            ),
+            "S-15810 101 x 12 (141.4) is above the held 140.0"
+        )
+    }
+
     // MARK: - S-87b-2 no frame is no verdict
 
     func testS87b2AWristThatNeverReceivedAFrameSaysNothing() async {
