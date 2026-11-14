@@ -216,8 +216,20 @@ public final class WatchSessionEngine: ObservableObject {
     /// rate on the wrist is the newest row that reached the store, so a relaunch
     /// shows what the watch measured instead of starting from nothing.
     public var sensorSamples: [WatchSensorSampleRecord] {
-        storedSensorSamples.snapshot().filter { $0.sessionId == current?.sessionId }
+        guard let sessionId = current?.sessionId else { return [] }
+        return storedSensorSamples.samples(forSession: sessionId)
     }
+
+    /// How many readings of `kind` the session `sessionId` holds, without
+    /// visiting any of them (S-15606): the pace window's cache key.
+    func sensorSampleCount(forSession sessionId: String, kind: String) -> Int {
+        storedSensorSamples.count(forSession: sessionId, kind: kind)
+    }
+
+    /// The number of stored reading rows the per-session reads have returned so
+    /// far, for the test that bounds a tick's cost by a count rather than by wall
+    /// time (S-15606). No production behaviour reads it.
+    var sensorRowsVisitedForTesting: Int { storedSensorSamples.rowsVisitedForTesting }
 
     /// The newest reading of `kind` for the current session, or nil when there
     /// has been none.
@@ -232,16 +244,8 @@ public final class WatchSessionEngine: ObservableObject {
     /// that divides them) and it is rebuilt on a one-second tick, so the caller
     /// resolves the session's measurements once rather than scanning per value.
     public func newestSensorSamples() -> [String: WatchSensorSampleRecord] {
-        var newest: [String: WatchSensorSampleRecord] = [:]
-
-        for sample in storedSensorSamples.snapshot() where sample.sessionId == current?.sessionId {
-            if let existing = newest[sample.kind], existing.sequence >= sample.sequence {
-                continue
-            }
-            newest[sample.kind] = sample
-        }
-
-        return newest
+        guard let sessionId = current?.sessionId else { return [:] }
+        return storedSensorSamples.newest(forSession: sessionId)
     }
 
     /// The newest row for `kind`, which is the timer that applies.
@@ -1870,7 +1874,7 @@ public final class WatchSessionEngine: ObservableObject {
         // workout) is summed the way the session end sums it. With no stored
         // sample inside the window (a caller that announces without recording) the
         // raw value is the total.
-        let samples = storedSensorSamples.snapshot().filter { $0.sessionId == row.sessionId }
+        let samples = storedSensorSamples.samples(forSession: row.sessionId)
         let total = WatchSensorSummaries.activeEnergy(samples, from: row.startedAt, through: at) ?? kilocalories
         if energyAnnouncedSession == row.sessionId,
            let lastKcal = energyAnnouncedKcal,
@@ -1946,7 +1950,7 @@ public final class WatchSessionEngine: ObservableObject {
         let settled = newestSessionRows().values
             .filter { session in
                 guard session.status != WatchSessionStatus.active,
-                      storedSensorSamples.contains(where: { $0.sessionId == session.sessionId })
+                      storedSensorSamples.contains(sessionId: session.sessionId)
                 else { return false }
 
                 let acknowledged = !awaitingReceipt.contains(session.sessionId)
@@ -2052,7 +2056,7 @@ public final class WatchSessionEngine: ObservableObject {
         let sessionId = origin.sessionId
         let startedAt = WatchSensorSummaries.wireInstant(origin.startedAt)
         let end = WatchSensorSummaries.wireInstant(endedAt)
-        let samples = storedSensorSamples.snapshot().filter { $0.sessionId == sessionId }
+        let samples = storedSensorSamples.samples(forSession: sessionId)
         let id = WatchSessionCapture.sessionEndId(sessionId)
 
         var event: [String: Any] = [

@@ -100,6 +100,84 @@ private func growthFunctionBody(_ header: String, in source: String) -> String? 
     return String(tail[..<end.lowerBound])
 }
 
+// MARK: - Phase B part 2 fixtures (D-15605, S-15606)
+
+/// A reading for a store seeded directly, so a test can hold tens of thousands
+/// of old workouts' rows without appending them one at a time.
+private func growthSample(
+    _ sessionId: String,
+    kind: String,
+    value: Double,
+    sequence: Int,
+    at: Date
+) -> WatchSensorSampleRecord {
+    WatchSensorSampleRecord(
+        recordId: "sen-\(sessionId)-\(kind)-\(sequence)",
+        sessionId: sessionId,
+        recordedAt: at,
+        kind: kind,
+        value: value,
+        sequence: sequence
+    )
+}
+
+/// Writes a store file holding exactly `sensorSamples`, the shape a former
+/// launch leaves behind: the format marker, then one JSON line per reading.
+private func growthWriteStore(
+    _ directory: URL,
+    sensorSamples: [WatchSensorSampleRecord]
+) throws {
+    let marker = #"{"format":"omnitrain-watch-store","version":1}"#
+    let lines = try sensorSamples.map { row -> String in
+        let data = try JSONSerialization.data(
+            withJSONObject: StoredWatchRecord.sensorSample(row).toJson(),
+            options: [.sortedKeys]
+        )
+        return String(decoding: data, as: UTF8.self)
+    }
+    let text = ([marker] + lines).joined(separator: "\n") + "\n"
+    try text.write(
+        to: directory.appendingPathComponent("watch-session.jsonl"),
+        atomically: true,
+        encoding: .utf8
+    )
+}
+
+/// `rows`' own filter for one session — the answer the per-session views must
+/// reproduce without scanning anything else.
+private func growthBruteSamples(
+    _ rows: [WatchSensorSampleRecord],
+    sessionId: String
+) -> [WatchSensorSampleRecord] {
+    rows.filter { $0.sessionId == sessionId }
+}
+
+/// The newest row per kind the way the whole log used to resolve it: the
+/// greatest `sequence` wins, and an equal one keeps the row already held.
+private func growthBruteNewest(
+    _ rows: [WatchSensorSampleRecord],
+    sessionId: String
+) -> [String: WatchSensorSampleRecord] {
+    var newest: [String: WatchSensorSampleRecord] = [:]
+    for row in rows where row.sessionId == sessionId {
+        if let existing = newest[row.kind], existing.sequence >= row.sequence { continue }
+        newest[row.kind] = row
+    }
+    return newest
+}
+
+/// Records are not `Equatable`; their ids, kinds, values and sequences are what
+/// the per-session views must reproduce.
+private func growthSignatures(_ rows: [WatchSensorSampleRecord]) -> [String] {
+    rows.map { "\($0.recordId)|\($0.kind)|\($0.value)|\($0.sequence)" }
+}
+
+private func growthNewestSignatures(
+    _ newest: [String: WatchSensorSampleRecord]
+) -> [String: String] {
+    newest.mapValues { "\($0.recordId)|\($0.sequence)|\($0.value)" }
+}
+
 final class WatchStoreGrowthTests: XCTestCase {
     private var directories: [URL] = []
 
@@ -386,6 +464,267 @@ final class WatchStoreGrowthTests: XCTestCase {
             engine.sensorSamples.count,
             stored + 1,
             "the same instant's reading twice is one row (S-15605)"
+        )
+    }
+
+    // MARK: - S-15606 the tick reads the current workout's rows only
+
+    /// S-15606: with fifty thousand readings of old workouts stored, a tick's
+    /// reads visit the current workout's rows and nothing else. Measured as a
+    /// count of rows visited, not wall time: the same thousand ticks cost the
+    /// same rows with no old readings and with fifty thousand of them.
+    func testS15606AThousandTicksVisitTheCurrentSessionsRowsOnly() async throws {
+        let withoutOldRows = try await growthTickedRows(oldRows: 0)
+        let withOldRows = try await growthTickedRows(oldRows: 50_000)
+
+        XCTAssertEqual(
+            withOldRows,
+            withoutOldRows,
+            "S-15606 a tick visits the same rows whatever other workouts have stored"
+        )
+        XCTAssertEqual(
+            withOldRows,
+            1_000 * (6 + 4),
+            "S-15606 1,000 ticks visit the current session's 6 rows and its 4 newest "
+                + "rows, and none of the 50,000 old ones"
+        )
+    }
+
+    /// The rows a thousand `newestSensorSamples()` and `sensorSamples` reads
+    /// visit, over a store already holding `oldRows` readings of finished
+    /// workouts (written straight to the file, not appended one at a time).
+    private func growthTickedRows(oldRows: Int) async throws -> Int {
+        let wrist = try makeWrist()
+        if oldRows > 0 {
+            let kinds = [
+                WatchSensorKind.heartRate,
+                WatchSensorKind.gps,
+                WatchSensorKind.steps,
+                WatchSensorKind.activeEnergy,
+            ]
+            let rows = (0..<oldRows).map { index in
+                growthSample(
+                    "s-old-\(index % 10)",
+                    kind: kinds[index % kinds.count],
+                    value: Double(index),
+                    sequence: index + 1,
+                    at: wrist.clock.now.addingTimeInterval(Double(index))
+                )
+            }
+            try growthWriteStore(wrist.directory, sensorSamples: rows)
+        }
+
+        let engine = await wrist.launch()
+        _ = await engine.createSession(modality: "outdoor_run", exercises: [exercise("sx-bench")])
+        for (index, kind) in [
+            WatchSensorKind.heartRate,
+            WatchSensorKind.gps,
+            WatchSensorKind.heartRate,
+            WatchSensorKind.steps,
+            WatchSensorKind.gps,
+            WatchSensorKind.activeEnergy,
+        ].enumerated() {
+            _ = await engine.appendSensorSample(kind: kind, value: Double(index))
+            wrist.clock.advance(1)
+        }
+        XCTAssertEqual(engine.sensorSamples.count, 6, "fixture: six readings of this workout")
+
+        let before = engine.sensorRowsVisitedForTesting
+        for _ in 0..<1_000 {
+            _ = engine.newestSensorSamples()
+            _ = engine.sensorSamples
+        }
+        return engine.sensorRowsVisitedForTesting - before
+    }
+
+    /// S-15606, the behaviour half: the per-session views are a filter of the
+    /// same rows — arrival order kept, a repeated reading one row, the newest
+    /// row per kind chosen by `sequence` with a tie keeping the row already
+    /// held — and they still agree after a prune and after a fill.
+    func testS15606ThePerSessionViewsMatchABruteForceFilter() {
+        let first = "s-first"
+        let second = "s-second"
+        let at = testInstant()
+        let fixture = [
+            growthSample(first, kind: WatchSensorKind.heartRate, value: 118, sequence: 1, at: at),
+            growthSample(
+                first,
+                kind: WatchSensorKind.gps,
+                value: 10,
+                sequence: 2,
+                at: at.addingTimeInterval(1)
+            ),
+            growthSample(
+                first,
+                kind: WatchSensorKind.heartRate,
+                value: 119,
+                sequence: 3,
+                at: at.addingTimeInterval(2)
+            ),
+            // The same sequence as the beat already held, arriving later: a tie
+            // keeps the row already held. Written by hand because `growthSample`
+            // derives the id from the sequence.
+            WatchSensorSampleRecord(
+                recordId: "sen-\(first)-\(WatchSensorKind.heartRate)-tie",
+                sessionId: first,
+                recordedAt: at.addingTimeInterval(3),
+                kind: WatchSensorKind.heartRate,
+                value: 117,
+                sequence: 3
+            ),
+            growthSample(
+                second,
+                kind: WatchSensorKind.heartRate,
+                value: 150,
+                sequence: 9,
+                at: at.addingTimeInterval(4)
+            ),
+        ]
+
+        let log = WatchSensorSampleLog()
+        for row in fixture {
+            log.append(row)
+        }
+        log.append(fixture[0])
+
+        XCTAssertEqual(
+            growthSignatures(log.samples(forSession: first)),
+            growthSignatures(growthBruteSamples(fixture, sessionId: first)),
+            "S-15606 one session's rows in arrival order, the repeated reading in one row"
+        )
+        XCTAssertEqual(
+            growthSignatures(log.samples(forSession: second)),
+            growthSignatures(growthBruteSamples(fixture, sessionId: second)),
+            "S-15606 a second session's rows are its own"
+        )
+        XCTAssertFalse(
+            growthSignatures(log.samples(forSession: first)).contains { $0.contains(second) },
+            "S-15606 another session's rows never appear in this one's reads"
+        )
+        XCTAssertEqual(
+            growthNewestSignatures(log.newest(forSession: first)),
+            growthNewestSignatures(growthBruteNewest(fixture, sessionId: first)),
+            "S-15606 the newest row per kind is the greatest sequence, a tie keeping the row held"
+        )
+        XCTAssertEqual(
+            log.newest(forSession: first)[WatchSensorKind.heartRate]?.value,
+            119,
+            "S-15606 the newest beat is the one with the greatest sequence"
+        )
+        XCTAssertTrue(log.contains(sessionId: first))
+        XCTAssertTrue(log.contains(sessionId: second))
+        XCTAssertFalse(log.contains(sessionId: "s-absent"))
+        XCTAssertEqual(log.count(forSession: first, kind: WatchSensorKind.heartRate), 3)
+        XCTAssertEqual(log.count(forSession: first, kind: WatchSensorKind.gps), 1)
+        XCTAssertEqual(log.count(forSession: first, kind: WatchSensorKind.steps), 0)
+
+        // After a prune every per-session view is what the survivors say.
+        log.prune { $0.recordId == fixture[1].recordId }
+        let survivors = fixture.filter { $0.recordId != fixture[1].recordId }
+        XCTAssertEqual(
+            growthSignatures(log.samples(forSession: first)),
+            growthSignatures(growthBruteSamples(survivors, sessionId: first)),
+            "S-15606 the pruned session reads its survivors"
+        )
+        XCTAssertEqual(
+            growthNewestSignatures(log.newest(forSession: first)),
+            growthNewestSignatures(growthBruteNewest(survivors, sessionId: first)),
+            "S-15606 the pruned session's newest rows are rebuilt from the survivors"
+        )
+        XCTAssertEqual(log.count(forSession: first, kind: WatchSensorKind.gps), 0)
+
+        // And after a fill — what a relaunch does — they are the stored rows'.
+        log.fill(with: fixture)
+        XCTAssertEqual(
+            growthSignatures(log.samples(forSession: first)),
+            growthSignatures(growthBruteSamples(fixture, sessionId: first))
+        )
+        XCTAssertEqual(
+            growthNewestSignatures(log.newest(forSession: first)),
+            growthNewestSignatures(growthBruteNewest(fixture, sessionId: first))
+        )
+        XCTAssertEqual(
+            growthSignatures(log.samples(forSession: second)),
+            growthSignatures(growthBruteSamples(fixture, sessionId: second))
+        )
+        XCTAssertEqual(log.count(forSession: first, kind: WatchSensorKind.heartRate), 3)
+    }
+
+    /// S-15606, the pace half: the window start is the answer a brute-force
+    /// read gives — across a counter restart, where the newest run begins — and
+    /// the filter and sort run once per new GPS row rather than once per tick.
+    func testS15606ThePaceWindowIsCachedUntilANewGpsRowArrives() async throws {
+        let harness = Harness()
+        let clock = harness.clock
+        let engine = await harness.runningEngine()
+        let startedAt = clock.now
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [[
+                "sessionExerciseId": "sx-run",
+                "exerciseId": "ex-run",
+                "name": "sx-run",
+                "capabilities": ["time", "distance"],
+            ]]
+        )
+
+        await engine.appendSensorSample(kind: WatchSensorKind.gps, value: 0, recordedAt: startedAt)
+        await engine.appendSensorSample(
+            kind: WatchSensorKind.gps,
+            value: 800,
+            recordedAt: startedAt.addingTimeInterval(300)
+        )
+        let restart = startedAt.addingTimeInterval(1260)
+        await engine.appendSensorSample(kind: WatchSensorKind.gps, value: 0, recordedAt: restart)
+        await engine.appendSensorSample(
+            kind: WatchSensorKind.gps,
+            value: 160.9344,
+            recordedAt: restart.addingTimeInterval(120)
+        )
+        clock.advance(1380)
+
+        func state() -> WatchLoggingState {
+            WatchLoggingState(
+                engine: engine,
+                clock: clock.call,
+                units: WatchUnitPreferences(weightUnit: "kg", distanceUnit: "mi"),
+                sensors: WatchSensorRecorder(
+                    engine: engine,
+                    source: FakeSensorSource(),
+                    clock: clock.call
+                )
+            )
+        }
+
+        let cached = state()
+        XCTAssertEqual(
+            cached.paceLabel,
+            "20:00 /mi",
+            "S-15606 the window starts at the restart: 0.1 mi in the two minutes since it"
+        )
+        let computed = cached.paceWindowComputationsForTesting
+        XCTAssertEqual(computed, 1, "fixture: the first read computes the window once")
+
+        for _ in 0..<1_000 { _ = cached.paceLabel }
+        XCTAssertEqual(
+            cached.paceWindowComputationsForTesting,
+            computed,
+            "S-15606 a tick that adds no GPS row reuses the window instead of filtering and "
+                + "sorting the whole log again"
+        )
+
+        clock.advance(10)
+        await engine.appendSensorSample(kind: WatchSensorKind.gps, value: 240, recordedAt: clock.now)
+        let afterFix = cached.paceLabel
+        XCTAssertEqual(
+            cached.paceWindowComputationsForTesting,
+            computed + 1,
+            "S-15606 a new GPS row recomputes the window, once"
+        )
+        XCTAssertEqual(
+            afterFix,
+            state().paceLabel,
+            "S-15606 the cached window start is the one a brute-force read computes"
         )
     }
 }

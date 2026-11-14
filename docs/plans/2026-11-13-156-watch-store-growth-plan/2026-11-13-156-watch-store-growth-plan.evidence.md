@@ -122,3 +122,65 @@ Per new reading was 2.8 / 14.5 / 28.7 ms: now flat. Writing 57,000 rows through 
 ## Lead fix 2026-11-13 (a second cause of the growth)
 
 The agent's index made the duplicate check constant-time, but `FileWatchSessionStore.appendLocked` still held a local copy of the whole row array (`let loaded = loadRows()`) while it ran `rows?.append`. Two references to one buffer make that append copy the whole array (copy on write), so each append still cost more as the store grew (file store alone: 0.08 s / 0.29 s / 0.53 s per 1,000 appends at the start, middle and end of 20,000). The local copy is gone (`heldRow(for:)` returns only the row it finds); 20,000 appends through the engine and the file store now take about 2 s, not 6.8 s. S-15605 was rewritten from a wall-time bound (6.8 s against 8 s, and 35 s under Thread Sanitizer) to a ratio of the same machine's timings (the last 1,000 appends against the first 1,000, bound 3x): at HEAD sources it fails (14.0 s against 1.7 s allowed), with the change it passes in a normal and a Thread Sanitizer build.
+
+## Phase B part 2 — per-session reads and the pace cache (D-15605, S-15606, developer, 2026-11-13)
+
+`WatchSensorSampleLog` now holds `rowsBySession`, `newestBySession` and `countsBySessionKind` beside the
+exact `ids` set, and indexes each row on append (and rebuilds them on `prune`/`fill`). Reads are
+`samples(forSession:)`, `newest(forSession:)`, `count(forSession:kind:)` and `contains(sessionId:)`;
+`snapshot()` and `contains(where:)` had no callers left and are gone. The engine's `sensorSamples`,
+`newestSensorSamples()`, `announceEnergy`, the prune gate and `sessionEndEvent` read through the
+per-session views. `WatchLoggingState.paceWindowStart()` caches its answer against the session, the
+newest `gps` row's `sequence` and the session's `gps` row count.
+
+`prove-red HEAD swift-test --filter WatchStoreGrowthTests -- watch/watchos/Tests/WatchSessionEngineTests/WatchStoreGrowthTests.swift`
+
+> gateway: prove-red: the tests do not compile at HEAD — 20 errors, every one of them a missing
+> per-session member (`no member 'samples'`, `no member 'newest'`, `no member 'count'`,
+> `no member 'sensorRowsVisitedForTesting'`). No assertion can fail, so the guards are proven by
+> mutation instead.
+
+Mutations (original line recorded, changed, seen red, restored exactly, re-run green):
+
+| # | Original | Mutated to | Red at | Reason it fails |
+|---|---|---|---|---|
+| M1 | `let rows = rowsBySession[sessionId] ?? []` | `let rows = rowsBySession.values.flatMap { $0 }` (the whole-log scan HEAD does) | `:480`, `:485` | `("50010000") is not equal to ("10000")`: with 50,000 old readings a thousand ticks visit 50,010,000 rows |
+| M2 | the three-key cache hit (`sessionId`, `newestSequence`, `count`) | `if let cache = paceWindowCache {` | `:717` | `("1") is not equal to ("2")`: a new `gps` row reuses the stale window instead of recomputing it |
+| M3 | `existing.sequence >= row.sequence` (tie keeps the held row) | `existing.sequence > row.sequence` | `:604`, `:609`, `:629`, `:642` | `("hr": "…-hr-tie|3|117.0")` and `Optional(117.0)` vs `Optional(119.0)`: a tie replaces the newest beat |
+
+M3 first came back **green**, which was the mutation doing its job: the fixture's tie row carried
+`sequence: 2` while the session's newest beat was `sequence: 3`, so the tie was never a newest
+candidate. The tie row is now written by hand (the `growthSample` helper derives the record id from the
+sequence, so it cannot produce an equal sequence under a distinct id) and M3 fails for the tie reason
+above. The assertion `newest[heartRate]?.value == 119` — not just the brute-force comparison — is what
+makes it fail, so the rule is pinned directly.
+
+Green after the change:
+
+- `swift-test --filter WatchStoreGrowthTests`: **9 tests, 0 failures** (5.393 s).
+- Full `swift-test`: **1431 tests, 0 failures** in 35.9 s (1425 from the last run + 3 S-15606 + 1
+  throwaway measurement + 2 other runs' uncommitted tests in the working tree).
+- `swift-test --sanitize=thread --filter "WatchSensorSampleRaceTests|WatchEngineListRaceTests|WatchEngineSessionStateRaceTests|WatchStoreGrowthTests"`: **19 tests, 0 failures** in 28.4 s, no race reported.
+
+### Re-measurement at 1, 5 and 10 stored hours (throwaway test, same machine, debug build)
+
+Same harness on both sides: 5,700 rows per stored hour rotating the four kinds across ten old workouts,
+written straight to `watch-session.jsonl`; then a launch, a fresh running workout, 200 `gps` appends one
+second apart, and 1,000 reads of `WatchLoggingState.paceLabel` (the screen tick). "HEAD" is the same
+test file run against HEAD's sources through `prove-red` (it reported `GREEN AT HEAD`, as a measurement
+harness must — it is not a guard).
+
+| Stored outdoor hours | Rows | Per screen tick read, HEAD | Per screen tick read, with the change | Per new reading | Launch |
+|---|---|---|---|---|---|
+| 1 | 5,700 | 1,918.9 µs | 3.2 µs | 79 µs | 0.25 s |
+| 5 | 28,500 | 8,964.7 µs | 4.6 µs | 174 µs | 1.23 s |
+| 10 | 57,000 | 17,085.5 µs | 4.7 µs | 70 µs | 2.32 s |
+
+The tick read was linear in stored rows (1.9 → 9.0 → 17.1 ms, one filter and sort of the whole log per
+second) and is now flat at 3–5 µs: about 600× faster at one stored hour and 3,600× at ten. Per new
+reading and launch were already flat-ish/linear from Phase B and the store parse; neither is touched
+here. Two repeat runs inside the full suite measured the tick at 6.8 / 5.0 / 3.6 µs, the same shape.
+
+**Residue:** `watch/watchos/Tests/WatchSessionEngineTests/TempS156MeasureTests.swift` is the throwaway
+measurement above. `gateway.sh delete-scratch` refuses a path outside `test/zz_*`, so it is left for the
+governor to delete; it is the +1 in the 1431 count and nothing else refers to it.

@@ -15,23 +15,77 @@
 //  inside it: the store append stays outside, so a slow write never stalls a
 //  redraw, and no lock is ever held across an `await`.
 //
+//  The rows are grouped by session (plan 156, D-15605): a readout asks for one
+//  workout's readings every second, so a read of one session never touches
+//  another workout's rows, and the newest row of each kind is cached beside
+//  them on append instead of being found by a scan.
+//
 
 import Foundation
 
 final class WatchSensorSampleLog {
     private let lock = NSLock()
-    private var rows: [WatchSensorSampleRecord] = []
-    /// The ids `rows` holds, so an append is a lookup rather than a scan of
+    /// The rows grouped by the session that produced them, in arrival order
+    /// within a session (D-15605): a one-second readout asks for one workout's
+    /// readings, and visiting every workout's rows per tick made the readout's
+    /// cost grow with everything ever stored.
+    private var rowsBySession: [String: [WatchSensorSampleRecord]] = [:]
+    /// The newest row of each kind per session, maintained on append. The
+    /// greatest `sequence` wins; on an equal `sequence` the row already held
+    /// keeps its place, which is the rule `newestSensorSamples()` applied when
+    /// it scanned the whole log.
+    private var newestBySession: [String: [String: WatchSensorSampleRecord]] = [:]
+    /// How many rows of each kind a session holds, so a consumer can tell a new
+    /// reading from a re-read without walking the rows (the pace window's cache
+    /// key, S-15606).
+    private var countsBySessionKind: [String: [String: Int]] = [:]
+    /// The ids the log holds, so an append is a lookup rather than a scan of
     /// every reading ever stored (D-15604). Exact: `append`, `prune` and `fill`
     /// are its only writers.
     private var ids: Set<String> = []
 
-    /// The rows as they were when the lock was taken. The copy belongs to the
-    /// caller, so filtering or scanning it needs no lock.
-    func snapshot() -> [WatchSensorSampleRecord] {
+    /// How many stored rows the per-session reads have returned so far — the
+    /// count S-15606 bounds a tick's cost by, instead of wall time. Read-only
+    /// and internal: no production behaviour depends on it.
+    var rowsVisitedForTesting: Int {
         lock.lock()
         defer { lock.unlock() }
+        return rowsRead
+    }
+
+    private var rowsRead = 0
+
+    /// One session's rows, in the order they arrived. The copy belongs to the
+    /// caller, so scanning it needs no lock.
+    func samples(forSession sessionId: String) -> [WatchSensorSampleRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        let rows = rowsBySession[sessionId] ?? []
+        rowsRead += rows.count
         return rows
+    }
+
+    /// One session's newest row per kind. The copy belongs to the caller.
+    func newest(forSession sessionId: String) -> [String: WatchSensorSampleRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        let newest = newestBySession[sessionId] ?? [:]
+        rowsRead += newest.count
+        return newest
+    }
+
+    /// How many of `kind` the session holds, without visiting a row.
+    func count(forSession sessionId: String, kind: String) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return countsBySessionKind[sessionId]?[kind] ?? 0
+    }
+
+    /// Whether the log holds any reading for `sessionId`.
+    func contains(sessionId: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !(rowsBySession[sessionId] ?? []).isEmpty
     }
 
     /// Adds `row` unless its id is already held. The store treats the same
@@ -42,28 +96,44 @@ final class WatchSensorSampleLog {
         lock.lock()
         defer { lock.unlock() }
         guard !ids.contains(row.recordId) else { return }
-        rows.append(row)
         ids.insert(row.recordId)
-    }
-
-    func contains(where predicate: (WatchSensorSampleRecord) -> Bool) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return rows.contains(where: predicate)
+        index(row)
     }
 
     func prune(where predicate: (WatchSensorSampleRecord) -> Bool) {
         lock.lock()
         defer { lock.unlock() }
-        rows.removeAll(where: predicate)
-        ids = Set(rows.map(\.recordId))
+        rebuild(keeping: rowsBySession.values.flatMap { $0 }.filter { !predicate($0) })
     }
 
     /// Fills the log with what storage holds, as `restore` does.
     func fill(with stored: [WatchSensorSampleRecord]) {
         lock.lock()
         defer { lock.unlock() }
-        rows = stored
+        rebuild(keeping: stored)
+    }
+
+    /// Adds `row` to the per-session views. The caller holds the lock.
+    private func index(_ row: WatchSensorSampleRecord) {
+        rowsBySession[row.sessionId, default: []].append(row)
+        if let existing = newestBySession[row.sessionId]?[row.kind],
+           existing.sequence >= row.sequence {
+            // A tie keeps the row already held, as the whole-log reduction did.
+        } else {
+            newestBySession[row.sessionId, default: [:]][row.kind] = row
+        }
+        countsBySessionKind[row.sessionId, default: [:]][row.kind, default: 0] += 1
+    }
+
+    /// Replaces the log with `stored`, rebuilding every per-session view. The
+    /// caller holds the lock.
+    private func rebuild(keeping stored: [WatchSensorSampleRecord]) {
         ids = Set(stored.map(\.recordId))
+        rowsBySession = [:]
+        newestBySession = [:]
+        countsBySessionKind = [:]
+        for row in stored {
+            index(row)
+        }
     }
 }

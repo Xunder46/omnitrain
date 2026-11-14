@@ -230,6 +230,19 @@ public final class WatchLoggingState {
     /// two are remembered apart.
     private var announcedPersonalRecordUntil: Date?
 
+    /// The pace window last computed, and the stored `gps` row state it was
+    /// computed from: the session, its newest `gps` sequence and its `gps` row
+    /// count. The readout is rebuilt every second, so without this the filter
+    /// and sort of every fix in the session ran on every tick (plan 156
+    /// D-15605). A miss recomputes exactly as before.
+    private var paceWindowCache: (
+        sessionId: String, newestSequence: Int, count: Int, start: Date?
+    )?
+
+    /// How many times the pace window's filter and sort have run, for the test
+    /// that pins the cache (S-15606). No production behaviour reads it.
+    private(set) var paceWindowComputationsForTesting = 0
+
     /// Values the user has dialled in but not confirmed, by exercise slot and
     /// then metric key. Cleared on confirm, at which point the values come back
     /// from the logged observation (for a set) or start fresh (for measured
@@ -510,7 +523,28 @@ public final class WatchLoggingState {
     /// the one before it means the platform's cumulative counter restarted — the
     /// steps rule (D-125) — so the run after the last such drop is the one the
     /// newest reading belongs to. Nil with no fix: there is no window to time.
+    ///
+    /// The answer is cached against the session's newest `gps` row and its row
+    /// count (S-15606), so the filter and sort run once per fix, not once per
+    /// one-second redraw.
     private func paceWindowStart() -> Date? {
+        guard let sessionId = engine.session?.sessionId else { return nil }
+        let newestSequence = engine.newestSensorSamples()[WatchSensorKind.gps]?.sequence ?? 0
+        let count = engine.sensorSampleCount(forSession: sessionId, kind: WatchSensorKind.gps)
+        if let cache = paceWindowCache,
+           cache.sessionId == sessionId,
+           cache.newestSequence == newestSequence,
+           cache.count == count {
+            return cache.start
+        }
+
+        let start = computePaceWindowStart()
+        paceWindowComputationsForTesting += 1
+        paceWindowCache = (sessionId, newestSequence, count, start)
+        return start
+    }
+
+    private func computePaceWindowStart() -> Date? {
         let fixes = engine.sensorSamples
             .filter { $0.kind == WatchSensorKind.gps && $0.value.isFinite }
             .sorted { ($0.recordedAt, $0.sequence) < ($1.recordedAt, $1.sequence) }

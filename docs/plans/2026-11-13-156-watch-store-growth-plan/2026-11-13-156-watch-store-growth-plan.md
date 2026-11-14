@@ -60,9 +60,9 @@ Owner device check after build: a watch that has recorded since October launches
 | A | Phase gate | Complete — 5/5 growth, 39/39 sensor, full `swift-test` 1425/0 |
 | B | D-15604 id index (three logs + file store) | Done. Guard `testS15605TwentyThousandAppendsStayInsideTheBound`, red at HEAD at 98.2 s |
 | B | S-15605 20,000 appends inside the bound | Done — 6.55 s / 6.48 s against 8 s, counts and duplicate behaviour asserted |
-| B | D-15605 per-session reads, S-15606 rows-visited | **Not done** — left for the next run; nothing half-built |
-| B | Re-measurement table at 1, 5, 10 stored hours | **Not done** — belongs with D-15605, whose effect it would show |
-| C | doc sentence in `docs/state_management/watch_sensors.md` | Done — the bounded-readings bullet, naming all five S-156 tests |
+| B | D-15605 per-session reads, S-15606 rows-visited | Done — rows grouped by session, newest-per-kind and per-kind counts indexed on append, the pace window cached against the session's newest `gps` sequence and count. Guards red by mutation M1/M2/M3 (HEAD cannot compile the tests); full `swift-test` 1431/0, TSan 19/0 |
+| B | Re-measurement table at 1, 5, 10 stored hours | Done — per screen tick read 1,918.9 → 3.2 µs at 1 h and 17,085.5 → 4.7 µs at 10 h, now flat; table in the evidence file |
+| C | doc sentence in `docs/state_management/watch_sensors.md` | Done — the bounded-readings bullet, naming all five S-156 tests (the S-15606 names added with part 2) |
 | C | evidence + review | Evidence done (this run); review not started |
 
 ## Assumption Log
@@ -89,4 +89,10 @@ Owner device check after build: a watch that has recorded since October launches
   the per-append fsync, which D-15604 does not touch, and HEAD measures 98 s, so 8 s still separates
   the two by an order of magnitude. The bound is the plan's; a device or loaded-CI margin is the
   owner's call.
+- **A-156-06** One read beyond D-15605's three: `count(forSession:kind:)`, the pace window's second
+  cache key. The newest `gps` row's `sequence` alone catches an appended fix, but a prune can drop a
+  fix the window was computed from without moving the newest one, so the count invalidates that too.
+- **A-156-07** The pace cache lives on `WatchLoggingState` (a tuple plus a hit counter), not on the
+  engine: the window start is a readout fact, and a rebuilt screen recomputes it once. Memoizing it on
+  the engine would put a view's cache in the state/derivation layer D-15605 leaves alone.
 

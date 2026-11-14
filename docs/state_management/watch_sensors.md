@@ -542,7 +542,13 @@ phone never confirms — once it is older than
 with nothing to drop does not rewrite the file
 (`…testS15604APruneThatDropsNothingDoesNotRewriteTheFile`), and 20,000 appends
 stay inside a fixed budget because no append scans what is already stored
-(`…testS15605TwentyThousandAppendsStayInsideTheBound`).
+(`…testS15605TwentyThousandAppendsStayInsideTheBound`); and a screen's
+one-second reads ask only for the current workout's rows and reuse the pace
+window's filter and sort until a new `gps` row arrives, so a tick costs the
+same whatever other workouts stored
+(`…testS15606AThousandTicksVisitTheCurrentSessionsRowsOnly`,
+`…testS15606ThePaceWindowIsCachedUntilANewGpsRowArrives`,
+`…testS15606ThePerSessionViewsMatchABruteForceFilter`).
 - **A prune that cannot be written replaces nothing, and a pruned row takes its
 lens with it.** The file keeps its rows and the cache keeps reading them, with no
 staging file left in the store's directory (`WatchFileStoreTests`
