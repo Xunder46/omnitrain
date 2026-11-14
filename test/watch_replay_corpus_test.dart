@@ -18,7 +18,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:omnitrain/watch/session/watch_records.dart';
 import 'helpers/sync_protocol_harness.dart';
 import 'helpers/watch_pair_harness.dart';
 import 'helpers/watch_replay_recorder.dart';
@@ -160,7 +160,7 @@ const List<_Source> kCorpusSources = [
       _Step('phoneStart'),
       _Step('phoneFinish'),
     ],
-    tags: ['frame-prefix', 'refused-queued'],
+    tags: ['entry', 'frame-prefix', 'refused-queued'],
   ),
   _Source(
     'trace-f2',
@@ -172,12 +172,13 @@ const List<_Source> kCorpusSources = [
       _Step('phoneRest'),
       _Step('rise'),
     ],
+    tags: ['entry'],
   ),
   _Source(
     'trace-f3',
     kind: 'trace',
     steps: [_Step('phoneStart'), _Step('phoneRest'), _Step('phoneDiscard')],
-    tags: ['timer', 'frame-prefix'],
+    tags: ['timer', 'entry', 'frame-prefix'],
   ),
   _Source(
     'trace-f4',
@@ -189,7 +190,7 @@ const List<_Source> kCorpusSources = [
       _Step('phoneStart'),
       _Step('wristFinish'),
     ],
-    tags: ['multi-session', 'frame-prefix'],
+    tags: ['multi-session', 'entry', 'frame-prefix'],
   ),
   _Source(
     'trace-f5',
@@ -200,7 +201,7 @@ const List<_Source> kCorpusSources = [
       _Step('phoneDiscard'),
       _Step('phoneStart'),
     ],
-    tags: ['multi-session'],
+    tags: ['multi-session', 'entry'],
   ),
   _Source(
     'trace-f6',
@@ -240,7 +241,7 @@ const List<_Source> kCorpusSources = [
       _Step('wristFinish'),
       _Step('wristStart'),
     ],
-    tags: ['multi-session', 'refused-queued'],
+    tags: ['multi-session', 'entry', 'refused-queued'],
   ),
   _Source(
     'trace-a2',
@@ -445,12 +446,6 @@ Map<String, Object?> _manifest(List<_Source> sources) => {
   'classes': ['status', 'entries', 'timers', 'current'],
   'allowlist': [
     {
-      'id': 'A-152a',
-      'what': "the wrist's session-end observation `end-<sessionId>` is "
-          'excluded from `entries` on both sides',
-      'owner': 'the Swift row-logs owner (plan 150)',
-    },
-    {
       'id': 'A-152b',
       'what': 'timer adoption can move the wrist to another exercise on '
           'Swift only; the summary does not read `currentExerciseIndex`',
@@ -572,7 +567,13 @@ void main() {
     expect(sessions, hasLength(1), reason: 'one workout, one session');
     final session = sessions.values.single! as Map;
     expect(session['status'], 'completed');
-    expect(session['entries'], isEmpty, reason: 'F-2 logs no set');
+    expect(
+      session['entries'],
+      // Plan 160 D-16002/D-16006: the twin captures the session's end, and the
+      // summary no longer excludes it, so an ended session carries it.
+      [WatchSessionCapture.sessionEndId(sessions.keys.single)],
+      reason: 'F-2 logs no set: the only entry is the session\'s own end',
+    );
   });
 
   test('S-15202 every corpus recording replays into a fresh Dart wrist and '
@@ -659,6 +660,44 @@ void main() {
       _unstableValues(raw, raw: true),
       isNotEmpty,
       reason: 'the scan must see the phone-minted values it protects against',
+    );
+  });
+
+  test('S-15203 a derived session-end id canonicalizes to end-<the session '
+      'id\'s alias>', () {
+    ReplayCanonicalizer freshCanonicalizer() =>
+        ReplayCanonicalizer.forValues(
+          gridStartMs: 1000,
+          grid: const {1000},
+          roots: const <Object?>[],
+        );
+    const rawSessionId = 'session-1753212345678';
+    final rawEndId = WatchSessionCapture.sessionEndId(rawSessionId);
+
+    // The phone-minted session id's alias is the recording's own rule…
+    final sessionAlias =
+        freshCanonicalizer().canonicalize(rawSessionId)! as String;
+    // …and its end is that alias, not a second opaque one. Before the derived
+    // rule the recording carried `x-2` for the end while a replay, whose
+    // session id is already `x-1`, derived `end-x-1`.
+    expect(
+      freshCanonicalizer().canonicalize(rawEndId),
+      WatchSessionCapture.sessionEndId(sessionAlias),
+    );
+
+    // Meeting the end first mints no separate alias: the session id later reads
+    // the same alias, so the pair is one value whichever order it is met in.
+    final endFirst = freshCanonicalizer();
+    final endAlias = endFirst.canonicalize(rawEndId)! as String;
+    expect(endAlias, WatchSessionCapture.sessionEndId(sessionAlias));
+    expect(endFirst.canonicalize(rawSessionId), sessionAlias);
+    expect(endAlias, isNot(contains('1753212345678')));
+
+    // The replay side reads canonical ids only, so its derived end id is
+    // already the stable form the recording writes.
+    expect(
+      freshCanonicalizer().canonicalize(WatchSessionCapture.sessionEndId('x-2')),
+      WatchSessionCapture.sessionEndId('x-2'),
     );
   });
 

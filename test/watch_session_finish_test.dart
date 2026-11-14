@@ -150,13 +150,16 @@ class _Phone {
       transport.ofType('session_lifecycle');
 }
 
-Future<_Phone> _phone(WorkoutRepository repository) async {
+Future<_Phone> _phone(
+  WorkoutRepository repository, {
+  DateTime Function()? bridgeClock,
+}) async {
   final failures = <Object>[];
   final skipped = <({String held, String offered})>[];
   final transport = CaptureTransport();
   final bridge = WatchSessionAdoptionBridge(
     repository: repository,
-    clock: () => _phoneNow,
+    clock: bridgeClock ?? () => _phoneNow,
     onFailure: (error, stack) => failures.add(error),
     onSkipped: (held, offered) => skipped.add((held: held, offered: offered)),
   );
@@ -1299,7 +1302,13 @@ void main() {
       'session stays over',
       () async {
         final repository = await _repository();
-        final phone = await _phone(repository);
+        // The session starts on the real clock, so the bridge's clock must read
+        // after the 45-minute end too: plan 164 bounds a later end at the
+        // receiving device's now plus five minutes (S-16401).
+        final phone = await _phone(
+          repository,
+          bridgeClock: () => DateTime.now().toUtc().add(const Duration(hours: 2)),
+        );
         final sessionId = await _startPhoneSession(phone, repository);
         final started = phone.state.currentSession!.startedAtMs;
         final t1 = started + 20 * 60 * 1000;
@@ -1453,7 +1462,9 @@ void main() {
       );
       expect(
         engine.observations.map((row) => row.kind),
-        ['set', 'rest'],
+        // Plan 160 D-16002: the end is captured after the stop it reports and
+        // before the terminal row is built.
+        ['set', 'rest', WatchObservationKind.sessionEnd],
         reason: 'S-322 the rest is written before the terminal row is built',
       );
 
@@ -1495,7 +1506,9 @@ void main() {
       );
       expect(
         relaunched.observations.map((row) => row.kind),
-        ['set', 'rest'],
+        // Plan 160 D-16002: the end the finish recorded survives the restart
+        // with the observations it was captured behind.
+        ['set', 'rest', WatchObservationKind.sessionEnd],
         reason:
             'S-331 the rest the end reported is stored, so the phone still '
             'owes it a receipt',

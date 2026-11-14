@@ -5,17 +5,25 @@
   "events": [
     {"t":"frame","clockMs":1794301280000,"envelope":{"protocolVersion":1,"messageId":"x-1","sessionId":"x-2","type":"session_snapshot","origin":"phone","sentAt":"2026-11-10T09:01:20.000Z","payload":{"sessionId":"x-2","status":"active","revision":1,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"x-3","exerciseId":"ex-run","name":"Run","effortKind":"set","capabilities":["time","distance"],"plannedSets":[{"reps":10}]}],"entries":[],"timers":{}}}},
     {"t":"frame","clockMs":1794301280000,"envelope":{"protocolVersion":1,"messageId":"x-4","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:01:20.000Z","payload":{"state":"completed","at":"2026-11-10T09:01:20.000Z"}}},
-    {"t":"frame","clockMs":1794301311000,"envelope":{"protocolVersion":1,"messageId":"x-5","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:01:51.000Z","payload":{"state":"completed","at":"2026-11-10T09:01:51.000Z"}}},
-    {"t":"frame","clockMs":1794301311000,"envelope":{"protocolVersion":1,"messageId":"x-6","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:01:51.000Z","payload":{"state":"completed","at":"2026-11-10T09:01:51.000Z"}}},
-    {"t":"frame","clockMs":1794301342000,"envelope":{"protocolVersion":1,"messageId":"x-7","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:02:22.000Z","payload":{"state":"completed","at":"2026-11-10T09:02:22.000Z"}}},
-    {"t":"frame","clockMs":1794301342000,"envelope":{"protocolVersion":1,"messageId":"x-8","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:02:22.000Z","payload":{"state":"completed","at":"2026-11-10T09:02:22.000Z"}}}
+    {"t":"frame","clockMs":1794301280000,"envelope":{"protocolVersion":1,"messageId":"x-5","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:01:20.000Z","payload":{"entryIds":["end-x-2"]}}},
+    {"t":"frame","clockMs":1794301280000,"envelope":{"protocolVersion":1,"messageId":"x-6","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:01:20.000Z","payload":{"state":"completed","at":"2026-11-10T09:01:20.000Z"}}},
+    {"t":"frame","clockMs":1794301311000,"envelope":{"protocolVersion":1,"messageId":"x-7","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:01:51.000Z","payload":{"entryIds":["end-x-2"]}}},
+    {"t":"frame","clockMs":1794301311000,"envelope":{"protocolVersion":1,"messageId":"x-8","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:01:51.000Z","payload":{"state":"completed","at":"2026-11-10T09:01:51.000Z"}}},
+    {"t":"frame","clockMs":1794301311000,"envelope":{"protocolVersion":1,"messageId":"x-9","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:01:51.000Z","payload":{"entryIds":["end-x-2"]}}},
+    {"t":"frame","clockMs":1794301311000,"envelope":{"protocolVersion":1,"messageId":"x-10","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:01:51.000Z","payload":{"state":"completed","at":"2026-11-10T09:01:51.000Z"}}},
+    {"t":"frame","clockMs":1794301342000,"envelope":{"protocolVersion":1,"messageId":"x-11","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:02:22.000Z","payload":{"entryIds":["end-x-2"]}}},
+    {"t":"frame","clockMs":1794301342000,"envelope":{"protocolVersion":1,"messageId":"x-12","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:02:22.000Z","payload":{"state":"completed","at":"2026-11-10T09:02:22.000Z"}}},
+    {"t":"frame","clockMs":1794301342000,"envelope":{"protocolVersion":1,"messageId":"x-13","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:02:22.000Z","payload":{"entryIds":["end-x-2"]}}},
+    {"t":"frame","clockMs":1794301342000,"envelope":{"protocolVersion":1,"messageId":"x-14","sessionId":"x-2","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:02:22.000Z","payload":{"state":"completed","at":"2026-11-10T09:02:22.000Z"}}}
   ],
   "expected": {
     "current": "x-2",
     "sessions": {
       "x-2": {
         "status": "completed",
-        "entries": [],
+        "entries": [
+          "end-x-2"
+        ],
         "timers": {}
       }
     }

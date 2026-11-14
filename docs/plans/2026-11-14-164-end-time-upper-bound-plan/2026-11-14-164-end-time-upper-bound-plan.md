@@ -411,9 +411,24 @@ row and re-send forever).
 
 ## Progress
 
-- [ ] Phase 1 — clamp primitive + adoption bridge (@developer)
-- [ ] Phase 2 — importer clamp (@developer)
-- [ ] Phase 3 — docs delta + residue sweep (@developer)
+- [x] Phase 1 — clamp primitive + adoption bridge (@developer) — landed; `kFutureEndClampMs` +
+      `clampFutureEndMs` + bridge `_boundedEnd` at both end-writing sites, group `S-164 end-time
+      upper bound` 4/4 green, prove-red RED AT HEAD. Evidence: `<plan>.evidence.md` §Phase 1.
+- [x] Phase 2 — importer clamp (@developer) — landed; `_End.parse` bounds (floored at the start) and
+      `_catchUpEnd` bounds `latest`, writing only when it moves the end out; new file
+      `test/watch_session_import_end_clamp_test.dart` 6/6 green, prove-red RED AT HEAD. Evidence:
+      `<plan>.evidence.md` §Phase 2.
+- [x] Phase 3 — docs delta + residue sweep (@developer) — three docs updated (one clause, one
+      sentence, one sentence + amendment row, no version bump), residue sweep shows zero unbounded
+      writers, `docs_indexing_contract_test` 13/13. Evidence: `<plan>.evidence.md` §Phase 3.
+- [ ] BLOCKED (stop-and-report, not this plan's files): the two existing tests turn red on the bound
+      and were left untouched. (1) `test/watch_session_adoption_bridge_test.dart` `S-15403 a completed
+      ends the open phone session at the wrist's own instant` — its fixture stamps the wrist end 10 min
+      after the bridge clock. (2) `test/watch_session_finish_test.dart:1318` `S-14609 a later completed
+      moves the end to the later instant` — it injects `_phoneNow = 2026-10-05 12:00` but takes the
+      start from the real clock, so its `+45 min` end lands six weeks beyond the bound. Both are
+      fixture clock mismatches, not implementation faults; options in `<plan>.evidence.md`
+      §"Existing test red".
 
 ## Assumption Log
 
@@ -435,6 +450,24 @@ REVERT.)*
 - A-164-05 `_End.parse` receives the apply-time clock (when the inbox drains), not the arrival
   clock: the receiver's clock at decision time is what the rule names, and apply time is when the
   decision is made. No veto expected.
+- A-164-06 (executor) The `abandoned` branch's `endsBeforeHeldMsByMoreThanSkew(atMs, held.endedAtMs!)`
+  comparison is NOT clamped: D-16403 names the two end-writing sites, and the comparison writes
+  nothing. If it were clamped, an in-bound discard could stop beating an out-of-bound end.
+- A-164-07 (executor) The importer's library doc says values come "never from the phone's clock at
+  import time"; the parse clamp is now the documented exception, stated in `_End.parse`'s comment
+  instead of rewriting the library header (keep the diff minimal).
+- A-164-08 (executor) S-16408/S-16409's fixtures gained one set row each: an end-only frame imports
+  nothing (the pass consumes it), so the scenarios need a row inside the window. No expectation
+  changed.
+- A-164-09 (executor) `test/watch_session_adoption_bridge_test.dart`'s `_phone` helper gained a
+  `bridgeClock:` parameter (default the previous hard-coded `_adoptedAt`) so a scenario can move the
+  bridge's clock; no existing test's value changed.
+- A-164-10 (executor) `S-15403` (an existing test, not this plan's) turns red because its fixture
+  stamps the wrist end 10 minutes after the bridge clock. Left untouched per the stop-and-report
+  rule; four options are listed for the governor in the evidence file.
+- A-164-11 (executor) `S-14609` in `test/watch_session_finish_test.dart` turns red the same way: it
+  injects a 2026-10-05 phone clock but takes the session start from the real one, so a +45 min wrist
+  end lands six weeks out. Untouched; options in the evidence file §"Existing test red #2".
 
 ## Open questions
 

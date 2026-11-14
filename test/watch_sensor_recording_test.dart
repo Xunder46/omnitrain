@@ -737,10 +737,16 @@ void main() {
         );
         await engine.confirmObservations(['e-1']);
         await engine.finishSession();
+        // Plan 160 D-16002: the end is an observation the phone confirms like
+        // any other; until it does, the session still holds its log back (the
+        // next test).
+        await engine.confirmObservations([
+          for (final row in engine.observations) row.entryId,
+        ]);
 
         expect(await engine.pruneSettledSensorSamples(), hasLength(1));
         expect(engine.sensorSamples, isEmpty);
-        expect(engine.observations, hasLength(1));
+        expect(engine.observations, hasLength(2));
       },
     );
 

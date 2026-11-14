@@ -111,13 +111,13 @@ final class WatchReplayTests: XCTestCase {
     /// stored observation ids, the newest timer row per kind, and the held
     /// session.
     ///
-    /// `excludingSessionEnd` is A-152a's switch: Swift stores the session-end
-    /// observation `end-<sessionId>` and the Dart twin does not, so the reader
-    /// drops exactly those ids on both sides (S-15210 proves it is doing work).
+    /// Nothing is excluded. Both engines store the session's end as the
+    /// observation `end-<sessionId>` (plan 160 D-16002), so the entry set the
+    /// two summaries compare carries it on both sides — `testS15210TheSessionEndIsHeldOnBothSides`
+    /// holds that, and its dropped-end arm proves the comparison sees it.
     static func readSummary(
         _ contents: WatchStoreContents,
-        current: String?,
-        excludingSessionEnd: Bool = true
+        current: String?
     ) -> Summary {
         var newestStatus: [String: String] = [:]
         for row in contents.sessions {
@@ -128,7 +128,6 @@ final class WatchReplayTests: XCTestCase {
         for observation in contents.observations {
             let sessionId = observation.sessionId
             guard newestStatus[sessionId] != nil else { continue }
-            if excludingSessionEnd && isSessionEndObservation(observation) { continue }
             entries[sessionId, default: []].insert(observation.entryId)
         }
 
@@ -150,12 +149,6 @@ final class WatchReplayTests: XCTestCase {
             )
         }
         return Summary(current: current, sessions: sessions)
-    }
-
-    /// A-152a: the session-end observation the Swift wrist stores and the Dart
-    /// twin does not. The summary excludes exactly these ids on both sides.
-    static func isSessionEndObservation(_ observation: WatchObservationRecord) -> Bool {
-        observation.entryId == WatchSessionCapture.sessionEndId(observation.sessionId)
     }
 
     static func milliseconds(_ instant: Date) -> Int {
@@ -488,8 +481,8 @@ final class WatchReplayTests: XCTestCase {
         let expected = try XCTUnwrap(sessions.values.first as? [String: Any])
         XCTAssertEqual(expected["status"] as? String, WatchSessionStatus.completed)
         XCTAssertEqual(
-            (expected["entries"] as? [String])?.count, 3,
-            "S-15205's fixture logs three entries"
+            (expected["entries"] as? [String])?.count, 4,
+            "S-15205's fixture logs three entries and the session's own end"
         )
         XCTAssertEqual(
             (expected["timers"] as? [String: Any])?.isEmpty, true,
@@ -529,59 +522,108 @@ final class WatchReplayTests: XCTestCase {
         Self.assertOutcome(outcome, for: recording)
     }
 
-    // MARK: - S-15210 — the allowlist is structural
+    // MARK: - S-15210 — both wrists hold the session end
 
-    func testS15210TheAllowlistIsStructural() async throws {
+    /// Plan 160 closed A-152a: the Dart twin captures the session's end too, so
+    /// the two summaries carry `end-<sessionId>` on both sides and the
+    /// comparison no longer hides it. This holds the new truth on the recording
+    /// with a phone-minted session id — the one the exclusion was needed for.
+    func testS15210TheSessionEndIsHeldOnBothSides() async throws {
         let recording = try Self.recording(named: "trace-s14501")
         let result = try await Self.replay(recording)
 
-        let ended = result.contents.sessions.map(\.sessionId)
-        let sessionEnds = result.contents.observations.filter(Self.isSessionEndObservation)
-        let whereEndsLive = ended.filter { id in
-            sessionEnds.contains { $0.sessionId == id }
+        let ended = Set(result.contents.sessions.compactMap { row -> String? in
+            row.status == WatchSessionStatus.completed || row.status == WatchSessionStatus.abandoned
+                ? row.sessionId
+                : nil
+        })
+        XCTAssertFalse(ended.isEmpty, "S-15210's fixture ends a session")
+
+        var storedEnds: [String: String] = [:]
+        for observation in result.contents.observations {
+            let endId = WatchSessionCapture.sessionEndId(observation.sessionId)
+            if observation.entryId == endId {
+                storedEnds[observation.sessionId] = endId
+            }
         }
-        XCTAssertFalse(
-            whereEndsLive.isEmpty,
-            "A-152a: the Swift store holds no session-end observation for a completed "
-                + "session, so the fixture cannot prove the filter is doing work"
+        XCTAssertEqual(
+            Set(storedEnds.keys), ended,
+            "plan 160 D-16002: the Swift store holds `end-<sessionId>` for every "
+                + "completed or abandoned session"
         )
 
-        let filtered = Self.readSummary(
-            result.contents,
-            current: result.summary.current,
-            excludingSessionEnd: true
-        )
-        let unfiltered = Self.readSummary(
-            result.contents,
-            current: result.summary.current,
-            excludingSessionEnd: false
-        )
-        XCTAssertEqual(filtered, result.summary, "the replay heightens with the filter on")
-        XCTAssertNotEqual(
-            filtered,
-            unfiltered,
-            "A-152a: dropping the session-end filter must change `entries` — if it does "
-                + "not, this recording cannot prove the allowlist is structural"
-        )
+        let expectedSessions = try XCTUnwrap(recording.expected["sessions"] as? [String: Any])
+        for (sessionId, endId) in storedEnds {
+            let entries = try Self.stringList(
+                (expectedSessions[sessionId] as? [String: Any])?["entries"],
+                in: "entries of \(sessionId)"
+            )
+            XCTAssertTrue(
+                entries.contains(endId),
+                "the Dart recording holds \(endId) for \(sessionId): \(entries)"
+            )
+        }
 
-        let outcome = try Self.outcome(filtered, expected: recording.expected)
-        Self.assertOutcome(outcome, for: recording)
-
-        // The same comparison with the filter off: the difference the allowlist
-        // hides, named — the shape the mutation in the evidence file produces.
-        let unfilteredOutcome = try Self.outcome(unfiltered, expected: recording.expected)
-        print("S-15210 filter-off classes=\(unfilteredOutcome.classes.joined(separator: ",")) "
-            + "diffs=\(unfilteredOutcome.diffs)")
+        let outcome = try Self.outcome(result.summary, expected: recording.expected)
         XCTAssertTrue(
-            unfilteredOutcome.classes.contains("entries"),
-            "A-152a: without the filter the difference must be bucketed as `entries`"
+            outcome.isEmpty,
+            "A-152a closed: the Dart and Swift summaries agree — "
+                + outcome.diffs.joined(separator: "; ")
+        )
+    }
+
+    // MARK: - S-15211 — the comparison sees the end
+
+    /// S-15210's mutation arm: the end is compared, not filtered around.
+    /// Dropping it from either side is reported as an `entries` difference that
+    /// names the id — the shape the exclusion used to hide.
+    func testS15211DroppingAnEndFromEitherSideIsReportedAsAnEntriesDiff() async throws {
+        let recording = try Self.recording(named: "trace-s14501")
+        let result = try await Self.replay(recording)
+
+        let sessions = try XCTUnwrap(recording.expected["sessions"] as? [String: Any])
+        let sessionId = try XCTUnwrap(sessions.keys.sorted().first)
+        let endId = WatchSessionCapture.sessionEndId(sessionId)
+        let entries = try Self.stringList(
+            (sessions[sessionId] as? [String: Any])?["entries"],
+            in: "entries of \(sessionId)"
+        )
+        XCTAssertTrue(entries.contains(endId), "the Dart side holds \(endId)")
+
+        // The Swift side drops its end.
+        let swiftWithoutEnd = Self.readSummary(
+            WatchStoreContents(
+                sessions: result.contents.sessions,
+                observations: result.contents.observations.filter { $0.entryId != endId },
+                timers: result.contents.timers
+            ),
+            current: result.summary.current
+        )
+        let swiftOutcome = try Self.outcome(swiftWithoutEnd, expected: recording.expected)
+        XCTAssertTrue(
+            swiftOutcome.classes.contains("entries"),
+            "dropping the Swift end must be an `entries` diff: \(swiftOutcome.diffs)"
         )
         XCTAssertTrue(
-            whereEndsLive.contains { sessionId in
-                unfilteredOutcome.diffs.contains { $0.contains(WatchSessionCapture.sessionEndId(sessionId)) }
-            },
-            "A-152a: the unfiltered diff must name the session-end id it hides — "
-                + "\(whereEndsLive) vs \(unfilteredOutcome.diffs)"
+            swiftOutcome.diffs.contains { $0.contains(endId) },
+            "the diff must name the dropped id \(endId): \(swiftOutcome.diffs)"
+        )
+
+        // The Dart side drops its end.
+        var expectedWithoutEnd = recording.expected
+        var expectedSessions = sessions
+        var expectedSession = try XCTUnwrap(sessions[sessionId] as? [String: Any])
+        expectedSession["entries"] = entries.filter { $0 != endId }
+        expectedSessions[sessionId] = expectedSession
+        expectedWithoutEnd["sessions"] = expectedSessions
+        let dartOutcome = try Self.outcome(result.summary, expected: expectedWithoutEnd)
+        XCTAssertTrue(
+            dartOutcome.classes.contains("entries"),
+            "dropping the Dart end must be an `entries` diff: \(dartOutcome.diffs)"
+        )
+        XCTAssertTrue(
+            dartOutcome.diffs.contains { $0.contains(endId) },
+            "the diff must name the dropped id \(endId): \(dartOutcome.diffs)"
         )
     }
 

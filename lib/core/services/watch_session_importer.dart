@@ -21,9 +21,12 @@
 /// reach the same rows in any arrival order (S-262).
 library;
 
+import 'dart:math' as math;
+
 import 'watch_routine_matcher.dart';
 import '../constants/block_types.dart';
 import '../constants/metric_ids.dart';
+import '../sync_protocol/end_skew.dart';
 import '../sync_protocol/wire_limits.dart';
 import '../utils/entry_rows.dart';
 import '../utils/logged_entry_rows.dart';
@@ -80,6 +83,9 @@ class WatchSessionImporter {
 
   final WorkoutRepository _repository;
   final DateTime Function() _clock;
+
+  /// The receiver's clock at decision time, as the plan-164 bound reads it.
+  int _nowMs() => _clock().toUtc().millisecondsSinceEpoch;
 
   static const String _completed = 'completed';
 
@@ -164,7 +170,7 @@ class WatchSessionImporter {
     ];
     if (unapplied.isEmpty) return const WatchSessionImport();
 
-    final end = _End.parse(endRow);
+    final end = _End.parse(endRow, nowMs: _nowMs());
     if (end != null && end.followed) {
       return _applyFollowedEnd(watchSessionId, endRow, end);
     }
@@ -223,6 +229,7 @@ class WatchSessionImporter {
       repository: _repository,
       sessionId: watchSessionId,
       end: end,
+      nowMs: _nowMs(),
     );
     await pass.run(
       existing: existing,
@@ -258,6 +265,7 @@ class WatchSessionImporter {
       repository: _repository,
       sessionId: watchSessionId,
       end: end,
+      nowMs: _nowMs(),
     );
     if (end.status == _completed &&
         await _repository.getSession(watchSessionId) != null) {
@@ -318,12 +326,15 @@ class WatchSessionImporter {
           row.origin == WatchInboxEntry.originWatch &&
           row.kind == WatchInboxEntry.kindSessionEnd,
     );
-    final end = endRow == null ? null : _End.parse(endRow);
+    final end = endRow == null
+        ? null
+        : _End.parse(endRow, nowMs: _nowMs());
 
     final pass = _Pass(
       repository: _repository,
       sessionId: sessionId,
       end: end,
+      nowMs: _nowMs(),
     );
     // What only the wrist knows about this session is applied exactly as an
     // import applies it (D-19): the phone's own rating wins and the wrist's
@@ -465,11 +476,16 @@ class _Pass {
   _Pass({
     required WorkoutRepository repository,
     required this.sessionId,
+    required this.nowMs,
     this.end,
   }) : _repository = repository;
 
   final WorkoutRepository _repository;
   final String sessionId;
+
+  /// The receiver's clock when this pass was prepared — the bound every end it
+  /// applies reads (plan 164, D-16401).
+  final int nowMs;
 
   /// The wrist's end, when the pass has one. A merge runs without it (D-13)
   /// and never reaches the code that reads it.
@@ -680,12 +696,18 @@ class _Pass {
     }
     if (latest == row) return;
 
+    // Plan 164 (D-16402): the receiver's clock bounds where an end may land —
+    // a set or an end the wrist stamped in the future cannot push the stored
+    // end past this phone's clock plus five minutes.
+    final bounded = clampFutureEndMs(latest, nowMs);
+    if (bounded <= row) return;
+
     // Through the row's own map, so no field of the session is dropped.
     await _repository.updateSession(
       TrainingSession.fromMap({
         ...session.toMap(),
-        'ended_at_ms': latest,
-        'updated_at_ms': latest,
+        'ended_at_ms': bounded,
+        'updated_at_ms': bounded,
       }),
     );
     endMovedFromMs = row;
@@ -2296,7 +2318,7 @@ class _End {
   /// in kilocalories, when it carried one (plan 134c, D-13463).
   final double? activeEnergyKcal;
 
-  static _End? parse(WatchInboxEntry row) {
+  static _End? parse(WatchInboxEntry row, {required int nowMs}) {
     final payload = row.payload;
     final loggedAtMs = _ms(payload['loggedAt']);
     final startedAtMs = _ms(payload['startedAt']);
@@ -2314,7 +2336,14 @@ class _End {
       row: row,
       loggedAtMs: loggedAtMs,
       startedAtMs: startedAtMs,
-      endedAtMs: endedAtMs,
+      // Plan 164 (D-16401, D-16408): an arriving end is bounded by this phone's
+      // clock at decision time, and never sits before the wrist's own start —
+      // a frame that claims both stamps in the future imports as a zero-length
+      // workout instead of a negative one.
+      endedAtMs: math.max(
+        startedAtMs,
+        math.min(endedAtMs, nowMs + kFutureEndClampMs),
+      ),
       status: status,
       modality: modality is String && modality.isNotEmpty ? modality : null,
       followed: payload['followed'] == true,

@@ -427,10 +427,23 @@ tests pin them), plan 157a's stats surfaces (D-16008), `PROTOCOL.md` and the sch
 
 ## Progress
 
-- [ ] Phase 1 — twin captures the session end (@developer)
-- [ ] Phase 2 — replay parity, close A-152a (@developer)
-- [ ] Phase 3 — un-skip S-14660, harness + suite green (@developer)
-- [ ] Phase 4 — docs (@developer)
+- [x] Phase 1 — **Complete** (@developer): implemented as planned and green in the
+      plan's own files (8 twin tests + `S-16008`; 9 exact-frame assertions in
+      `test/watch_session_engine_test.dart` reconciled). The 19 tests the new
+      `session_end` frame broke in 7 files are reconciled in the same pass — full suite
+      `+7586 -2`, the two reds being Phase 2's stale corpus. Evidence `Phase 1`.
+- [ ] Phase 2 — **Edits applied; regeneration pending (Governor action)** (@developer):
+      the A-152a lift, the `A-152a` allowlist removal, the derived-end canonicalizer
+      rule (`end-<sessionId>` → `end-<the session id's alias>`), the manifest tags the
+      recorded runs now cover, the Swift reader (`excludingSessionEnd` gone) and its
+      rewritten S-15210/S-15211 guards are in the tree. The recorded `expected` blocks
+      are stale until the D-15209 writing run runs, so `S-15202` and `S-15207` are red
+      by design. Evidence `Phase 2` and `Phase 2 follow-up 2`.
+- [x] Phase 3 — **Complete** (@developer): S-14660 un-skipped and green — the phone
+      now imports the wrist's own workout as its own finished workout.
+- [x] Phase 4 — **Complete** (@developer): `docs/watch_session_capture.md` and plan
+      146c's Open Item updated, each naming the test; `docs/watch_session_sync.md`
+      needed nothing.
 
 ## Assumption Log
 
@@ -441,7 +454,65 @@ tests pin them), plan 157a's stats surfaces (D-16008), `PROTOCOL.md` and the sch
 - AL-2 (Phase 2): the corpus regeneration rewrites 16 fixture files via the
   D-15209 define — sanctioned by that decision as the `--update-goldens` analogue;
   flagged because the standing rule forbids checks that write files (Q4).
+- AL-3 (Phase 1): the twin's end is emitted on every ending path, so it is a wire
+  frame even where no `onEmit` is wired. Nine existing assertions in
+  `test/watch_session_engine_test.dart` pinned an exact frame/row list and counted
+  one item too few; each was reconciled there, none weakened. Not predicted by the
+  plan; no test outside that file went red.
+- AL-4 (Phase 2): the A-152a lift and the corpus regeneration are one atomic
+  change — applying the lift alone leaves the staleness tests red — so the two edits
+  are in the tree and the writing run stays a Governor action (Q4).
+- AL-5 (Phase 1): mutation M2 (the creation-row guard) cannot be told apart from the
+  held-record dedupe by S-16006's real fixture, so no stub was written and the
+  mutation is recorded as inconclusive rather than passed.
+- AL-6 (Phase 1 follow-up): the 19 unpredicted reds were reconciled in their own test
+  files, following whichever side already states the invariant — the Dart
+  reconciliation runner now filters `session_end` exactly as the Swift
+  `assertConverged` does, and the frame/kind/count assertions gained the end rather
+  than dropping an assertion.
+- AL-7 (Phase 1 follow-up, S-14514): the pacing fixture now starts the session while
+  the link is down, so the wrist never holds it. With the wrist holding the session,
+  its answer to the owed end produced a second re-offer inside one window and the
+  test measured the wrist's echo, not the ledger's pacing. Fixture change, no
+  assertion weakened.
+- AL-8 (Phase 2): `S-15201`'s F-2 assertion expected `entries` to be empty; it now
+  expects exactly `end-<sessionId>`, the id derived from `WatchSessionCapture`, so the
+  claim it makes ("F-2 logs no set") is unchanged.
+- AL-9 (Phase 2 follow-up 2): the derived-end rule keys off
+  `WatchSessionCapture.endPrefix`, never a literal, and reuses the session id's alias
+  through the same table, so meeting the end first mints no second alias. The Swift
+  side needs no canonicalizer change: it reads the stored aliases and derives its end
+  id from the session id it applied, which is already `x-<n>`.
+
+## Open Items
+
+- **Closed (this pass): the twin's new `session_end` frame broke 19 tests in 7 files
+  the plan did not predict.** All 19 are reconciled: the Dart reconciliation runner
+  filters `session_end` like the Swift `assertConverged`, and the frame, kind and
+  count assertions gained the end. Full suite `+7586 -2`, both reds the stale corpus.
+- `S-15202` and `S-15207` are red until Phase 2's regeneration runs — the recorded
+  `expected` blocks predate the captured end.
+- **Closed (Phase 2 follow-up 2): the stale `watch_surface_transport.md` paragraph.**
+  The A-152a sentence now records the closure and names
+  `testS15210TheSessionEndIsHeldOnBothSides` and
+  `testS15211DroppingAnEndFromEitherSideIsReportedAsAnEntriesDiff`; the
+  canonicalization sentence states the derived-end rule and names the `S-15203` test.
+- **Open (Governor action): the regeneration.** After it, `S-15202`, `S-15207` and the
+  five Swift replay tests go green together; the prediction is in evidence
+  `Phase 2 follow-up 2`. Nothing else in Phase 2 is outstanding.
 
 ## Feedback
 
-[empty — fold into a new Iteration block when non-empty, then clear]
+Phase 2 stops one step short of done: the A-152a lift and the allowlist removal are
+applied in `test/helpers/watch_replay_recorder.dart` and
+`test/watch_replay_corpus_test.dart`, but every recorded `expected` block predates the
+captured end, and refreshing them is a writing run
+(`--dart-define=REPLAY_CORPUS_WRITE=true`) that the standing rules forbid a check to
+perform. The Governor needs to run the regeneration, then re-run
+`test/watch_replay_corpus_test.dart` and the full suite; `S-15202` and `S-15207` go
+green together. Nothing else in the plan is outstanding.
+
+One deliberate deviation from a plan note: Phase 4's "append the pointer" for plan
+146c became a rewrite of that Open Item (it now records the closure and names the
+un-skipped test) rather than text appended after it, because the item's own
+sentence was what plan 160 made false.

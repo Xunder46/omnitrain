@@ -48,6 +48,13 @@ class ReplaySource {
 /// * an **id** — a string with a digit run of ten or more, or a UUID — becomes
 ///   `x-<n>`, minted in first-appearance order, so an id's alias survives
 ///   recomposition of the same story;
+/// * a **derived id** — a session end's `end-<sessionId>` — becomes
+///   `end-<the session id's alias>`, never an alias of its own. The phone mints
+///   the session id from its clock, so an end id without this rule is opaque
+///   (`x-10`) on the recording side while the replay, whose session id is
+///   already `x-2`, derives `end-x-2`; the derived rule makes both sides one
+///   value. A session id with nothing unstable in it (`s-w-1`) records its end
+///   verbatim, which is what the replay derives too;
 /// * an **off-grid timestamp** — an ISO instant or a plausible epoch-ms number
 ///   the run's own clock never held — becomes
 ///   `gridStartMs + 1_000_000_000 + k × 1000` ms, above the whole grid span
@@ -171,11 +178,22 @@ class ReplayCanonicalizer {
         );
       }
     }
-    if (_digitRun.hasMatch(value) || _uuid.hasMatch(value)) {
+    if (value.startsWith(WatchSessionCapture.endPrefix)) {
+      final sessionId = value.substring(WatchSessionCapture.endPrefix.length);
+      if (_isAliasable(sessionId)) {
+        return '${WatchSessionCapture.endPrefix}${_canonicalString(sessionId)}';
+      }
+    }
+    if (_isAliasable(value)) {
       return _idAliases.putIfAbsent(value, () => 'x-${_idAliases.length + 1}');
     }
     return value;
   }
+
+  /// Whether [value] is an id the phone could have minted unstably: a digit run
+  /// of ten or more, or a UUID.
+  static bool _isAliasable(String value) =>
+      _digitRun.hasMatch(value) || _uuid.hasMatch(value);
 
   Object _canonicalInt(int value) {
     if (value < _epochFloor || value > _epochCeiling) return value;
@@ -236,8 +254,7 @@ class SessionSummary {
 
   final String status;
 
-  /// The sorted entry ids stored for the session, minus the session-end
-  /// observation A-152a allowlists.
+  /// The sorted entry ids stored for the session.
   final List<String> entries;
 
   /// Newest timer row per kind, as `{state, startedAtMs}`.
@@ -254,18 +271,13 @@ class SessionSummary {
 /// compare (D-15205).
 ///
 /// One reading rule, from the append-only store and never from a projection:
-/// the newest session row's status, the stored observation ids minus the
-/// session-end ones, the newest timer row per kind, and the engine's held
-/// session.
+/// the newest session row's status, the stored observation ids, the newest
+/// timer row per kind, and the engine's held session.
 class WristSummary {
   const WristSummary({required this.sessions, required this.current});
 
   final Map<String, SessionSummary> sessions;
   final String? current;
-
-  /// The session-end observation's id for [sessionId] (A-152a): Swift stores
-  /// one, the Dart twin does not, and the summary excludes it on both sides.
-  static String sessionEndId(String sessionId) => 'end-$sessionId';
 
   static Future<WristSummary> fromStore(
     WatchSessionStore store, {
@@ -285,7 +297,6 @@ class WristSummary {
       final id = observation.sessionId;
       if (!newestStatus.containsKey(id)) continue;
       final entryId = observation.entryId;
-      if (entryId == sessionEndId(id)) continue;
       entries.putIfAbsent(id, () => <String>{}).add(entryId);
     }
     final timers = <String, Map<String, Map<String, Object?>>>{};

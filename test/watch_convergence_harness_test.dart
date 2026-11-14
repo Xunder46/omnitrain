@@ -144,8 +144,17 @@ void main() {
     expect(report.phoneStatus[label], WatchSessionStatus.completed);
     expect(report.wristStatus[label], WatchSessionStatus.completed);
 
-    final phoneEntries = runner.phoneEntryIds[sessionId] ?? const <String>{};
-    final wristEntries = runner.wristEntryIds[sessionId] ?? const <String>{};
+    // Plan 160 D-16003: the wrist records and announces its own end as an
+    // entry of its own (`end-<sessionId>`), so the two id sets the pair counts
+    // as logged work exclude it.
+    final phoneEntries = {
+      for (final id in runner.phoneEntryIds[sessionId] ?? const <String>{})
+        if (id != 'end-$sessionId') id,
+    };
+    final wristEntries = {
+      for (final id in runner.wristEntryIds[sessionId] ?? const <String>{})
+        if (id != 'end-$sessionId') id,
+    };
     expect(
       phoneEntries,
       hasLength(3),
@@ -159,6 +168,7 @@ void main() {
       reason: 'the two wrist sets and the one phone set: $wristEntries',
     );
     expect(phoneEntries, wristEntries);
+    expect(runner.phoneEntryIds[sessionId], runner.wristEntryIds[sessionId]);
   });
 
   test(
@@ -242,7 +252,16 @@ void main() {
       expect(report.phoneStatus[label], WatchSessionStatus.completed);
       expect(report.wristStatus[label], WatchSessionStatus.completed);
       expect(runner.phoneEntryIds[sessionId], runner.wristEntryIds[sessionId]);
-      expect(runner.wristEntryIds[sessionId], hasLength(1));
+      // Plan 160 D-16003: the end the wrist recorded for itself is one entry
+      // among the pair's, and the one set a `hasLength(1)` set.
+      expect(
+        {
+          for (final id in runner.wristEntryIds[sessionId] ?? const <String>{})
+            if (id != 'end-$sessionId') id,
+        },
+        hasLength(1),
+        reason: 'the wrist set the phone never lost, and not its own end',
+      );
     },
   );
 
@@ -317,13 +336,18 @@ void main() {
       isFalse,
       reason: 'the seam sends no wrist frame',
     );
+    // Plan 160 D-16002: the drained end makes the wrist record its own end and
+    // announce it, and every frame after that is an answer to the drained ones
+    // — the end observation, the phone's receipt for it, and the phone's
+    // lifecycle answers. What the seam must never carry is a trigger of its own.
     expect(
-      [
-        for (final frame in framesOf(drained))
-          if (!frame.drained) frame.type,
-      ],
-      isEmpty,
-      reason: 'the seam carries nothing but the queued frames',
+      [for (final frame in framesOf(drained)) if (!frame.drained) frame.type],
+      everyElement(isIn(const <String>[
+        'observations_up',
+        'receipt',
+        'session_lifecycle',
+      ])),
+      reason: 'the seam sends nothing; every other frame answers the drain',
     );
 
     expect(fullStatus, WatchSessionStatus.completed);
@@ -972,15 +996,6 @@ void _b2Tests() {
       );
       expect(heal.converged, isTrue, reason: runner.traceText());
     },
-    // Blocked: this trace is red, and the assertion is kept as written. The
-    // wrist's terminal lifecycle supersedes its queued snapshot, and the
-    // phone's inbox stages only entries — a lifecycle carries `state` and `at`,
-    // never the session's start — so a session the phone does not hold reaches
-    // it with no `session_end` row and the importer has nothing to import.
-    // See plan 146c's Open Items; the fix is the wrist re-offering a completed
-    // session's entries, which is a protocol change, not a seam fix.
-    skip: 'S-14660 blocked — plan 146c Open Items: a wrist session the phone '
-        'does not hold never reaches it with a session_end row',
   );
 
   test('S-14513 an owed W1 end survives W2 starting on the wrist', () async {
@@ -1044,15 +1059,19 @@ void _b2Tests() {
       final harness = await WatchPairHarness.build();
       final runner = harness.runner;
 
+      // The wrist never holds this session: it is started while the link is
+      // down, so the wrist cannot answer the re-offer with an end of its own
+      // (plan 160 D-16002), which would drive a second offer in the very window
+      // this scenario measures. What is timed here is the ledger's pacing.
+      await runner.perform(runner.linkDrops());
       await runner.perform(runner.phoneStartsSession());
       final sessionId = harness.phone.currentSession!.id;
       expect(
         harness.wristEngine.session?.sessionId,
-        sessionId,
-        reason: 'the wrist holds the session\n${runner.traceText()}',
+        isNull,
+        reason: 'the wrist never saw the session\n${runner.traceText()}',
       );
 
-      await runner.perform(runner.linkDrops());
       await runner.perform(runner.phoneFinishes());
       expect(
         harness.radio.phoneQueue.any((f) => f['type'] == 'session_lifecycle'),
@@ -1067,7 +1086,7 @@ void _b2Tests() {
       // Reachable without the LinkRises drain: the queued copy is withdrawn by
       // the first live re-offer (D-14512), so every delivered end below is a
       // re-offer and not the queue.
-      harness.radio.setReachable(true);
+      harness.radio.reachable = true;
       await harness.settle();
 
       final beforeFirst = harness.radio.frames.length;

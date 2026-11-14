@@ -70,6 +70,11 @@ abstract final class WatchObservationKind {
   /// the set block's span and the effort debt do not see it.
   static const String rest = 'rest';
 
+  /// How a session ended (D-16003). Stored at the instant the session ends, so
+  /// a wrist that finishes its own workout still has the end to tell the phone
+  /// — the phone cannot see a session it never started.
+  static const String sessionEnd = 'session_end';
+
   /// One glass added to or removed from the day's water (plan 94 D-2). The
   /// phone reads it; this twin emits no taps, so it is not in [all] (D-14).
   static const String waterGlass = 'water_glass';
@@ -80,6 +85,7 @@ abstract final class WatchObservationKind {
     round,
     hold,
     nutritionQuickLog,
+    sessionEnd,
     rest,
   ];
 
@@ -87,6 +93,19 @@ abstract final class WatchObservationKind {
   /// to a set block's span and to whether an effort rating is owed. The set a
   /// rest may hang on is one of these, and nothing else.
   static const List<String> efforts = [set, timed, round, hold];
+}
+
+/// The ids the engine's own records carry.
+///
+/// The wrist captures facts about a session only it can observe, and names them
+/// after the session they are about, so the same fact captured twice is one
+/// record (D-16004) and the phone can recognise it without an index.
+abstract final class WatchSessionCapture {
+  static const String endPrefix = 'end-';
+
+  /// The entryId and eventId the end of [sessionId] carries, as on Swift
+  /// (`WatchRecords.swift`).
+  static String sessionEndId(String sessionId) => '$endPrefix$sessionId';
 }
 
 /// The session id a nutrition quick-log carries when the wrist has no session

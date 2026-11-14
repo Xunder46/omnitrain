@@ -36,6 +36,7 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/block_types.dart';
 import 'package:omnitrain/core/constants/capability.dart';
@@ -157,6 +158,7 @@ Future<_Phone> _phone(
   WorkoutRepository repository, {
   HealthSyncService? healthSync,
   DateTime Function()? clock,
+  DateTime Function()? bridgeClock,
 }) async {
   final failures = <Object>[];
   final skipped = <({String held, String offered})>[];
@@ -175,7 +177,7 @@ Future<_Phone> _phone(
   );
   final bridge = WatchSessionAdoptionBridge(
     repository: repository,
-    clock: () => _adoptedAt,
+    clock: bridgeClock ?? () => _adoptedAt,
     onFailure: (error, stack) => failures.add(error),
     onSkipped: (held, offered) => skipped.add((held: held, offered: offered)),
   );
@@ -390,6 +392,29 @@ class _RecordingHealthPlatform implements HealthPlatformService {
   @override
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since) async =>
       const [];
+}
+
+/// A [HealthSyncService] that only records the rewrites it is asked for, so a
+/// test can say which window a moved end owes (plan 164, D-16407: the clamp
+/// report is the bridge's debug line, the rewrite is the service's own).
+class _RewriteSpy extends HealthSyncService {
+  _RewriteSpy(WorkoutRepository repository)
+    : super(
+        platform: _RecordingHealthPlatform(),
+        repository: repository,
+        isWriteEnabled: () => true,
+        isReadEnabled: () => false,
+      );
+
+  final List<({TrainingSession session, int previousEndedAtMs})> rewrites = [];
+
+  @override
+  Future<void> rewriteWorkout(
+    TrainingSession session, {
+    required int previousEndedAtMs,
+  }) async {
+    rewrites.add((session: session, previousEndedAtMs: previousEndedAtMs));
+  }
 }
 
 void main() {
@@ -2749,8 +2774,10 @@ void main() {
         await phone.router.receive(_s1Envelope());
         final sessionId = phone.state.currentSession!.id;
         final startedAtMs = phone.state.currentSession!.startedAtMs;
+        // Four minutes: inside the five-minute future bound plan 164 puts on
+        // an incoming end (S-16401) and still after the workout's start.
         final wristEnd = _adoptedAt
-            .add(const Duration(minutes: 10))
+            .add(const Duration(minutes: 4))
             .millisecondsSinceEpoch;
         expect(
           wristEnd,
@@ -2837,4 +2864,272 @@ void main() {
       },
     );
   });
+
+  // Plan 164 (D-16401..D-16403) — an end the phone applies from a wrist frame is
+  // bounded by the phone's own clock at decision time plus five minutes: a
+  // wrong watch clock or a corrupt frame can no longer stretch the phone's
+  // workout into the future. The clamp bounds one stamp against the receiver's
+  // clock, so it never chooses between two ends (D-15403 stands), it has no
+  // lower bound (a past end is a late sync, not an error), and it keeps the
+  // frame in full: only the end instant is bounded.
+  group('S-164 end-time upper bound', () {
+    const capId = 's-cap-1';
+
+    /// The plan-164 snapshot: the wrist's session, on its first slot.
+    Map<String, Object?> capSnapshot() => _snapshot(
+      sessionId: capId,
+      revision: 2,
+      exercises: [_slot('sl-1', 'ex-bench'), _slot('sl-2', 'ex-squat')],
+      messageId: 'msg-cap-1',
+    );
+
+    /// Every line the bridge printed while [body] ran, so a test can say the
+    /// clamp was reported once — and that an in-bound end was not.
+    Future<List<String>> linesWhile(Future<void> Function() body) async {
+      final previous = debugPrint;
+      final lines = <String>[];
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) lines.add(message);
+      };
+      try {
+        await body();
+      } finally {
+        debugPrint = previous;
+      }
+      return lines;
+    }
+
+    /// The clamp reports among [lines] (D-16407).
+    List<String> clamped(List<String> lines) => [
+      for (final line in lines)
+        if (line.contains('bounded an end')) line,
+    ];
+
+    String iso(int ms) =>
+        DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
+
+    test('S-16401 a completed a day ahead ends the held workout at now + 5 min',
+        () async {
+      final repository = await _repository();
+      final health = _RewriteSpy(repository);
+      var bridgeNow = _adoptedAt;
+      final phone = await _phone(
+        repository,
+        healthSync: health,
+        bridgeClock: () => bridgeNow,
+      );
+      await phone.router.receive(capSnapshot());
+      final startedAtMs = phone.state.currentSession!.startedAtMs;
+      final t = startedAtMs + 1800000;
+      bridgeNow = DateTime.fromMillisecondsSinceEpoch(t, isUtc: true);
+      final phoneEndMs = t - 5000;
+      await phone.state.endSession(atMs: phoneEndMs);
+      expect(
+        phone.state.currentSession?.endedAtMs,
+        phoneEndMs,
+        reason: 'the fixture: the phone finished its own workout',
+      );
+
+      // A wrong watch clock: the wrist claims the session ended a day from now.
+      final claimedMs = t + 86400000;
+      final lines = await linesWhile(() async {
+        await phone.router.receive(
+          _lifecycle(
+            capId,
+            state: WatchLifecycleState.completed,
+            atMs: claimedMs,
+            messageId: 'msg-cap-clamp',
+          ),
+        );
+        await pumpEventQueue();
+      });
+
+      expect(
+        (await repository.getSession(capId))?.endedAtMs,
+        t + 300000,
+        reason: 'S-16401 the stored end is the bound, not the claimed instant',
+      );
+      expect(
+        phone.state.currentSession?.endedAtMs,
+        t + 300000,
+        reason: 'S-16401 the live row ends where the stored one does',
+      );
+      expect(
+        health.rewrites,
+        hasLength(1),
+        reason: 'S-16401 a moved end still owed its Health rewrite',
+      );
+      expect(health.rewrites.single.session.id, capId);
+      expect(
+        health.rewrites.single.session.endedAtMs,
+        t + 300000,
+        reason: 'S-16401 the rewrite follows the bounded end',
+      );
+      expect(
+        health.rewrites.single.previousEndedAtMs,
+        phoneEndMs,
+        reason: 'S-16401 and names the end the workout had',
+      );
+      expect(
+        clamped(lines),
+        hasLength(1),
+        reason: 'D-16407 exactly one debug report per clamp',
+      );
+      expect(
+        clamped(lines).single,
+        allOf(contains(iso(claimedMs)), contains(iso(t + 300000))),
+        reason: 'D-16407 the report names the claimed and the bounded instant',
+      );
+      expect(phone.failures, isEmpty);
+    });
+
+    test('S-16402 an hour ahead ends an open held workout at now + 5 min',
+        () async {
+      final repository = await _repository();
+      final health = _RecordingHealthPlatform();
+      var bridgeNow = _adoptedAt;
+      final phone = await _phone(
+        repository,
+        healthSync: HealthSyncService(
+          platform: health,
+          repository: repository,
+          isWriteEnabled: () => true,
+          isReadEnabled: () => false,
+        ),
+        bridgeClock: () => bridgeNow,
+      );
+      await phone.router.receive(capSnapshot());
+      final startedAtMs = phone.state.currentSession!.startedAtMs;
+      final t = startedAtMs + 600000;
+      bridgeNow = DateTime.fromMillisecondsSinceEpoch(t, isUtc: true);
+      expect(
+        phone.state.currentSession?.endedAtMs,
+        isNull,
+        reason: 'the fixture: the phone still holds the workout open',
+      );
+
+      final claimedMs = t + 3600000;
+      final lines = await linesWhile(() async {
+        await phone.router.receive(
+          _lifecycle(
+            capId,
+            state: WatchLifecycleState.completed,
+            atMs: claimedMs,
+            messageId: 'msg-cap-open',
+          ),
+        );
+        await pumpEventQueue();
+      });
+
+      expect(
+        (await repository.getSession(capId))?.endedAtMs,
+        t + 300000,
+        reason: 'S-16402 the bounded end is what the open row stores',
+      );
+      expect(
+        phone.state.currentSession?.endedAtMs,
+        t + 300000,
+        reason: 'S-16402 and it stays after the row\'s own start (D-153)',
+      );
+      expect(
+        health.writes,
+        isEmpty,
+        reason: 'S-16402 the wrist saved its own workout, so no second one '
+            'is written',
+      );
+      expect(clamped(lines), hasLength(1));
+      expect(phone.failures, isEmpty);
+    });
+
+    test('S-16403 an end inside the bound applies untouched', () async {
+      final repository = await _repository();
+      var bridgeNow = _adoptedAt;
+      final phone = await _phone(
+        repository,
+        bridgeClock: () => bridgeNow,
+      );
+      await phone.router.receive(capSnapshot());
+      final startedAtMs = phone.state.currentSession!.startedAtMs;
+      final t = startedAtMs + 1800000;
+      bridgeNow = DateTime.fromMillisecondsSinceEpoch(t, isUtc: true);
+      await phone.state.endSession(atMs: t - 600000);
+
+      // Two minutes ahead of the phone's clock: a clock disagreement, not a
+      // wrong clock, so the bound does not touch it.
+      final claimedMs = t + 120000;
+      final lines = await linesWhile(() async {
+        await phone.router.receive(
+          _lifecycle(
+            capId,
+            state: WatchLifecycleState.completed,
+            atMs: claimedMs,
+            messageId: 'msg-cap-in-bound',
+          ),
+        );
+        await pumpEventQueue();
+      });
+
+      expect(
+        (await repository.getSession(capId))?.endedAtMs,
+        claimedMs,
+        reason: 'S-16403 a stamp inside the bound is applied exactly',
+      );
+      expect(
+        clamped(lines),
+        isEmpty,
+        reason: 'S-16403 nothing was clamped, so nothing is reported',
+      );
+      expect(phone.failures, isEmpty);
+    });
+
+    test('S-16409 a past end stands, and a later discard-end deletes nothing',
+        () async {
+      final repository = await _repository();
+      var bridgeNow = _adoptedAt;
+      final phone = await _phone(
+        repository,
+        bridgeClock: () => bridgeNow,
+      );
+      await phone.router.receive(capSnapshot());
+      final startedAtMs = phone.state.currentSession!.startedAtMs;
+      final t = startedAtMs + 1800000;
+      bridgeNow = DateTime.fromMillisecondsSinceEpoch(t, isUtc: true);
+      final phoneEndMs = t - 600000;
+      await phone.state.endSession(atMs: phoneEndMs);
+
+      // S-16409(b): the wrist's discard instant is LATER than the phone's own
+      // end, so it is no earlier ending and deletes nothing — the clamp cannot
+      // be read as ever enabling a deletion (D-15403 stands untouched).
+      final lines = await linesWhile(() async {
+        await phone.router.receive(
+          _lifecycle(
+            capId,
+            state: WatchLifecycleState.abandoned,
+            atMs: t + 30000,
+            messageId: 'msg-cap-later-discard',
+          ),
+        );
+        await pumpEventQueue();
+      });
+
+      expect(
+        await repository.getSession(capId),
+        isNotNull,
+        reason: 'S-16409 a later discard instant is no ending at all',
+      );
+      expect(
+        (await repository.getSession(capId))?.endedAtMs,
+        phoneEndMs,
+        reason: 'S-16409 the finish keeps the end it recorded',
+      );
+      expect(phone.state.currentSession?.id, capId);
+      expect(
+        clamped(lines),
+        isEmpty,
+        reason: 'S-16409 nothing was clamped on the discard path',
+      );
+      expect(phone.failures, isEmpty);
+    });
+  });
 }
+

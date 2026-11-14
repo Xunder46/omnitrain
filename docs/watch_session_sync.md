@@ -527,7 +527,12 @@ in place, resending the structure as a snapshot and no new started lifecycle
   logged set in the same pass included — so a session finished on the wrist
   longer than the phone knew keeps the wrist's end; an end that is not later
   writes nothing. Verified by `test/watch_session_import_test.dart`, group
-  `S-14610 the imported end catches up`.
+  `S-14610 the imported end catches up`. Both catch-up points — this pass and
+  the adoption bridge's lifecycle path — bound that latest instant to the
+  phone's clock plus 5 minutes (`kFutureEndClampMs`, plan 164
+  D-16401/D-16402), and neither ever pulls an end backward: an end already
+  stored beyond the bound stands (`S-16407 a clamp never drags an end backward`
+  in `test/watch_session_import_end_clamp_test.dart`).
 - **A wrist set fills the phone's next unlogged planned row, in the held merge
   only.** While the phone holds the session, a wrist `set` fills the first row
   the phone reads as unlogged — no rest at its position + 1, which differs from

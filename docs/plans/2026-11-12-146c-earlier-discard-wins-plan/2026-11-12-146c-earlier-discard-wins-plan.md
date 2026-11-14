@@ -587,10 +587,11 @@ Conductor marks each RATIFIED (promote to a D-x) or REVERT (remediation).)*
 
 ## Open Items
 
-- **S-14660 / a wrist session the phone never held never becomes a phone row.** The wrist's
-  `session_lifecycle` carries `{state, at}` and not `startedAt`, so `WatchSessionInbox` stages no
-  `session_end` and `WatchSessionImporter.apply` imports nothing (evidence `### Phase 4`, item 2).
-  Needs the wrist to re-offer a completed session's entries — a `watch/sync_protocol/` change: re-plan.
+- **S-14660 / a wrist session the phone never held never becomes a phone row** — **closed by plan
+  160.** The Dart twin now captures the `session_end` its Swift twin captured and re-offers every
+  session's unconfirmed rows, so the harness test is un-skipped and green
+  (`test/watch_convergence_harness_test.dart`, `S-14660 the wrist's own workout is saved as its own
+  finished workout while the phone's stays open`).
 - `absorbing` (seed 111, 4 actions) and `entries` (seed 857, 5 actions) have minimal traces but no owner.
 - `timers` does not reproduce (D-14635's `endSession` seam unconfirmed). Phase 5 is done; the owner's
   confirmation of D-14634/D-14636 (vetoable as a whole) is the only open question on it.

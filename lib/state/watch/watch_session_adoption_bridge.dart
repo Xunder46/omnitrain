@@ -895,9 +895,15 @@ class WatchSessionAdoptionBridge {
       // the same instant as the finish, and the tie-break keeps the finish.
       if (state == WatchLifecycleState.completed) {
         final atMs = _instantMs(_asObject(envelope['payload'])['at']);
-        if (atMs != null) await target.catchUpEndedSession(atMs);
+        if (atMs != null) {
+          await target.catchUpEndedSession(_boundedEnd(atMs));
+        }
       } else if (state == WatchLifecycleState.abandoned) {
         final atMs = _instantMs(_asObject(envelope['payload'])['at']);
+        // Plan 164 (D-16403): the bound is not applied here. This branch writes
+        // no end — it only compares a discard instant with the one the phone
+        // holds, and D-14630's earlier-end rule must read both stamps as the
+        // wrist sent them.
         if (atMs != null &&
             endsBeforeHeldMsByMoreThanSkew(atMs, held.endedAtMs!)) {
           await target.discardCurrentSession();
@@ -916,7 +922,10 @@ class WatchSessionAdoptionBridge {
         final atMs = _instantMs(_asObject(envelope['payload'])['at']);
         // The watch saved its own workout for this session: the phone's end
         // must not write a second one (plan 89c1 D-1).
-        await target.endSession(writeToHealth: false, atMs: atMs);
+        await target.endSession(
+          writeToHealth: false,
+          atMs: atMs == null ? null : _boundedEnd(atMs),
+        );
       case WatchLifecycleState.abandoned:
         await target.discardCurrentSession();
     }
@@ -1501,4 +1510,35 @@ class WatchSessionAdoptionBridge {
     }
     return ModalityConfig.forModality(null)?.effortKind ?? BlockTypes.set;
   }
+
+  /// D-16401: an end the wrist claims, bounded by this phone's clock at
+  /// decision time plus [kFutureEndClampMs] — the latest instant a frame may
+  /// end the phone's workout at.
+  ///
+  /// Clamp-and-keep: the frame is applied in full either way, and only the end
+  /// instant moves, so a wrong watch clock or a corrupt frame can no longer
+  /// stretch the phone's workout, its duration and its Health span into the
+  /// future. No lower bound: a past end is a late sync, and the earliest end
+  /// rule (D-14630, D-15403) keeps deciding between two ends.
+  int _boundedEnd(int atMs) {
+    final boundedMs = clampFutureEndMs(
+      atMs,
+      _clock().millisecondsSinceEpoch,
+    );
+    if (boundedMs != atMs) _reportClampedEnd(atMs, boundedMs);
+    return boundedMs;
+  }
+
+  /// D-16407: the clamp's one debug line, naming what the frame claimed, what
+  /// the phone applied instead, and the bound it applied.
+  static void _reportClampedEnd(int claimedMs, int boundedMs) {
+    debugPrint(
+      'Watch session sync: bounded an end claimed at '
+      '${_isoUtc(claimedMs)} to ${_isoUtc(boundedMs)} (no later than this '
+      'phone\'s clock plus ${kFutureEndClamp.inMinutes} minutes)',
+    );
+  }
+
+  static String _isoUtc(int ms) =>
+      DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
 }

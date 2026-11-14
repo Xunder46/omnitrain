@@ -4051,20 +4051,35 @@ void main() {
         );
         expect(engine.session!.status, WatchSessionStatus.abandoned);
         expect(
-          engine.entries,
-          isEmpty,
+          [for (final entry in engine.entries) entry.payload['kind']],
+          // Plan 160 D-16002: the lifecycle's only entry is the session's own
+          // end; a lifecycle frame is not work and records none.
+          [WatchObservationKind.sessionEnd],
           reason:
               'S-183 case A no entry and no row comes of a lifecycle frame: it '
-              'moves the session\'s status and nothing else',
+              'moves the session\'s status and records its end, nothing else',
+        );
+        final owed = engine.pendingObservations();
+        expect(
+          owed,
+          hasLength(1),
+          reason:
+              'S-183 case A and it owes the phone one frame: the session\'s end',
         );
         expect(
-          engine.pendingObservations(),
-          isEmpty,
+          [
+            for (final event
+                in (owed.single['payload']! as Map)['events']! as List)
+              (event as Map)['kind'],
+          ],
+          // Plan 160 D-16002/D-16005: the end the abandon recorded is the one
+          // thing left to send — and an abandoned session is not an effort to
+          // rate (D-173). The wrist's rating queue itself is Swift-only
+          // (WatchEffortRating.swift); this is the Dart twin of that contract.
+          [WatchObservationKind.sessionEnd],
           reason:
-              'S-183 case A and it owes the wrist nothing to send back — an '
-              'abandoned session is not an effort to rate (D-173). The wrist\'s '
-              'rating queue itself is Swift-only (WatchEffortRating.swift); '
-              'this is the Dart twin of that contract',
+              'S-183 case A and it owes the phone nothing but the session\'s '
+              'own end',
         );
 
         expect(await engine.applyMessage(snapshot), isTrue);

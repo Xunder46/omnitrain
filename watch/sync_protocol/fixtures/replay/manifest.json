@@ -9,11 +9,6 @@
   ],
   "allowlist": [
     {
-      "id": "A-152a",
-      "what": "the wrist's session-end observation `end-<sessionId>` is excluded from `entries` on both sides",
-      "owner": "the Swift row-logs owner (plan 150)"
-    },
-    {
       "id": "A-152b",
       "what": "timer adoption can move the wrist to another exercise on Swift only; the summary does not read `currentExerciseIndex`",
       "owner": "the timer owner (a PR 152b candidate)"
@@ -45,6 +40,7 @@
       "kind": "trace",
       "file": "trace-s14503.json",
       "tags": [
+        "entry",
         "frame-prefix",
         "refused-queued"
       ]
@@ -53,7 +49,9 @@
       "name": "trace-f2",
       "kind": "trace",
       "file": "trace-f2.json",
-      "tags": []
+      "tags": [
+        "entry"
+      ]
     },
     {
       "name": "trace-f3",
@@ -61,6 +59,7 @@
       "file": "trace-f3.json",
       "tags": [
         "timer",
+        "entry",
         "frame-prefix"
       ]
     },
@@ -70,6 +69,7 @@
       "file": "trace-f4.json",
       "tags": [
         "multi-session",
+        "entry",
         "frame-prefix"
       ]
     },
@@ -78,7 +78,8 @@
       "kind": "trace",
       "file": "trace-f5.json",
       "tags": [
-        "multi-session"
+        "multi-session",
+        "entry"
       ]
     },
     {
@@ -107,6 +108,7 @@
       "file": "trace-a1.json",
       "tags": [
         "multi-session",
+        "entry",
         "refused-queued"
       ]
     },

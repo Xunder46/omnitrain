@@ -1089,6 +1089,68 @@ void main() {
     });
   });
 
+  // Plan 160 (S-16008): the `session_end` the twin now captures at its own
+  // finish is the only word the phone gets about a workout it never started, so
+  // it has to import as that session's finish.
+  group('S-16008 the end the twin captured imports as its finish', () {
+    const wristId = 's-16008-w';
+
+    test('S-16008 the captured end finishes the wrist\'s own workout on the '
+        'phone', () async {
+      final repository = await _repository();
+      final events = [
+        _set('e-16008', loggedAt: '2026-09-25T10:35:00.000Z'),
+        _end(
+          wristId,
+          startedAt: '2026-09-25T10:10:00.000Z',
+          endedAt: '2026-09-25T10:40:00.000Z',
+        ),
+      ];
+      for (final event in events) {
+        await repository.stageWatchInboxEntry(
+          WatchInboxEntry(
+            entryId: event['entryId']! as String,
+            watchSessionId: wristId,
+            kind: event['kind']! as String,
+            origin: WatchInboxEntry.originWatch,
+            payload: Map<String, dynamic>.of(event),
+            receivedAtMs: _phoneNow.millisecondsSinceEpoch,
+          ),
+        );
+      }
+
+      final result = await WatchSessionImporter(
+        repository: repository,
+      ).apply(wristId, phoneOwnsSession: false);
+
+      final imported = await repository.getSession(wristId);
+      expect(
+        imported,
+        isNotNull,
+        reason: 'S-16008 the twin\'s end brings its session with it',
+      );
+      expect(imported!.startedAtMs, _msOf('2026-09-25T10:10:00.000Z'));
+      expect(
+        imported.endedAtMs,
+        _msOf('2026-09-25T10:40:00.000Z'),
+        reason: 'S-16008 the finish instant is the end\'s `endedAt`',
+      );
+      expect(
+        result.historyChanged,
+        isTrue,
+        reason: 'S-16008 a workout the phone did not know about is history',
+      );
+      expect(
+        (await repository.getWatchInboxEntry(
+          'end-$wristId',
+        ))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-16008 D-133 the applied end is consumed, so the phone never '
+            'asks for it twice',
+      );
+    });
+  });
+
   group('S-58 a band assist crosses into history with its sign', () {
     test('S-58 a set logged at −20 kg imports at −20 kg and sums −160', () async {
       final repository = await _repository();

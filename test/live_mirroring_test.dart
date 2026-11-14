@@ -1050,9 +1050,19 @@ void main() {
         expect(session.revision, expected['revision']);
         expect(session.currentExerciseIndex, expected['currentExerciseIndex']);
         expect(session.exercises, equals(expected['exercises']));
-        expect([
-          for (final entry in engine.entries) entry.payload,
-        ], equals(expected['entries']));
+        expect(
+          [
+            for (final entry in engine.entries)
+              // The Swift twin's convergence comparison skips the session's own
+              // end the same way (`WatchLiveMirroringTests.assertConverged`,
+              // `kind != WatchObservationKind.sessionEnd`): plan 160 records it
+              // as an entry of its own (D-16002/D-16003), and no fixture lists
+              // it among the workout's entries.
+              if (entry.payload['kind'] != WatchObservationKind.sessionEnd)
+                entry.payload,
+          ],
+          equals(expected['entries']),
+        );
 
         final expectedTimers = asObject(expected['timers']);
         for (final kind in WatchTimerKind.all) {
@@ -1303,8 +1313,13 @@ void main() {
 
       expect(
         session._watchTransport.buffered.map((frame) => frame['type']),
-        ['observations_up', 'session_lifecycle'],
-        reason: 'S-216 fixture: the rating and the end never left the wrist',
+        // Plan 160 D-16002: the wrist records its own end as an observation
+        // before the terminal row, so its end is a second `observations_up`
+        // between the rating and the lifecycle.
+        ['observations_up', 'observations_up', 'session_lifecycle'],
+        reason:
+            'S-216 fixture: the rating, the end and the terminal row never '
+            'left the wrist',
       );
       final live = session._watchTransport.buffered.singleWhere(
         (frame) => frame['type'] == 'session_lifecycle',
@@ -1333,6 +1348,9 @@ void main() {
         session._watchTransport.steps,
         [
           'routines',
+          'send:observations_up',
+          // Plan 160 D-16002: the wrist's own end is an observation it still
+          // owes, sent before the terminal row it precedes.
           'send:observations_up',
           'send:session_lifecycle',
           'send:session_snapshot',
@@ -1380,7 +1398,14 @@ void main() {
 
       expect(
         session._watchTransport.steps,
-        ['routines', 'send:observations_up', 'send:session_snapshot'],
+        [
+          'routines',
+          'send:observations_up',
+          // Plan 160 D-16002: the end observation is owed like the rating, so
+          // it goes; only the terminal row waits for the phone.
+          'send:observations_up',
+          'send:session_snapshot',
+        ],
         reason: 'S-216 with the phone out of reach the catch-up neither leaves '
             'the end frame nor expects an answer that could come back',
       );

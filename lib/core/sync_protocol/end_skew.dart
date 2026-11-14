@@ -15,11 +15,42 @@
 /// and the Swift `WatchEndedIsFinalTests`.
 library;
 
+import 'dart:math' as math;
+
 /// The tolerance, in milliseconds, within which two end instants are the same
 /// instant — inclusive: exactly this far apart is still the same instant.
 const int kEndSkewToleranceMs = 2000;
 
 const Duration kEndSkewTolerance = Duration(milliseconds: kEndSkewToleranceMs);
+
+/// How far ahead of the receiving device's own clock an arriving end may lie,
+/// in milliseconds.
+///
+/// A different axis from [kEndSkewToleranceMs], not a bigger version of it: the
+/// tolerance compares two stamps of the same instant, while this bound compares
+/// one arriving end against the receiver's clock at decision time. It sits far
+/// above the 2 s tolerance on purpose — an end a few seconds ahead of the
+/// phone's clock is clock disagreement, not a wrong clock, and an un-synced
+/// wrist can legitimately be minutes ahead — so the two rules cannot interact.
+///
+/// An end beyond the bound is clamped to it and still applied in full: the
+/// workout, its entries, its rating and its receipt are exactly what an honest
+/// clock would have sent, and only the end instant is bounded. There is no
+/// lower bound, ever: a workout that ended a day ago is a legitimate late sync,
+/// not an error.
+///
+/// Verified by `test/watch_session_adoption_bridge_test.dart` (S-16401..S-16403,
+/// S-16409) and `test/watch_session_import_end_clamp_test.dart`
+/// (S-16404..S-16409).
+const int kFutureEndClampMs = 300000;
+
+const Duration kFutureEndClamp = Duration(milliseconds: kFutureEndClampMs);
+
+/// [endMs] bounded by [nowMs] plus [kFutureEndClampMs] — the latest instant an
+/// arriving end may carry. A past end comes back unchanged, and a value inside
+/// the bound is never moved earlier.
+int clampFutureEndMs(int endMs, int nowMs) =>
+    math.min(endMs, nowMs + kFutureEndClampMs);
 
 /// Whether [incoming] is the earlier end that replaces [held]: earlier by MORE
 /// than the tolerance.

@@ -605,6 +605,14 @@ class WatchSessionEngine {
       exercises: exercises,
       revision: payload['revision']! as int,
     );
+    // D-16002: the snapshot's own terminal status, captured before the row that
+    // records it. A snapshot that changes nothing captures nothing, because
+    // `row.status` is then the held one and the end is already stored.
+    await _captureSessionEnd(
+      sessionId: sessionId,
+      status: row.status,
+      endedAt: row.recordedAt,
+    );
     await _appendSessionRow(row, lifecycle: null);
     if (newest == null || sentAt.isAfter(newest)) _newestSnapshotAt = sentAt;
 
@@ -663,6 +671,67 @@ class WatchSessionEngine {
     for (final entry in timers.entries)
       if (entry.value == null) entry.key: null,
   };
+
+  /// The first row the wrist holds for [sessionId] — the row the session was
+  /// created with, by lowest sequence, as Swift's `creationRow` reads it. Null
+  /// when the wrist has no row for the session at all.
+  WatchSessionRecord? _creationRow(String sessionId) {
+    WatchSessionRecord? first;
+    for (final row in _sessionRows) {
+      if (row.sessionId != sessionId) continue;
+      if (first == null || row.sequence < first.sequence) first = row;
+    }
+    return first;
+  }
+
+  /// The `session_end` event [sessionId]'s end travels as (D-16003), or null
+  /// when the wrist has no creation row to say when the session ran.
+  Map<String, Object?>? _sessionEndEvent({
+    required String sessionId,
+    required String status,
+    required DateTime endedAt,
+  }) {
+    final creation = _creationRow(sessionId);
+    if (creation == null) return null;
+    final id = WatchSessionCapture.sessionEndId(sessionId);
+    final modality = creation.modality;
+    return {
+      'entryId': id,
+      'eventId': id,
+      'kind': WatchObservationKind.sessionEnd,
+      'loggedAt': utcIso(_clock()),
+      'startedAt': utcIso(creation.startedAt),
+      'endedAt': utcIso(endedAt),
+      'status': status,
+      // Only a session the phone started is one the wrist followed; the wrist's
+      // own session carries no `followed` and needs none.
+      if (creation.source != 'watch') 'followed': true,
+      if (modality != null && modality.isNotEmpty) 'modality': modality,
+    };
+  }
+
+  /// Captures the end of [sessionId] as an observation (D-16002), called at
+  /// every site that records a terminal status and before the row that records
+  /// it — so a kill in between leaves the end owed rather than lost. The id is
+  /// the session's, so the same end captured twice is one row (D-16004).
+  ///
+  /// A session the wrist never created has no end to tell: the phone already
+  /// holds the whole of it (S-16006).
+  Future<void> _captureSessionEnd({
+    required String sessionId,
+    required String status,
+    required DateTime endedAt,
+  }) async {
+    if (!_isTerminal(status)) return;
+    final event = _sessionEndEvent(
+      sessionId: sessionId,
+      status: status,
+      endedAt: endedAt,
+    );
+    if (event == null) return;
+    if (_heldRecord(event['entryId']! as String) != null) return;
+    await _appendObservation(event, sessionId: sessionId);
+  }
 
   /// Whether an incoming end replaces the held terminal row: it is earlier
   /// (D-14630), or tied and the tie-break applies it (D-14601). `orderEnds`
@@ -842,6 +911,17 @@ class WatchSessionEngine {
       );
     }
 
+    // D-16002: the end the phone named, captured before the row that records
+    // it, with the instant that row carries — the payload's `at`, not its
+    // delivery. A lifecycle that ends nothing captures nothing.
+    if (ends) {
+      await _captureSessionEnd(
+        sessionId: session.sessionId,
+        status: status,
+        endedAt: at,
+      );
+    }
+
     await _appendSessionRow(
       WatchSessionRecord(
         recordId: '$_lifecyclePrefix${envelope['messageId']}',
@@ -862,7 +942,6 @@ class WatchSessionEngine {
     );
     return true;
   }
-
   /// Applies an incremental timer update: the kinds it names are adopted or
   /// cleared, the kinds it does not name are left alone (PROTOCOL.md, "Timer
   /// state"). Only a snapshot is authoritative for timer state as a whole.
@@ -1450,6 +1529,13 @@ class WatchSessionEngine {
     // names is still the one the wrist is on.
     if (status != null) {
       await stopTimer(kind: WatchTimerKind.rest, at: now);
+      // D-16002: the end is captured before the row that records it, so a kill
+      // in between leaves it owed rather than lost.
+      await _captureSessionEnd(
+        sessionId: session.sessionId,
+        status: status,
+        endedAt: now,
+      );
     }
     return _appendSessionRow(
       WatchSessionRecord(
@@ -1678,31 +1764,20 @@ class WatchSessionEngine {
   ///
   /// Emission is not a hand-off of state: it is a projection of the stored
   /// rows, so replaying after a kill sends the same events with the same
-  /// identifiers. A nutrition quick-log taken with no session (S-006) is owed
-  /// just like an in-session one, and carries the id it was stored under.
-  List<Map<String, Object?>> pendingObservations() {
-    final session = _session;
-    return [
-      if (session != null)
-        for (final observation in observations)
-          if (observation.confirmedAt == null)
-            _observationsUp(
-              session.sessionId,
-              observation,
-              sentAt: observation.recordedAt,
-              messageId: _messageIdFor(observation.recordId),
-            ),
-      for (final observation in nutritionLog)
-        if (observation.confirmedAt == null &&
-            observation.sessionId != session?.sessionId)
-          _observationsUp(
-            observation.sessionId,
-            observation,
-            sentAt: observation.recordedAt,
-            messageId: _messageIdFor(observation.recordId),
-          ),
-    ];
-  }
+  /// identifiers. Every session's unconfirmed rows are owed, in storage order
+  /// (D-16005): a wrist that logged a workout, finished it and started the next
+  /// one still owes the first session's end, and the id each row was stored
+  /// under names the session it belongs to.
+  List<Map<String, Object?>> pendingObservations() => [
+    for (final observation in _observations)
+      if (observation.confirmedAt == null)
+        _observationsUp(
+          observation.sessionId,
+          observation,
+          sentAt: observation.recordedAt,
+          messageId: _messageIdFor(observation.recordId),
+        ),
+  ];
 
   // ---------------------------------------------------------------------------
   // Timers

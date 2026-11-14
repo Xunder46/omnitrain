@@ -234,7 +234,10 @@ coverage tags, the comparison `classes` (`status`, `entries`, `timers`, `current
 and the allowlist. A recording is a closed schema: `source`, `gridStartMs`, the
 `events` (`frame`, `action`, `kill`, each with the `clockMs` it happened at) and
 the `expected` summary the Dart wrist held at the close. Ids are canonicalized
-and off-grid instants aliased, which is what makes a file byte-stable.
+and off-grid instants aliased, which is what makes a file byte-stable; a derived
+session-end id canonicalizes to `end-<the session id's alias>`, so the recording
+and the replay hold one value (`S-15203 a derived session-end id canonicalizes
+to end-<the session id's alias>`).
 
 The default Dart run re-records every source and compares it with the checked-in
 file, naming the stale one — `S-15207 the corpus is fresh: every file matches a
@@ -261,11 +264,14 @@ A difference that fits no class fails with the recording name and the diff, so a
 new shape of divergence cannot be absorbed silently. An accepted difference is
 instead an entry in the file's `findings` table, which asserts the exact class set
 that difference produces: when the engine is fixed the finding goes red and is
-deleted. The one allowlist entry in play is A-152a — the Swift store holds a
-`session_end` observation the Dart twin does not, so both summaries drop
-`WatchSessionCapture.sessionEndId(sessionId)`; `testS15210TheAllowlistIsStructural`
-proves the exclusion is doing the work by reading the same store with the filter
-off and asserting the extra id appears under `entries`.
+deleted. A-152a is closed, not allowlisted: both wrists store the session's end
+as `end-<sessionId>` for every completed or abandoned session, so the entry set
+the two summaries compare carries it on both sides.
+`testS15210TheSessionEndIsHeldOnBothSides` holds that on the recording whose
+session id is phone-minted, and
+`testS15211DroppingAnEndFromEitherSideIsReportedAsAnEntriesDiff` proves the
+comparison sees the end by dropping it from each side in turn and asserting the
+`entries` difference that names it.
 
 The replay cannot see what a recording does not contain: the radio and its
 threads, HealthKit, an app killed and relaunched, the UI, and every layer above

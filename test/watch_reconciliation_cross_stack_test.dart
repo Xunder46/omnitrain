@@ -398,8 +398,12 @@ void main() {
     ];
     expect(
       [for (final event in events) event['kind']],
-      ['set', 'rest', 'set', 'rest', 'set', 'rest'],
-      reason: 'S-335 rest(R1) < B < rest(R2) < C < rest(R3), and End adds none',
+      // Plan 160 D-16002: the end adds an observation of its own, and no rest
+      // — the rest list below is what proves the latter.
+      ['set', 'rest', 'set', 'rest', 'set', 'rest', 'session_end'],
+      reason:
+          'S-335 rest(R1) < B < rest(R2) < C < rest(R3), and End adds no rest '
+          'of its own',
     );
 
     final sets = [

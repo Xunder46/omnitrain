@@ -1913,6 +1913,8 @@ void main() {
           'round',
           'hold',
           WatchObservationKind.nutritionQuickLog,
+          // Plan 160: the wrist's own end of its own session.
+          WatchObservationKind.sessionEnd,
           WatchObservationKind.rest,
         ]),
         reason:

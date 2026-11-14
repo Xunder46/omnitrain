@@ -220,8 +220,10 @@ the wrist asks, which the capture contract pins for both.
 
 ## The wrist half
 
-Only the watchOS package sends what the import consumes; `lib/watch/` sends no
-session end, summary or effort rating.
+Both wrists send what the import consumes. The watchOS package sends the
+`session_end`, the session's summary fields and the effort rating; the Dart twin
+in `lib/watch/session/` sends the `session_end` only, with none of the summary
+fields (plan 160).
 
 | Concern | Owner |
 |---|---|
@@ -244,6 +246,25 @@ a session the wrist joined from the phone sends its `session_end` too, marked
 `followed: true`: the phone stores only the heart-rate summary and the measured active energy the end carries
 from it — no session row and no effort rows — and never turns the end into
 history.
+
+The Dart twin follows the same rule and its end has no summary fields (plan 160,
+AL-1): the twin's end carries `startedAt` from the session's creation row,
+`endedAt` from the instant that ended it, `status`, `followed: true` only for a
+session the phone created, and `modality` when the session has one. It is stored
+before the row that records the new status, so a kill in between still leaves the
+end owed. Verified by `test/watch_session_engine_test.dart`, group
+`plan 160 the twin's session_end`:
+`S-16001 the wrist's own finish captures its end before the terminal row`,
+`S-16002 the wrist's own discard captures its end`,
+`S-16003 a second wrist finish stores and emits no second end`,
+`S-16003 a wrist finish after the phone's end keeps that end`,
+`S-16004 a phone snapshot that ends the session captures its end`,
+`S-16005 a phone lifecycle end captures its end with the payload's instant`,
+`S-16006 a first-hearing already-finished snapshot captures nothing` and
+`S-16007 the end is still owed after another session started`; and the phone
+imports the twin's end as the session's finish in
+`test/watch_session_import_test.dart`
+(`S-16008 the end the twin captured imports as its finish`).
 
 **Measured active energy.** A `completed` wrist `session_end` may carry
 `activeEnergyKcal` — the active energy the workout measured over the whole
@@ -492,10 +513,16 @@ Invariants:
 
 - **One `session_end` per session the wrist created, appended before the row that
   ends it; none for a session it joined; a reopened session keeps its first.**
-  Verified by watchOS `WatchSessionEngineTests` (the `D-120` cases).
+  Verified by watchOS `WatchSessionEngineTests` (the `D-120` cases) and, for the
+  Dart twin, by `test/watch_session_engine_test.dart`
+  (`S-16001 the wrist's own finish captures its end before the terminal row`,
+  `S-16003 a second wrist finish stores and emits no second end`).
 - **Every unacknowledged observation of every session is re-sent, in the order
   it was stored.** Verified by watchOS
-  `WatchSessionEngineTests.testS240EveryUnacknowledgedObservationOfEverySessionIsResentInStoreOrder`.
+  `WatchSessionEngineTests.testS240EveryUnacknowledgedObservationOfEverySessionIsResentInStoreOrder`
+  and, for the Dart twin's `pendingObservations()`, by
+  `test/watch_session_engine_test.dart`
+  (`S-16007 the end is still owed after another session started`).
 - **The wrist emits exactly the events `watch/contract/watch_capture_contract.json`
   expects.** Verified by watchOS `WatchCaptureContractTests`, which replays each
   case's timeline through the wrist and compares every event field for field.
@@ -560,4 +587,4 @@ Invariants:
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-09-27. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
+> **Doc freshness** — Last reconciled against source: 2026-11-14. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
