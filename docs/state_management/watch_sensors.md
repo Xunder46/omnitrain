@@ -329,7 +329,22 @@ folds over the stored rows — the phone's corrections, deletions and replacemen
 (`WatchEntryLensLog`, `WatchAcknowledgementLog` in `WatchEntryLensLog.swift`),
 and a projection reads the whole lens under one acquisition rather than three
 (`WatchEngineSessionStateRaceTests.testS15032CorrectionLensSurvivesConcurrentFramesAndProjections`,
-`…testS15034AcknowledgementSetSurvivesConcurrentReceiptsAndReads`). Two
+`…testS15034AcknowledgementSetSurvivesConcurrentReceiptsAndReads`). The session
+the wrist is on, the row list retention scans, the structure changes already
+applied and the `sentAt` of the newest snapshot applied sit in one box of their
+own (`WatchEngineSessionState`): every read and every write is a single
+synchronous acquisition never held across an `await`, `restore()`'s four writes
+land as one, so no reader sees the session without the row list that belongs to
+it, and the lock order is `mutex → state lock`, never the reverse
+(`WatchEngineStateBoxRaceTests.testS16203MirrorSurvivesRestoreAndTaps`,
+`…testS16204FullWriterMixSurvivesAllAccessors`). `restore()` still restates what
+it read from storage, so its fill replaces a row a writer appended meanwhile
+exactly as the plain assignment it replaced did (the shrink
+`WatchEngineStateBoxRaceTests.testS16203MirrorSurvivesRestoreAndTaps` sees in its
+own window). A fifth value added to the
+engine as a plain `var` is what the drift guard refuses
+(`WatchEngineStateBoxSourceTests.testS16205EngineDeclaresNoUnboxedMutableState`,
+whose allowed set is the countdown keys and the three energy marks). Two
 announcing callers meet too: a recalculated frame's announcement checks the
 energy marks (the last announced total, its session and the instant it was sent),
 writes them and validates the frame under one synchronous lock, so of two

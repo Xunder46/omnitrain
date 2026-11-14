@@ -10,9 +10,16 @@
 //  Slice 1 puts the guard, the envelope, the validator check and the three
 //  writes in one synchronous section; this file is its red-then-green evidence.
 //
+//  Phase 4 (slice 2): the session mirror (`current`) and the row mirror
+//  (`sessionRows`) move into `WatchEngineSessionState`, and
+//  `appliedChangeIds`/`newestSnapshotAt` follow; these two tests are the stress
+//  evidence that the lock they take holds under the shipping writer mix.
+//
 //  Scenario mapping:
 //    S-16201 two announcing callers with eight readers  → `testS16201...`
 //    S-16202 two simultaneous announcements of one total → `testS16202...`
+//    S-16203 the mirror under restore + taps             → `testS16203...`
+//    S-16204 the full writer mix against every accessor  → `testS16204...`
 //
 //  Thread layout, as in plan 150's race files: readers on real GCD threads,
 //  writers as detached tasks for the whole window, the group waited on without
@@ -42,6 +49,28 @@ final class AnnouncedRounds {
         let round = next
         next += 1
         return round
+    }
+}
+
+/// What the reader threads saw that no copy of the engine's state may show.
+///
+/// The readers run outside XCTest's own thread, so a failed assertion cannot be
+/// raised from there; each reader records the violation and the test asserts on
+/// the collected list once the window closes.
+final class CoherenceNotes {
+    private let lock = NSLock()
+    private var notes: [String] = []
+
+    func note(_ note: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        notes.append(note)
+    }
+
+    var all: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return notes
     }
 }
 
@@ -228,5 +257,269 @@ final class WatchEngineStateBoxRaceTests: XCTestCase {
             12.0,
             "S-16202 the one frame carries the announced total"
         )
+    }
+
+    // MARK: - S-16203 the mirror under restore and taps
+
+    /// S-16203: `restore()` (which fills the mirror from storage) and
+    /// `advanceExercise()` (which appends a row and moves the mirror) are the two
+    /// narrowest writers of `current`/`sessionRows`, and they are the pair 159
+    /// §5 could not make TSan report. Eight reader threads copy the mirror and
+    /// its projections for the window.
+    ///
+    /// **What this test can and cannot prove.** TSan does not instrument the
+    /// torn-copy refcount damage these two values cause, so this test was green
+    /// at HEAD before the box and green after it: it proves no regression and
+    /// exercises the lock, not that unboxed state would fail. The justification
+    /// for the box is by construction (159 §6, D-16202) — every access is one
+    /// `NSLock` acquisition and no accessor awaits.
+    ///
+    /// The row count **can** fall between two of one reader's samples, and that
+    /// is today's behaviour, which the box preserves (D-16203): `restore()`'s
+    /// `readAll` snapshot can predate a tap's append, and the fill replaces the
+    /// mirror with that older list. What no reader may ever see is a mirror with
+    /// no rows at all while a session is held, or a copy that is not one whole
+    /// row of this session.
+    func testS16203MirrorSurvivesRestoreAndTaps() async {
+        let sink = LockedFrameSink()
+        let engine = raceEngine(sink)
+        await engine.restore()
+        _ = await engine.createSession(
+            modality: "strength",
+            exercises: [exercise("sx-bench"), exercise("sx-row")]
+        )
+        let notes = CoherenceNotes()
+        let deadline = Date().addingTimeInterval(Self.window)
+
+        let readers = startCoherenceReaders(engine, until: deadline, notes: notes)
+        let writerDeadline = deadline
+
+        let restores = Task.detached { () -> Int in
+            var rounds = 0
+            while Date() < writerDeadline {
+                await engine.restore()
+                rounds += 1
+            }
+            return rounds
+        }
+
+        let taps = Task.detached { () -> Int in
+            var rounds = 0
+            while Date() < writerDeadline {
+                _ = await engine.advanceExercise()
+                rounds += 1
+            }
+            return rounds
+        }
+
+        await awaitGroup(readers)
+        let restoreRounds = await restores.value
+        let tapRounds = await taps.value
+
+        XCTAssertGreaterThan(restoreRounds, 10, "S-16203 the restore writer looped many rounds")
+        XCTAssertGreaterThan(tapRounds, 10, "S-16203 the tap writer looped many rounds")
+        XCTAssertEqual(notes.all, [], "S-16203 no reader saw a torn or shrinking mirror")
+        XCTAssertEqual(
+            engine.session?.sessionId,
+            Self.sessionId,
+            "S-16203 the mirror still names the session at window end"
+        )
+        XCTAssertEqual(
+            engine.session?.status,
+            WatchSessionStatus.active,
+            "S-16203 neither writer ended the session"
+        )
+    }
+
+    /// Eight reader threads over the mirror and its projections, recording any
+    /// copy that is not a whole row of this session and any row count that went
+    /// backwards within one reader's own sequence.
+    private func startCoherenceReaders(
+        _ engine: WatchSessionEngine,
+        until deadline: Date,
+        notes: CoherenceNotes
+    ) -> DispatchGroup {
+        let group = DispatchGroup()
+
+        for _ in 0..<Self.readers {
+            group.enter()
+            DispatchQueue.global().async {
+                while Date() < deadline {
+                    if let row = engine.session {
+                        if row.sessionId != Self.sessionId {
+                            notes.note("session copy named \(row.sessionId)")
+                        }
+                        if row.status == WatchSessionStatus.active,
+                           row.currentExerciseIndex >= row.exercises.count {
+                            notes.note("active session at index \(row.currentExerciseIndex) of \(row.exercises.count)")
+                        }
+                    }
+                    _ = engine.currentExercise
+                    _ = engine.entries
+                    if let snapshot = engine.sessionSnapshot(),
+                       snapshot["sessionId"] as? String != Self.sessionId {
+                        notes.note("snapshot named \(snapshot["sessionId"] as? String ?? "nil")")
+                    }
+                    let rowCount = engine.sessionRowCountForTesting
+                    if rowCount < 1 {
+                        notes.note("the mirror held \(rowCount) rows while a session was held")
+                    }
+                }
+                group.leave()
+            }
+        }
+        return group
+    }
+
+    // MARK: - S-16204 the full writer mix against every accessor
+
+    /// S-16204: the shipping writer mix — taps, phone frames, `restore()`, and
+    /// the sensor pair — all live at once, against every read accessor the
+    /// wrist's screens and prompts use.
+    ///
+    /// **What this test can and cannot prove.** As S-16203: green at HEAD and
+    /// green after the box, because TSan cannot see the damage these values
+    /// cause. It is the regression guard, not the justification.
+    ///
+    /// Nothing here asserts that every logged set survived: `restore()`'s fill
+    /// replaces the projection mid-window, which is today's behaviour (D-16203).
+    func testS16204FullWriterMixSurvivesAllAccessors() async {
+        let sink = LockedFrameSink()
+        let engine = raceEngine(sink)
+        await engine.restore()
+        _ = await engine.createSession(
+            modality: "strength",
+            exercises: [exercise("sx-bench"), exercise("sx-row")]
+        )
+        let clock = TestClock(testInstant())
+        let notes = CoherenceNotes()
+        let deadline = Date().addingTimeInterval(Self.window)
+
+        let readers = startFullAccessorReaders(engine, until: deadline, notes: notes)
+
+        let taps = Task.detached { () -> Int in
+            var rounds = 0
+            while Date() < deadline {
+                _ = await engine.advanceExercise()
+                _ = try? await engine.appendObservation(
+                    setEvent(clock, entryId: "e-tap-\(rounds)")
+                )
+                rounds += 1
+            }
+            return rounds
+        }
+
+        let frames = Task.detached { () -> Int in
+            var rounds = 0
+            while Date() < deadline {
+                _ = try? await engine.applyMessage(
+                    Self.structureChange(
+                        changeId: "chg-mix-\(rounds)",
+                        changes: [
+                            [
+                                "kind": "add_exercise",
+                                "exercise": exercise("sx-push-\(rounds)"),
+                            ]
+                        ]
+                    )
+                )
+                rounds += 1
+            }
+            return rounds
+        }
+
+        let restores = Task.detached { () -> Int in
+            var rounds = 0
+            while Date() < deadline {
+                await engine.restore()
+                rounds += 1
+            }
+            return rounds
+        }
+
+        let sensors = Task.detached { () -> Int in
+            var rounds = 0
+            while Date() < deadline {
+                let instant = testInstant().addingTimeInterval(Double(rounds) / 1_000)
+                await engine.appendSensorSample(
+                    kind: WatchSensorKind.activeEnergy,
+                    value: Double(rounds) * 0.5,
+                    recordedAt: instant
+                )
+                engine.announceEnergy(kilocalories: Double(rounds) * 0.5, at: instant)
+                rounds += 1
+            }
+            return rounds
+        }
+
+        await awaitGroup(readers)
+        let tapRounds = await taps.value
+        let frameRounds = await frames.value
+        let restoreRounds = await restores.value
+        let sensorRounds = await sensors.value
+
+        XCTAssertGreaterThan(tapRounds, 10, "S-16204 the tap writer looped many rounds")
+        XCTAssertGreaterThan(frameRounds, 10, "S-16204 the frame writer looped many rounds")
+        XCTAssertGreaterThan(restoreRounds, 10, "S-16204 the restore writer looped many rounds")
+        XCTAssertGreaterThan(sensorRounds, 10, "S-16204 the sensor writer looped many rounds")
+        XCTAssertEqual(notes.all, [], "S-16204 no reader saw a torn mirror")
+        XCTAssertEqual(
+            engine.session?.sessionId,
+            Self.sessionId,
+            "S-16204 the mirror still names the session at window end"
+        )
+    }
+
+    /// Eight reader threads over every accessor the wrist reads while a workout
+    /// runs.
+    private func startFullAccessorReaders(
+        _ engine: WatchSessionEngine,
+        until deadline: Date,
+        notes: CoherenceNotes
+    ) -> DispatchGroup {
+        let group = DispatchGroup()
+
+        for _ in 0..<Self.readers {
+            group.enter()
+            DispatchQueue.global().async {
+                while Date() < deadline {
+                    _ = engine.session
+                    _ = engine.currentExercise
+                    _ = engine.observations
+                    _ = engine.sensorSamples
+                    _ = engine.newestSensorSamples()
+                    _ = engine.timerRows("work")
+                    _ = engine.entries
+                    _ = engine.sessionSnapshot()
+                    _ = engine.pendingObservations()
+                    _ = engine.unconfirmedObservations
+                    _ = engine.nutritionLog
+                    _ = engine.waterLog
+                    _ = engine.hasEffortRating(Self.sessionId)
+                    if let row = engine.session, row.sessionId != Self.sessionId {
+                        notes.note("session copy named \(row.sessionId)")
+                    }
+                }
+                group.leave()
+            }
+        }
+        return group
+    }
+
+    /// A conformant `structure_change` from the phone (the shape plan 150's
+    /// S-15031 uses): an `add_exercise` that applies.
+    private static func structureChange(
+        changeId: String,
+        changes: [[String: Any]]
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-\(changeId)",
+            "sessionId": Self.sessionId,
+            "type": "structure_change",
+            "origin": "phone",
+            "sentAt": utcIso(testInstant()),
+            "payload": ["changeId": changeId, "changes": changes],
+        ]
     }
 }

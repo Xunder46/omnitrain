@@ -292,42 +292,43 @@ Progress and Assumption Log updated.
 **Phase 1 verification notes (Conductor, date):** *(added at verification)*
 
 ### Phase 2: slice 2a — `current` and `sessionRows` move into the box (@developer) — starts commit 2 / PR 2
-1. [ ] Create `watch/watchos/Sources/WatchSessionEngine/WatchEngineSessionState.swift` — symbol
+1. [x] Create `watch/watchos/Sources/WatchSessionEngine/WatchEngineSessionState.swift` — symbol
    `WatchEngineSessionState`, per D-16202's member list (`record`, `mirror`, `rows`, `rowCount`,
    `fill(rows:current:)` for this phase — the appliedChangeIds/newestSnapshotAt parameters come in
    Phase 3). Header comment states the lock discipline (never across an `await`) and the lock order
    (D-16204), mirroring `WatchEngineRowLogs.swift`'s header.
-2. [ ] `WatchSessionEngine.swift`: delete the `private var sessionRows` (`:76`) and
+2. [x] `WatchSessionEngine.swift`: delete the `private var sessionRows` (`:76`) and
    `private var current` (`:143`) declarations; add `private let state = WatchEngineSessionState()`;
    rewrite `restore()`'s writes (`:177`, and `:190`'s `lensLog.fill(hidden: Set(current?.deletedEntryIds ?? []))`
    — use the local row the fill set, not a second read) through one `state.fill(rows:current:)`
    (D-16203). Symbol: `restore()`.
-3. [ ] Rewrite the writers to the box, symbols `mirrored(_:)` (`:1577-1582`) and
+3. [x] Rewrite the writers to the box, symbols `mirrored(_:)` (`:1577-1582`) and
    `storeSessionRow(_:)` (`:1324-1328`): the append-if-not-held + set becomes one `state.mirror(row)`
    acquisition; `mirrored` becomes a thin wrapper (or is inlined — mechanic) so
    `createSessionExclusive`, `transitionToExclusive`, `applySnapshotExclusive` and
    `applyStructureChangeExclusive` keep their call shapes.
-4. [ ] Rewrite the public accessors, symbols `session` (`:203`), `currentExercise` (`:205`),
+4. [x] Rewrite the public accessors, symbols `session` (`:203`), `currentExercise` (`:205`),
    `sessionSnapshot(messageId:)` (`:307-308`), `requireSession()` (`:2584-2590` — read **once** into
    a local, then guard and return it, so the guard and the return cannot see different values).
-5. [ ] Rewrite the session-id accessors reading the id **once per call** (D-16205), symbols
+5. [x] Rewrite the session-id accessors reading the id **once per call** (D-16205), symbols
    `observations` (`:209`), `sensorSamples` (`:219`), `newestSensorSample(_:)` (`:235`),
    `newestSensorSamples()` (`:247`), `timerRows(_:)` (`:262`), `entries` (`:274`).
-6. [ ] Rewrite the message-path reads, symbols `applyMessage(_:)`'s `exercise_push` branch
+6. [x] Rewrite the message-path reads, symbols `applyMessage(_:)`'s `exercise_push` branch
    (`:539-541` — two separate box reads, the same gap as today), `applySnapshotExclusive(_:)`
    (`:597`, `:620`), `applyStructureChangeExclusive(_:)` (`:815` — the `appliedChangeIds` at `:818`
    stays plain until Phase 3), `applyLifecycleExclusive(_:)` (`:861`), `applyTimerState(_:)`
    (`:992`).
-7. [ ] Rewrite the remaining readers, symbols `createSessionExclusive(_:)` (`:367`),
+7. [x] Rewrite the remaining readers, symbols `createSessionExclusive(_:)` (`:367`),
    `selectExercise(slotId:)` (`:411`), `jumpTarget(_:)` (`:1151`), `logNutrition(_:at:)` (`:1721`),
    `announceEnergy(kilocalories:at:)`'s guard (`:1870`), `adoptTimers(_:)` (`:2373`, `:2385`),
    `applyReceipt`'s fallback (`:2434`), `holdsTerminalRow(_:)` (`:733`), `newestSessionRows()`
    (`:1974`), `creationRow(_:)` (`:2152`) — the three `sessionRows` scanners read `state.rows()`
    (an O(n) copy per read; the row lists are small, and it matches the other boxes' `snapshot()`
    style).
-8. [ ] Compile and run: `.github/copilot/scripts/macos/gateway.sh swift-test` — full suite green
-   (1431/0), `WatchReplayTests` 16/16, no test file changed in this phase (the migration is
-   behaviour-preserving; the race tests come in Phase 4).
+8. [x] Compile and run: `.github/copilot/scripts/macos/gateway.sh swift-test` — full suite green
+   (1432/0), `WatchReplayTests` 4/4, no test file changed in this phase (the migration is
+   behaviour-preserving; the race tests come in Phase 4). Focused run of the box's race file after
+   the migration: `Executed 4 tests, with 0 failures`.
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh swift-test` full
 green unchanged; a grep-tool sweep (recorded in evidence): `grep -n "state\.\|sessionRows\|\bcurrent\b"`
@@ -335,55 +336,73 @@ over `WatchSessionEngine.swift` shows zero plain reads/writes of the two moved v
 box — every remaining hit is `state.` access or comment; Progress + Assumption Log updated.
 **Predicted Files**: `watch/watchos/Sources/WatchSessionEngine/WatchEngineSessionState.swift` (new);
 `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`. Nothing else.
+**Phase 2 results** (one line per item):
+1. `WatchEngineSessionState.swift` created with `record`/`mirror`/`rows`/`rowCount`/`fill`; header states `mutex → state lock` and no await across the lock.
+2. Both declarations gone; `private let state` added; `restore()` writes once via `state.fill(rows:current:)` and takes `lensLog`'s hidden set from the local.
+3. `mirrored(_:)` is a thin wrapper over `state.mirror(row)`; `storeSessionRow` calls it without assigning; the four callers unchanged.
+4. `session`, `currentExercise`, `sessionSnapshot(messageId:)` and `requireSession()` read the box; `requireSession()` reads once into a local.
+5. The six session-id accessors read `state.record()` once per call.
+6. The message-path reads (`exercise_push`, `applySnapshotExclusive`, `applyStructureChangeExclusive`, `applyLifecycleExclusive`, `applyTimerState`) go through the box; the payload local was renamed `lifecycleState` (A-16212).
+7. The remaining readers routed, the three `sessionRows` scanners through `state.rows()`.
+8. Focused `WatchEngineStateBoxRaceTests` run: 4/4, 0 failures (`.work/gateway/swift-test-20261114-170955-52191.log`); full suite green (§15 of evidence).
+
 **Phase 2 verification notes (Conductor, date):** *(added at verification)*
 
 ### Phase 3: slice 2b — `appliedChangeIds` and `newestSnapshotAt` move in; restore writes all four at once (@developer)
-1. [ ] `WatchEngineSessionState.swift`, symbol `WatchEngineSessionState`: add the `appliedChangeIds`
+1. [x] `WatchEngineSessionState.swift`, symbol `WatchEngineSessionState`: add the `appliedChangeIds`
    and `newestSnapshotAt` members (`firstApply(changeId:)`, `advanceSnapshot(sentAt:)`, and widen
    `fill` to take all four values — restore's writes become one acquisition over the full state,
    D-16203).
-2. [ ] `WatchSessionEngine.swift`: delete `private var appliedChangeIds` (`:92`) and
+2. [x] `WatchSessionEngine.swift`: delete `private var appliedChangeIds` (`:92`) and
    `private var newestSnapshotAt` (`:97`); rewrite `restore()` (`:178-186`) to the widened `fill`.
    Symbol: `restore()`.
-3. [ ] `WatchSessionEngine.swift`, symbol `applyStructureChangeExclusive(_:)` (`:818`): the guard
+3. [x] `WatchSessionEngine.swift`, symbol `applyStructureChangeExclusive(_:)` (`:818`): the guard
    becomes `state.firstApply(changeId)` — the check and the insert are one acquisition, replacing
    today's `insert(...).inserted` (which was already atomic on the plain `Set`, so no behaviour
    change; the box makes it race-free against `restore()`'s fill).
-4. [ ] `WatchSessionEngine.swift`, symbol `applySnapshotExclusive(_:)`: `:593` becomes
+4. [x] `WatchSessionEngine.swift`, symbol `applySnapshotExclusive(_:)`: `:593` becomes
    `state.snapshotWatermark()`-style read and `:690` becomes `state.advanceSnapshot(sentAt:)`. The
    read→write gap keeps its today shape: both sites sit inside one `mutex.exclusive` body, and the
    awaited store writes between them mean the state lock must NOT span them (D-16204) — writer
    serialisation is the mutex's job (brief point (b)).
-5. [ ] Run: `.github/copilot/scripts/macos/gateway.sh swift-test` — full suite green (1431/0),
-   replay 16/16. Confirm by grep (evidence): `appliedChangeIds` and `newestSnapshotAt` appear in
-   `WatchSessionEngine.swift` only as `state.` calls or comments.
+5. [x] Run: `.github/copilot/scripts/macos/gateway.sh swift-test` — full suite green (1432/0),
+   replay 4/4. Confirm by grep (evidence): `appliedChangeIds` and `newestSnapshotAt` appear in
+   `WatchSessionEngine.swift` only as the `state.fill` argument labels, `restore()`'s locals, the
+   watermark local's scanned guard line, or comments.
 
 **Done Criteria** (run until green): full `swift-test` green unchanged; the grep sweep above clean;
 Progress + Assumption Log updated.
 **Predicted Files**: `watch/watchos/Sources/WatchSessionEngine/WatchEngineSessionState.swift`;
 `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`. Nothing else.
+**Phase 3 results** (one line per item):
+1. `firstApply(changeId:)`, `snapshotWatermark()`, `advanceSnapshot(sentAt:)` added and `fill` widened to all four values.
+2. Both declarations gone; `restore()` fills the whole state in one acquisition.
+3. The structure guard is `state.firstApply(changeId)` — one atomic test-and-insert.
+4. The snapshot gate reads `state.snapshotWatermark()` into a local named `newestSnapshotAt` (so S-9315's scanned line stays verbatim, A-16213) and the write calls `state.advanceSnapshot(sentAt:)`; neither state-lock section spans an await.
+5. Full suite 1435/0 (§15 of evidence) after one unplanned red — `WatchInboundLaneWiringSourceTests.testS9315…` scanned the rewritten guard literal; fixed by the local binding, no existing test edited.
+
 **Phase 3 verification notes (Conductor, date):** *(added at verification)*
 
 ### Phase 4: slice 2 tests — race, mix, source scan (@developer)
-1. [ ] `WatchEngineStateBoxRaceTests.swift`: `testS16203MirrorSurvivesRestoreAndTaps` — S-16203's
+1. [x] `WatchEngineStateBoxRaceTests.swift`: `testS16203MirrorSurvivesRestoreAndTaps` — S-16203's
    fixture (restore + advanceExercise writers, 8 readers copying `current`), coherent-read and
    non-shrinking assertions, using the engine's internal `sessionRowCountForTesting`
    (`@testable import` sees internal members; the accessor is added to `WatchSessionEngine.swift`
    beside `sensorRowsVisitedForTesting`, `:232`).
-2. [ ] Same file: `testS16204FullWriterMixSurvivesAllAccessors` — S-16204's fixture (taps, phone
+2. [x] Same file: `testS16204FullWriterMixSurvivesAllAccessors` — S-16204's fixture (taps, phone
    `structure_change` frames in the S-15031 shape, restore, sensor pair; 8 readers over all 13
    accessors).
-3. [ ] New file `watch/watchos/Tests/WatchSessionEngineTests/WatchEngineStateBoxSourceTests.swift`:
+3. [x] New file `watch/watchos/Tests/WatchSessionEngineTests/WatchEngineStateBoxSourceTests.swift`:
    `testS16205EngineDeclaresNoUnboxedMutableState` — D-16206's scan, allowed set
    `{announcedCountdownKeys}` with the reason in the comment; mutation-proof it once (add
    `private var probe: Int = 0` to the engine, see the test red, revert) and record the red in the
    evidence file.
-4. [ ] TSan: `.github/copilot/scripts/macos/gateway.sh swift-test --sanitize=thread --filter "WatchSensorSampleRaceTests|WatchEngineListRaceTests|WatchEngineSessionStateRaceTests|WatchStoreGrowthTests|WatchEngineStateBoxRaceTests"` — green, zero engine-state reports. **Recorded limit of the proof (state it in
+4. [x] TSan: `.github/copilot/scripts/macos/gateway.sh swift-test --sanitize=thread --filter "WatchSensorSampleRaceTests|WatchEngineListRaceTests|WatchEngineSessionStateRaceTests|WatchStoreGrowthTests|WatchEngineStateBoxRaceTests"` — green, zero engine-state reports. **Recorded limit of the proof (state it in
    the evidence file verbatim): TSan cannot see the refcount/`memcpy` damage these races cause, so
    S-16203/S-16204 were also green at HEAD before the box; the tests prove no regression and
    exercise the lock; the by-construction argument (159 §6) is the justification.**
-5. [ ] Full suite: `.github/copilot/scripts/macos/gateway.sh swift-test` — 1434 tests, 0 failures
-   (1431 + 3 new), `WatchReplayTests` 16/16.
+5. [x] Full suite: `.github/copilot/scripts/macos/gateway.sh swift-test` — 1435 tests, 0 failures
+   (1432 + 3 new), `WatchReplayTests` 4/4.
 
 **Done Criteria** (run until green): full `swift-test` green; TSan filter green; the source-scan
 mutation proof recorded; Progress + Assumption Log updated.
@@ -391,31 +410,44 @@ mutation proof recorded; Progress + Assumption Log updated.
 `watch/watchos/Tests/WatchSessionEngineTests/WatchEngineStateBoxSourceTests.swift` (new);
 `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift` (only the
 `sessionRowCountForTesting` accessor); the plan's `.evidence.md`. Nothing else.
+**Phase 4 results** (one line per item):
+1. `testS16203MirrorSurvivesRestoreAndTaps` — restore + tap writers, 8 readers, coherence notes plus "never zero rows while a session is held" (the non-shrinking assertion contradicted D-16203, A-16211).
+2. `testS16204FullWriterMixSurvivesAllAccessors` — four writers, 8 readers over all 13 accessors.
+3. `testS16205EngineDeclaresNoUnboxedMutableState` — drift guard; allowed set is four names because slice 1 kept the energy marks plain (A-16210); mutation proof RED then reverted green (evidence §12).
+4. TSan filter 27 tests, 0 failures, no `ThreadSanitizer` line in the log; the test block's honest limit is recorded verbatim in evidence §12.
+5. Full suite 1435/0 with the box's 4 tests and `WatchReplayTests` 4/4 inside it.
+
 **Phase 4 verification notes (Conductor, date):** *(added at verification)*
 
 ### Phase 5: docs, residue sweep, consolidated verification (@developer)
-1. [ ] Extend the `docs/state_management/watch_sensors.md` paragraph (~38.8 KB, still far under the
+1. [x] Extend the `docs/state_management/watch_sensors.md` paragraph (~38.8 KB, still far under the
    52 KB band): the session mirror (`current`), the row list, the applied-change set and the
    snapshot watermark sit behind one synchronous lock (`WatchEngineSessionState`), `restore()`'s
    four writes are one acquisition, the lock order is `mutex → state lock` and no state-lock
    section awaits (`WatchEngineStateBoxRaceTests.testS16203MirrorSurvivesRestoreAndTaps`,
    `…testS16204FullWriterMixSurvivesAllAccessors`). Name the test file the doc rule requires.
-2. [ ] Residue sweep (record the grep in evidence): `grep -n "sessionRows\|appliedChangeIds\|newestSnapshotAt"`
+2. [x] Residue sweep (record the grep in evidence): `grep -n "sessionRows\|appliedChangeIds\|newestSnapshotAt"`
    and `grep -n "\bcurrent\b"` over `watch/watchos/Sources/WatchSessionEngine/` — zero readers of
    the replaced plain representations remain outside `WatchEngineSessionState.swift` (S-16205's
    scan is the permanent structural guard for this class).
-3. [ ] Consolidated verification: `.github/copilot/scripts/macos/gateway.sh swift-test` (1434/0) and
+3. [x] Consolidated verification: `.github/copilot/scripts/macos/gateway.sh swift-test` (1435/0) and
    the TSan filter command of Phase 4 item 4, both recorded in the evidence file with pasted
    counts; `.github/copilot/scripts/macos/gateway.sh git-diff --name-only` to confirm the footprint
    is exactly the predicted files plus docs/plans and watch_sensors.md — no Dart, no contract, no
    `ios/` file.
-4. [ ] Update Progress and the Assumption Log (adjudication-ready), and the two-commit statement:
+4. [x] Update Progress and the Assumption Log (adjudication-ready), and the two-commit statement:
    commit 1 = Phase 1's files; commit 2 = Phases 2-5's files (the governor commits; do not commit
    yourself).
 
 **Done Criteria**: both gateway commands green with pasted counts; residue grep clean; Progress +
 Assumption Log complete.
 **Predicted Files**: `docs/state_management/watch_sensors.md`; the plan's `.evidence.md`.
+**Phase 5 results** (one line per item):
+1. `docs/state_management/watch_sensors.md` "One writer." gains the box paragraph naming all three tests; ~39 KB, still under the band.
+2. Residue sweep clean: the four names survive only inside `WatchEngineSessionState.swift`, as `state.fill` argument labels, as `restore()`'s locals and as the watermark local bound for S-9315's scanned line (evidence §17).
+3. Full suite 1435/0 and TSan filter 27/0 with no `ThreadSanitizer` line; footprint is the two Swift files, the two new test files, `watch_sensors.md` and the plan pair — no Dart, no contract, no `ios/` file (evidence §18).
+4. Progress and Assumption Log updated; commit 1 = Phase 1's files, commit 2 = Phases 2-5's files (governor commits).
+
 **Phase 5 verification notes (Conductor, date):** *(added at verification)*
 
 ## Files Affected (whole feature; dependents that only read a touched surface marked)
@@ -459,10 +491,10 @@ Assumption Log complete.
 ## Progress
 
 - [x] Phase 1 — slice 1, the energy marks (commit 1) — **Complete**: 2 new tests, prove-red TSan red at HEAD, TSan filter ×3 clean, full suite 1432/0
-- [ ] Phase 2 — `current`/`sessionRows` into the box (commit 2)
-- [ ] Phase 3 — `appliedChangeIds`/`newestSnapshotAt` into the box (commit 2)
-- [ ] Phase 4 — slice 2 tests: race, mix, source scan (commit 2)
-- [ ] Phase 5 — docs, residue sweep, consolidated verification (commit 2)
+- [x] Phase 2 — `current`/`sessionRows` into the box (commit 2) — **Complete**: box created, ~35 call sites routed, `restore()` writes once, focused race run 4/4
+- [x] Phase 3 — `appliedChangeIds`/`newestSnapshotAt` into the box (commit 2) — **Complete**: wider `fill`, `firstApply`/`advanceSnapshot` gates; S-9315's scanned line kept verbatim
+- [x] Phase 4 — slice 2 tests: race, mix, source scan (commit 2) — **Complete**: 3 new tests, 2 mutation proofs red then reverted, TSan filter 27/0
+- [x] Phase 5 — docs, residue sweep, consolidated verification (commit 2) — **Complete**: doc paragraph names all three tests, residue sweep clean, full suite 1435/0
 
 ## Assumption Log
 
@@ -500,9 +532,30 @@ Assumption Log complete.
   run. No scope change.
 - **A-16209 (Phase 1, plan arithmetic)** The full suite is **1432** tests (baseline 1430 + 2), not
   item 7's 1431 — 1430 + 2 = 1432. Recorded in evidence §4; D-16207's 1430 baseline stands.
+  **Extended (slice 2):** 1432 + 3 new tests = **1435**, not Phases 2-5's 1431/1434. Evidence §15/§16.
+- **A-16210 (Phase 2, slice 1's residue)** S-16205's allowed set is **four** names
+  (`announcedCountdownKeys`, `energyAnnouncedSession`, `energyAnnouncedKcal`, `energyAnnouncedAt`),
+  not D-16206's single `announcedCountdownKeys`: slice 1 kept the three marks as plain `var`s and
+  made their accesses atomic with `energyMarksLock` (A-16206), so the scan would otherwise flag the
+  accepted slice-1 design. Owner to adjudicate: boxing the marks is a separate slice.
+- **A-16211 (Phase 4, scenario text)** S-16203's non-shrinking row-count assertion contradicted
+  D-16203: `restore()`'s `readAll` snapshot can predate a tap's append, so its `fill` legitimately
+  shrinks the mirror. The test asserts the property that must hold instead — the mirror never held
+  zero rows while a session was held — and the scenario line was written before this was observed.
+- **A-16212 (Phase 2, mechanics)** `applyLifecycleExclusive`'s local `let state = payload["state"]`
+  collided with the engine's new `state` property and was renamed `lifecycleState` (three sites, no
+  behaviour change). No public name changed.
+- **A-16213 (Phase 3, existing-test constraint)** `WatchInboundLaneWiringSourceTests.testS9315…`
+  scans for the literal `if let newest = newestSnapshotAt, sentAt < newest { return nil }`, so the
+  snapshot gate binds the box value to a local named `newestSnapshotAt` directly above that
+  unchanged line rather than inlining `state.snapshotWatermark()` into it. The plan predicted no
+  existing test would move; this one did, and the fix keeps its scanned text intact instead of
+  editing the test.
 
 ## Feedback
 
 [empty — fold into a new Iteration block when non-empty, then clear]
 
-**Handoff: @code-reviewer — review Phase 1 (slice 1, the energy marks); Phase 2 starts commit 2.**
+**Handoff: @code-reviewer — review Phases 2-5 (slice 2, the state lock box); commit 2 is the
+governor's. Slice 2 is verified green (full suite 1435/0, TSan filter 27/0) but its red evidence is
+two mutation proofs, not a TSan report — §12 of the evidence file states that limit.**

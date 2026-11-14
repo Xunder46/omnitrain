@@ -38,8 +38,8 @@ public final class WatchSessionEngine: ObservableObject {
     private let store: WatchSessionStore
 
     /// Serialises the five session-row writers (D-2). Each runs its whole body —
-    /// the read of `current`, the awaited append, the write of `current` —
-    /// inside this gate, so a phone message and a wrist change cannot both
+    /// the read of the session the watch is on, the awaited append, the write of
+    /// it — inside this gate, so a phone message and a wrist change cannot both
     /// build a row from the same out-of-date copy.
     private let mutex = WatchAsyncMutex()
 
@@ -73,7 +73,15 @@ public final class WatchSessionEngine: ObservableObject {
     static let timerPrefix = "tms-"
     static let lifecyclePrefix = "life-"
 
-    private var sessionRows: [WatchSessionRecord] = []
+    /// The session the watch is on and the rows it holds, behind one lock
+    /// (`WatchEngineSessionState`): the gated writers and `restore` write them
+    /// while every screen and prompt reads them on whatever thread the caller
+    /// runs on (plan 162 D-16202). The same lock holds the structure changes
+    /// already applied, by `changeId` — rebuilt from storage by `restore`, so a
+    /// relaunch cannot apply one twice (PROTOCOL.md, authority rule 6) — and the
+    /// `sentAt` of the newest snapshot applied (plan 63 D-6), which is what
+    /// refuses an older one whole.
+    private let state = WatchEngineSessionState()
 
     /// The stored observations and timer rows, behind a lock each: a phone
     /// frame's delivery task, a sensor stream and a logging tap write them while
@@ -85,16 +93,6 @@ public final class WatchSessionEngine: ObservableObject {
     /// threads while the logging screen reads them on the main thread
     /// (`WatchSensorSampleLog`).
     private let storedSensorSamples = WatchSensorSampleLog()
-
-    /// The structure changes this watch has already applied, by `changeId`.
-    /// Rebuilt from storage by `restore`, so a relaunch cannot apply one twice
-    /// (PROTOCOL.md, authority rule 6).
-    private var appliedChangeIds: Set<String> = []
-
-    /// The `sentAt` of the newest snapshot this watch has applied, rebuilt from
-    /// the stored `snap-` rows by `restore` (plan 63 D-6): a snapshot older than
-    /// it is refused whole.
-    private var newestSnapshotAt: Date?
 
     /// The phone's corrections to entries the watch holds, keyed by `entryId`,
     /// the ids it deleted, and the ones it **replaced** rather than corrected: a
@@ -140,8 +138,6 @@ public final class WatchSessionEngine: ObservableObject {
         var jump: JumpCandidate?
     }
 
-    private var current: WatchSessionRecord?
-
     public init(
         store: WatchSessionStore,
         onEmit: WatchMessageSink? = nil,
@@ -167,27 +163,35 @@ public final class WatchSessionEngine: ObservableObject {
     /// because nothing else was ever authoritative.
     public func restore() async {
         let contents = await store.readAll()
+        let restored = contents.sessions.max { $0.sequence < $1.sequence }
+        let appliedChangeIds = Set(
+            contents.sessions
+                .filter { $0.recordId.hasPrefix(Self.changePrefix) }
+                .map { String($0.recordId.dropFirst(Self.changePrefix.count)) }
+        )
+        let newestSnapshotAt = contents.sessions
+            .filter { $0.recordId.hasPrefix(Self.snapshotPrefix) }
+            .map(\.recordedAt)
+            .max()
 
-        sessionRows = contents.sessions
+        // One acquisition for all four: a reader can never see the restored
+        // session without the list, the applied changes or the watermark that
+        // belong to it. No mutex is taken here (D-16203), so a writer's row
+        // appended after `readAll` is clobbered exactly as before.
+        state.fill(
+            rows: contents.sessions,
+            current: restored,
+            appliedChangeIds: appliedChangeIds,
+            newestSnapshotAt: newestSnapshotAt
+        )
         observationLog.fill(with: contents.observations)
         timerLog.fill(with: contents.timers)
         storedSensorSamples.fill(with: contents.sensorSamples)
         acknowledgementLog.fill(with: Set(contents.confirmations.flatMap(\.observationIds)))
 
-        current = contents.sessions.max { $0.sequence < $1.sequence }
-        appliedChangeIds = Set(
-            contents.sessions
-                .filter { $0.recordId.hasPrefix(Self.changePrefix) }
-                .map { String($0.recordId.dropFirst(Self.changePrefix.count)) }
-        )
-        newestSnapshotAt = contents.sessions
-            .filter { $0.recordId.hasPrefix(Self.snapshotPrefix) }
-            .map(\.recordedAt)
-            .max()
-
         // D-113.1: the deletion lens is read back from the newest row, so a
         // relaunch hides the same entries the killed process hid.
-        lensLog.fill(hidden: Set(current?.deletedEntryIds ?? []))
+        lensLog.fill(hidden: Set(restored?.deletedEntryIds ?? []))
     }
 
     /// The newest session the store holds, read without restoring anything
@@ -200,13 +204,18 @@ public final class WatchSessionEngine: ObservableObject {
 
     // MARK: - Session state
 
-    public var session: WatchSessionRecord? { current }
+    public var session: WatchSessionRecord? { state.record() }
 
-    public var currentExercise: [String: Any]? { current?.currentExercise }
+    public var currentExercise: [String: Any]? { state.record()?.currentExercise }
 
     /// The current session's observations, in the order they were logged.
+    ///
+    /// The session id is read once per call, so a writer moving the engine to
+    /// another session cannot make this filter answer the previous session's
+    /// rows while the log has moved on (D-16205).
     public var observations: [WatchObservationRecord] {
-        observationLog.snapshot().filter { $0.sessionId == current?.sessionId }
+        guard let sessionId = state.record()?.sessionId else { return [] }
+        return observationLog.snapshot().filter { $0.sessionId == sessionId }
     }
 
     /// The readings the platform sensors produced for the current session, in
@@ -216,7 +225,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// rate on the wrist is the newest row that reached the store, so a relaunch
     /// shows what the watch measured instead of starting from nothing.
     public var sensorSamples: [WatchSensorSampleRecord] {
-        guard let sessionId = current?.sessionId else { return [] }
+        guard let sessionId = state.record()?.sessionId else { return [] }
         return storedSensorSamples.samples(forSession: sessionId)
     }
 
@@ -231,6 +240,11 @@ public final class WatchSessionEngine: ObservableObject {
     /// time (S-15606). No production behaviour reads it.
     var sensorRowsVisitedForTesting: Int { storedSensorSamples.rowsVisitedForTesting }
 
+    /// How many session rows the in-memory mirror holds, for the test that a
+    /// concurrent reader never sees the mirror shrink (S-16203). No production
+    /// behaviour reads it.
+    var sessionRowCountForTesting: Int { state.rowCount }
+
     /// The newest reading of `kind` for the current session, or nil when there
     /// has been none.
     public func newestSensorSample(_ kind: String) -> WatchSensorSampleRecord? {
@@ -244,7 +258,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// that divides them) and it is rebuilt on a one-second tick, so the caller
     /// resolves the session's measurements once rather than scanning per value.
     public func newestSensorSamples() -> [String: WatchSensorSampleRecord] {
-        guard let sessionId = current?.sessionId else { return [:] }
+        guard let sessionId = state.record()?.sessionId else { return [:] }
         return storedSensorSamples.newest(forSession: sessionId)
     }
 
@@ -257,9 +271,10 @@ public final class WatchSessionEngine: ObservableObject {
     /// the history a round's pauses are read back from (D-122 c), where
     /// `timerFor` gives only the row that applies now.
     public func timerRows(_ kind: String) -> [WatchTimerRecord] {
-        timerLog
+        guard let sessionId = state.record()?.sessionId else { return [] }
+        return timerLog
             .snapshot()
-            .filter { $0.sessionId == current?.sessionId && $0.kind == kind }
+            .filter { $0.sessionId == sessionId && $0.kind == kind }
             .sorted { $0.sequence < $1.sequence }
     }
 
@@ -271,7 +286,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// A correction is therefore a projection, not an edit, which is what keeps
     /// the store append-only and the phone the only side that can edit history.
     public var entries: [WatchObservationRecord] {
-        guard let sessionId = current?.sessionId else { return [] }
+        guard let sessionId = state.record()?.sessionId else { return [] }
         return projectedEntries(sessionId)
     }
 
@@ -305,7 +320,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// back as the original, and timers travel as wall-clock state: the phone
     /// derives remaining time from its own clock (PROTOCOL.md, "Timer state").
     public func sessionSnapshot(messageId: String? = nil) -> [String: Any]? {
-        guard let session = current else { return nil }
+        guard let session = state.record() else { return nil }
 
         let envelope: [String: Any] = [
             "protocolVersion": SyncProtocolValidator.protocolVersion,
@@ -364,7 +379,7 @@ public final class WatchSessionEngine: ObservableObject {
         // caller gets back — same row, no lifecycle, no snapshot (D-171,
         // D-177). A session the wrist already ended does not hold the slot, so
         // the next start is free.
-        if let held = current, held.status == WatchSessionStatus.active {
+        if let held = state.record(), held.status == WatchSessionStatus.active {
             return held
         }
 
@@ -408,7 +423,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// longer holds returns nil and changes nothing.
     @discardableResult
     public func selectExercise(slotId: String) async -> WatchSessionRecord? {
-        guard let session = current,
+        guard let session = state.record(),
               let index = session.exercises.firstIndex(where: {
                   $0["sessionExerciseId"] as? String == slotId
               })
@@ -536,9 +551,9 @@ public final class WatchSessionEngine: ObservableObject {
             try requireConformingIncoming(envelope)
             return await applyTimerState(envelope)
         case "exercise_push":
-            let before = current?.recordId
+            let before = state.record()?.recordId
             _ = try await applyExercisePush(envelope)
-            return current?.recordId != before
+            return state.record()?.recordId != before
         case "observations_up":
             // The watch's own product; a phone has no business sending one. It
             // is still read, so a peer speaking another version is refused here
@@ -589,12 +604,16 @@ public final class WatchSessionEngine: ObservableObject {
 
         // An older state arriving late changes nothing, not even an entry or a
         // tombstone (plan 63 D-1, D-6): the newest snapshot already applied
-        // speaks for the session.
+        // speaks for the session. The watermark is read once, from the box, and
+        // named as it was while it was the engine's own field (S-9315 scans this
+        // line).
+        let newestSnapshotAt = state.snapshotWatermark()
         if let newest = newestSnapshotAt, sentAt < newest { return nil }
 
         let exercises = (payload["exercises"] as? [[String: Any]]) ?? []
         let entryMaps = (payload["entries"] as? [[String: Any]]) ?? []
-        let existing = current?.sessionId == sessionId ? current : nil
+        let named = state.record()
+        let existing = named?.sessionId == sessionId ? named : nil
         let status = (payload["status"] as? String) ?? WatchSessionStatus.active
 
         // D-15101: a snapshot naming a session the wrist has already ended may
@@ -617,7 +636,7 @@ public final class WatchSessionEngine: ObservableObject {
         // before `captureSessionEnd`, so a refused snapshot ends nothing. And
         // when the session it names has already ended, its entries are the only
         // news such a frame can carry (D-14605).
-        if let held = current,
+        if let held = state.record(),
            held.status == WatchSessionStatus.active,
            !held.exercises.isEmpty,
            held.sessionId != sessionId {
@@ -687,7 +706,10 @@ public final class WatchSessionEngine: ObservableObject {
                 revision: (payload["revision"] as? NSNumber)?.intValue ?? 0
             )
         )
-        newestSnapshotAt = max(newestSnapshotAt ?? sentAt, sentAt)
+        // The watermark rises after the row is stored, so a snapshot that lands
+        // between this frame's gate and this line still leaves the newest of the
+        // two in place (never lowered).
+        state.advanceSnapshot(sentAt: sentAt)
 
         for entry in entryMaps {
             await storeSnapshotEntry(sessionId, entry)
@@ -731,7 +753,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// Whether any row the wrist holds for `sessionId` has ended it — the test
     /// that makes a late snapshot's entries worth merging (D-14605).
     private func holdsTerminalRow(_ sessionId: String) -> Bool {
-        for row in sessionRows where row.sessionId == sessionId {
+        for row in state.rows() where row.sessionId == sessionId {
             if Self.isTerminal(row.status) { return true }
         }
         return false
@@ -812,10 +834,10 @@ public final class WatchSessionEngine: ObservableObject {
     private func applyStructureChangeExclusive(_ envelope: [String: Any]) async -> Bool {
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         guard guardSession(envelope),
-              let session = current,
+              let session = state.record(),
               let changeId = payload["changeId"] as? String
         else { return false }
-        guard appliedChangeIds.insert(changeId).inserted else { return false }
+        guard state.firstApply(changeId: changeId) else { return false }
 
         let ladder = ladderAfter(
             exercises: session.exercises,
@@ -858,21 +880,21 @@ public final class WatchSessionEngine: ObservableObject {
     }
 
     private func applyLifecycleExclusive(_ envelope: [String: Any]) async -> Bool {
-        guard guardSession(envelope), let session = current else { return false }
+        guard guardSession(envelope), let session = state.record() else { return false }
 
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
-        let state = payload["state"] as? String ?? ""
+        let lifecycleState = payload["state"] as? String ?? ""
         let messageId = envelope["messageId"] as? String ?? newId()
         let sentAt = (try? parseUtcIso(envelope["sentAt"])) ?? clock()
         let status: String
-        switch state {
+        switch lifecycleState {
         case WatchLifecycleState.started: status = WatchSessionStatus.active
         case WatchLifecycleState.completed: status = WatchSessionStatus.completed
         case WatchLifecycleState.abandoned: status = WatchSessionStatus.abandoned
         default: status = session.status
         }
-        let ends = state == WatchLifecycleState.completed
-            || state == WatchLifecycleState.abandoned
+        let ends = lifecycleState == WatchLifecycleState.completed
+            || lifecycleState == WatchLifecycleState.abandoned
         let at = (try? parseUtcIso(payload["at"])) ?? sentAt
 
         if Self.isTerminal(session.status) {
@@ -905,7 +927,7 @@ public final class WatchSessionEngine: ObservableObject {
             }
         }
 
-        let index = state == WatchLifecycleState.exerciseAdvanced
+        let index = lifecycleState == WatchLifecycleState.exerciseAdvanced
             ? Self.clampIndex(
                 (payload["exerciseIndex"] as? NSNumber)?.intValue ?? 0,
                 session.exercises.count
@@ -989,7 +1011,7 @@ public final class WatchSessionEngine: ObservableObject {
 
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         let timers = (payload["timers"] as? [String: Any]) ?? [:]
-        let held = current
+        let held = state.record()
         // D-14603: a session that has ended takes a `null` from a late frame and
         // nothing else — a running timer a phone still reports cannot restart one.
         let terminal = held != nil
@@ -1148,7 +1170,7 @@ public final class WatchSessionEngine: ObservableObject {
         guard kind != WatchTimerKind.rest,
               stoppedAt == nil,
               let slotId,
-              let session = current,
+              let session = state.record(),
               session.sessionId == sessionId,
               session.status == WatchSessionStatus.active,
               let index = session.exercises.firstIndex(where: {
@@ -1324,7 +1346,7 @@ public final class WatchSessionEngine: ObservableObject {
     private func storeSessionRow(_ row: WatchSessionRecord) async {
         let carried = carryingLens(row)
         let stored = await store.append(.session(carried))
-        current = mirrored(stored.sessionRow ?? carried)
+        mirrored(stored.sessionRow ?? carried)
     }
 
     /// The session's entries in `entryMaps`, oldest first — the moment the
@@ -1575,11 +1597,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// never be released.
     @discardableResult
     private func mirrored(_ row: WatchSessionRecord) -> WatchSessionRecord {
-        if !sessionRows.contains(where: { $0.recordId == row.recordId }) {
-            sessionRows.append(row)
-        }
-        current = row
-        return row
+        state.mirror(row)
     }
 
     /// Announces the session's current shape to the phone.
@@ -1624,7 +1642,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// the live frame's own (same `messageId`, `sentAt`, `at`); nothing is
     /// minted and nothing is queued. An active session, or none, says nothing.
     public func replaySessionEnd() {
-        guard let row = current,
+        guard let row = state.record(),
               row.status == WatchSessionStatus.completed
                 || row.status == WatchSessionStatus.abandoned
         else { return }
@@ -1718,7 +1736,7 @@ public final class WatchSessionEngine: ObservableObject {
 
         return try await appendObservation(
             event,
-            sessionId: current?.sessionId ?? WatchNutritionSession.idFor(now)
+            sessionId: state.record()?.sessionId ?? WatchNutritionSession.idFor(now)
         )
     }
 
@@ -1881,7 +1899,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// at least five seconds have passed since the last one; anything else, and
     /// any value that is not a finite number of at least zero, sends nothing.
     public func announceEnergy(kilocalories: Double, at: Date) {
-        guard let row = current, row.status == WatchSessionStatus.active else { return }
+        guard let row = state.record(), row.status == WatchSessionStatus.active else { return }
         guard kilocalories.isFinite, kilocalories >= 0 else { return }
         // The recorder stores the raw reading before it announces, so the stored
         // samples already include `kilocalories`; a restarted counter (a recovered
@@ -2008,7 +2026,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// newest row wins, exactly as `restore` reduces the session the watch is on.
     private func newestSessionRows() -> [String: WatchSessionRecord] {
         var newest: [String: WatchSessionRecord] = [:]
-        for row in sessionRows {
+        for row in state.rows() {
             if let existing = newest[row.sessionId], existing.sequence >= row.sequence {
                 continue
             }
@@ -2185,7 +2203,8 @@ public final class WatchSessionEngine: ObservableObject {
     /// from a phone message can carry another source, so the first is the one
     /// that answers.
     private func creationRow(_ sessionId: String) -> WatchSessionRecord? {
-        sessionRows
+        let rows = state.rows()
+        return rows
             .filter { $0.sessionId == sessionId }
             .min { $0.sequence < $1.sequence }
     }
@@ -2403,9 +2422,10 @@ public final class WatchSessionEngine: ObservableObject {
     }
 
     private func newestTimer(kind: String?) -> WatchTimerRecord? {
+        guard let sessionId = state.record()?.sessionId else { return nil }
         var newest: WatchTimerRecord?
         for timer in timerLog.snapshot() {
-            if timer.sessionId != current?.sessionId { continue }
+            if timer.sessionId != sessionId { continue }
             if let kind, timer.kind != kind { continue }
             if newest.map({ timer.sequence > $0.sequence }) ?? true { newest = timer }
         }
@@ -2417,7 +2437,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// another one, is refused whole — nothing applied, nothing stored, nothing
     /// emitted.
     private func guardSession(_ envelope: [String: Any]) -> Bool {
-        guard let held = current,
+        guard let held = state.record(),
               let sessionId = envelope["sessionId"] as? String
         else { return false }
         return sessionId == held.sessionId
@@ -2466,7 +2486,7 @@ public final class WatchSessionEngine: ObservableObject {
                     // A receipt names the session it belongs to; a standalone
                     // nutrition quick-log has none, so the row's own id stands
                     // in.
-                    sessionId: current?.sessionId ?? acknowledged[0].sessionId,
+                    sessionId: state.record()?.sessionId ?? acknowledged[0].sessionId,
                     recordedAt: now,
                     observationIds: acknowledged.map(\.recordId)
                 )
@@ -2617,7 +2637,7 @@ public final class WatchSessionEngine: ObservableObject {
     }
 
     private func requireSession() -> WatchSessionRecord {
-        guard let current else {
+        guard let current = state.record() else {
             preconditionFailure(
                 "no session: create one, or restore the in-progress session first"
             )
