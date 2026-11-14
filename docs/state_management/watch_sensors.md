@@ -329,7 +329,14 @@ folds over the stored rows — the phone's corrections, deletions and replacemen
 (`WatchEntryLensLog`, `WatchAcknowledgementLog` in `WatchEntryLensLog.swift`),
 and a projection reads the whole lens under one acquisition rather than three
 (`WatchEngineSessionStateRaceTests.testS15032CorrectionLensSurvivesConcurrentFramesAndProjections`,
-`…testS15034AcknowledgementSetSurvivesConcurrentReceiptsAndReads`).
+`…testS15034AcknowledgementSetSurvivesConcurrentReceiptsAndReads`). Two
+announcing callers meet too: a recalculated frame's announcement checks the
+energy marks (the last announced total, its session and the instant it was sent),
+writes them and validates the frame under one synchronous lock, so of two
+simultaneous announcements only the one that takes the guard sends a frame and a
+refused one writes no mark (`WatchEngineStateBoxRaceTests`
+`testS16201EnergyMarksSurviveTwoAnnouncingCallers`,
+`testS16202TwoSimultaneousAnnouncementsEmitOneFrame`).
 
 **The workout is continued when it can be, recovered when it cannot.** A kill
 cannot be caught, so the next launch, and the system's workout-recovery relaunch

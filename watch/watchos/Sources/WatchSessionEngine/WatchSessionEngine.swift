@@ -1853,9 +1853,23 @@ public final class WatchSessionEngine: ObservableObject {
 
     // MARK: - Live energy (plan 135)
 
+    /// One `NSLock` for the three announce marks: they have exactly one reader and
+    /// one writer, both in `announceEnergy`, and the sensor stream calls it off the
+    /// main actor while a second stream task can call it again (plan 162 D-16201).
+    /// The section it guards is synchronous — never held across an `await` — and
+    /// takes no second lock; `emit` and `noteRefused` run after it is released.
+    private let energyMarksLock = NSLock()
     private var energyAnnouncedSession: String?
     private var energyAnnouncedKcal: Double?
     private var energyAnnouncedAt: Date?
+
+    /// What one call to `announceEnergy` decided inside the marks section, for the
+    /// caller to act on after the lock is released.
+    private enum EnergyAnnouncement {
+        case suppressed
+        case send([String: Any])
+        case refused([String: Any], [SyncProtocolRejection])
+    }
 
     /// Tells the phone the wrist's running active-energy total (plan 135 D-13510,
     /// D-13511): live only, stored nowhere, sent through the same `emit` path as a
@@ -1876,11 +1890,35 @@ public final class WatchSessionEngine: ObservableObject {
         // raw value is the total.
         let samples = storedSensorSamples.samples(forSession: row.sessionId)
         let total = WatchSensorSummaries.activeEnergy(samples, from: row.startedAt, through: at) ?? kilocalories
+        switch energyAnnouncement(row: row, total: total, at: at) {
+        case .suppressed:
+            return
+        case .refused(let envelope, let rejections):
+            noteRefused("frame_not_sent", envelope, rejections)
+        case .send(let envelope):
+            emit(envelope)
+        }
+    }
+
+    /// The announce decision and its bookkeeping in one synchronous section: the
+    /// rule check, the envelope, the validator's answer and the three marks.
+    /// Two callers cannot both pass the guard, and a frame the protocol refuses
+    /// records no mark — so the next caller can retry, as before (D-16201,
+    /// A-16201). Nothing in the section awaits, takes a second lock, emits or
+    /// reports a refusal; the caller does those once the lock is released.
+    private func energyAnnouncement(
+        row: WatchSessionRecord,
+        total: Double,
+        at: Date
+    ) -> EnergyAnnouncement {
+        energyMarksLock.lock()
+        defer { energyMarksLock.unlock() }
+
         if energyAnnouncedSession == row.sessionId,
            let lastKcal = energyAnnouncedKcal,
            let lastAt = energyAnnouncedAt,
            total >= lastKcal {
-            guard total - lastKcal >= 0.5, at.timeIntervalSince(lastAt) >= 5 else { return }
+            guard total - lastKcal >= 0.5, at.timeIntervalSince(lastAt) >= 5 else { return .suppressed }
         }
         let envelope: [String: Any] = [
             "protocolVersion": SyncProtocolValidator.protocolVersion,
@@ -1893,15 +1931,12 @@ public final class WatchSessionEngine: ObservableObject {
         ]
         if let validator {
             let rejections = validator.validateEnvelope(envelope)
-            if !rejections.isEmpty {
-                noteRefused("frame_not_sent", envelope, rejections)
-                return
-            }
+            if !rejections.isEmpty { return .refused(envelope, rejections) }
         }
         energyAnnouncedSession = row.sessionId
         energyAnnouncedKcal = total
         energyAnnouncedAt = at
-        emit(envelope)
+        return .send(envelope)
     }
 
     /// How long an ended session the phone has not taken keeps its raw readings
