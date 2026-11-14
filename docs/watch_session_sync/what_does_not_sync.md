@@ -237,10 +237,14 @@ remains out is listed below.
   `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift`). By
   design the wrist's record file is never trimmed — the lens is the only thing a
   deletion changes.
-- **No sensor samples are collected.** The watch app wires no sensor source, so
-  a session it logs carries no heart-rate or step values of its own; the
-  recording layer exists and is exercised only by its own suites
-  (`WatchSensorRecordingTests`, `test/watch_sensor_recording_test.dart`).
+- **Sensor readings stay on the wrist; only their summaries travel.** The watch
+  app records heart rate, steps, active energy and (for work with a distance)
+  GPS into its own store through the workout session
+  (`WatchSensorRecordingTests`, `testS002GpsStartsWithTheSessionAndTheLiveDistanceAdvances`).
+  The raw readings never cross to the phone: the `session_end` carries the
+  summaries computed from them (heart-rate average and maximum, active energy,
+  per-set-block heart rates), and the readings are released once the phone
+  has confirmed the end, or after 14 days (plan 156).
 - **A rest's timer is device-local and a rest has no length; the rest itself travels (D-26, D-80's
   device-local rule, D-160, D-219/D-220).** The
   answer projects no timers, and a snapshot stops only the timer the phone
@@ -279,11 +283,14 @@ remains out is listed below.
   start the radio refused is sent right after the wrist's next Sync request,
   or when the watch is reachable again, although the answer itself projects
   no timers (groups `S-9925` and `S-9929`). One residual (plan 136, review): the wrist's rest stop is re-sent from the phone's copy of the wrist's rest, so if the wrist ended that rest and began a newer one while the phone could not hear it, and the link comes back before any wrist frame updates the phone's copy, the newer rest is stopped early (its window still travels as an observation).
-- **The wrist labels load in kilograms.** The shell hands the surfaces no unit
-  preferences, so the rows read kg whatever the phone's saved unit is, while the
-  payload is always kilograms on the wire, which keeps the phone's history and
-  its conversions correct
-  (`WatchLoggingTimersTests.testS007APoundPreferenceStepsInPoundsStoredInKilograms`).
+- **The wrist's weight and distance labels follow the phone's units once it has synced.**
+  The phone's weight unit (`kg` or `lbs`) and distance unit (`km` or `miles`)
+  arrive in `preferences_down` at the wrist's next sync and not before, so a
+  wrist that has never synced reads kilograms and kilometres. The payload is
+  always kilograms on the wire, which keeps the phone's history and its
+  conversions correct
+  (`WatchFineCrownTests.testS7904ACrownClickOnAPoundWeightMovesTheDisplayByOne`,
+  `WatchGpsDistanceTileTests.testS16010TheTileReadsInThePhonesUnit`).
 - **A session discarded on the phone can come back from the wrist.** A discard
   deletes the row, so the phone has nothing left to recognise; a wrist that still
   holds that session — one the discard never reached — offers it again at its next
