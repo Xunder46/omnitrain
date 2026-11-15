@@ -145,7 +145,7 @@ public final class WatchEffortRatingState: ObservableObject {
     /// Reads the owed prompts back out of storage. Call on launch, after the
     /// engine has restored.
     public func restore() async {
-        let owed = await store.readAll().ratingPrompts
+        let owed = await store.readLaunch().ratingPrompts
         objectWillChange.send()
         prompts = owed
     }

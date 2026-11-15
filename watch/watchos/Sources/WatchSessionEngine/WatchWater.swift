@@ -129,7 +129,7 @@ public final class WatchWaterState {
         await gate.exclusive {
             let cutoff = clock().addingTimeInterval(-WatchWaterLimits.confirmedTapRetention)
             _ = await engine.pruneWaterTaps(loggedBefore: cutoff)
-            let rows = await store.readAll().water
+            let rows = await store.readLaunch().water
             let newest = rows.max {
                 ($0.generatedAt, $0.sequence) < ($1.generatedAt, $1.sequence)
             }

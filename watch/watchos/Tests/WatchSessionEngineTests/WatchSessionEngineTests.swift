@@ -335,10 +335,15 @@ final class WatchSessionEngineTests: XCTestCase {
         // added on purpose (plan 96 D-43, D-44): it drops only water taps the
         // phone confirmed and that were logged before the caller's cutoff, which
         // no count can still read. A seventh prune, or a wider gate, has to be
-        // added here on purpose.
+        // added here on purpose. Plan 173 D-17307 adds two more on purpose:
+        // `readLaunch` is `readAll` narrowed to the readings a launch needs, and
+        // `archiveSensorSamples` moves a terminal session's readings to their own
+        // file without dropping one — the drop is still the settle gate's.
         let allowed: Set<String> = [
             "append",
             "readAll",
+            "readLaunch",
+            "archiveSensorSamples",
             "pruneConfirmed",
             "pruneSensorSamples",
             "pruneExerciseBatches",

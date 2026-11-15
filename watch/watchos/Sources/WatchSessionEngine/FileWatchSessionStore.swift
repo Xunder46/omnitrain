@@ -22,6 +22,11 @@ public final class FileWatchSessionStore: WatchSessionStore {
     private static let markerFormat = "omnitrain-watch-store"
     private static let markerVersion = 1
     private static let fileName = "watch-session.jsonl"
+    /// A terminal session's readings live in their own file beside the main one
+    /// (D-17302). The name is pinned: the tests and the load-time migration both
+    /// read the directory.
+    private static let sampleFilePrefix = "watch-samples-"
+    private static let sampleFileSuffix = ".jsonl"
 
     private let directory: URL
     private let fileURL: URL
@@ -72,6 +77,17 @@ public final class FileWatchSessionStore: WatchSessionStore {
     /// landed, so a sequence is never handed out twice.
     private var lastSequence = 0
 
+    /// Every terminal session's side file, by session id — existence only, never
+    /// its rows. The settle gate asks whether a session has anything stored, and
+    /// a listing answers that without decoding a reading (D-17308).
+    private var sampleSideFiles: [String: URL] = [:]
+
+    /// The main file's lines this store has decoded, marker included
+    /// (`parseLine`'s successes), for the test that bounds a launch by a count
+    /// rather than by wall time (S-17301). A side file's rows are not a launch
+    /// decode and are not counted; no production behaviour reads it.
+    private var rowsDecoded = 0
+
     public init(directory: URL) {
         self.directory = directory
         self.fileURL = directory.appendingPathComponent(Self.fileName, isDirectory: false)
@@ -87,12 +103,20 @@ public final class FileWatchSessionStore: WatchSessionStore {
         locked { readAllLocked() }
     }
 
+    public func readLaunch() async -> WatchStoreContents {
+        locked { readLaunchLocked() }
+    }
+
     public func pruneConfirmed() async -> [String] {
         locked { pruneConfirmedLocked() }
     }
 
     public func pruneSensorSamples(_ sessionIds: [String]) async -> [String] {
         locked { pruneSensorSamplesLocked(sessionIds) }
+    }
+
+    public func archiveSensorSamples(_ sessionId: String) async -> [String] {
+        locked { archiveSensorSamplesLocked(sessionId) }
     }
 
     public func pruneExerciseBatches(keepingVersion: String) async -> [String] {
@@ -138,7 +162,24 @@ public final class FileWatchSessionStore: WatchSessionStore {
     }
 
     private func readAllLocked() -> WatchStoreContents {
-        let loaded = loadRows()
+        let contents = contentsLocked(from: loadRows())
+        let archived = sampleSideFiles
+            .sorted { $0.key < $1.key }
+            .flatMap { decodeSampleSideFile($0.value) }
+        guard !archived.isEmpty else { return contents }
+        return contents.withSensorSamples(
+            (contents.sensorSamples + archived).sorted { $0.sequence < $1.sequence }
+        )
+    }
+
+    /// The launch set: the main file's rows minus the readings of a terminal
+    /// session (D-17301). The side files are never opened — that is what they
+    /// are for.
+    private func readLaunchLocked() -> WatchStoreContents {
+        launchReadingsOnly(contentsLocked(from: loadRows()))
+    }
+
+    private func contentsLocked(from loaded: [StoredWatchRecord]) -> WatchStoreContents {
         guard !unsupported else { return WatchStoreContents() }
 
         var sessions: [WatchSessionRecord] = []
@@ -227,24 +268,178 @@ public final class FileWatchSessionStore: WatchSessionStore {
         let loaded = loadRows()
         guard !unsupported else { return [] }
 
-        let dropped = loaded.compactMap { row -> String? in
+        let inline = loaded.compactMap { row -> String? in
             guard case .sensorSample(let value) = row, named.contains(value.sessionId) else {
                 return nil
             }
             return value.recordId
         }
-        let survivors = loaded.filter { row in
-            guard case .sensorSample(let value) = row else { return true }
-            return !named.contains(value.sessionId)
+        // A moved session's readings are in its side file, and the in-memory log
+        // still holds them: their ids are read from there, so the release reaches
+        // both sides of the boundary (D-17307).
+        let archivedIds = named
+            .compactMap { sampleSideFiles[$0] }
+            .flatMap { decodeSampleSideFile($0).map(\.recordId) }
+        let archived = Set(named.filter { sampleSideFiles[$0] != nil })
+        guard !inline.isEmpty || !archived.isEmpty else { return [] }
+
+        if !inline.isEmpty {
+            let survivors = loaded.filter { row in
+                guard case .sensorSample(let value) = row else { return true }
+                return !named.contains(value.sessionId)
+            }
+            // A prune that drops nothing is not a write (D-3821, D-15603), and a
+            // prune that cannot be written drops nothing at all: the side files
+            // stay with the rows the file still carries.
+            guard compact(survivors) else { return [] }
+            adopt(survivors)
         }
 
-        // A prune that finds nothing is not a write (D-3821, D-15603): the launch
-        // prunes run on every launch, and a rewrite per launch costs a full copy
-        // of a file that can be tens of megabytes.
-        guard !dropped.isEmpty else { return [] }
-        guard compact(survivors) else { return [] }
+        for sessionId in archived {
+            guard let url = sampleSideFiles[sessionId] else { continue }
+            try? FileManager.default.removeItem(at: url)
+            sampleSideFiles[sessionId] = nil
+        }
+        return inline + archivedIds
+    }
+
+    // MARK: - The side files
+
+    private func archiveSensorSamplesLocked(_ sessionId: String) -> [String] {
+        let loaded = loadRows()
+        guard !unsupported else { return [] }
+        return moveInlineSamples(of: [sessionId], in: loaded) ?? []
+    }
+
+    /// The load-time move (D-17304): every terminal session's inline readings go
+    /// to their side file and out of the main file. A load with nothing to move
+    /// writes nothing (D-15603).
+    private func migrateInlineSamples(_ loaded: [StoredWatchRecord]) {
+        let settled = settledSensorSessionIds(in: loaded)
+        guard !settled.isEmpty else { return }
+        _ = moveInlineSamples(of: settled, in: loaded)
+    }
+
+    /// Writes `sessionIds`' inline readings to their side files, then rewrites
+    /// the main file without them (D-17302, D-17303). Reports the moved record
+    /// ids, or nil when nothing moved or a write failed.
+    ///
+    /// The order is the whole of the kill-safety: the side file lands first, so a
+    /// kill between the two writes leaves both copies on disk and no reading
+    /// lost, and the next load rewrites the side file wholesale from the inline
+    /// rows and compacts again.
+    private func moveInlineSamples(
+        of sessionIds: Set<String>,
+        in loaded: [StoredWatchRecord]
+    ) -> [String]? {
+        var bySession: [String: [WatchSensorSampleRecord]] = [:]
+        for row in loaded {
+            guard case .sensorSample(let value) = row, sessionIds.contains(value.sessionId) else {
+                continue
+            }
+            bySession[value.sessionId, default: []].append(value)
+        }
+        guard !bySession.isEmpty else { return nil }
+
+        var moved: [String] = []
+        for (sessionId, samples) in bySession.sorted(by: { $0.key < $1.key }) {
+            guard saveSampleSideFile(sessionId, samples) else { return nil }
+            moved.append(contentsOf: samples.map(\.recordId))
+        }
+
+        let survivors = loaded.filter { row in
+            guard case .sensorSample(let value) = row else { return true }
+            return !sessionIds.contains(value.sessionId)
+        }
+        // A compaction that fails leaves the main file as it was: the rows are
+        // still readable, the side file holds a copy, and the next load heals it.
+        guard compact(survivors) else { return nil }
         adopt(survivors)
-        return dropped
+        return moved
+    }
+
+    /// Writes `samples` wholesale to the session's side file, replacing any copy
+    /// already there. A temp file plus a replace, the pattern `compact` uses, so
+    /// a kill leaves either the old side file or the new one.
+    private func saveSampleSideFile(
+        _ sessionId: String,
+        _ samples: [WatchSensorSampleRecord]
+    ) -> Bool {
+        guard ensureDirectory() else { return false }
+
+        var data = Data()
+        for sample in samples {
+            guard let line = rowLine(.sensorSample(sample)) else { continue }
+            data.append(line)
+        }
+
+        let sideURL = sampleSideFileURL(sessionId)
+        let tempURL = directory.appendingPathComponent(
+            sideURL.lastPathComponent + ".tmp",
+            isDirectory: false
+        )
+        do {
+            try data.write(to: tempURL)
+        } catch {
+            try? FileManager.default.removeItem(at: tempURL)
+            return false
+        }
+
+        do {
+            if FileManager.default.fileExists(atPath: sideURL.path) {
+                _ = try FileManager.default.replaceItemAt(sideURL, withItemAt: tempURL)
+            } else {
+                try FileManager.default.moveItem(at: tempURL, to: sideURL)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: tempURL)
+            return false
+        }
+
+        sampleSideFiles[sessionId] = sideURL
+        return true
+    }
+
+    private func sampleSideFileURL(_ sessionId: String) -> URL {
+        directory.appendingPathComponent(
+            Self.sampleFilePrefix + sessionId + Self.sampleFileSuffix,
+            isDirectory: false
+        )
+    }
+
+    /// The rows of one side file. Their sequences are the ones they were stored
+    /// with, so a merged `readAll()` can put them back in append order.
+    private func decodeSampleSideFile(_ url: URL) -> [WatchSensorSampleRecord] {
+        guard let data = try? Data(contentsOf: url) else { return [] }
+        return data.split(separator: 0x0A).compactMap { line -> WatchSensorSampleRecord? in
+            guard let object = (try? JSONSerialization.jsonObject(with: Data(line)))
+                as? [String: Any],
+                  let row = try? StoredWatchRecord.fromJson(object),
+                  case .sensorSample(let sample) = row
+            else { return nil }
+            return sample
+        }
+    }
+
+    /// The side files in the directory, by session id. A name that is not one of
+    /// ours — a temporary fragment mid-replace, say — is not a side file.
+    private func refreshSampleSideFiles() {
+        sampleSideFiles = [:]
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        for entry in entries {
+            let name = entry.lastPathComponent
+            guard name.hasPrefix(Self.sampleFilePrefix),
+                  name.hasSuffix(Self.sampleFileSuffix)
+            else { continue }
+            let sessionId = name
+                .dropFirst(Self.sampleFilePrefix.count)
+                .dropLast(Self.sampleFileSuffix.count)
+            guard !sessionId.isEmpty else { continue }
+            sampleSideFiles[String(sessionId)] = entry
+        }
     }
 
     private func pruneExerciseBatchesLocked(_ keepingVersion: String) -> [String] {
@@ -373,6 +568,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
     private func loadRows() -> [StoredWatchRecord] {
         if let rows { return rows }
 
+        rowsDecoded = 0
         let data = (try? Data(contentsOf: fileURL)) ?? Data()
         var loaded: [StoredWatchRecord] = []
         var sawMarker = false
@@ -383,6 +579,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
             if firstLine {
                 firstLine = false
                 if let version = markerVersion(line) {
+                    rowsDecoded += 1
                     sawMarker = true
                     blocked = version != Self.markerVersion
                     continue
@@ -400,7 +597,12 @@ public final class FileWatchSessionStore: WatchSessionStore {
         tornTail = !blocked && !data.isEmpty && data.last != 0x0A
         fileHasContent = !blocked && !data.isEmpty
         lastSequence = resolved.map(\.sequence).max() ?? 0
-        return resolved
+        refreshSampleSideFiles()
+        // The migration runs on the first load and before anything reads the
+        // rows, so no reader ever sees the inline and the moved copy of the same
+        // reading (D-17304).
+        if !blocked { migrateInlineSamples(resolved) }
+        return rows ?? resolved
     }
 
     /// The version named by `line`, or nil when `line` is not a marker.
@@ -414,7 +616,9 @@ public final class FileWatchSessionStore: WatchSessionStore {
     private func parseLine(_ line: Data) -> StoredWatchRecord? {
         guard let object = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any]
         else { return nil }
-        return try? StoredWatchRecord.fromJson(object)
+        guard let record = try? StoredWatchRecord.fromJson(object) else { return nil }
+        rowsDecoded += 1
+        return record
     }
 
     private func markerLine() -> Data {
@@ -533,8 +737,20 @@ public final class FileWatchSessionStore: WatchSessionStore {
         }
     }
 
+    /// The main file's rows this store has decoded, for the test that bounds a
+    /// launch by a count rather than by wall time (S-17301). A side file's rows
+    /// are not a launch decode and are not counted. No production behaviour
+    /// reads it.
+    var rowsDecodedForTesting: Int {
+        locked {
+            _ = loadRows()
+            return rowsDecoded
+        }
+    }
+
     private func nextSequence() -> Int {
         lastSequence += 1
         return lastSequence
     }
 }
+

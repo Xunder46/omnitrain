@@ -83,7 +83,7 @@ public final class WatchPersonalBests {
     /// celebrate below a set the wrist already knows, and a relaunch is exactly
     /// when the frame may lag behind what the wrist has logged.
     public func restore() async {
-        let contents = await store.readAll()
+        let contents = await store.readLaunch()
         let newest = contents.bests.max {
             ($0.generatedAt, $0.sequence) < ($1.generatedAt, $1.sequence)
         }

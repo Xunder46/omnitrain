@@ -519,11 +519,17 @@ doc updated; the evidence file complete; handoff to `@code-reviewer`.
 
 ## Progress
 
-- [ ] Phase 1 — read set (`readLaunch`, helper, twin, 8 call-site switches)
-- [ ] Phase 2 — side files, move, migration, prune, counter
-- [ ] Phase 3 — engine end-time move + settle-gate precondition removal
-- [ ] Phase 4 — S-17301..S-17307 guards, full suite, TSan
-- [ ] Phase 5 — doc delta, re-measurement, residue sweep, consolidated verification
+- [x] Phase 1 — read set (`readLaunch`, helper, twin, 8 call-site switches) — done; full suite
+  green with the narrowing in place.
+- [x] Phase 2 — side files, move, migration, prune, counter — done; `WatchFileStoreTests` 22/0,
+  `WatchStoreGrowthTests` 9/0.
+- [x] Phase 3 — engine end-time move + settle-gate precondition removal — done; both session-row
+  writers release (`transitionTo` was the missing one, found by S-17304).
+- [x] Phase 4 — S-17301..S-17307 guards, full suite, TSan — 7/7 green; full 1477/0; TSan 30/0;
+  mutation table in the evidence file.
+- [x] Phase 5 — doc delta, re-measurement, residue sweep, consolidated verification — doc bullet +
+  Structure row updated; sweeps clean; lint 181 = baseline; no 1/5/10-hour wall table (no scratch
+  file in this mode — see A-17306).
 
 ## Assumption Log
 
@@ -542,6 +548,23 @@ doc updated; the evidence file complete; handoff to `@code-reviewer`.
 - **A-17304** `WatchStartPaths`' three `readAll` sites (:392, :584, :598) switch together; the
   two `exerciseBatches` reads (:584, :598) run in one flow, so a local pass-down could avoid the
   second call, but that is a refactor this plan does not own — both become `readLaunch()`.
+- **A-17305** `transitionTo` — not only `storeSessionRow` — releases at the end. The wrist's own
+  `finishSession` appended its terminal row directly, so S-17304 stayed red until the release was
+  extracted (`releaseReadingsOfAnEndedSession`) and called from both writers. A-17302's "single
+  writer" claim holds for the phone; the wrist has a second terminal writer by design.
+- **A-17306** The 1/5/10 stored-hour wall table was not produced: it needs a throwaway test file,
+  and `delete-scratch` refuses non-`test/zz_*` paths, so the file could not be removed in this
+  mode. Replacement: the decode count (22 rows flat at 10× growth, S-17301) plus the ≤3× ratio
+  (S-17307, cheapest of five launches each side).
+- **A-17307** S-17306's archive parity runs on a session the load-time migration leaves alone
+  (`s-live`): the file store migrates a terminal session at its first load, so `archiveSensorSamples`
+  for a settled session returns `[]` there while the twin still returns its ids. Parity is asserted
+  on the session the engine actually archives (the one that just ended), plus `readAll()` equality.
+- **A-17308** `WatchSessionEngineTests.testS004NoMutatingOperationExistsAnywhereInTheModule`'s
+  allowed set gains `readLaunch` and `archiveSensorSamples` (both named in D-17307), and
+  `WatchStoreContents.withSensorSamples` is declared `internal` so the scan sees it as a value
+  helper rather than store API. `writeSampleSideFile` was named `saveSampleSideFile` for the same
+  scan. Only pre-existing test edited: that file; no assertion was relaxed.
 
 ## Feedback
 

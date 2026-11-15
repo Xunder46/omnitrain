@@ -194,7 +194,7 @@ public final class WatchPhonePreferences {
 
     /// Reads every accepted copy back out of storage. Call on launch.
     public func restore() async {
-        copies = await store.readAll().preferences
+        copies = await store.readLaunch().preferences
     }
 
     /// Applies a `preferences_down` message.

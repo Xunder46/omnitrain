@@ -389,7 +389,7 @@ public final class WatchSessionStartPaths {
     /// launch, and after any suspension: what comes back is what the watch knew
     /// at kill time.
     public func restore() async {
-        let contents = await store.readAll()
+        let contents = await store.readLaunch()
 
         catalog = contents.routineCatalogs.max { $0.sequence < $1.sequence }
 
@@ -581,7 +581,7 @@ public final class WatchSessionStartPaths {
             return WatchExerciseBatchResult(stored: false, activated: false, rejections: [])
         }
 
-        let rows = (await store.readAll()).exerciseBatches
+        let rows = (await store.readLaunch()).exerciseBatches
             .filter { $0.catalogVersion == sent.catalogVersion }
 
         if rows.contains(where: { $0.batchCount != sent.batchCount || $0.totalCount != sent.totalCount }) {
@@ -595,7 +595,7 @@ public final class WatchSessionStartPaths {
         // Read again after the append: two batches of one version can interleave
         // at the awaits, so the view taken before it may miss the other row
         // (S-3836). Whichever task appends last sees every row.
-        let merged = (await store.readAll()).exerciseBatches
+        let merged = (await store.readLaunch()).exerciseBatches
             .filter { $0.catalogVersion == sent.catalogVersion }
 
         // The guard and the assignments below share no await: the version that

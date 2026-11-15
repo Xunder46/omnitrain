@@ -162,7 +162,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// any suspension: what comes back is what the watch knew at kill time,
     /// because nothing else was ever authoritative.
     public func restore() async {
-        let contents = await store.readAll()
+        let contents = await store.readLaunch()
         let restored = contents.sessions.max { $0.sequence < $1.sequence }
         let appliedChangeIds = Set(
             contents.sessions
@@ -199,7 +199,7 @@ public final class WatchSessionEngine: ObservableObject {
     /// runs, so a stranded workout is ended before a restored session can open
     /// another. The same row `restore()` makes current.
     public func storedSession() async -> WatchSessionRecord? {
-        await store.readAll().sessions.max { $0.sequence < $1.sequence }
+        await store.readLaunch().sessions.max { $0.sequence < $1.sequence }
     }
 
     // MARK: - Session state
@@ -1347,6 +1347,20 @@ public final class WatchSessionEngine: ObservableObject {
         let carried = carryingLens(row)
         let stored = await store.append(.session(carried))
         mirrored(stored.sessionRow ?? carried)
+
+        // A session that just ended has readings nothing reads any more: they
+        // leave the launch set now, without waiting for the phone's receipt —
+        // the receipt still gates the drop (D-17305, D-15601).
+        await releaseReadingsOfAnEndedSession(carried)
+    }
+
+    /// Moves an ended session's raw readings out of the launch set (D-17305).
+    /// Both session-row writers call it, so a session that ends on the wrist and
+    /// one the phone ends leave the same store behind; a session with nothing
+    /// inline drops nothing and writes nothing (D-17308, D-15603).
+    private func releaseReadingsOfAnEndedSession(_ row: WatchSessionRecord) async {
+        guard Self.terminalStatuses.contains(row.status) else { return }
+        _ = await store.archiveSensorSamples(row.sessionId)
     }
 
     /// The session's entries in `entryMaps`, oldest first — the moment the
@@ -1584,6 +1598,7 @@ public final class WatchSessionEngine: ObservableObject {
         let carried = carryingLens(row)
         let stored = await store.append(.session(carried))
         let live = mirrored(stored.sessionRow ?? carried)
+        await releaseReadingsOfAnEndedSession(live)
         if let lifecycle { emitLifecycle(live, state: lifecycle) }
         return live
     }
@@ -2002,9 +2017,10 @@ public final class WatchSessionEngine: ObservableObject {
 
         let settled = newestSessionRows().values
             .filter { session in
-                guard session.status != WatchSessionStatus.active,
-                      storedSensorSamples.contains(sessionId: session.sessionId)
-                else { return false }
+                // The store owns "is anything stored": it answers from its side
+                // files without decoding a reading, and a session with nothing
+                // stored drops nothing and writes nothing (D-17308, D-15603).
+                guard session.status != WatchSessionStatus.active else { return false }
 
                 let acknowledged = !awaitingReceipt.contains(session.sessionId)
                     && isEndAcknowledgedWhereOwed(session.sessionId)

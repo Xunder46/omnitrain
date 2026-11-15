@@ -110,7 +110,30 @@ public struct WatchStoreContents {
             && preferences.isEmpty && ratingPrompts.isEmpty
             && exerciseBatches.isEmpty && bests.isEmpty && water.isEmpty
     }
+
+    /// The same contents with `samples` as the readings — what merging the main
+    /// file's rows with the side files' rows builds. Internal on purpose: it is a
+    /// value helper, not store API (the S-004 scan pins the store's public
+    /// surface).
+    internal func withSensorSamples(_ samples: [WatchSensorSampleRecord]) -> WatchStoreContents {
+        WatchStoreContents(
+            sessions: sessions,
+            observations: observations,
+            timers: timers,
+            confirmations: confirmations,
+            sensorSamples: samples,
+            routineCatalogs: routineCatalogs,
+            plannedCatalogs: plannedCatalogs,
+            foodCatalogs: foodCatalogs,
+            preferences: preferences,
+            ratingPrompts: ratingPrompts,
+            exerciseBatches: exerciseBatches,
+            bests: bests,
+            water: water
+        )
+    }
 }
+
 
 public protocol WatchSessionStore {
     /// Writes `record`, assigning its append-order sequence. Appending a record
@@ -118,7 +141,33 @@ public protocol WatchSessionStore {
     func append(_ record: StoredWatchRecord) async -> StoredWatchRecord
 
     /// Every row, in append order, with confirmations folded into observations.
+    ///
+    /// Everything stored, including the readings that live in a terminal
+    /// session's own side file: `readAll()` is the whole store, not the launch's
+    /// part of it.
     func readAll() async -> WatchStoreContents
+
+    /// Everything except the raw readings of a terminal session (D-17301) — the
+    /// set a launch decodes.
+    ///
+    /// A launch needs the readings of the session that is still running: they
+    /// are what the live readout and the energy chain read after a kill. An
+    /// ended session's readings have no reader at all, so they live in that
+    /// session's side file (`watch-samples-<sessionId>.jsonl`) and are not part
+    /// of any launch. A store with nothing moved answers this exactly as
+    /// `readAll()` does, so this is a narrowing of the same store, never a
+    /// different one.
+    func readLaunch() async -> WatchStoreContents
+
+    /// Moves `sessionId`'s raw readings out of the launch set, returning the
+    /// record ids that moved.
+    ///
+    /// Called when the session's newest row lands with a terminal status
+    /// (D-17305): from then on nothing reads those readings, so they go to the
+    /// session's side file and out of the main file. A call for a session with
+    /// nothing inline writes nothing and returns nothing (D-15603, D-17303);
+    /// `readAll()` still answers every one of them until a prune deletes them.
+    func archiveSensorSamples(_ sessionId: String) async -> [String]
 
     /// Drops confirmed observations, returning the record ids that were
     /// dropped. Unconfirmed observations are retained indefinitely.
@@ -176,6 +225,64 @@ public protocol WatchSessionStore {
     /// `loggedAt` cannot be read, every other kind of row and the confirmation
     /// rows themselves stay. A prune that drops nothing writes nothing.
     func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String]
+}
+
+/// The stores that stand behind `WatchSessionStore` without owning its new
+/// members — test doubles that forward to a real store — answer them from the
+/// members they already have. The two production stores implement both.
+public extension WatchSessionStore {
+    func readLaunch() async -> WatchStoreContents {
+        await readAll()
+    }
+
+    func archiveSensorSamples(_ sessionId: String) async -> [String] {
+        []
+    }
+}
+
+/// The session ids whose raw readings are outside the launch set (D-17301): a
+/// session whose newest row is terminal — `completed` or `abandoned`. A session
+/// with no row is not in this set: it cannot be classified, and unclassified
+/// readings are the recovery case.
+func settledSensorSessionIds(in rows: [StoredWatchRecord]) -> Set<String> {
+    var newest: [String: WatchSessionRecord] = [:]
+    for row in rows {
+        guard case .session(let value) = row else { continue }
+        if let existing = newest[value.sessionId], existing.sequence >= value.sequence {
+            continue
+        }
+        newest[value.sessionId] = value
+    }
+    return Set(
+        newest.values
+            .filter {
+                $0.status == WatchSessionStatus.completed
+                    || $0.status == WatchSessionStatus.abandoned
+            }
+            .map(\.sessionId)
+    )
+}
+
+/// `rows`' sample rows that stay in the launch set: every reading except those
+/// of `settledSensorSessionIds`. One rule for both stores, so the twin cannot
+/// drift from the file store it stands in for (D-17307).
+func launchSensorSampleRows(_ rows: [StoredWatchRecord]) -> [StoredWatchRecord] {
+    let settled = settledSensorSessionIds(in: rows)
+    return rows.filter { row in
+        guard case .sensorSample(let value) = row else { return false }
+        return !settled.contains(value.sessionId)
+    }
+}
+
+/// `contents` without the readings a launch does not need (D-17301): the raw
+/// readings of every session whose newest row is terminal.
+func launchReadingsOnly(_ contents: WatchStoreContents) -> WatchStoreContents {
+    let settled = settledSensorSessionIds(in: contents.sessions.map { .session($0) })
+    guard !settled.isEmpty else { return contents }
+
+    return contents.withSensorSamples(
+        contents.sensorSamples.filter { !settled.contains($0.sessionId) }
+    )
 }
 
 /// The record ids `pruneWaterTaps(loggedBefore:)` drops from `observations`
@@ -262,6 +369,26 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
 
     public func readAll() async -> WatchStoreContents {
         locked { contentsLocked() }
+    }
+
+    public func readLaunch() async -> WatchStoreContents {
+        locked { launchReadingsOnly(contentsLocked()) }
+    }
+
+    public func archiveSensorSamples(_ sessionId: String) async -> [String] {
+        locked { sensorSampleIdsLocked(sessionId) }
+    }
+
+    /// Memory keeps a moved session's readings — the on-watch end summary reads
+    /// them in the same process — while `readLaunch()` already leaves them out
+    /// through the shared rule (A-17303). So the move is a read of their ids.
+    private func sensorSampleIdsLocked(_ sessionId: String) -> [String] {
+        rows.compactMap { row -> String? in
+            guard case .sensorSample(let value) = row, value.sessionId == sessionId else {
+                return nil
+            }
+            return value.recordId
+        }
     }
 
     private func contentsLocked() -> WatchStoreContents {

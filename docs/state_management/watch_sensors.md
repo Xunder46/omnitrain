@@ -39,6 +39,7 @@ and `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift` +
 | What is computed from the readings before they may go | `WatchSensorSummaries`, pure functions over stored rows, called by `WatchLoggingState.log` for an entry and by `WatchSessionEngine` for a `session_end` |
 | What the wrist says when access is off | `WatchLoggingState.sensorNotices` (forwarded by `WatchLoggingModel.sensorNotices`), from `WatchSensorRecorder.heartRateAccess` / `locationAccess` — `WatchSensorPermission?`, nil until asked this session, cleared by `stop()` |
 | Whether Health access is allowed, off or unavailable | `WatchHealthAccess` (`WatchHealthAccess.swift`), asked by the host's `askHealthAccess()` over `HealthKitWorkoutStore.requestAccess()` |
+| Where a finished workout's raw readings are stored | `FileWatchSessionStore`'s side files — `watch-samples-<sessionId>.jsonl` beside `watch-session.jsonl` — written when the workout ends and read by `readAll()`, never by a launch (`readLaunch()`) |
 
 `WatchSensorSource` and `WatchPlatformWorkoutStore` are the seam the OS bindings
 sit behind: `HKWorkoutSession`, `HKLiveWorkoutBuilder` and `CLLocationManager`
@@ -611,6 +612,25 @@ same whatever other workouts stored
 (`…testS15606AThousandTicksVisitTheCurrentSessionsRowsOnly`,
 `…testS15606ThePaceWindowIsCachedUntilANewGpsRowArrives`,
 `…testS15606ThePerSessionViewsMatchABruteForceFilter`).
+- **A launch parses the small rows only.** `readLaunch()` answers everything
+except the raw readings of a terminal session, and those readings live in that
+session's own side file: the store moves them there when the workout ends and at
+the first load that still finds them inline, so the main file a launch parses
+holds no finished workout's reading
+(`WatchSessionEngineTests.testS17301TheLaunchDecodesTheSmallRowsOnly` — the
+launch decodes 22 rows whatever the side files hold,
+`…testS17302TheOctoberFileIsMigratedAtTheFirstLaunch` — the migration moves
+them verbatim and the second launch writes nothing,
+`…testS17304ARecoveredWorkoutKeepsItsChainAndGivesItsReadingsUpAtTheEnd` — the
+end-time move, from the writer the wrist itself ends through,
+`…testS17303AKillBetweenTheTwoWritesIsHealedByTheNextLoad` — the both-copies
+state a kill between the two writes leaves behind,
+`…testS17307ALaunchOverFiftySevenThousandOldRowsCostsAtMostThreeTimesALaunchOverNone`
+— the cost tripwire). `readAll()` still returns every reading, a released
+session's side file is deleted exactly as its rows were
+(`…testS17305TheReleaseGatesDeleteSideFiles`), and the in-memory twin answers
+both new members value for value
+(`…testS17306TheTwinAnswersTheNewMembersValueForValue`).
 - **A prune that cannot be written replaces nothing, and a pruned row takes its
 lens with it.** The file keeps its rows and the cache keeps reading them, with no
 staging file left in the store's directory (`WatchFileStoreTests`
