@@ -207,4 +207,141 @@ final class WatchPlannedSurfaceSourceTests: XCTestCase {
             "the planned picker's title is declared once"
         )
     }
+
+    // MARK: - S-17601 the grid is the surface's first content
+
+    func testS17601TheGridStandsAboveThePlanAndTheRoutines() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let lines = sourceLines(view)
+
+        let gridIndex = try XCTUnwrap(
+            lines.firstIndex { $0.contains("WatchModalityStartGridView {") },
+            "S-17601 the grid is on the start surface"
+        )
+        let plannedIndex = try XCTUnwrap(lines.firstIndex { $0.contains("if !startablePlans.isEmpty") })
+        let emptyRoutinesIndex = try XCTUnwrap(lines.firstIndex { $0.contains("if paths.routines.isEmpty") })
+
+        XCTAssertTrue(gridIndex < plannedIndex, "S-17601 the grid stands above the planned button")
+        XCTAssertTrue(gridIndex < emptyRoutinesIndex, "S-17601 and above the routines")
+    }
+
+    func testS17601TheGridsTapStartsNothingAndOpensThePicker() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let tap = try XCTUnwrap(
+            braceBody(ofLineContaining: "private func startModality(", in: view),
+            "the cell's tap is in the view"
+        )
+
+        XCTAssertTrue(tap.contains("paths.beginModalityStart(modality)"), "S-17601 the tap remembers the modality")
+        XCTAssertTrue(tap.contains("pickingExercise = true"), "S-17601 and opens the picker")
+        XCTAssertFalse(tap.contains("startModalityWorkout"), "S-17601 and creates nothing (D-17608)")
+    }
+
+    // MARK: - S-17603 the cells wear the phone's accents at a fixed height
+
+    func testS17603EachCellWearsItsAccentAtTheFixedHeight() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let grid = try XCTUnwrap(
+            braceBody(ofLineContaining: "struct WatchModalityStartGridView: View", in: view),
+            "the grid view is in the file"
+        )
+
+        XCTAssertTrue(grid.contains("WatchModalityStart.cells"), "S-17603 the cells are the contract's table, in its order")
+        XCTAssertTrue(grid.contains("LazyVGrid("), "S-17603 four cells, two abreast")
+        XCTAssertTrue(occurrences(of: "GridItem(.flexible()", in: grid) == 2, "S-17603 in two flexible columns")
+        XCTAssertTrue(grid.contains("static let cellHeight = 44.0"), "S-17603 the fixed height D-17605 decides")
+        XCTAssertTrue(
+            grid.contains("WatchAccent.worn(hex: cell.hex)"),
+            "S-17603 the colour is the phone's, read through the accent machinery"
+        )
+        XCTAssertTrue(
+            grid.contains(".foregroundStyle(accent.labelColor)"),
+            "S-17603 and the label is the one that reads on that colour"
+        )
+        XCTAssertTrue(grid.contains(".font(.footnote.weight(.semibold))"), "S-17603 the short word, semibold")
+        XCTAssertTrue(grid.contains(".lineLimit(1)"), "S-17603 on one line")
+        XCTAssertFalse(grid.contains("Color(red:"), "S-17603 no colour is invented here")
+        XCTAssertFalse(grid.contains(".tint("), "S-17603 the accent comes from the cell, not the environment")
+    }
+
+    func testS17603EveryCellIsSpokenAsTheContractSays() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let grid = try XCTUnwrap(
+            braceBody(ofLineContaining: "struct WatchModalityStartGridView: View", in: view)
+        )
+
+        XCTAssertTrue(
+            grid.contains(".accessibilityLabel(WatchModalityStart.startSentence(for: cell.label))"),
+            "S-17603 the spoken sentence is the contract's, built from the cell's own label"
+        )
+    }
+
+    // MARK: - S-17612 the free workout's button is gone, its path stays
+
+    func testS17612TheFreeWorkoutButtonAndItsHelperAreGone() throws {
+        let view = try engineSource("WatchStartView.swift")
+
+        XCTAssertFalse(view.contains("Free workout"), "S-17612 the button is off the surface")
+        XCTAssertFalse(view.contains("func startFreeWorkout()"), "S-17612 and so is the helper it called")
+        XCTAssertFalse(view.contains("paths.startFreeWorkout()"), "S-17612 nothing on the surface starts one")
+    }
+
+    func testS17612ThePathsStillOfferTheFreeWorkout() throws {
+        let paths = try engineSource("WatchStartPaths.swift")
+
+        XCTAssertTrue(
+            occurrences(of: "public func startFreeWorkout() async -> WatchSessionRecord", in: paths) == 1,
+            "S-17612 the path itself stays: a plan's own start is a free workout (D-17609)"
+        )
+    }
+
+    // MARK: - S-17613 a wrist with no routines says so, grid or not
+
+    func testS17613TheEmptyRoutinesSentenceIsUnchanged() throws {
+        let view = try engineSource("WatchStartView.swift")
+
+        XCTAssertTrue(
+            view.contains("\"No routines yet. Sync with your phone to get them.\""),
+            "S-17613 the grid does not take the routines' place on a wrist that has none"
+        )
+    }
+
+    // MARK: - S-17606 a dismiss drops the start mode and creates nothing
+
+    func testS17606ThePickerOpensInTheStartModeAndADismissDropsIt() throws {
+        let view = try engineSource("WatchStartView.swift")
+
+        XCTAssertTrue(
+            view.contains("startModality: paths.pendingModalityStart"),
+            "S-17606 the picker is opened for the modality the tap remembered"
+        )
+        let dismiss = try XCTUnwrap(
+            braceBody(ofLineContaining: "private func cancelIfNothingPicked()", in: view),
+            "the sheet's dismiss handler is in the view"
+        )
+        XCTAssertTrue(dismiss.contains("paths.cancelModalityStart()"), "S-17606 a dismiss drops the start mode")
+        XCTAssertFalse(dismiss.contains("startModalityWorkout"), "S-17606 and creates nothing")
+        XCTAssertTrue(dismiss.contains("cancelEmptyFreeWorkout()"), "S-17606 plan 57's guard still runs")
+    }
+
+    // MARK: - S-17605 a start-mode pick is what creates the session
+
+    func testS17605TheStartModePickersPickIsWhatCreatesTheSession() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let picker = try XCTUnwrap(
+            braceBody(ofLineContaining: "public struct WatchExercisePickerView: View", in: view)
+        )
+        let select = try XCTUnwrap(
+            braceBody(ofLineContaining: "private func select(_ row: WatchExercisePickerRow)", in: picker)
+        )
+
+        XCTAssertTrue(
+            select.contains("paths.startModalityWorkout(startModality, with: exercise)"),
+            "S-17605 a pick in a start mode starts the session carrying that modality"
+        )
+        XCTAssertTrue(
+            select.contains("paths.selectExercise(row)"),
+            "S-17605 and a picker opened over a live session still only fills it"
+        )
+    }
 }

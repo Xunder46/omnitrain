@@ -229,9 +229,46 @@ minus what the ladder already shows — behind them. Verified by
 lists are one list in one order by
 `WatchSessionStartPathsTests.testS3113AThePickerRowsAndTheAvailableExercisesAgree`.
 
-**Today's planned workout is the surface's first control.** The wrist's today
-plan is the Planned button, above the "No routines yet" line and the routine
-rows: `.bordered`, never `.watchProminent()`, captioned with the
+**The modality grid is the surface's first control, and a tap on it creates
+nothing.** Four cells — Cardio, Resistance, Sports, Isometric — in the phone's
+order, in the phone's own colours, two abreast, each a fixed 44 pt high and read
+out as "Start <label> workout" (`WatchModalityStart`, held to the shared contract
+`watch/contract/watch_modality_start_contract.json`). The grid stands above the
+planned button, the "No routines yet" line and the routine rows; the **Free
+workout** button that used to sit below the plan is gone from this view, while
+`startFreeWorkout()` and `cancelEmptyFreeWorkout()` stay in the paths type, where
+the existing tests and the phone-side dev start still call them. A tap remembers
+the modality and opens the exercise picker in a start mode: no session, no row,
+no frame to the phone, and the list the picker offers is the one the free
+workout's picker offered. The pick is what creates the session — one creation
+carrying the tapped modality and the picked exercise as its only slot, the shape
+a routine's start uses — so the phone hears a single session that already holds
+the exercise, and the slot keeps the exercise's own capabilities and Health kind,
+which is what types the workout: the kind the phone named where it named one, the
+modality's own otherwise. Verified by
+`WatchModalityStartTests.testS17604ATapRemembersItsModalityAndCreatesNothing`,
+`…testS17604FourTapsInARowLeaveNoTrace`,
+`…testS17605ThePickCreatesOneSessionWithTheModalityAndTheExercise`,
+`…testS17605TheSessionCarriesTheExercisesNamedHealthKind`,
+`…testS17605EveryCellCreatesItsOwnModalityWithTheSameExercise`,
+`…testS17605ASecondPickReturnsTheHeldSessionAndEmitsNothing`,
+`…testS17607AWalkThePhoneNamedIsAWalkEvenUnderCardio`,
+`…testS17607AnUnnamedExerciseTakesItsCellsType`,
+`…testS17608TheStartModePickerOffersTheWholeListTheFreeWorkoutOffered`, and, for
+the view `swift test` cannot compile,
+`WatchPlannedSurfaceSourceTests.testS17601TheGridStandsAboveThePlanAndTheRoutines`,
+`…testS17601TheGridsTapStartsNothingAndOpensThePicker`,
+`…testS17603EachCellWearsItsAccentAtTheFixedHeight`,
+`…testS17603EveryCellIsSpokenAsTheContractSays`,
+`…testS17605TheStartModePickersPickIsWhatCreatesTheSession`,
+`…testS17606ThePickerOpensInTheStartModeAndADismissDropsIt`,
+`…testS17612TheFreeWorkoutButtonAndItsHelperAreGone`,
+`…testS17612ThePathsStillOfferTheFreeWorkout` and
+`…testS17613TheEmptyRoutinesSentenceIsUnchanged`.
+
+**Today's planned workout is the first control below the grid.** The wrist's
+today plan is the Planned button, above the "No routines yet" line and the
+routine rows: `.bordered`, never `.watchProminent()`, captioned with the
 single startable plan's name, or "Planned"
 (`WatchStartSurfaceCopy.plannedLabel`) when two or more are startable and the
 tap opens a picker of the day's plans. It re-reads on every host `revision`
@@ -244,9 +281,11 @@ bump, never on a clock tick. Verified by
 refresh, `WatchPhoneProblemWiringSourceTests.testS9004TheStartSurfaceSaysWhenARoutineVanished`
 and `WatchSyncProgressWiringTests.testS8512TheTickerEndsTheSpinnerWithoutBumpingRevision`.
 
-**Closing the picker without a pick gives the empty Free workout back.** Dismissing
-the picker sheet runs `WatchSessionStartPaths.cancelEmptyFreeWorkout()`, which
-abandons the live session only when it is active and holds no exercise, and tells
+**Closing the picker without a pick gives back whatever it left running.** Dismissing
+the picker sheet runs `WatchStartView.cancelIfNothingPicked()`: it drops a
+modality's start mode, which never created anything to give up, and then calls
+`WatchSessionStartPaths.cancelEmptyFreeWorkout()`, which abandons the live
+session only when it is active and holds no exercise, and tells
 the host, which re-reads the engine; after a pick, or when the phone pushed a slot
 while the picker was open, nothing is cancelled, and the phone consumes an
 abandoned empty session without history. Verified by
@@ -257,7 +296,9 @@ abandoned empty session without history. Verified by
 `…testS8704ASessionHoldingAPushedSlotIsNotCancelled`,
 `…testS8705ACompletedSessionIsNotCancelled`,
 `…testS8705WithNoSessionAtAllCancelIsFalse`,
-`…testS8706ThePickerSheetCancelsOnDismissAndTheHostReReads`).
+`…testS8706ThePickerSheetCancelsOnDismissAndTheHostReReads`) and, for the start
+mode, `WatchModalityStartTests.testS17606CancelLeavesNoSessionRowAndNoFrame` and
+`…testS17606ChoosingCancelsNothingAndTheSessionSurvives`.
 
 **A routine the watch no longer holds says so when you tap it.** A Sync that
 replaces the list between the screen drawing and your tap leaves a row whose

@@ -2,7 +2,8 @@
 //  WatchStartView.swift
 //  WatchSessionEngine
 //
-//  The native watchOS start surface: a synced routine, or a free workout.
+//  The native watchOS start surface: a modality grid, today's plans, and the
+//  synced routines.
 //  Native half of
 //  `docs/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`.
 //
@@ -156,8 +157,13 @@ public struct WatchStartView: View {
     public var body: some View {
         ScrollView {
             VStack(spacing: Self.surfaceInset) {
-                // Plan 129, D-8964/D-8965: the first thing on the surface, in the
-                // quiet bordered style so it never competes with the routines.
+                // Plan 176, D-17605: the grid is the first thing on the surface.
+                WatchModalityStartGridView { cell in
+                    startModality(cell.key)
+                }
+
+                // Plan 129, D-8964/D-8965: first among the routines, in the quiet
+                // bordered style so it never competes with them.
                 if !startablePlans.isEmpty {
                     Button(
                         startablePlans.count > 1
@@ -188,11 +194,6 @@ public struct WatchStartView: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
-
-                Button("Free workout") {
-                    Task { await startFreeWorkout() }
-                }
-                .buttonStyle(.bordered)
 
                 if let onOpenNutrition {
                     Button(Self.nutritionLabel, action: onOpenNutrition)
@@ -254,7 +255,11 @@ public struct WatchStartView: View {
         }
         .onChange(of: revision) { _ in routineNotice = nil }
         .sheet(isPresented: $pickingExercise, onDismiss: cancelIfNothingPicked) {
-            WatchExercisePickerView(paths: paths, revision: revision) { session in
+            WatchExercisePickerView(
+                paths: paths,
+                revision: revision,
+                startModality: paths.pendingModalityStart
+            ) { session in
                 pickingExercise = false
                 onSessionStarted(session)
             }
@@ -281,10 +286,11 @@ public struct WatchStartView: View {
         }
     }
 
-    /// Path 2: an empty session, then the picker — the fallback list, or
-    /// whatever the phone pushes for the search the wrist cannot do itself.
-    private func startFreeWorkout() async {
-        _ = await paths.startFreeWorkout()
+    /// Path 3: a cell's tap creates nothing. It remembers the modality and opens
+    /// the picker over the same list the free workout's offered — the pick is
+    /// what starts the session (plan 176, D-17608).
+    private func startModality(_ modality: String) {
+        paths.beginModalityStart(modality)
         pickingExercise = true
     }
 
@@ -314,12 +320,60 @@ public struct WatchStartView: View {
         }
     }
 
-    /// Closing the picker without choosing leaves an empty workout running that
-    /// nothing on the wrist can end, so it is cancelled (plan 57). After a pick
-    /// the session holds the exercise and the paths leave it alone.
+    /// Closing the picker without choosing gives up whatever the picker left
+    /// running (plan 57) and drops a modality's start mode, which created nothing
+    /// to give up (plan 176, D-17608). After a pick there is a session holding the
+    /// exercise and the paths leave it alone.
     private func cancelIfNothingPicked() {
         Task {
+            paths.cancelModalityStart()
             if await paths.cancelEmptyFreeWorkout() { onFreeWorkoutCancelled() }
+        }
+    }
+}
+
+/// The modality grid the Start surface opens with (plan 176, D-17605): the
+/// phone's four modalities in the phone's order, each in the phone's own colour,
+/// two abreast so all four fit without a scroll.
+///
+/// A cell is a label and a tap and nothing else — what a tap means belongs to the
+/// surface that shows it (`WatchStartView.startModality(_:)`), and what the words
+/// and colours are belongs to `WatchModalityStart`.
+struct WatchModalityStartGridView: View {
+    /// The same wrist-scale gap the surface uses, in both directions.
+    static let surfaceInset = 4.0
+
+    /// One cell's height. Fixed rather than derived: the four labels are one line
+    /// each at every text size the wrist's own settings offer, and a column that
+    /// grew with the words would push the routines off the screen.
+    static let cellHeight = 44.0
+
+    private let onPick: (WatchModalityStart.Cell) -> Void
+
+    init(onPick: @escaping (WatchModalityStart.Cell) -> Void) {
+        self.onPick = onPick
+    }
+
+    var body: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: Self.surfaceInset),
+                GridItem(.flexible()),
+            ],
+            spacing: Self.surfaceInset
+        ) {
+            ForEach(WatchModalityStart.cells, id: \.key) { cell in
+                let accent = WatchAccent.worn(hex: cell.hex)
+
+                Button(cell.label) { onPick(cell) }
+                    .font(.footnote.weight(.semibold))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, minHeight: Self.cellHeight)
+                    .background(accent.color)
+                    .foregroundStyle(accent.labelColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 8.0))
+                    .accessibilityLabel(WatchModalityStart.startSentence(for: cell.label))
+            }
         }
     }
 }
@@ -370,6 +424,11 @@ public struct WatchExercisePickerView: View {
     /// only because this value changed and the body ran again.
     private let revision: Int
 
+    /// The modality the grid's tap remembered, or nil for a picker opened over a
+    /// session already running (plan 176, D-17608). A start-mode pick creates the
+    /// session; otherwise a pick only fills the one that is there.
+    private let startModality: String?
+
     private let onExerciseAdded: (WatchSessionRecord) -> Void
 
     /// What the picker says when it has nothing to offer at all — the same
@@ -379,10 +438,12 @@ public struct WatchExercisePickerView: View {
     public init(
         paths: WatchSessionStartPaths,
         revision: Int = 0,
+        startModality: String? = nil,
         onExerciseAdded: @escaping (WatchSessionRecord) -> Void
     ) {
         self.paths = paths
         self.revision = revision
+        self.startModality = startModality
         self.onExerciseAdded = onExerciseAdded
     }
 
@@ -412,8 +473,14 @@ public struct WatchExercisePickerView: View {
     }
 
     /// A row the session holds moves the user to it; one it does not appends a
-    /// slot. Either way the session is what the screen is handed next.
+    /// slot. In a start mode there is no session yet, so the pick is what starts
+    /// it — carrying the modality the grid tapped (plan 176, D-17608).
     private func select(_ row: WatchExercisePickerRow) async {
+        if let startModality, case .available(let exercise) = row {
+            let session = await paths.startModalityWorkout(startModality, with: exercise)
+            onExerciseAdded(session)
+            return
+        }
         guard let session = await paths.selectExercise(row) else { return }
         onExerciseAdded(session)
     }

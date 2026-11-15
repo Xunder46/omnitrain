@@ -7,9 +7,11 @@ keep their numbers; "What QA passed means" in the main guide counts them.
 This walkthrough exercises the wrist logging surface, which has not run on
 hardware yet.
 
-1. **Start a workout on the wrist and pick an exercise.** Tap **Free workout**.
-   A Free workout starts with no exercise, so the picker comes up first; pick
-   one and the logging screen appears with that exercise's value rows. Dial 3
+1. **Start a workout on the wrist and pick an exercise.** Tap a cell in the
+   modality grid — **Resistance**, say. The tap creates nothing: the picker comes
+   up over the whole exercise list, and picking one is what starts the session
+   (`WatchModalityStartTests.testS17605ThePickCreatesOneSessionWithTheModalityAndTheExercise`).
+   The logging screen appears with that exercise's value rows. Dial 3
    reps and tap **Log**: the row is accepted and the rest screen appears counting
    up, with exactly one control, **Next**
    (`WatchRestSurfaceTests.testS162NextEndsTheRestAtTheTapInstant`).
@@ -151,7 +153,7 @@ hardware yet.
     estimating and missing it (D-3106). Tap an exercise as before: it is still
     added at the end of the session's list and the screen returns to the menu.
     With a short list — a fresh install with 20 exercises or fewer at **Sync**
-    — there is no grid at all. The Free workout picker is the other entry point
+    — there is no grid at all. The modality grid's picker is the other entry point
     and draws the same list in the same order: the grid is its first row, then
     the exercises the session already holds, then the one section per letter.
     The one component both render is pinned by
@@ -217,11 +219,13 @@ hardware yet.
     (`WatchPortionCrownTests` S-8611..S-8616). Log a set so the rest screen
     shows: its clock is as large as the work clock
     (`WatchRestSurfaceTests.testS8621TheRestClockMatchesTheWorkReadoutsScale`).
-    Start a **Free workout**, then close the picker without picking: the start
+    Tap a grid cell, then close the picker without picking: the start
     screen returns with no workout running, and the phone's Home shows no live
-    watch session (`WatchCancelEmptyFreeWorkoutTests` S-8701..S-8706 for the wrist; the
-    phone side is `test/watch_session_import_test.dart` S-265, an abandoned session
-    creates no history).
+    watch session — a modality tap creates nothing to abandon
+    (`WatchModalityStartTests.testS17606CancelLeavesNoSessionRowAndNoFrame`; the
+    give-back of a session that was left empty is `WatchCancelEmptyFreeWorkoutTests`
+    S-8701..S-8706, the phone side `test/watch_session_import_test.dart` S-265, an
+    abandoned session creates no history).
 21. **The watch says when a start cannot happen — (owner).** Three grey lines on
     the Start screen, each needing a real pair or a simulator trick. Delete or
     replace a routine on the phone and do **not** Sync, then tap the stale
@@ -272,7 +276,8 @@ hardware yet.
     `testS9221AnIncrementalCatchUpOpensNoWindow`).
 
 29. **The exercise page fits a 40 mm watch — (owner).** On a 40 mm watch start
-    a ride (or any distance exercise) in a Free workout, then a lift. On both
+    a ride (or any distance exercise) from the grid's **Cardio** cell, then add
+    a lift from the menu. On both
     pages the "2/3" counter sits to the left of the menu button, the exercise
     name stops short of the button, and the Start (or Log) button is fully on
     screen. With Location refused, a distance exercise shows one grey line
@@ -382,7 +387,7 @@ hardware yet.
 
 38. **One Fitness workout per session — (owner, plan 89c1).** Phone Settings,
     Write workouts on, watch app open, phone in reach. (a) On the watch start a
-    Free workout, add Outdoor Walk, walk a minute, finish it on the watch:
+    Cardio session with Outdoor Walk, walk a minute, finish it on the watch:
     Fitness shows exactly one new workout, "Outdoor Walk". (b) On the phone
     start a session with one exercise, let the watch pick it up, raise the wrist
     once so the watch reports back, then finish it on the phone: Fitness shows
@@ -489,8 +494,8 @@ frame (plan 87b, open question d;
 43. **A phone-started workout carries its Focus to the watch — (owner, plan 125d).** (a)
     Give a routine the Focus Stretching; with the watch app open and no workout
     running, start it on the phone and finish it: Apple Health shows the
-    workout as Flexibility, not Other. (b) On the watch tap Free workout and
-    leave the empty list open, then start the same routine on the phone: the
+    workout as Flexibility, not Other. (b) Start a Free workout on the phone and
+    leave the watch on it, then start the same routine on the phone: the
     watch swaps to the routine's exercises; after finishing, Health shows
     Flexibility. (c) Start the Sports tile on the phone: the watch says
     "Periods" and asks for location only if you never answered; Health shows
@@ -534,3 +539,40 @@ frame (plan 87b, open question d;
     `…testS17109TheEmptyEndRaisesTheDiscardAlert` and
     `…testTheShellPassesTheDiscardClosure`) and
     `WatchAccessibilitySourceTests.testS17112TheDiscardRowAndItsConfirmationSpeak`.
+
+45. **The modality grid starts the workout, in one tap and one pick — (owner,
+    plan 176).** On the Start screen the grid is the first control: **Cardio**,
+    **Resistance**, **Sports**, **Isometric**, two abreast, in the phone's four
+    colours, 44 pt tall, and all four fit a 40 mm watch without a scroll. With
+    VoiceOver on each cell reads "Start Cardio workout" and so on. (a) Tap
+    **Cardio**, then close the picker without picking: no workout runs on the
+    wrist, the Start screen returns, and the phone's Home shows no live watch
+    session — the tap itself starts nothing. (b) Tap **Resistance** and pick a
+    lift: the logging screen opens on it, and the phone's session already holds
+    that one exercise with the modality Resistance; the phone never saw the tap
+    alone. (c) With Write workouts on, do the same with a brisk/Outdoor Walk
+    exercise under **Cardio**: Fitness records one workout, typed Outdoor Walk —
+    the exercise's own Health kind, not the modality's. (d) Pick an exercise the
+    phone gives no Health kind: Cardio records Running, Resistance Strength
+    Training, Isometric Flexibility, Sports Other. (e) The **Free workout**
+    button is gone from the Start screen; the planned button, the routines and
+    Sync below the grid behave as before. Held off-device by
+    `WatchModalityStartTests`
+    (`testS17604ATapRemembersItsModalityAndCreatesNothing`,
+    `…testS17604FourTapsInARowLeaveNoTrace`,
+    `…testS17605ThePickCreatesOneSessionWithTheModalityAndTheExercise`,
+    `…testS17605TheSessionCarriesTheExercisesNamedHealthKind`,
+    `…testS17605EveryCellCreatesItsOwnModalityWithTheSameExercise`,
+    `…testS17605ASecondPickReturnsTheHeldSessionAndEmitsNothing`,
+    `…testS17607AWalkThePhoneNamedIsAWalkEvenUnderCardio`,
+    `…testS17607AnUnnamedExerciseTakesItsCellsType`,
+    `…testS17608TheStartModePickerOffersTheWholeListTheFreeWorkoutOffered`,
+    `…testS17606CancelLeavesNoSessionRowAndNoFrame`) and, for the view the
+    package tests cannot compile,
+    `WatchPlannedSurfaceSourceTests.testS17601TheGridStandsAboveThePlanAndTheRoutines`,
+    `…testS17601TheGridsTapStartsNothingAndOpensThePicker`,
+    `…testS17603EachCellWearsItsAccentAtTheFixedHeight`,
+    `…testS17603EveryCellIsSpokenAsTheContractSays`,
+    `…testS17605TheStartModePickersPickIsWhatCreatesTheSession`,
+    `…testS17606ThePickerOpensInTheStartModeAndADismissDropsIt`,
+    `…testS17612TheFreeWorkoutButtonAndItsHelperAreGone`.

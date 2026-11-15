@@ -210,15 +210,16 @@ final class WatchNutritionWiringSourceTests: XCTestCase {
 
     // MARK: - S-7205: Nutrition sits right under Free workout, Sync is set apart
 
-    /// On the start screen the Nutrition button comes directly after Free
-    /// workout and before Sync, with a separator line between Nutrition and
-    /// Sync, so the start buttons read first and Sync is housekeeping.
-    func testS7205NutritionSitsRightUnderFreeWorkout() throws {
+    /// On the start screen the Nutrition button comes after the start controls
+    /// (the modality grid, which replaced Free workout in plan 176) and before
+    /// Sync, with a separator line between Nutrition and Sync, so the start
+    /// buttons read first and Sync is housekeeping.
+    func testS7205NutritionSitsRightUnderTheStartControls() throws {
         let start = try engineSource("WatchStartView.swift")
 
         let free = try XCTUnwrap(
-            sourceLines(start).firstIndex { $0.contains("Button(\"Free workout\")") },
-            "S-7205 the start screen carries the Free workout button"
+            sourceLines(start).firstIndex { $0.contains("WatchModalityStartGridView {") },
+            "S-7205 the start screen carries the modality start grid"
         )
         let food = try XCTUnwrap(
             sourceLines(start).firstIndex { $0.contains("if let onOpenNutrition") },
@@ -233,7 +234,7 @@ final class WatchNutritionWiringSourceTests: XCTestCase {
             "S-7205 the start screen carries the Sync button"
         )
 
-        XCTAssertLessThan(free, food, "S-7205 Nutrition comes right after Free workout")
+        XCTAssertLessThan(free, food, "S-7205 Nutrition comes after the start grid")
         XCTAssertLessThan(food, divider, "S-7205 the separator follows Nutrition")
         XCTAssertLessThan(divider, sync, "S-7205 and Sync follows the separator")
         XCTAssertTrue(start.contains("nutritionLabel = \"Nutrition\""), "S-7205 the button reads Nutrition")

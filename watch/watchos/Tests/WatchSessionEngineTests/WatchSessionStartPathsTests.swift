@@ -945,6 +945,41 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertEqual(harness.emitted.count, afterAbsorb)
     }
 
+    // MARK: - S-17610 the grid is not a prerequisite for the other starts
+
+    /// The modality the grid gave a session is the session's own, so a routine
+    /// that fills it in place keeps it (D-12561) rather than starting a session
+    /// with the routine's Focus instead.
+    func testS17610ARoutineFillingAModalitySessionKeepsItsModality() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+        // An empty session carrying a modality is reachable through the engine
+        // now that the grid's tap creates nothing (plan 176, D-17608).
+        let empty = await harness.engine.createSession(modality: "cardio_endurance")
+
+        let returned = try await harness.paths.startFromRoutine("routine-push-a")
+
+        XCTAssertEqual(returned.sessionId, empty.sessionId, "the routine fills the session already running")
+        XCTAssertEqual(
+            returned.modality,
+            "cardio_endurance",
+            "S-17610 the modality the grid chose survives the routine's slots (D-12561)"
+        )
+        XCTAssertEqual(returned.exercises.count, 3, "S-17610 and the ladder is the routine's own")
+    }
+
+    func testS17610ARoutineWithNoSessionHeldStillStartsItsOwn() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+
+        let session = try await harness.paths.startFromRoutine("routine-push-a")
+
+        XCTAssertEqual(session.exercises.count, 3, "S-17610 the grid is not a prerequisite for a routine")
+        XCTAssertNil(session.modality, "S-17610 a routine with no Focus starts with no modality")
+    }
+
     // MARK: - S-006 session-started lifecycle event
 
     func testS006StartingFromARoutineEmitsOneConformantSessionStartedEvent() async throws {

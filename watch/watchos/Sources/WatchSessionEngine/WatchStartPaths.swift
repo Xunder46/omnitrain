@@ -728,6 +728,57 @@ public final class WatchSessionStartPaths {
         await engine.createSession(modality: nil)
     }
 
+    // MARK: - Path 3 — a modality start
+
+    /// The modality the Start surface's grid was tapped for, waiting for the
+    /// exercise that will make it a session, or nil (plan 176, D-17608).
+    ///
+    /// A tap creates nothing: it remembers the modality and opens the picker, and
+    /// the pick is what starts the session. The pick itself and
+    /// `cancelModalityStart()` are what drop it.
+    public private(set) var pendingModalityStart: String?
+
+    /// The grid's tap: remembers `modality` for the pick that follows. Creates no
+    /// session, appends no row and sends the phone nothing (D-17608, S-17604).
+    public func beginModalityStart(_ modality: String) {
+        pendingModalityStart = modality
+    }
+
+    /// The picker was closed without a pick: the start mode is dropped and
+    /// nothing is left behind (D-17608, S-17606).
+    public func cancelModalityStart() {
+        pendingModalityStart = nil
+    }
+
+    /// Starts a session carrying `modality` whose first and only slot is
+    /// `exercise` — the grid's tap and the user's choice in one (plan 176,
+    /// D-17608).
+    ///
+    /// The session is built the way a routine's start builds one, in a single
+    /// creation that already holds its slots: the phone hears one session that
+    /// already holds the exercise, and closing the picker has nothing to give up
+    /// (D-17609). The slot carries the exercise's own capabilities and Health
+    /// kind, which is what decides the workout's type — the kind the phone named
+    /// where it named one, the modality's own otherwise (S-17607).
+    ///
+    /// A start while a live session is held is refused by the engine's
+    /// one-session rule and the held row is what comes back (D-171).
+    @discardableResult
+    public func startModalityWorkout(
+        _ modality: String,
+        with exercise: WatchCatalogExercise
+    ) async -> WatchSessionRecord {
+        pendingModalityStart = nil
+        return await engine.createSession(
+            modality: modality,
+            exercises: [
+                exercise.toSlot(
+                    sessionExerciseId: exercise.slotId(token: sessionToken(from: newId()))
+                )
+            ]
+        )
+    }
+
     /// The user closed the free workout's picker without choosing: the empty
     /// session it started is given up. A session that holds an exercise (a pick,
     /// or a slot the phone pushed while the picker was open) or is no longer
