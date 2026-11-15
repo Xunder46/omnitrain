@@ -1025,6 +1025,9 @@ class WatchSessionAdoptionBridge {
         await _startSessionRow(
           sessionId: sessionId,
           routineTemplateId: routineTemplateId,
+          // D-16703: the report's own instant is the wrist's start; it is the
+          // truth the row is born with, whatever the phone's clock reads.
+          startedAtMs: _instantMs(payload['at']),
         );
       }
 
@@ -1046,20 +1049,26 @@ class WatchSessionAdoptionBridge {
   /// Writes the session row a wrist report opens: the session and its one
   /// segment, under the protocol's ids (D-3), with no effort and no planned
   /// row — the wrist's ladder arrives with the first snapshot (D-8977).
+  ///
+  /// [startedAtMs] is the report's own `at` when it reads (D-16703); the row
+  /// and its segment are otherwise stamped with the phone's clock, which stays
+  /// the arrival stamp for `createdAtMs`/`updatedAtMs`.
   Future<void> _startSessionRow({
     required String sessionId,
     required String? routineTemplateId,
+    required int? startedAtMs,
   }) async {
     final atMs = _clock().millisecondsSinceEpoch;
+    final startMs = startedAtMs ?? atMs;
     final template = await _templateOf(routineTemplateId);
     await _repository.createSession(
       TrainingSession(
         id: sessionId,
         ownerUserId: LoggedEntryRows.ownerUserId,
-        // The report carries no instant the phone trusts for a history row, so
-        // the session starts when the phone hears of it — the same stamp its
-        // row and its segment carry, as the snapshot path stamps its row.
-        startedAtMs: atMs,
+        // The report's own instant is the workout's start (D-16703): the zip
+        // began when the wrist started it, not when the phone heard of it. A
+        // report whose `at` cannot be read falls back to the arrival instant.
+        startedAtMs: startMs,
         createdAtMs: atMs,
         updatedAtMs: atMs,
         // A routine run opens as the routine it is, exactly as the snapshot

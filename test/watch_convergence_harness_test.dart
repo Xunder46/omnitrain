@@ -29,6 +29,7 @@ void main() {
   _triageFaultTests();
   _b2Tests();
   _plan161Tests();
+  _plan167Tests();
   test(
     'D-14512 a live frame withdraws the older queued copy it replaces',
     () async {
@@ -1566,6 +1567,160 @@ void _plan161Tests() {
           reason:
               'a real disagreement outside the tolerance is never converged\n'
               '${run.trace}',
+        );
+      },
+    );
+  });
+}
+
+// Plan 167 (D-16701/D-16702/D-16704): a wrist-only workout keeps the wrist's
+// own start. The phone opens the row when it hears of it (the adoption stamps
+// the arrival), so the row's span is zero until the wrist's own end arrives;
+// one merge rule then moves the start down to the wrist's start and drops a
+// floored end (== the arrival start) to the wrist's end. Two delivery orders,
+// one rule.
+void _plan167Tests() {
+  group('plan 167 the wrist’s own start on the phone', () {
+    // The owner's walk (S-16701's fixture).
+    final wristStart = DateTime.utc(2026, 11, 14, 22, 17, 21);
+    final wristEnd = wristStart.add(const Duration(minutes: 40, seconds: 12));
+    int ms(DateTime at) => at.millisecondsSinceEpoch;
+
+    // advanceTime takes 1–90 s (D-14505); the walk needs minutes.
+    Future<void> advance(HarnessRunner runner, int seconds) async {
+      var left = seconds;
+      while (left > 0) {
+        final step = left > 90 ? 90 : left;
+        await runner.perform(runner.advanceTime(step));
+        left -= step;
+      }
+    }
+
+    test(
+      'S-16701 the device’s order: the drained end corrects the adopted start',
+      () async {
+        final harness = await WatchPairHarness.build(start: wristStart);
+        final runner = harness.runner;
+
+        // The wrist runs the whole walk with no link: the phone hears of the
+        // workout only when the link comes back, minutes after the wrist ended.
+        await runner.perform(runner.linkDrops());
+        await runner.perform(runner.wristStartsFreeWorkout());
+        final sessionId = harness.wristEngine.session!.sessionId;
+        await advance(runner, 1200);
+        await runner.perform(runner.wristLogsSet());
+        final entryId = harness.wristEngine.entries.single.entryId;
+        await advance(runner, 1212);
+        await runner.perform(runner.wristFinishes());
+        await advance(runner, 562);
+        await runner.perform(runner.linkRises());
+
+        final row = await harness.repository.getSession(sessionId);
+        expect(
+          row,
+          isNotNull,
+          reason:
+              'the wrist’s workout is saved when its end drains\n'
+              '${runner.traceText()}',
+        );
+        expect(
+          row!.startedAtMs,
+          ms(wristStart),
+          reason:
+              'S-16701 the row carries the wrist’s own start, not the instant '
+              'the phone adopted it\n${runner.traceText()}',
+        );
+        expect(
+          row.endedAtMs,
+          ms(wristEnd),
+          reason: 'S-16701 with the wrist’s own end\n${runner.traceText()}',
+        );
+        expect(
+          row.endedAtMs! - row.startedAtMs,
+          2412000,
+          reason:
+              'S-16701 the span is the wrist’s 40 m 12 s\n'
+              '${runner.traceText()}',
+        );
+        expect(
+          row.isRolling,
+          isFalse,
+          reason: 'S-16701 the walk is finished\n${runner.traceText()}',
+        );
+        expect(
+          runner.phoneEntryIds[sessionId],
+          contains(entryId),
+          reason:
+              'S-16701 the set the wrist logged merges into the row\n'
+              '${runner.traceText()}',
+        );
+      },
+    );
+
+    test(
+      'S-16702 the reversed order: the terminal lifecycle first, then the '
+      'end’s merge repairs the row',
+      () async {
+        final harness = await WatchPairHarness.build(start: wristStart);
+        final runner = harness.runner;
+
+        await runner.perform(runner.linkDrops());
+        await runner.perform(runner.wristStartsFreeWorkout());
+        final sessionId = harness.wristEngine.session!.sessionId;
+        await advance(runner, 1200);
+        await runner.perform(runner.wristLogsSet());
+        await advance(runner, 1);
+        // The adoption opens the row at 22:37:22.
+        await runner.perform(runner.linkRises());
+        expect(
+          await harness.repository.getSession(sessionId),
+          isNotNull,
+          reason:
+              'the adoption opened the row while the wrist ran\n'
+              '${runner.traceText()}',
+        );
+
+        // 22:37:22 + 1211 s = 22:57:33, the owner's end (the plan's 1201 is a
+        // ten-second slip; see the Assumption Log).
+        await advance(runner, 1211);
+        // The end's `observations_up` is refused live and queues; the terminal
+        // lifecycle is delivered first.
+        await runner.perform(
+          runner.refuseNext(from: PairActor.wrist, type: 'observations_up'),
+        );
+        await runner.perform(runner.wristFinishes());
+        await advance(runner, 540);
+        await runner.perform(runner.linkRises());
+
+        final row = await harness.repository.getSession(sessionId);
+        expect(
+          row,
+          isNotNull,
+          reason: 'the row the adoption opened stays\n${runner.traceText()}',
+        );
+        expect(
+          row!.startedAtMs,
+          ms(wristStart),
+          reason:
+              'S-16702 the end’s merge corrects the arrival start however the '
+              'lifecycle landed\n${runner.traceText()}',
+        );
+        expect(
+          row.endedAtMs,
+          ms(wristEnd),
+          reason:
+              'S-16702 a floored end (== the arrival start) drops to the '
+              'wrist’s end\n${runner.traceText()}',
+        );
+        expect(
+          row.endedAtMs! - row.startedAtMs,
+          2412000,
+          reason: 'S-16702 the span is the wrist’s\n${runner.traceText()}',
+        );
+        expect(
+          row.isRolling,
+          isFalse,
+          reason: 'S-16702 the walk is finished\n${runner.traceText()}',
         );
       },
     );

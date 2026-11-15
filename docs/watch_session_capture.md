@@ -78,6 +78,23 @@ groups `Mock` and `Hive`: `S-5001 a wrist timed entry fills the unfinished
 interval`, `S-5002a a running interval is filled`,
 `S-5003 every interval finished: the entry appends`).
 
+**Why a wrist end may move an existing row's start.** A row the phone opened
+when it first heard of the workout carries the arrival as its start, and a row
+the end floor touched has no end of its own, so a wrist-only session would show
+the wrong span forever. The wrist's own `session_end` is the only record of when
+the workout really ran: an import — the held merge and the history import alike —
+moves such a row's start down to the wrist's start, never later, and drops an end
+that still equals the arrival start (it is the phone's "no end known"). A
+`followed` end describes a session the phone started and moves nothing, and rows
+already stored are not repaired. Verified by `test/watch_session_import_test.dart`
+(`S-16704 B the floored end drops to the wrist's end`,
+`S-16704 C a real phone end survives the correction`,
+`S-16705 the import path corrects an existing row too`,
+`S-16703 a followed end never moves the phone's start`) and by
+`test/watch_convergence_harness_test.dart`
+(`S-16702 the reversed order: the terminal lifecycle first, then the end's merge
+repairs the row`).
+
 **Why the rating and the end are observations of their own.** The wrist
 re-sends only observations the phone has not acknowledged; it never re-sends a
 lifecycle message, and it snapshots only the session that is current. A rating

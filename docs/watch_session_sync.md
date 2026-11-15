@@ -18,7 +18,7 @@ transport and the sensors are in
 
 | Concern | Owner |
 |---|---|
-| The session the wrist is running becoming the phone's own in-progress session | `WatchSessionAdoptionBridge.consider`, called by `WatchIncomingRouter` after the mirror has applied a snapshot — and now its owner names `WatchSessionAdoptionBridge.onSessionStarted` beside it: a wrist `session_started` report opens the session row (no efforts of its own, D-8977; the first snapshot that reaches that effort-less row writes the wrist's ladder into it and seeds the first entries exactly as a fresh adoption does, so a report that beats its snapshot never leaves the phone showing an empty session, D-8978 — `test/watch_session_adoption_bridge_test.dart`: `S-8980 the first snapshot fills a report-opened row with the ladder`, `S-8980 a row that already holds an effort is loaded as it is, never filled from the snapshot`; the row also carries the routine's Focus as an adopted run does, S-8981) and remembers the plan it names, linking it only when the wrist finishes that session (`test/watch_session_import_test.dart`, group `S-8963…S-8964b a wrist report that starts a plan`: `S-8963 a startable plan opens the row and reports the link, Mock and Hive`, `S-8971 last write wins, and the store reads the link back after a restart, Mock and Hive`, `S-8964 a free start is adopted with nothing linked`, `S-8964 a missing plan, an empty id and a held session behave (Mock and Hive)`, plus `S-13031 the wrist completed lifecycle links the plan`) |
+| The session the wrist is running becoming the phone's own in-progress session | `WatchSessionAdoptionBridge.consider`, called by `WatchIncomingRouter` after the mirror has applied a snapshot — and now its owner names `WatchSessionAdoptionBridge.onSessionStarted` beside it: a wrist `session_started` report opens the session row at the report's own `at` (D-16703 — `S-16706 the report-opened row is born with the report's at`, and a report whose `at` cannot be parsed opens it at the phone clock), and no efforts of its own (D-8977; the first snapshot that reaches that effort-less row writes the wrist's ladder into it and seeds the first entries exactly as a fresh adoption does, so a report that beats its snapshot never leaves the phone showing an empty session, D-8978 — `test/watch_session_adoption_bridge_test.dart`: `S-8980 the first snapshot fills a report-opened row with the ladder`, `S-8980 a row that already holds an effort is loaded as it is, never filled from the snapshot`; the row also carries the routine's Focus as an adopted run does, S-8981) and remembers the plan it names, linking it only when the wrist finishes that session (`test/watch_session_import_test.dart`, group `S-8963…S-8964b a wrist report that starts a plan`: `S-8963 a startable plan opens the row and reports the link, Mock and Hive`, `S-8971 last write wins, and the store reads the link back after a restart, Mock and Hive`, `S-8964 a free start is adopted with nothing linked`, `S-8964 a missing plan, an empty id and a held session behave (Mock and Hive)`, plus `S-13031 the wrist completed lifecycle links the plan`) |
 | Telling the wrist when its session is already history | `WatchIncomingRouter`'s answer to that snapshot: the mirror's `reportLifecycle` |
 | Ending the phone's copy when the wrist ends its own | `WatchSessionAdoptionBridge.onLifecycle` → the ordinary finish or the ordinary discard |
 | The ladder the phone asserts, and the entries it logged | `WatchSessionAdoptionBridge.projectSession`, composed on demand from the bound session — the ladder, plus the phone's own logged sets (a set is logged exactly when a rest sits at its index + 1), timed, hold and round entries in the answer's `entries` (D-31, D-33, D-130); a `set` slot's planned rows ride the slot itself as `plannedSets`, not as entries (D-2, `S-3621 a set slot carries every planned row, in set order`), and every other kind's plan rides it as `plannedEfforts` (D-14901, `S-14901 a drill slot carries how many holds it plans`) |
@@ -320,6 +320,26 @@ apart sync re-announces nothing, and the later one does`,
 `test/pr4_session_controls_test.dart` (`S-213 the end the wrist re-announces at
 its next catch-up leaves the screen for one summary carrying the wrist's
 rating`).
+
+**A session the phone heard of late keeps the wrist's own start (D-16701/D-16702).** The row a
+report or an adoption opens carries the arrival as its start: for a wrist-only workout that span is
+zero, and its end is the arrival too once the lifecycle floor has run. The wrist's `session_end` then
+corrects the row in the merge — the start moves down to the wrist's start, never later, and an end
+that still equals the arrival start drops to the wrist's end; the same correction runs on the history
+import path for a row the phone no longer holds (D-16705). A `followed` end, which describes a
+session the phone started, moves nothing, and rows already stored are left as they are (D-16706).
+Verified by `test/watch_convergence_harness_test.dart`
+(`S-16701 the device's order: the drained end corrects the adopted start`,
+`S-16702 the reversed order: the terminal lifecycle first, then the end's merge repairs the row`),
+by `test/watch_session_import_test.dart`
+(`S-16703 a followed end never moves the phone's start`,
+`S-16704 A a wrist start later than the row's moves nothing`,
+`S-16704 B the floored end drops to the wrist's end`,
+`S-16704 C a real phone end survives the correction`,
+`S-16705 the import path corrects an existing row too`) and by
+`test/watch_session_finish_test.dart`
+(`S-16707 an old wrist whose end never arrived never writes an inverted row`, the accepted
+zero-span picture of a row no end ever repaired).
 
 **The wrist's rating reaches the open Summary (D-1).** Written only if the
 row has none (D-138), it closes the open prompt: first answer wins

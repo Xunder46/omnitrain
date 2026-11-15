@@ -471,6 +471,57 @@ void main() {
     );
   });
 
+  test('S-16707 an old wrist whose end never arrived never writes an inverted '
+      'row', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+
+    // The adoption opens the row when the phone hears of the workout.
+    await phone.router.receive(_snapshot());
+    final adopted = (await repository.getSession('s-w1'))!;
+    expect(
+      adopted.startedAtMs,
+      _phoneNow.millisecondsSinceEpoch,
+      reason: 'the fixture: the adoption stamps the row with its arrival',
+    );
+    expect(adopted.endedAtMs, isNull, reason: 'the row opens open');
+
+    // The legacy shape: the wrist ended 40 minutes *before* the phone woke and
+    // adopted it, and no `session_end` will ever arrive (nothing to correct
+    // the start with), so the terminal lifecycle is the only word left.
+    await phone.router.receive(
+      _lifecycle('s-w1', at: '2026-10-05T11:20:00Z'),
+    );
+
+    final row = (await repository.getSession('s-w1'))!;
+    expect(
+      row.startedAtMs,
+      _phoneNow.millisecondsSinceEpoch,
+      reason:
+          'S-16707 nothing corrects the start without a wrist end, so the '
+          'adoption stamp stands (D-16706)',
+    );
+    expect(
+      row.endedAtMs,
+      _phoneNow.millisecondsSinceEpoch,
+      reason:
+          'S-16707 the end floors at the start rather than inverting the row '
+          '(D-153)',
+    );
+    expect(
+      row.endedAtMs! - row.startedAtMs,
+      0,
+      reason:
+          'S-16707 the accepted un-repaired picture: Duration 0s, the header '
+          'at the adoption instant (D-16706/D-16707)',
+    );
+    expect(
+      row.isRolling,
+      isFalse,
+      reason: 'S-16707 the workout is finished, if zero-length',
+    );
+  });
+
   test('S-4 the wrist ends its session, end before the logged sets', () async {
     final repository = await _repository();
     final phone = await _phone(repository);

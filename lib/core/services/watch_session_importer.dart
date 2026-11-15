@@ -344,7 +344,14 @@ class WatchSessionImporter {
     // no average, so it attaches nothing. The session's own end is never
     // touched (G2/D-5): the phone's end stands, the wrist's is the wrist's own
     // truth.
-    await pass._topUpRating(existing, unapplied);
+    // D-16701/D-16702: a row the phone opened when it first heard of the
+    // workout carries the arrival as its start — the wrist's own start is the
+    // truth, and the floor the lifecycle left behind drops.
+    final corrected = end == null
+        ? null
+        : await _carryWristStart(_repository, existing, end);
+    final held = corrected ?? existing;
+    await pass._topUpRating(held, unapplied);
     if (end != null && end.row.appliedAtMs == null) {
       await pass._attachSessionSummary();
     }
@@ -435,6 +442,34 @@ class WatchSessionImporter {
       appliedRating: pass.ratingWritten,
       sensorSummaryAttached: pass.summaryWritten,
     );
+  }
+
+  /// D-16701/D-16702: a row the phone opened when it first heard of the
+  /// workout carries the arrival as its start; the wrist's own start is the
+  /// truth. A `!followed` end whose start is EARLIER than the row's moves the
+  /// row's start down to it — never later — and a row whose end equals the
+  /// start it had before the correction is the D-153 floor of a wrist `at`, so
+  /// its end drops to the wrist's end. The corrected row is written and
+  /// returned; null means nothing moved.
+  static Future<TrainingSession?> _carryWristStart(
+    WorkoutRepository repository,
+    TrainingSession existing,
+    _End end,
+  ) async {
+    final startMs = end.startedAtMs;
+    if (end.followed || startMs >= existing.startedAtMs) {
+      return null;
+    }
+    final floored =
+        existing.endedAtMs != null &&
+        existing.endedAtMs == existing.startedAtMs;
+    final corrected = TrainingSession.fromMap({
+      ...existing.toMap(),
+      'started_at_ms': startMs,
+      if (floored) 'ended_at_ms': end.endedAtMs,
+    });
+    await repository.updateSession(corrected);
+    return corrected;
   }
 
   Future<WatchSessionImport> _consume(List<WatchInboxEntry> unapplied) async {
@@ -539,8 +574,16 @@ class _Pass {
         },
       );
     } else {
-      await _topUpRating(existing, unapplied);
-      await _catchUpEnd(existing, live);
+      // D-16705: the same correction on the import path, for a row the phone
+      // no longer holds.
+      final corrected = await WatchSessionImporter._carryWristStart(
+        _repository,
+        existing,
+        end!,
+      );
+      final held = corrected ?? existing;
+      await _topUpRating(held, unapplied);
+      await _catchUpEnd(held, live);
       if (end!.row.appliedAtMs == null) await _attachSessionSummary();
     }
 

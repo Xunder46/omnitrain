@@ -4210,4 +4210,262 @@ void main() {
       });
     });
   });
+
+  // Plan 167 (D-16701/D-16702): a row the phone opened on the wrist's arrival
+  // carries the arrival as its start. The wrist's own `session_end` is the one
+  // word that knows the real start, so it moves the row's start down — and a
+  // floored end (== the arrival start) drops to the wrist's end. Only earlier:
+  // the phone's start is never pushed later, a `followed` end never touches it,
+  // and a real phone end survives.
+  group('plan 167 the held row’s start', () {
+    final now = _phoneNow.millisecondsSinceEpoch;
+
+    String iso(int ms) =>
+        DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
+
+    /// A row the phone holds: its own window, one segment and one `set` effort
+    /// under [effortId] — the slot id for the merge path (its efforts are keyed
+    /// by slot), the protocol's effort id for the import path.
+    Future<void> held(
+      WorkoutRepository repository,
+      String sessionId, {
+      required int startedAtMs,
+      required int endedAtMs,
+      required String effortId,
+    }) async {
+      await repository.createSession(
+        TrainingSession(
+          id: sessionId,
+          ownerUserId: 'u-167',
+          startedAtMs: startedAtMs,
+          endedAtMs: endedAtMs,
+          createdAtMs: startedAtMs,
+          updatedAtMs: startedAtMs,
+        ),
+      );
+      await repository.createSegment(
+        SessionSegment(
+          id: 'seg-$sessionId',
+          sessionId: sessionId,
+          orderIndex: 0,
+          segmentType: 'workout',
+          name: 'Main Workout',
+          createdAtMs: startedAtMs,
+          updatedAtMs: startedAtMs,
+        ),
+      );
+      await repository.createEffort(
+        SegmentEffort(
+          id: effortId,
+          segmentId: 'seg-$sessionId',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          effortKind: 'set',
+          exerciseId: 'ex-bench',
+          createdAtMs: startedAtMs,
+          updatedAtMs: startedAtMs,
+        ),
+      );
+    }
+
+    Future<void> stage(
+      WorkoutRepository repository,
+      String sessionId,
+      Map<String, Object?> event,
+    ) => repository.stageWatchInboxEntry(
+      WatchInboxEntry(
+        entryId: event['entryId']! as String,
+        watchSessionId: sessionId,
+        kind: event['kind']! as String,
+        origin: WatchInboxEntry.originWatch,
+        payload: Map<String, dynamic>.of(event),
+        receivedAtMs: _phoneNow.millisecondsSinceEpoch,
+      ),
+    );
+
+    Future<int?> repsOf(WorkoutRepository repository, String effortId) async =>
+        (await observationAt(repository, effortId, 0, 'reps'))?.valueInt;
+
+    test('S-16703 a followed end never moves the phone’s start', () async {
+      final repository = await _repository();
+      await held(repository, 's-h1', startedAtMs: now - 600000, endedAtMs: now - 300000, effortId: 'sx-bench');
+      await stage(repository, 's-h1', {
+        ..._end(
+          's-h1',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(now - 300000),
+        ),
+        'followed': true,
+      });
+      await stage(repository, 's-h1', _set('e-h1', loggedAt: iso(now - 300000)));
+
+      await WatchSessionImporter(
+        repository: repository,
+      ).apply('s-h1', phoneOwnsSession: true);
+
+      final row = (await repository.getSession('s-h1'))!;
+      expect(
+        row.startedAtMs,
+        now - 600000,
+        reason:
+            'S-16703 a followed end describes a session the phone started; its '
+            'start is the phone’s own (O-6)',
+      );
+      expect(
+        row.endedAtMs,
+        now - 300000,
+        reason: 'S-16703 the phone’s end stands untouched (G2)',
+      );
+      expect(
+        await repsOf(repository, 'sx-bench'),
+        5,
+        reason: 'S-16703 the entries merge as today',
+      );
+    });
+
+    test('S-16704 A a wrist start later than the row’s moves nothing', () async {
+      final repository = await _repository();
+      await held(repository, 's-h2', startedAtMs: now - 600000, endedAtMs: now - 300000, effortId: 'sx-bench');
+      await stage(
+        repository,
+        's-h2',
+        _end('s-h2', startedAt: iso(now - 100000), endedAt: iso(now - 90000)),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+      ).apply('s-h2', phoneOwnsSession: true);
+
+      final row = (await repository.getSession('s-h2'))!;
+      expect(
+        row.startedAtMs,
+        now - 600000,
+        reason: 'S-16704 A the correction only ever moves a start earlier',
+      );
+      expect(
+        row.endedAtMs,
+        now - 300000,
+        reason: 'S-16704 A a real end is not the correction’s to move (O-5)',
+      );
+    });
+
+    test('S-16704 B the floored end drops to the wrist’s end', () async {
+      final repository = await _repository();
+      await held(repository, 's-h3', startedAtMs: now - 60000, endedAtMs: now - 60000, effortId: 'sx-bench');
+      await stage(
+        repository,
+        's-h3',
+        _end('s-h3', startedAt: iso(now - 1800000), endedAt: iso(now - 560000)),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+      ).apply('s-h3', phoneOwnsSession: true);
+
+      final row = (await repository.getSession('s-h3'))!;
+      expect(
+        row.startedAtMs,
+        now - 1800000,
+        reason: 'S-16704 B the wrist’s end carries the real start',
+      );
+      expect(
+        row.endedAtMs,
+        now - 560000,
+        reason:
+            'S-16704 B an end equal to the pre-correction start is the D-153 '
+            'floor, so it drops to the wrist’s end (D-16702)',
+      );
+      expect(
+        row.endedAtMs! - row.startedAtMs,
+        1240000,
+        reason: 'S-16704 B the span is the wrist’s',
+      );
+      expect(
+        row.isRolling,
+        isFalse,
+        reason: 'S-16704 B the status is untouched',
+      );
+    });
+
+    test('S-16704 C a real phone end survives the correction', () async {
+      final repository = await _repository();
+      await held(repository, 's-h4', startedAtMs: now - 600000, endedAtMs: now - 100000, effortId: 'sx-bench');
+      await stage(
+        repository,
+        's-h4',
+        _end('s-h4', startedAt: iso(now - 1200000), endedAt: iso(now - 700000)),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+      ).apply('s-h4', phoneOwnsSession: true);
+
+      final row = (await repository.getSession('s-h4'))!;
+      expect(
+        row.startedAtMs,
+        now - 1200000,
+        reason: 'S-16704 C the wrist’s end proves the row started earlier',
+      );
+      expect(
+        row.endedAtMs,
+        now - 100000,
+        reason:
+            'S-16704 C an end that is not the floor artifact is a real end and '
+            'stays (O-5)',
+      );
+    });
+
+    test('S-16705 the import path corrects an existing row too', () async {
+      final repository = await _repository();
+      await held(repository, 's-i1', startedAtMs: now - 60000, endedAtMs: now - 60000,
+          effortId: WatchSessionImporter.effortIdFor(
+            's-i1',
+            'sx-bench',
+            'ex-bench',
+            'set',
+          ));
+      await stage(
+        repository,
+        's-i1',
+        _end('s-i1', startedAt: iso(now - 1800000), endedAt: iso(now - 560000)),
+      );
+      await stage(repository, 's-i1', _set('e-i1', loggedAt: iso(now - 1200000)));
+
+      final result = await WatchSessionImporter(
+        repository: repository,
+      ).apply('s-i1');
+
+      final row = (await repository.getSession('s-i1'))!;
+      expect(
+        row.startedAtMs,
+        now - 1800000,
+        reason:
+            'S-16705 a row the phone no longer holds is repaired by the import '
+            'path’s existing-row branch (D-16705)',
+      );
+      expect(
+        row.endedAtMs,
+        now - 560000,
+        reason: 'S-16705 the floored end drops here too (D-16702)',
+      );
+      expect(
+        await repsOf(
+          repository,
+          WatchSessionImporter.effortIdFor(
+            's-i1',
+            'sx-bench',
+            'ex-bench',
+            'set',
+          ),
+        ),
+        5,
+        reason: 'S-16705 the set imports into the effort',
+      );
+      expect(
+        result.historyChanged,
+        isTrue,
+        reason: 'S-16705 the correction and the set are a history change',
+      );
+    });
+  });
 }

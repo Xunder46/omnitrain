@@ -340,17 +340,17 @@ issues, no new). **Predicted Files**: the four test files, the evidence file. No
 (+ the evidence file). Nothing else.
 
 ### Phase 3: docs and full suite (@developer)
-1. [ ] `docs/watch_session_sync.md`: state the start rule in the adoption-table row and the held
+1. [x] `docs/watch_session_sync.md`: state the start rule in the adoption-table row and the held
   merge section (:21-28 table, "The two directions of ending" :295+) — one sentence each for
   D-16701/D-16702 and D-16703, naming the tests
-2. [ ] `docs/watch_session_capture.md` (:8-40, the importer's role): one sentence that the merge and
+2. [x] `docs/watch_session_capture.md` (:8-40, the importer's role): one sentence that the merge and
   the import path correct a held/existing row's start from the wrist's end (D-16701/D-16705)
-3. [ ] `docs/state_management/workout_state.md`: verify-no-change — `endSession` (:136) and
+3. [x] `docs/state_management/workout_state.md`: verify-no-change — `endSession` (:136) and
   `catchUpEndedSession` (:137) describe untouched code; grep the doc for a sentence the change makes
   false (the writer-window claim stays true: the corrected window is still ordered)
-4. [ ] Run the full suite once with the 900 s timeout (`gateway.sh test` with no file list); paste
+4. [x] Run the full suite once with the 900 s timeout (`gateway.sh test` with no file list); paste
   the counts into the evidence file; `gateway.sh lint` at the baseline
-5. [ ] State each touched doc's size against the 52 KB band in the evidence file (the 64 KiB cap is
+5. [x] State each touched doc's size against the 52 KB band in the evidence file (the 64 KiB cap is
   `test/docs_indexing_contract_test.dart`)
 
 **Done Criteria** (run until green): full suite green (or a named, pre-existing red quoted from
@@ -397,9 +397,15 @@ files, `watch/watchos/**`, `watch/contract/`.
 
 ## Progress
 
-- [ ] Phase 1: red reproduction (@developer)
-- [ ] Phase 2: the fix (@developer)
-- [ ] Phase 3: docs and full suite (@developer)
+- [x] Phase 1: red reproduction (@developer) — 9 tests in 4 files; red at HEAD: S-16702, S-16704 B/C
+  start+drop, S-16705, S-16706 (prove-red alone: 4 of 5 files — `RED AT HEAD` ×3); pins green:
+  S-16703, S-16704 A, S-16706 guard, S-16707, **S-16701** (see A-167-05). Evidence: evidence.md §1.
+- [x] Phase 2: the fix (@developer) — `_carryWristStart` + two call sites; the report's `at` stamps
+  the adopted row. All four groups green (`+5`, `+2`, `+2`, `+1`); three mutation proofs.
+- [x] Phase 3: docs and full suite (@developer) — `watch_session_sync.md` (row + "late start" paragraph)
+  and `watch_session_capture.md` ("Why a wrist end may move an existing row's start"); `workout_state.md`
+  verify-no-change (the writer-window claim stays true). Full suite `+7612 ~4` all passed; lint 181
+  (baseline); 200-seed sweep: 4 shipping divergers (≤ plan 161's 5). Evidence: evidence.md §3.
 
 ## Assumption Log
 
@@ -418,6 +424,28 @@ files, `watch/watchos/**`, `watch/contract/`.
   that phone session's start if the wrist claimed a later one — accepted: the phone trusts the
   wrist's own end for a session the wrist created; D-16003 marks `followed` from the wrist's
   creation source.
+- A-167-05: S-16701 is GREEN at HEAD, not red (the plan's item 7 predicted red). With the link down
+  for the whole workout, the drained snapshot's `_createSession` writes the wrist's start before any
+  adoption opens a row, so the merge never sees an arrival-stamped start there. The order stays as
+  written (it guards the device's order end-to-end); the correction is proven red by S-16702,
+  S-16704 B/C, S-16705 and S-16706.
+- A-167-06: S-16702's planned `advanceTime(1201) → 22:57:33` is a ten-second slip (22:37:22 + 1201 s
+  = 22:57:23); the fixture advances 1211 s so the wrist's end is the owner's 22:57:33 (span
+  2 412 000 ms).
+- A-167-07: `advanceTime` only takes 1–90 s (D-14505), so both harness tests step the walk in 90 s
+  slices through a local `advance(runner, seconds)` helper; the clock lands on the same instants.
+- A-167-08: `_End.startedAtMs` and `_End.endedAtMs` are both non-nullable `int` (the importer builds
+  `_End` only from a row that parses), so `_carryWristStart` needs no null guard: a `!followed` end
+  naming a strictly earlier start moves the row, and only the floor-artifact drop then uses the end.
+  No bound is added: D-16408's clamp keeps `end.endedAtMs >= end.startedAtMs`.
+- A-167-09: doc byte sizes are not measurable with the developer's tools (`wc -c` is not a gateway
+  check), so the 52 KB band is evidenced by `test/docs_indexing_contract_test.dart`'s
+  `no documentation file is within the warning band of the ceiling` (0.80 × 64 KiB ≈ 51.2 KiB),
+  which passed in the full run. Governor may confirm with `wc -c` on the two pages.
+- A-167-10: the 200-seed sweep in this tree reports 4 shipping divergers (≤ plan 161's 5) against
+  HEAD's 3, so one seed (136) moved into the class the defect already owns. Both `lib/` changes in
+  this working tree (this plan's and the parallel plan 168's sensor mirror) feed the harness, so the
+  per-seed attribution cannot be isolated from one sweep; the brief's class-count rule passes.
 
 ## Feedback
 

@@ -1923,6 +1923,83 @@ void main() {
     });
   });
 
+  // Plan 167 (D-16703): the `session_started` report carries the instant the
+  // wrist started. The row it opens is born with that start, not with the
+  // instant the phone heard of it; the row's own stamps and its segment's stay
+  // the phone's arrival, which is when the phone learned of the session.
+  test('S-16706 the report-opened row is born with the report’s at', () async {
+    final repository = (await _repository()) as MockWorkoutRepository;
+    final phone = await _phone(repository);
+
+    await phone.bridge.onSessionStarted(_report());
+
+    final row = await repository.getSession('s-w1');
+    expect(row, isNotNull, reason: 'S-16706 the report opens the row');
+    expect(
+      row!.startedAtMs,
+      DateTime.parse('2026-10-05T10:00:00Z').millisecondsSinceEpoch,
+      reason:
+          'S-16706 the row carries the report’s `at`, not the arrival: the '
+          'zip began when the wrist started it',
+    );
+    expect(
+      row.createdAtMs,
+      _adoptedAt.millisecondsSinceEpoch,
+      reason: 'S-16706 the row still records when the phone learned of it',
+    );
+    expect(
+      row.updatedAtMs,
+      _adoptedAt.millisecondsSinceEpoch,
+      reason: 'S-16706 and its own stamp is the arrival',
+    );
+    expect(
+      row.endedAtMs,
+      isNull,
+      reason: 'S-16706 the row opens open',
+    );
+    final segment = (await repository.getSessionSegments('s-w1')).single;
+    expect(
+      segment.createdAtMs,
+      _adoptedAt.millisecondsSinceEpoch,
+      reason:
+          'S-16706 the segment is the phone’s own row: it is stamped when the '
+          'phone wrote it',
+    );
+    expect(
+      segment.updatedAtMs,
+      _adoptedAt.millisecondsSinceEpoch,
+      reason: 'S-16706 both of its stamps are the arrival',
+    );
+    expect(
+      await repository.getSegmentEfforts(segment.id),
+      isEmpty,
+      reason: 'S-16706 D-8977’s shape: no effort until the first snapshot',
+    );
+  });
+
+  test('S-16706 a report whose at cannot parse opens at the phone '
+      'clock', () async {
+    final repository = (await _repository()) as MockWorkoutRepository;
+    final phone = await _phone(repository);
+
+    await phone.bridge.onSessionStarted({
+      ..._report(),
+      'messageId': 'msg-start-s-w3',
+      'sessionId': 's-w3',
+      'payload': {'sessionId': 's-w3', 'at': 'not-a-time'},
+    });
+
+    final row = await repository.getSession('s-w3');
+    expect(row, isNotNull, reason: 'S-16706 a non-conformant report still opens');
+    expect(
+      row!.startedAtMs,
+      _adoptedAt.millisecondsSinceEpoch,
+      reason:
+          'S-16706 an `at` this build cannot read falls back to the phone’s '
+          'clock, as the report opening did before D-16703',
+    );
+  });
+
   // Plan 129 (P1b, D-8965/D-8968 + D-8972): a wrist `session_started` report
   // is judged before anything is written. A report that is not a wrist report
   // of a start, or names a plan the calendar cannot start (unknown, already
