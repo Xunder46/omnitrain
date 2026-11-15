@@ -278,9 +278,18 @@ Readers that need NO change (verified by grep): `lib/features/settings/settings_
 
 ## Progress
 
-- [ ] Phase 1 (phone entry gate) — @developer
-- [ ] Phase 2 (watch app-target gate) — @developer
-- [ ] Phase 3 (docs) — @developer
+- [x] Phase 1 (phone entry gate) — @developer — `test/diagnostics_entry_test.dart`,
+      `test/diagnostics_wiring_source_test.dart` S-17702 and
+      `test/settings_diagnostics_test.dart` S-17703 RED at HEAD, then green (14 passed);
+      `lib/core/constants/diagnostics_entry.dart` created, `lib/main.dart` gated (M1/M2 mutations).
+- [x] Phase 2 (watch app-target gate) — @developer — S-14213 updated + S-17704/S-17705/S-17707 added
+      (10 tests, 3 red before GREEN); `DiagnosticsEntryPoint.swift`, the gated `ContentView` closure and
+      the Profile condition in place (M3/M4 mutations); `swift-test` 1495 passed, 0 failed.
+      The two `xcodebuild` configuration builds are the governor's (see evidence).
+- [x] Phase 3 (docs) — @developer — "Entry point visibility" in
+      `docs/state_management/watch_diagnostics.md`, the Settings sentence + freshness date in
+      `docs/theme_and_settings.md`, 9 lines in `docs/watch-app-setup-and-qa.md` step 38;
+      `test/docs_indexing_contract_test.dart` 13 passed; residue sweep in the evidence file.
 - [ ] Review (evidence table, S-conformance, xcodebuild configs) — @code-reviewer
 
 ## Assumption Log
@@ -293,6 +302,18 @@ Readers that need NO change (verified by grep): `lib/features/settings/settings_
 - A-17702 (Phase 3): `docs/watch-app-setup-and-qa.md` is 52.7 KB, past the
   ~52 KB split band; the plan keeps its delta ≤10 lines and defers the split to
   a separate task (Open questions). Conductor to RATIFY at review.
+- A-17703 (Phase 1): `kDiagnosticsEntryVisible` is built from the testable
+  predicate's inputs inline (`kOmnitrainDiagnosticsOverride || kDebugMode ||
+  kProfileMode`) rather than calling `diagnosticsEntryVisibleFor`, because
+  `kDebugMode`/`kProfileMode` are const and the call would not be. Option
+  considered: one non-const `final` constant calling the predicate — rejected
+  (the plan pins `const bool kDiagnosticsEntryVisible`, D-17702). Both read the
+  same rule; S-17701 pins the predicate, S-17706 pins the constant.
+- A-17704 (Phase 1): S-17706's verbatim scan matches the override line through
+  a whitespace-collapsed `RegExp` (`const bool kOmnitrainDiagnosticsOverride =`
+  followed by `bool.fromEnvironment(` and `'OMNITRAIN_DIAGNOSTICS'`) instead of
+  one literal string, because the formatter wraps the declaration. The scan
+  still fails if the environment key or the `fromEnvironment` read changes.
 
 ## Feedback
 

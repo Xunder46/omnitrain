@@ -124,8 +124,14 @@ HEALTH; S-6914 a heard frame updates the line while the screen is open).
 Under that row, when the app built a diagnostics log, a `Diagnostics` row shows the number of events
 and a `Copy` label; tapping it copies the log as text (app version, platform, event count, then one line per
 event) and says `Diagnostics copied`; with nothing recorded it reads `Nothing recorded yet` and does nothing.
-Copy diagnostics is verified by `test/settings_diagnostics_test.dart` (S-14315). See
-[The Watch Diagnostics Log](state_management/watch_diagnostics.md).
+Copy diagnostics is verified by `test/settings_diagnostics_test.dart` (S-14315). The row itself is a
+debugging tool, so `lib/main.dart` passes the log only when `kDiagnosticsEntryVisible`
+(`lib/core/constants/diagnostics_entry.dart`) is true — in debug and profile builds, and in a release
+build made with `--dart-define=OMNITRAIN_DIAGNOSTICS=true`; the log keeps recording either way (plan 177,
+D-17702). Hiding the row is verified by `test/settings_diagnostics_test.dart`, group
+`S-17703 the entry flag hides the Diagnostics row in a release build and shows it in debug`, and
+`test/diagnostics_wiring_source_test.dart`, group `S-17702 main.dart gates the Settings diagnostics
+argument`. See [The Watch Diagnostics Log](state_management/watch_diagnostics.md).
 
 ### Version Footer
 
@@ -181,4 +187,4 @@ exercise in it (plan 89c1; `S-89c1-*` in `test/health_platform_test.dart`).
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-11-15. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

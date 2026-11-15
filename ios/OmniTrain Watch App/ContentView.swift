@@ -555,7 +555,7 @@ struct ContentView: View {
                     isSyncing: host.isSyncing,
                     healthAccess: host.healthAccess,
                     phoneProblem: host.phoneProblem,
-                    onOpenDiagnostics: { showingDiagnostics = true }
+                    onOpenDiagnostics: DiagnosticsEntryPoint.isVisible ? { showingDiagnostics = true } : nil
                 )
                 .task { await host.askHealthAccess() }
             }

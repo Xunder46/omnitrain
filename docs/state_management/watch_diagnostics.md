@@ -70,6 +70,25 @@ of the session id>`. Verified by `WatchDiagnosticsSummaryTests`
 `testS14212SixtyEventsGiveTheNewestFortyLinesNewestFirst`, `testS14212ALineNamesTimeKindDetailAndSessionPrefix`)
 and `WatchDiagnosticsSourceTests.testS14213TheStartScreenOpensTheDiagnosticsSurface`.
 
+**Entry point visibility.** The Diagnostics button and the phone's Diagnostics row are debugging
+tools, so neither ships to users (plan 177, D-17702/D-17703): both show in debug and profile builds and
+are hidden in a release build, while the logs keep recording either way (D-17701) — only the way in is
+gated. On the wrist the gate is `DiagnosticsEntryPoint.isVisible`
+(`ios/OmniTrain Watch App/DiagnosticsEntryPoint.swift`), which `ContentView` reads when it passes
+`onOpenDiagnostics`: a release build passes nil and `WatchStartView` leaves the button off. The watch
+app target's Profile configuration defines `PROFILE` (`ios/Runner.xcodeproj/project.pbxproj`), and no
+committed configuration defines `OMNITRAIN_DIAGNOSTICS`. On the phone the gate is the one constant
+`kDiagnosticsEntryVisible` (`lib/core/constants/diagnostics_entry.dart`), read by `lib/main.dart` when
+it builds `MyApp`: a release build passes null and Settings shows no row. The owner can bring either
+entry back in a release build — `--dart-define=OMNITRAIN_DIAGNOSTICS=true` on the phone,
+`OMNITRAIN_DIAGNOSTICS` in the watch app target's Active Compilation Conditions (Release) or
+`OMNITRAIN_DIAGNOSTICS=1` in the scheme's run action on the watch. Verified by
+`WatchDiagnosticsSourceTests.testS17704TheEntryPointIsGatedThroughTheAppTargetGate`,
+`testS17705TheWatchBuildConfigurationsCarryTheRightConditions`,
+`testS17707HidingTheEntryNeverStopsTheRecording`, `test/diagnostics_entry_test.dart` (S-17701,
+S-17706), `test/diagnostics_wiring_source_test.dart` (S-17702) and `test/settings_diagnostics_test.dart`
+(S-17703).
+
 **What it cannot do.** Say why the system closed the app: watchOS gives an app no crash hook, MetricKit is not in
 the watchOS SDK, and the watch app has no crash reporter (Sentry's own documentation says its Apple SDK does not
 detect crashes on watchOS). What the log shows instead is the

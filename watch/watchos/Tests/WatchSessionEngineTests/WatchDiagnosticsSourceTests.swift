@@ -122,8 +122,8 @@ final class WatchDiagnosticsSourceTests: XCTestCase {
         let start = try packageSource("WatchStartView.swift")
 
         XCTAssertTrue(
-            view.contains("onOpenDiagnostics: { showingDiagnostics = true }"),
-            "S-14213 the host hands the Start screen the sheet's opening"
+            view.contains("onOpenDiagnostics: DiagnosticsEntryPoint.isVisible ? { showingDiagnostics = true } : nil"),
+            "S-14213 the host hands the Start screen the sheet's opening, gated by the app-target entry point (plan 177)"
         )
         XCTAssertTrue(
             view.contains("WatchDiagnosticsView(log: host.diagnostics, onSend: { url in host.sendDiagnostics(url) })"),
@@ -144,6 +144,114 @@ final class WatchDiagnosticsSourceTests: XCTestCase {
         XCTAssertTrue(
             start.contains("self.onOpenDiagnostics = onOpenDiagnostics"),
             "S-14213 the init keeps the closure"
+        )
+    }
+
+    // MARK: - S-17704 (plan 177, D-17703) the entry point is gated in the app target
+
+    /// S-17704: the package cannot see the app's build conditions, so the gate
+    /// is an app-target file and ContentView passes nil when it is off. The
+    /// structural proof that nil hides the button is S-14213's `if let`.
+    func testS17704TheEntryPointIsGatedThroughTheAppTargetGate() throws {
+        let view = try appSource("ContentView.swift")
+        let gate = try appSource("DiagnosticsEntryPoint.swift")
+        let start = try packageSource("WatchStartView.swift")
+
+        XCTAssertTrue(
+            view.contains("onOpenDiagnostics: DiagnosticsEntryPoint.isVisible ? { showingDiagnostics = true } : nil"),
+            "S-17704 a release build passes nil, so the Start screen renders no Diagnostics button"
+        )
+        XCTAssertTrue(
+            view.contains("WatchDiagnosticsView(log: host.diagnostics, onSend: { url in host.sendDiagnostics(url) })"),
+            "S-17704 the sheet, and with it Send to phone, lives only behind the gated entry"
+        )
+        XCTAssertTrue(
+            gate.contains("#if DEBUG || PROFILE || OMNITRAIN_DIAGNOSTICS"),
+            "S-17704 debug, profile and the owner's build condition compile the entry in"
+        )
+        XCTAssertTrue(
+            gate.contains(#"ProcessInfo.processInfo.environment["OMNITRAIN_DIAGNOSTICS"] == "1""#),
+            "S-17704 a Release run from Xcode can reveal the entry with an environment variable"
+        )
+        XCTAssertTrue(
+            start.contains("if let onOpenDiagnostics {"),
+            "S-17704 nil leaves the button off the Start screen"
+        )
+        XCTAssertTrue(
+            start.contains("Button(Self.diagnosticsLabel, action: onOpenDiagnostics)"),
+            "S-17704 the button is unchanged behind the closure"
+        )
+    }
+
+    // MARK: - S-17705 (plan 177, D-17704) the build configurations carry the conditions
+
+    private func buildConfiguration(_ id: String, named name: String, in pbx: String) throws -> String {
+        let header = "\(id) /* \(name) */ = {"
+        guard let start = pbx.range(of: header) else {
+            throw ConfigurationError.missing("\(id) /* \(name) */")
+        }
+        guard let end = pbx.range(of: "name = \(name);", range: start.upperBound..<pbx.endIndex) else {
+            throw ConfigurationError.missing("name = \(name); after \(id)")
+        }
+        return String(pbx[start.upperBound..<end.lowerBound])
+    }
+
+    private enum ConfigurationError: Error {
+        case missing(String)
+    }
+
+    /// S-17705: the watch app target's Debug config defines DEBUG, its Profile
+    /// config defines PROFILE (so `#if PROFILE` is true in a profile build), and
+    /// no committed configuration defines the owner's override — a release
+    /// build with no override hides the entry, which is the point.
+    func testS17705TheWatchBuildConfigurationsCarryTheRightConditions() throws {
+        let url = Fixtures.repositoryRoot.appendingPathComponent("ios/Runner.xcodeproj/project.pbxproj")
+        let pbx = try String(contentsOf: url, encoding: .utf8)
+
+        let debug = try buildConfiguration("46AC7A223061FCC100924AC9", named: "Debug", in: pbx)
+        XCTAssertTrue(
+            debug.contains(#"SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";"#),
+            "S-17705 the Debug configuration defines DEBUG"
+        )
+
+        let profile = try buildConfiguration("46AC7A243061FCC100924AC9", named: "Profile", in: pbx)
+        XCTAssertTrue(
+            profile.contains(#"SWIFT_ACTIVE_COMPILATION_CONDITIONS = "PROFILE $(inherited)";"#),
+            "S-17705 the Profile configuration defines PROFILE"
+        )
+
+        let release = try buildConfiguration("46AC7A233061FCC100924AC9", named: "Release", in: pbx)
+        XCTAssertFalse(
+            release.contains("SWIFT_ACTIVE_COMPILATION_CONDITIONS"),
+            "S-17705 a release build carries no condition, so the entry is hidden"
+        )
+
+        XCTAssertFalse(
+            pbx.contains("OMNITRAIN_DIAGNOSTICS"),
+            "S-17705 the owner override is never committed: a build setting here would ship the button"
+        )
+    }
+
+    // MARK: - S-17707 (plan 177, D-17701) hiding the entry never stops the recording
+
+    /// S-17707: the gate's only effect is the closure. The launch, the scene
+    /// phases and the log handed to the engine keep recording in a release
+    /// build, which is what the owner debugs real walks with.
+    func testS17707HidingTheEntryNeverStopsTheRecording() throws {
+        let view = try appSource("ContentView.swift")
+
+        XCTAssertTrue(
+            view.contains("diagnostics.noteLaunch()"),
+            "S-17707 the launch is recorded whether or not the entry point is visible"
+        )
+        XCTAssertTrue(
+            view.contains(#"host.diagnostics.note("scene""#),
+            "S-17707 every scene phase is still recorded"
+        )
+        XCTAssertGreaterThanOrEqual(
+            occurrences(of: "diagnostics: diagnostics)", in: view),
+            3,
+            "S-17707 the one log is still handed to the radio halves, the engine and the platform workout"
         )
     }
 

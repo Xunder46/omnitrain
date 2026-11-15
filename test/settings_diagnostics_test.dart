@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/diagnostics_entry.dart';
 import 'package:omnitrain/core/models/app_version_info.dart';
 import 'package:omnitrain/core/platform/watch_link_info.dart';
 import 'package:omnitrain/core/platform/watch_link_source.dart';
@@ -112,6 +113,56 @@ void main() {
 
       expect(find.text('Apple Watch'), findsOneWidget);
       expect(find.text('Diagnostics'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'S-17703 the entry flag hides the Diagnostics row in a release build and '
+    'shows it in debug',
+    (WidgetTester tester) async {
+      final settings = await _makeSettings();
+      final log = _logOfEvents(2);
+      final watch = await _makeWatchLink();
+
+      // The seam main.dart passes: the same predicate, flag off, is null.
+      final releaseLog = diagnosticsEntryVisibleFor(
+        debugBuild: false,
+        profileBuild: false,
+        override: false,
+      )
+          ? log
+          : null;
+      expect(releaseLog, isNull, reason: 'the release fixture has no row');
+
+      await _pumpSettings(
+        tester,
+        settings: settings,
+        watchLinkState: watch,
+        diagnostics: releaseLog,
+      );
+
+      expect(find.text('Apple Watch'), findsOneWidget);
+      expect(find.text('Diagnostics'), findsNothing);
+
+      // Flag on: the row reads as S-14315 pins it today.
+      final debugLog = diagnosticsEntryVisibleFor(
+        debugBuild: true,
+        profileBuild: false,
+        override: false,
+      )
+          ? log
+          : null;
+
+      await _pumpSettings(
+        tester,
+        settings: settings,
+        watchLinkState: watch,
+        diagnostics: debugLog,
+      );
+
+      expect(find.text('Diagnostics'), findsOneWidget);
+      expect(find.text('2 events'), findsOneWidget);
+      expect(find.text('Copy'), findsOneWidget);
     },
   );
 

@@ -151,7 +151,9 @@ that keeps the app alive (plan 19c):
   target already had it — `ios/Runner/Runner.entitlements`.
 - `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription` are
   `INFOPLIST_KEY_*` build settings on the watch target;
-  `WKBackgroundModes` = `workout-processing` lives in the watch target's Info.plist
+  `WKBackgroundModes` = `workout-processing` and `UIBackgroundModes` = `audio` (Apple's
+  guide: haptics during a session need the Audio mode too; plan 178; pinned by
+  `WatchBackgroundModesSourceTests`) live in the watch target's Info.plist
   fragment `ios/OmniTrainWatchApp-Info.plist`. The background mode is what keeps
   the app alive with the wrist down during a session — the exact behavior
   `lib/watch/sensors/watch_platform_workout.dart` documents as the reason for
@@ -826,6 +828,15 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     what the app last did before the gap. The lines below show the sync
     frames (sent, received, queued) and the workout begin/adopt/end around
     the gap. Send a screenshot of the screen with the report.
+    (Plan 177) Diagnostics is a debugging tool, so the button is on in Debug
+    and Profile builds and off in a Release build, while the log records the
+    same either way. To reach it in a Release build on the watch, add
+    `OMNITRAIN_DIAGNOSTICS` to the watch app target's Active Compilation
+    Conditions for Release and rebuild — the only path on TestFlight, where no
+    environment variable reaches the app — or set `OMNITRAIN_DIAGNOSTICS=1` in
+    the scheme's run action and run from Xcode; remove it before archiving a
+    user build. On the phone the Settings row appears in a release build only
+    when it was made with `--dart-define=OMNITRAIN_DIAGNOSTICS=true`.
 
 39. **Copying the phone diagnostics — (owner).** (Plan 143) After the same
     session, open Settings on the phone: under the Apple Watch row a

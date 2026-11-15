@@ -31,6 +31,7 @@ import 'state/routine/routine_state.dart';
 import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
+import 'core/constants/diagnostics_entry.dart';
 import 'core/constants/health_constants.dart';
 import 'core/constants/omni_theme.dart';
 import 'core/constants/profile_measurements.dart';
@@ -482,7 +483,9 @@ Future<Widget> runStartup({
     onWatchResume: watchSync?.sync,
     // 47c D-3: the Settings row's status, null without a watch graph.
     watchLinkState: watchSync?.link,
-    // Plan 143 D-14305: the diagnostics log, handed on to Settings.
-    diagnostics: diagnostics,
+    // Plan 177 D-17702/D-17707: a debugging tool, so the row is there only in
+    // a debug or profile build, or with the owner override. The log built above
+    // keeps recording either way.
+    diagnostics: kDiagnosticsEntryVisible ? diagnostics : null,
   );
 }
