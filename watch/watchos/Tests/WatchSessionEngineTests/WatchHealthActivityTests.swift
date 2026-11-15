@@ -15,6 +15,14 @@
 //    S-10508 a routine effort round-trips and starts   → `testS10508...`
 //              the right Health type
 //
+//  Plan 170 (D-17003): the Health kind is consulted before capability
+//  inference, every contract kind resolves, and an unknown name falls through.
+//
+//    S-17004 the kind table resolves on the wrist     → `testS17004...`
+//    S-17005 the kind beats hold and the modality     → `testS17005...`
+//    S-17006 majority, ties and start-fixing          → `testS17006...`
+//    S-17007 sports record as their sport             → `testS17007...`
+//
 //  Nothing here touches the platform's health service: the type table is
 //  asserted through `WatchActivityTypes`, the records through their own
 //  round-trips, and the app target's store through its source text.
@@ -122,35 +130,36 @@ final class WatchHealthActivityTests: XCTestCase {
     func testS10502AnUnknownKindStaysRunning() {
         let type = WatchActivityTypes.forExercise(
             capabilities: ["time", "distance"],
-            healthActivity: "swimming"
+            healthActivity: "unreal-kind"
         )
         XCTAssertEqual(type.watchOs, "running")
         XCTAssertEqual(type.wear, "exercise_type_running")
     }
 
-    // MARK: - S-10503 hold still beats distance
+    // MARK: - S-10503 the named kind beats hold and capability inference
 
-    func testS10503AHoldBeatsDistanceEvenWithACyclingKind() {
+    func testS10503ACyclingKindBeatsHold() {
         let type = WatchActivityTypes.forExercise(
             capabilities: ["hold", "time", "distance"],
             healthActivity: "cycling"
         )
         XCTAssertEqual(
-            type,
-            WatchActivityTypes.byModality["isometric_stretching"],
-            "hold is tested first: a plank with a distance capability is not a ride"
+            type.watchOs,
+            "cycling",
+            "the exercise's own kind is consulted first (D-17003)"
         )
+        XCTAssertEqual(type.wear, "exercise_type_biking")
     }
 
-    func testS10503RepsOnlyWithACyclingKindIsStrength() {
+    func testS10503RepsOnlyWithACyclingKindIsCycling() {
         let type = WatchActivityTypes.forExercise(
             capabilities: ["reps", "sets", "load"],
             healthActivity: "cycling"
         )
         XCTAssertEqual(
             type.watchOs,
-            "traditionalStrengthTraining",
-            "the kind is read only with distance"
+            "cycling",
+            "the kind no longer depends on the distance capability (D-17003)"
         )
     }
 
@@ -359,5 +368,223 @@ final class WatchHealthActivityTests: XCTestCase {
             WatchActivityTypes.forExercises([benchEffort.slot(token: "testtoken"), rideEffort.slot(token: "testtoken")])?.watchOs,
             "traditionalStrengthTraining"
         )
+    }
+
+    // MARK: - S-17004 every contract kind resolves; unknown falls through
+
+    /// The contract's Health-kind table, the same file both clients resolve
+    /// against (`watch/contract/watch_sensor_contract.json`).
+    private func contractKinds() throws -> [String: [String: String]] {
+        let contract = try Fixtures.sensorContract()
+        return try XCTUnwrap(
+            contract["healthActivityTypes"] as? [String: [String: String]],
+            "the contract carries the exercise-discipline → platform type table"
+        )
+    }
+
+    private func named(
+        _ id: String,
+        _ capabilities: [String],
+        _ healthActivity: String
+    ) -> [String: Any] {
+        var exercise = slot(id, capabilities)
+        exercise["healthActivity"] = healthActivity
+        return exercise
+    }
+
+    func testS17004EveryContractKindResolvesToItsRow() throws {
+        let kinds = try contractKinds()
+        XCTAssertEqual(
+            kinds.count,
+            32,
+            "the contract carries every discipline's kind and the Hike/Rucking `hiking`"
+        )
+
+        for (kind, mapped) in kinds {
+            let type = WatchActivityTypes.forExercise(
+                capabilities: ["time"],
+                healthActivity: kind
+            )
+            XCTAssertEqual(
+                type.watchOs,
+                mapped["watchos"],
+                "\(kind) resolves to its watchOS row, not to the generic type"
+            )
+            XCTAssertEqual(
+                type.wear,
+                mapped["wear"],
+                "\(kind) resolves to its Health Connect row"
+            )
+        }
+    }
+
+    func testS17004AnUnknownKindFallsThroughAndNeverMislabelsAStrengthExercise() {
+        XCTAssertEqual(
+            WatchActivityTypes.forExercise(
+                capabilities: ["reps", "sets", "load"],
+                healthActivity: "unreal-kind"
+            ).watchOs,
+            "traditionalStrengthTraining",
+            "an unknown kind is absent: the capability chain answers (D-17003)"
+        )
+        XCTAssertEqual(
+            WatchActivityTypes.forExercise(capabilities: ["hold", "time", "sets"]).watchOs,
+            "flexibility",
+            "no kind with a hold stays flexibility, as before"
+        )
+        XCTAssertEqual(
+            WatchActivityTypes.forExercise(capabilities: ["time", "distance"]).watchOs,
+            "running",
+            "a distance exercise that names no kind stays a run, as before"
+        )
+    }
+
+    // MARK: - S-17005 the kind beats hold and the modality
+
+    func testS17005TheDisciplineBeatsHoldInference() {
+        let plank = WatchActivityTypes.forExercise(
+            capabilities: ["hold", "time", "sets"],
+            healthActivity: "isometricHolds"
+        )
+        XCTAssertEqual(plank.watchOs, "functionalStrengthTraining")
+        XCTAssertEqual(plank.wear, "exercise_type_strength_training")
+
+        let yoga = WatchActivityTypes.forExercise(
+            capabilities: ["hold", "time"],
+            healthActivity: "yoga"
+        )
+        XCTAssertEqual(yoga.watchOs, "yoga")
+        XCTAssertEqual(yoga.wear, "exercise_type_yoga")
+    }
+
+    func testS17005ASwimBeatsTheCardioModality() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        let session = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [named("sx-swim", ["time", "distance"], "swimming")]
+        )
+
+        XCTAssertEqual(
+            WatchActivityTypes.forSession(session)?.watchOs,
+            "swimming",
+            "the exercise's kind beats the modality (D-17003, S-16804's rule)"
+        )
+    }
+
+    func testS17005AYogaSessionRecordsAsYogaNotTheMobilityModality() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        let session = await engine.createSession(
+            modality: "mobility_flexibility",
+            exercises: [
+                named("sx-yoga-a", ["hold", "time"], "yoga"),
+                named("sx-yoga-b", ["hold", "time"], "yoga"),
+            ]
+        )
+
+        XCTAssertEqual(WatchActivityTypes.forSession(session)?.watchOs, "yoga")
+    }
+
+    // MARK: - S-17006 majority, ties and start-fixing over the widened set
+
+    func testS17006TheMajorityOfTheWidenedKindsDecides() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        let lifts = (0..<5).map {
+            named("sx-lift-\($0)", ["reps", "sets", "load"], "traditionalStrengthTraining")
+        }
+        let session = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: lifts + [named("sx-swim", ["time", "distance"], "swimming")]
+        )
+
+        XCTAssertEqual(
+            WatchActivityTypes.forSession(session)?.watchOs,
+            "traditionalStrengthTraining",
+            "five named lifts outvote one named swim"
+        )
+    }
+
+    func testS17006ATieGoesToTheEarliestNamedKind() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        let session = await engine.createSession(
+            modality: nil,
+            exercises: [
+                named("sx-swim", ["time", "distance"], "swimming"),
+                named("sx-run", ["time", "distance"], "running"),
+            ]
+        )
+
+        XCTAssertEqual(
+            WatchActivityTypes.forSession(session)?.watchOs,
+            "swimming",
+            "a tie answers the earliest named exercise"
+        )
+    }
+
+    func testS17006ALaterExerciseNeverRetypesTheOpenWorkout() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        let session = await engine.createSession(
+            modality: nil,
+            exercises: [named("sx-swim", ["time", "distance"], "swimming")]
+        )
+
+        let store = ScriptedPlatformStore()
+        let platform = WatchPlatformWorkout(store: store)
+        let coordinator = WatchWorkoutCoordinator(platform: platform)
+        await coordinator.refresh(session)
+        XCTAssertEqual(store.begun, ["swimming"])
+
+        _ = await engine.insertExercise(bench(), moveTo: true)
+        await coordinator.refresh(try XCTUnwrap(engine.session))
+
+        XCTAssertEqual(store.begun.count, 1, "the open workout is not begun again")
+        XCTAssertEqual(
+            platform.running?.watchOs,
+            "swimming",
+            "HealthKit cannot retype an open session (D-17007)"
+        )
+    }
+
+    // MARK: - S-17007 sports record as their sport; unmapped stays other
+
+    func testS17007ASportsSessionRecordsAsItsSport() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        let session = await engine.createSession(
+            modality: "sports",
+            exercises: [named("sx-soccer", ["time", "rounds"], "soccer")]
+        )
+
+        XCTAssertEqual(WatchActivityTypes.forSession(session)?.watchOs, "soccer")
+    }
+
+    func testS17007AnUnmappedDisciplineInASportsSessionStaysOther() async throws {
+        // Padel: the phone has no honest kind, so it sends none.
+        do {
+            let harness = Harness()
+            let engine = await harness.runningEngine()
+            let session = await engine.createSession(
+                modality: "sports",
+                exercises: [slot("sx-padel", ["time", "rounds"])]
+            )
+
+            XCTAssertEqual(WatchActivityTypes.forSession(session)?.watchOs, "other")
+        }
+
+        // A discipline-less exercise: the same generic answer.
+        do {
+            let harness = Harness()
+            let engine = await harness.runningEngine()
+            let session = await engine.createSession(
+                modality: "sports",
+                exercises: [slot("sx-untyped", ["time", "rounds"])]
+            )
+
+            XCTAssertEqual(WatchActivityTypes.forSession(session)?.watchOs, "other")
+        }
     }
 }

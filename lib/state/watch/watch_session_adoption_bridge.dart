@@ -589,7 +589,6 @@ class WatchSessionAdoptionBridge {
       'healthActivity': ?WatchReferenceSync.healthActivityOf(
         disciplineId: exercise?.disciplineId,
         exerciseId: exerciseId,
-        capabilities: capabilities,
       ),
       if (effort.effortKind == BlockTypes.round && secs != null && secs >= 1)
         'roundDurationSecs': secs,

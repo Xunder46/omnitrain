@@ -348,11 +348,12 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// The activity type a contract name registers as (D-1509).
     ///
     /// The labels are the distinct `watchos` names across the contract's
-    /// `activityTypes` and `distanceActivityTypes` sections in
-    /// `watch/contract/watch_sensor_contract.json`, and anything else lands on
-    /// the generic type: a workout with the wrong type is one the user can
-    /// correct, no workout at all loses the session's runtime priority and its
-    /// heart-rate stream with it.
+    /// `activityTypes` and `healthActivityTypes` sections in
+    /// `watch/contract/watch_sensor_contract.json` — the latter widened by
+    /// plan 170 (D-17005) to every exercise discipline — and anything else
+    /// lands on the generic type: a workout with the wrong type is one the user
+    /// can correct, no workout at all loses the session's runtime priority and
+    /// its heart-rate stream with it.
     static func activityType(for name: String) -> HKWorkoutActivityType {
         switch name {
         case "running": return .running
@@ -360,9 +361,32 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         case "rowing": return .rowing
         case "walking": return .walking
         case "hiking": return .hiking
+        case "swimming": return .swimming
         case "traditionalStrengthTraining": return .traditionalStrengthTraining
+        case "functionalStrengthTraining": return .functionalStrengthTraining
         case "flexibility": return .flexibility
         case "crossTraining": return .crossTraining
+        case "mixedCardio": return .mixedCardio
+        case "preparationAndRecovery": return .preparationAndRecovery
+        case "yoga": return .yoga
+        case "boxing": return .boxing
+        case "kickboxing": return .kickboxing
+        case "martialArts": return .martialArts
+        case "tennis": return .tennis
+        case "badminton": return .badminton
+        case "tableTennis": return .tableTennis
+        case "cricket": return .cricket
+        case "hockey": return .hockey
+        case "baseball": return .baseball
+        case "americanFootball": return .americanFootball
+        case "rugby": return .rugby
+        case "lacrosse": return .lacrosse
+        case "soccer": return .soccer
+        case "basketball": return .basketball
+        case "volleyball": return .volleyball
+        case "squash": return .squash
+        case "golf": return .golf
+        case "climbing": return .climbing
         case "other": return .other
         default: return .other
         }
@@ -378,9 +402,32 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         case .rowing: return "rowing"
         case .walking: return "walking"
         case .hiking: return "hiking"
+        case .swimming: return "swimming"
         case .traditionalStrengthTraining: return "traditionalStrengthTraining"
+        case .functionalStrengthTraining: return "functionalStrengthTraining"
         case .flexibility: return "flexibility"
         case .crossTraining: return "crossTraining"
+        case .mixedCardio: return "mixedCardio"
+        case .preparationAndRecovery: return "preparationAndRecovery"
+        case .yoga: return "yoga"
+        case .boxing: return "boxing"
+        case .kickboxing: return "kickboxing"
+        case .martialArts: return "martialArts"
+        case .tennis: return "tennis"
+        case .badminton: return "badminton"
+        case .tableTennis: return "tableTennis"
+        case .cricket: return "cricket"
+        case .hockey: return "hockey"
+        case .baseball: return "baseball"
+        case .americanFootball: return "americanFootball"
+        case .rugby: return "rugby"
+        case .lacrosse: return "lacrosse"
+        case .soccer: return "soccer"
+        case .basketball: return "basketball"
+        case .volleyball: return "volleyball"
+        case .squash: return "squash"
+        case .golf: return "golf"
+        case .climbing: return "climbing"
         default: return "other"
         }
     }

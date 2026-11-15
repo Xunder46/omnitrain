@@ -29,8 +29,8 @@ public struct WatchCatalogExercise: Equatable {
     /// catalog entry and the slot so the two can never drift (D-1400).
     public static let roundDurationKey = "roundDurationSecs"
 
-    /// The protocol key the phone's Health kind for a distance exercise travels
-    /// under, shared by the catalog entry and the slot.
+    /// The protocol key the phone's Health kind for an exercise travels under,
+    /// shared by the catalog entry and the slot.
     public static let healthActivityKey = "healthActivity"
 
     public let exerciseId: String
@@ -48,9 +48,10 @@ public struct WatchCatalogExercise: Equatable {
     /// (D-1404, D-1413).
     public let roundDurationSecs: Int?
 
-    /// The Health kind the phone named for a distance exercise, nil when it
-    /// named none. Only a distance exercise carries one, and only the phone
-    /// chooses it: the wrist reads it, it never decides (D-2).
+    /// The Health kind the phone named for an exercise, nil when it named none.
+    /// Any exercise whose discipline names a kind carries one (plan 170
+    /// D-17001), and only the phone chooses it: the wrist reads it, it never
+    /// decides (D-2).
     public let healthActivity: String?
 
     public init(
@@ -175,8 +176,8 @@ public struct WatchRoutineEffort {
     public let capabilities: [String]
     public let targets: [String: Any]
 
-    /// The Health kind the phone named for this effort's distance exercise, nil
-    /// when it named none (D-2).
+    /// The Health kind the phone named for this effort's exercise, nil when it
+    /// named none (D-2; every discipline names one, plan 170 D-17001).
     public let healthActivity: String?
 
     public init(

@@ -82,11 +82,80 @@
       "wear": "exercise_type_other_workout"
     }
   },
-  "distanceActivityTypes": {
+  "healthActivityTypes": {
     "running": { "watchos": "running", "wear": "exercise_type_running" },
     "cycling": { "watchos": "cycling", "wear": "exercise_type_biking" },
+    "swimming": { "watchos": "swimming", "wear": "exercise_type_swimming" },
     "rowing": { "watchos": "rowing", "wear": "exercise_type_rowing" },
     "walking": { "watchos": "walking", "wear": "exercise_type_walking" },
-    "hiking": { "watchos": "hiking", "wear": "exercise_type_hiking" }
+    "hiking": { "watchos": "hiking", "wear": "exercise_type_hiking" },
+    "traditionalStrengthTraining": {
+      "watchos": "traditionalStrengthTraining",
+      "wear": "exercise_type_strength_training"
+    },
+    "calisthenics": {
+      "watchos": "functionalStrengthTraining",
+      "wear": "exercise_type_calisthenics"
+    },
+    "isometricHolds": {
+      "watchos": "functionalStrengthTraining",
+      "wear": "exercise_type_strength_training"
+    },
+    "conditioning": {
+      "watchos": "crossTraining",
+      "wear": "exercise_type_cross_training"
+    },
+    "mixedCardio": {
+      "watchos": "mixedCardio",
+      "wear": "exercise_type_other_workout"
+    },
+    "preparationAndRecovery": {
+      "watchos": "preparationAndRecovery",
+      "wear": "exercise_type_other_workout"
+    },
+    "flexibility": {
+      "watchos": "flexibility",
+      "wear": "exercise_type_stretching"
+    },
+    "yoga": { "watchos": "yoga", "wear": "exercise_type_yoga" },
+    "boxing": { "watchos": "boxing", "wear": "exercise_type_boxing" },
+    "kickboxing": {
+      "watchos": "kickboxing",
+      "wear": "exercise_type_martial_arts"
+    },
+    "martialArts": {
+      "watchos": "martialArts",
+      "wear": "exercise_type_martial_arts"
+    },
+    "tennis": { "watchos": "tennis", "wear": "exercise_type_tennis" },
+    "badminton": { "watchos": "badminton", "wear": "exercise_type_badminton" },
+    "tableTennis": {
+      "watchos": "tableTennis",
+      "wear": "exercise_type_table_tennis"
+    },
+    "cricket": { "watchos": "cricket", "wear": "exercise_type_cricket" },
+    "hockey": { "watchos": "hockey", "wear": "exercise_type_other_workout" },
+    "baseball": { "watchos": "baseball", "wear": "exercise_type_baseball" },
+    "americanFootball": {
+      "watchos": "americanFootball",
+      "wear": "exercise_type_american_football"
+    },
+    "rugby": { "watchos": "rugby", "wear": "exercise_type_rugby" },
+    "lacrosse": { "watchos": "lacrosse", "wear": "exercise_type_other_workout" },
+    "soccer": { "watchos": "soccer", "wear": "exercise_type_football" },
+    "basketball": {
+      "watchos": "basketball",
+      "wear": "exercise_type_basketball"
+    },
+    "volleyball": {
+      "watchos": "volleyball",
+      "wear": "exercise_type_volleyball"
+    },
+    "squash": { "watchos": "squash", "wear": "exercise_type_squash" },
+    "golf": { "watchos": "golf", "wear": "exercise_type_golf" },
+    "climbing": {
+      "watchos": "climbing",
+      "wear": "exercise_type_rock_climbing"
+    }
   }
 }

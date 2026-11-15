@@ -15,7 +15,7 @@
         "exerciseId": "ex-swim",
         "name": "Swim",
         "capabilities": ["time", "distance"],
-        "healthActivity": "swimming"
+        "healthActivity": "unreal-kind"
       }
     ]
   }

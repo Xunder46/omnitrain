@@ -991,10 +991,10 @@ void main() {
       return (await WatchPlatformWorkout(store: health).start(session)).watchOs;
     }
 
-    /// The contract's own answer for a Health kind (`distanceActivityTypes`),
-    /// so this group cannot drift from the Swift client's table.
+    /// The contract's own answer for a Health kind (`healthActivityTypes`), so
+    /// this group cannot drift from the Swift client's table.
     Object? contractWatchOs(String kind) =>
-        ((_contract()['distanceActivityTypes']! as Map)[kind] as Map)['watchos'];
+        ((_contract()['healthActivityTypes']! as Map)[kind] as Map)['watchos'];
 
     Map<String, Object?> walkSlot() => _namedSlot(
       'sx-walk',
@@ -1034,6 +1034,111 @@ void main() {
     test('S-16810 a free workout keeps its exercise answer', () async {
       expect(await begun(null, walkSlot()), contractWatchOs('walking'));
       expect(await begun(null, runSlot()), contractWatchOs('running'));
+    });
+  });
+
+  // Plan 170: the Dart mirror of the wrist's kind table, pinned row for row
+  // against the shared contract.
+  group('S-17009 the mirror maps every Health kind like the wrist', () {
+    Map<String, Object?> rows() =>
+        (_contract()['healthActivityTypes']! as Map).cast<String, Object?>();
+
+    test('S-17009 every contract kind resolves to its own row', () {
+      expect(
+        rows(),
+        hasLength(32),
+        reason: 'S-17009 the contract carries one row per Health kind',
+      );
+      for (final entry in rows().entries) {
+        final row = (entry.value as Map).cast<String, Object?>();
+        expect(
+          WatchActivityTypes.forExercise(
+            capabilities: const [],
+            healthActivity: entry.key,
+          ),
+          WatchActivityType(
+            watchOs: row['watchos']! as String,
+            wear: row['wear']! as String,
+          ),
+          reason: 'S-17009 ${entry.key}',
+        );
+      }
+    });
+
+    test('S-17009 the kind outranks the capabilities', () {
+      expect(
+        WatchActivityTypes.forExercise(
+          capabilities: const [
+            ExerciseCapability.hold,
+            ExerciseCapability.time,
+          ],
+          healthActivity: 'yoga',
+        ),
+        WatchActivityType(watchOs: 'yoga', wear: 'exercise_type_yoga'),
+        reason: 'S-17009 a yoga hold is yoga, not flexibility',
+      );
+      expect(
+        WatchActivityTypes.forExercise(
+          capabilities: const [
+            ExerciseCapability.reps,
+            ExerciseCapability.sets,
+          ],
+          healthActivity: 'boxing',
+        ),
+        WatchActivityType(watchOs: 'boxing', wear: 'exercise_type_boxing'),
+        reason: 'S-17009 a boxing round is boxing, not a lift',
+      );
+    });
+
+    test('S-17009 a named kind opens the workout the wrist opens', () async {
+      Future<String> begun(String? modality, Map<String, Object?> slot) async {
+        final fresh = WatchSessionEngine(
+          InMemoryWatchSessionStore(),
+          clock: clock.call,
+        );
+        final session = await fresh.createSession(
+          modality: modality,
+          exercises: [slot],
+        );
+        return (await WatchPlatformWorkout(store: health).start(session)).watchOs;
+      }
+
+      expect(
+        await begun(
+          Modality.mobilityFlexibility,
+          _namedSlot(
+            'sx-yoga',
+            [ExerciseCapability.hold, ExerciseCapability.time],
+            'yoga',
+          ),
+        ),
+        'yoga',
+        reason: 'S-17009 a yoga hold records as yoga, not the modality',
+      );
+      expect(
+        await begun(
+          Modality.sports,
+          _namedSlot('sx-soccer', [ExerciseCapability.time], 'soccer'),
+        ),
+        'soccer',
+        reason: 'S-17009 a sports session naming soccer records as soccer',
+      );
+    });
+
+    test('S-17009 an unknown kind is inert', () {
+      const capabilities = [
+        ExerciseCapability.time,
+        ExerciseCapability.distance,
+      ];
+      expect(
+        WatchActivityTypes.forExercise(
+          capabilities: capabilities,
+          healthActivity: 'unreal-kind',
+        ),
+        WatchActivityTypes.forExercise(capabilities: capabilities),
+        reason: 'S-17009 a kind from a newer phone falls through to the '
+            'capability answer',
+      );
     });
   });
 }

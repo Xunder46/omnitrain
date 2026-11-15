@@ -71,8 +71,41 @@
       "enum": ["set", "timed", "round", "drill"]
     },
     "healthActivity": {
-      "enum": ["running", "cycling", "rowing", "walking", "hiking"],
-      "description": "The Health workout kind a distance exercise records as, named by the phone from the exercise's discipline. Present only on an exercise whose capabilities include distance and whose kind the phone can name; omitted otherwise (the receiver then treats it as running)."
+      "enum": [
+        "running",
+        "cycling",
+        "swimming",
+        "rowing",
+        "walking",
+        "hiking",
+        "traditionalStrengthTraining",
+        "calisthenics",
+        "isometricHolds",
+        "conditioning",
+        "mixedCardio",
+        "preparationAndRecovery",
+        "flexibility",
+        "yoga",
+        "boxing",
+        "kickboxing",
+        "martialArts",
+        "tennis",
+        "badminton",
+        "tableTennis",
+        "cricket",
+        "hockey",
+        "baseball",
+        "americanFootball",
+        "rugby",
+        "lacrosse",
+        "soccer",
+        "basketball",
+        "volleyball",
+        "squash",
+        "golf",
+        "climbing"
+      ],
+      "description": "The Health workout kind the exercise records as, named by the phone from the exercise's discipline. Present whenever the phone can name the discipline's kind, regardless of capabilities; omitted otherwise (a receiver treats an unknown kind as absent)."
     },
     "catalogExercise": {
       "type": "object",

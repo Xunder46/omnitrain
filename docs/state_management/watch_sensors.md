@@ -140,16 +140,16 @@ exercises' majority (`WatchWorkoutTypeFromExercisesTests.testS8804TheMajorityDec
 
 The type itself comes from `WatchActivityTypes.forSession`, resolved once when
 the workout opens: the exercises' agreed Health kind first — when at
-least one slot names a kind the table maps to a type of its own (`cycling`,
-`rowing`, `walking`, `hiking`, `running`), the majority of the named kinds
-decides and a tie goes to the earliest named one — then a session with a modality
-keeps the modality table's type, then a session with none takes the majority of
-its exercises' capabilities — `hold` → flexibility, else `distance` → the kind the
-phone named for that exercise (`healthActivity`: cycling, rowing, walking or
-hiking; running when it named none — see `WatchHealthActivityTests`), else any of
-`reps`/`sets`/`load` → traditionalStrengthTraining, else other — with a tie going
-to the earliest exercise that reaches the top count and an empty list meaning
-"not yet known" (`WatchWorkoutTypeFromExercisesTests.testS8801ALiftSessionRegistersAsStrengthTraining`,
+least one slot names a kind the table carries (all 32 kinds a seeded discipline
+can name, from `yoga` and `boxing` to `soccer` and `climbing`), the majority of
+the named kinds decides and a tie goes to the earliest named one — then a session
+with a modality keeps the modality table's type, then a session with none takes
+the majority of its exercises: the kind the phone named for the exercise
+(`healthActivity`) before anything else, else `hold` → flexibility, else
+`distance` → running, else any of `reps`/`sets`/`load` →
+traditionalStrengthTraining, else other — with a tie going to the earliest
+exercise that reaches the top count and an empty list meaning "not yet known"
+(`WatchWorkoutTypeFromExercisesTests.testS8801ALiftSessionRegistersAsStrengthTraining`,
 `…testS8802ARunSessionRegistersAsRunningAndOutdoors`,
 `…testS8803AHoldRegistersAsFlexibilityAndAPlankStaysOne`,
 `…testS8804TheMajorityDecides`, `…testS8805ATieGoesToTheEarliestExercise`,
@@ -163,6 +163,17 @@ D-16803, which supersedes the precedence half of plan 75 D-2):
 `…testS16805TheNamedKindsMajorityAndItsTie`, `…testS16806UnnamedExercisesKeepTheModality`,
 `…testS16807AFreeWorkoutKeepsItsExerciseAnswer`, and the Dart mirror
 `test/watch_sensor_recording_test.dart`, group `S-16810 the mirror types a session like the wrist`.
+A kind name the table does not carry is inert: it falls through to the capability
+answer instead of being guessed at, so a kind a newer phone sends never mislabels
+a lift (plan 170 D-17003 —
+`WatchHealthActivityTests.testS17004AnUnknownKindFallsThroughAndNeverMislabelsAStrengthExercise`,
+`testS17004EveryContractKindResolvesToItsRow`,
+`testS17005TheDisciplineBeatsHoldInference`,
+`testS17005ASwimBeatsTheCardioModality`,
+`testS17005AYogaSessionRecordsAsYogaNotTheMobilityModality`,
+`testS17006TheMajorityOfTheWidenedKindsDecides`,
+`testS17007ASportsSessionRecordsAsItsSport`,
+`testS17007AnUnmappedDisciplineInASportsSessionStaysOther`).
 The store asks to share the workout type, active energy and walking/running
 distance and to read heart rate, steps, active energy and that distance — one
 request — and collects active energy and `.distanceWalkingRunning` on
@@ -519,17 +530,21 @@ logged while the sensors measure, carry neither. Verified by watchOS
 `testS3211AWindowThatMovedNothingCarriesNoDistance`,
 `testS3219AHoldLoggedWhileMeasuringCarriesNoDistance`).
 - **Both clients read one vocabulary.** The sample kinds, the modality → workout
-type table and the capability profile the GPS decision depends on live in
+type table, the 32-row Health kind → workout type table and the capability
+profile the GPS decision depends on live in
 `watch/contract/watch_sensor_contract.json`, and both suites assert against it, so
-a change on one platform fails the other's tests. The contract carries the
-modality table only
-(`WatchSensorRecordingTests.testS007EveryMappedModalityNamesBothPlatforms` pins
-its values); the precedence that types a session — named Health kinds, then the
-modality, then the capability majority — lives in both clients,
+a change on one platform fails the other's tests. The contract pins both tables
+(`WatchSensorRecordingTests.testS007EveryMappedModalityNamesBothPlatforms` for the
+modality rows, `WatchHealthActivityContractTests.testS10507EveryRowNamesBothPlatforms`
+and `testS10507TheWearNamesArePinnedPerKind` for the Health kind rows); the
+precedence that types a session — named Health kinds, then the modality, then the
+capability majority — lives in both clients,
 `WatchActivityTypes.forSession` in Swift and its Dart mirror in
 `lib/watch/sensors/watch_platform_workout.dart`, pinned on each side by
-`WatchWorkoutTypeFromExercisesTests` (S-16804–S-16807) and by
-`test/watch_sensor_recording_test.dart` (group `S-16810 the mirror types a session like the wrist`).
+`WatchWorkoutTypeFromExercisesTests` (S-16804–S-16807),
+`WatchHealthActivityTests` (S-17004–S-17007) and by
+`test/watch_sensor_recording_test.dart` (groups `S-16810 the mirror types a session like the wrist`
+and `S-17009 the mirror maps every Health kind like the wrist`).
 - **A reading is stored, never sent.** Sensor rows are written through the same
 append entry point as every other row and emit nothing; the measured distance
 reaches the phone inside the logged effort. Verified by

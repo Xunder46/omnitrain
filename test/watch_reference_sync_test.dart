@@ -656,9 +656,9 @@ void main() {
             reason: 'S-19306 $id arrives as a hold',
           );
           expect(
-            exercise.containsKey('healthActivity'),
-            isFalse,
-            reason: 'S-19306 $id carries no Health kind of its own',
+            exercise['healthActivity'],
+            'yoga',
+            reason: 'S-19306 $id names its discipline\'s kind (plan 170)',
           );
         }
 
@@ -687,10 +687,9 @@ void main() {
         WatchReferenceSync.healthActivityOf(
           disciplineId: 'discipline-yoga',
           exerciseId: 'exercise-tree-pose',
-          capabilities: ['hold', 'time', 'sets'],
         ),
-        isNull,
-        reason: 'S-19306 the wrist records a hold as it always has',
+        'yoga',
+        reason: 'S-19306 a yoga hold records as Yoga (plan 170, D-17002)',
       );
     });
   });

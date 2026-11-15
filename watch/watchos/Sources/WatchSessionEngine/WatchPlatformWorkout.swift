@@ -109,22 +109,6 @@ public enum WatchActivityTypes {
         watchOs: "running",
         wear: "exercise_type_running"
     )
-    private static let cycling = WatchActivityType(
-        watchOs: "cycling",
-        wear: "exercise_type_biking"
-    )
-    private static let rowing = WatchActivityType(
-        watchOs: "rowing",
-        wear: "exercise_type_rowing"
-    )
-    private static let walking = WatchActivityType(
-        watchOs: "walking",
-        wear: "exercise_type_walking"
-    )
-    private static let hiking = WatchActivityType(
-        watchOs: "hiking",
-        wear: "exercise_type_hiking"
-    )
     private static let strength = WatchActivityType(
         watchOs: "traditionalStrengthTraining",
         wear: "exercise_type_strength_training"
@@ -134,31 +118,83 @@ public enum WatchActivityTypes {
         wear: "exercise_type_flexibility"
     )
 
-    /// The type a distance exercise registers as, from the Health kind the phone
-    /// named for it: a known kind gets its own type, and anything else — nil,
-    /// "running", a kind this table does not carry — stays running (D-2).
-    private static func distanceType(_ activity: String?) -> WatchActivityType {
-        switch activity {
-        case "cycling": return cycling
-        case "rowing": return rowing
-        case "walking": return walking
-        case "hiking": return hiking
-        default: return running
-        }
+    /// Every Health kind the phone can name for an exercise, and the type it
+    /// registers as — plan 170 D-17001's discipline table. The contract file
+    /// carries the same rows, and the suites assert the two agree
+    /// (`watch/contract/watch_sensor_contract.json`, D-17006).
+    private static let kindTypes: [String: WatchActivityType] = [
+        "running": running,
+        "cycling": WatchActivityType(watchOs: "cycling", wear: "exercise_type_biking"),
+        "swimming": WatchActivityType(watchOs: "swimming", wear: "exercise_type_swimming"),
+        "rowing": WatchActivityType(watchOs: "rowing", wear: "exercise_type_rowing"),
+        "walking": WatchActivityType(watchOs: "walking", wear: "exercise_type_walking"),
+        "hiking": WatchActivityType(watchOs: "hiking", wear: "exercise_type_hiking"),
+        "traditionalStrengthTraining": strength,
+        "calisthenics": WatchActivityType(
+            watchOs: "functionalStrengthTraining",
+            wear: "exercise_type_calisthenics"
+        ),
+        "isometricHolds": WatchActivityType(
+            watchOs: "functionalStrengthTraining",
+            wear: "exercise_type_strength_training"
+        ),
+        "conditioning": WatchActivityType(
+            watchOs: "crossTraining",
+            wear: "exercise_type_cross_training"
+        ),
+        "mixedCardio": WatchActivityType(
+            watchOs: "mixedCardio",
+            wear: "exercise_type_other_workout"
+        ),
+        "preparationAndRecovery": WatchActivityType(
+            watchOs: "preparationAndRecovery",
+            wear: "exercise_type_other_workout"
+        ),
+        "flexibility": WatchActivityType(watchOs: "flexibility", wear: "exercise_type_stretching"),
+        "yoga": WatchActivityType(watchOs: "yoga", wear: "exercise_type_yoga"),
+        "boxing": WatchActivityType(watchOs: "boxing", wear: "exercise_type_boxing"),
+        "kickboxing": WatchActivityType(watchOs: "kickboxing", wear: "exercise_type_martial_arts"),
+        "martialArts": WatchActivityType(watchOs: "martialArts", wear: "exercise_type_martial_arts"),
+        "tennis": WatchActivityType(watchOs: "tennis", wear: "exercise_type_tennis"),
+        "badminton": WatchActivityType(watchOs: "badminton", wear: "exercise_type_badminton"),
+        "tableTennis": WatchActivityType(watchOs: "tableTennis", wear: "exercise_type_table_tennis"),
+        "cricket": WatchActivityType(watchOs: "cricket", wear: "exercise_type_cricket"),
+        "hockey": WatchActivityType(watchOs: "hockey", wear: "exercise_type_other_workout"),
+        "baseball": WatchActivityType(watchOs: "baseball", wear: "exercise_type_baseball"),
+        "americanFootball": WatchActivityType(
+            watchOs: "americanFootball",
+            wear: "exercise_type_american_football"
+        ),
+        "rugby": WatchActivityType(watchOs: "rugby", wear: "exercise_type_rugby"),
+        "lacrosse": WatchActivityType(watchOs: "lacrosse", wear: "exercise_type_other_workout"),
+        "soccer": WatchActivityType(watchOs: "soccer", wear: "exercise_type_football"),
+        "basketball": WatchActivityType(watchOs: "basketball", wear: "exercise_type_basketball"),
+        "volleyball": WatchActivityType(watchOs: "volleyball", wear: "exercise_type_volleyball"),
+        "squash": WatchActivityType(watchOs: "squash", wear: "exercise_type_squash"),
+        "golf": WatchActivityType(watchOs: "golf", wear: "exercise_type_golf"),
+        "climbing": WatchActivityType(watchOs: "climbing", wear: "exercise_type_rock_climbing"),
+    ]
+
+    /// The type a named Health kind registers as, or nil for a name this table
+    /// does not carry — a kind from a newer phone is treated as absent
+    /// (D-17003).
+    private static func kindType(_ activity: String?) -> WatchActivityType? {
+        guard let activity else { return nil }
+        return kindTypes[activity]
     }
 
-    /// The type one exercise registers as, from what it can measure: a hold is
-    /// tested first (a plank has `hold` and `sets`), then distance — refined by
-    /// the Health kind the phone named, when it named one — then reps/sets/load;
-    /// anything else is the generic type.
+    /// The type one exercise registers as, from what it can measure and the
+    /// Health kind the phone named for it: the kind is the exercise's own claim
+    /// and is consulted first (D-17003); then a hold (a plank has `hold` and
+    /// `sets`), then distance, then reps/sets/load; anything else is the generic
+    /// type. An unknown kind resolves to nothing and falls through.
     public static func forExercise(
         capabilities: [String],
         healthActivity: String? = nil
     ) -> WatchActivityType {
+        if let named = kindType(healthActivity) { return named }
         if capabilities.contains("hold") { return flexibility }
-        if capabilities.contains(WatchGpsPolicy.distanceCapability) {
-            return distanceType(healthActivity)
-        }
+        if capabilities.contains(WatchGpsPolicy.distanceCapability) { return running }
         if capabilities.contains(where: { ["reps", "sets", "load"].contains($0) }) {
             return strength
         }
@@ -182,25 +218,19 @@ public enum WatchActivityTypes {
         return types.first { counts[$0.watchOs] == best }
     }
 
-    /// The Health kinds the phone may name for an exercise and the table above
-    /// maps to a type of their own (D-16803).
-    private static let namedHealthKinds: Set<String> = [
-        "cycling", "rowing", "walking", "hiking", "running",
-    ]
-
     /// The majority type of the Health kinds `exercises` name; a tie goes to the
-    /// earliest named one. nil when no exercise names one — an exercise that
-    /// names nothing must not vote, or a Cardio routine's unnamed lift would tie
-    /// every named walk (D-16803).
+    /// earliest named one. nil when no exercise names a kind this table carries —
+    /// an exercise that names nothing must not vote, or a Cardio routine's
+    /// unnamed lift would tie every named walk (D-16803), and neither must a name
+    /// the wrist does not know, which is treated as absent (plan 170 D-17003).
     private static func forNamedHealthKinds(
         _ exercises: [[String: Any]]
     ) -> WatchActivityType? {
-        let named = exercises
+        let types = exercises
             .compactMap { $0["healthActivity"] as? String }
-            .filter { namedHealthKinds.contains($0) }
-        guard !named.isEmpty else { return nil }
+            .compactMap { kindType($0) }
+        guard !types.isEmpty else { return nil }
 
-        let types = named.map { distanceType($0) }
         var counts: [String: Int] = [:]
         for type in types { counts[type.watchOs, default: 0] += 1 }
         let best = counts.values.max() ?? 0
@@ -208,10 +238,11 @@ public enum WatchActivityTypes {
     }
 
     /// What `session` registers as (D-16803, superseding plan 75 D-2's
-    /// precedence half): the majority Health kind its exercises name, when any
-    /// names one; otherwise its modality's own type (unchanged); otherwise, for a
-    /// Free workout, the majority of its exercises. nil while none is known, so
-    /// the lifecycle waits.
+    /// precedence half; widened to every discipline's kind by plan 170 D-17003):
+    /// the majority Health kind its exercises name, when any names one;
+    /// otherwise its modality's own type (unchanged); otherwise, for a Free
+    /// workout, the majority of its exercises. nil while none is known, so the
+    /// lifecycle waits.
     ///
     /// The type is fixed once the workout opens — HealthKit cannot retype an
     /// `HKWorkoutSession` — so an exercise added later never retypes it (S-8808).

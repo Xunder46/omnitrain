@@ -1,0 +1,46 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-exdown-health-kinds-1",
+  "type": "exercises_down",
+  "origin": "phone",
+  "sentAt": "2026-11-14T09:00:00Z",
+  "payload": {
+    "generatedAt": "2026-11-14T09:00:00Z",
+    "catalogVersion": "v1-8-e5f6a7b8",
+    "batchIndex": 0,
+    "batchCount": 1,
+    "totalCount": 5,
+    "exercises": [
+      {
+        "exerciseId": "ex-swim",
+        "name": "Pool Swim",
+        "capabilities": ["time", "distance"],
+        "healthActivity": "swimming"
+      },
+      {
+        "exerciseId": "ex-yoga-flow",
+        "name": "Yoga Flow",
+        "capabilities": ["hold", "time", "sets"],
+        "healthActivity": "yoga"
+      },
+      {
+        "exerciseId": "ex-squat",
+        "name": "Back Squat",
+        "capabilities": ["reps", "sets", "load"],
+        "healthActivity": "traditionalStrengthTraining"
+      },
+      {
+        "exerciseId": "ex-soccer",
+        "name": "Soccer Match",
+        "capabilities": ["time", "rounds"],
+        "healthActivity": "soccer"
+      },
+      {
+        "exerciseId": "ex-bag-round",
+        "name": "Bag Round",
+        "capabilities": ["time", "rounds"],
+        "healthActivity": "boxing"
+      }
+    ]
+  }
+}

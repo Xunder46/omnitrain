@@ -32,24 +32,24 @@ final class WatchWorkoutStoreSourceTests: XCTestCase {
     }
 
     /// The distinct `watchos` names the shared contract carries: the union of
-    /// the modality table's, the distance table's and the generic type's
-    /// (D-4, S-10506).
+    /// the modality table's, the Health-kind table's and the generic type's
+    /// (D-4, S-10506; widened by plan 170 D-17005).
     private func contractActivityNames() throws -> Set<String> {
         let contract = try Fixtures.sensorContract()
         let types = try XCTUnwrap(
             contract["activityTypes"] as? [String: [String: String]],
             "the contract carries the modality → platform type table"
         )
-        let distanceTypes = try XCTUnwrap(
-            contract["distanceActivityTypes"] as? [String: [String: String]],
-            "the contract carries the distance exercise → platform type table"
+        let healthActivityTypes = try XCTUnwrap(
+            contract["healthActivityTypes"] as? [String: [String: String]],
+            "the contract carries the exercise-discipline → platform type table"
         )
         let generic = try XCTUnwrap(
             contract["genericActivityType"] as? [String: String],
             "the contract carries the generic platform type"
         )
         var names = Set(
-            (Array(types.values) + Array(distanceTypes.values)).compactMap { $0["watchos"] }
+            (Array(types.values) + Array(healthActivityTypes.values)).compactMap { $0["watchos"] }
         )
         if let genericName = generic["watchos"] { names.insert(genericName) }
         XCTAssertFalse(names.isEmpty, "a contract with no names proves nothing")

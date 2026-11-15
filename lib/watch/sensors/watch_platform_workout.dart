@@ -109,7 +109,8 @@ abstract final class WatchActivityTypes {
     return byModality.containsKey(value) ? value : null;
   }
 
-  /// The type one exercise registers as, from what it can measure (D-16803).
+  /// The type one exercise registers as: the Health kind the phone named for
+  /// it, else what it can measure (D-16803, widened by plan 170 D-17003).
   static WatchActivityType forExercise({
     required List<String> capabilities,
     String? healthActivity,
@@ -122,10 +123,11 @@ abstract final class WatchActivityTypes {
       _forExercises(exercises);
 
   /// What [session] registers as (D-16803, superseding plan 75 D-2's precedence
-  /// half): the majority Health kind its exercises name, when any names one;
-  /// otherwise its modality's own type (unchanged); otherwise, for a Free
-  /// workout, the majority of its exercises. Null while none is known, so the
-  /// caller registers the generic type.
+  /// half; widened to every discipline's kind by plan 170 D-17003): the
+  /// majority Health kind its exercises name, when any names one this table
+  /// carries; otherwise its modality's own type (unchanged); otherwise, for a
+  /// Free workout, the majority of its exercises. Null while none is known, so
+  /// the caller registers the generic type.
   ///
   /// The wrist fixes the type once the workout opens — HealthKit cannot retype
   /// an `HKWorkoutSession` — so an exercise added later never retypes it
@@ -139,24 +141,107 @@ abstract final class WatchActivityTypes {
   }
 }
 
-/// The activity type the Health kind the phone named for an exercise registers
-/// as, when the table maps it to one of its own (D-16803); anything else —
-/// null, "running", a kind this table does not carry — stays running.
-/// Mirrors the Swift client's `WatchActivityTypes.distanceType`.
-WatchActivityType _distanceType(String? activity) {
-  switch (activity) {
-    case 'cycling':
-      return _cycling;
-    case 'rowing':
-      return _rowing;
-    case 'walking':
-      return _walking;
-    case 'hiking':
-      return _hiking;
-    default:
-      return _running;
-  }
-}
+/// Every Health kind the phone can name for an exercise, and the type it
+/// registers as — plan 170 D-17001's discipline table. The contract file
+/// carries the same rows, and the suites assert the two agree
+/// (`watch/contract/watch_sensor_contract.json`, D-17006); mirrors the Swift
+/// client's `WatchActivityTypes.kindTypes`.
+const Map<String, WatchActivityType> _kindTypes = {
+  'running': _running,
+  'cycling': _cycling,
+  'swimming': WatchActivityType(
+    watchOs: 'swimming',
+    wear: 'exercise_type_swimming',
+  ),
+  'rowing': _rowing,
+  'walking': _walking,
+  'hiking': _hiking,
+  'traditionalStrengthTraining': _strength,
+  'calisthenics': WatchActivityType(
+    watchOs: 'functionalStrengthTraining',
+    wear: 'exercise_type_calisthenics',
+  ),
+  'isometricHolds': WatchActivityType(
+    watchOs: 'functionalStrengthTraining',
+    wear: 'exercise_type_strength_training',
+  ),
+  'conditioning': WatchActivityType(
+    watchOs: 'crossTraining',
+    wear: 'exercise_type_cross_training',
+  ),
+  'mixedCardio': WatchActivityType(
+    watchOs: 'mixedCardio',
+    wear: 'exercise_type_other_workout',
+  ),
+  'preparationAndRecovery': WatchActivityType(
+    watchOs: 'preparationAndRecovery',
+    wear: 'exercise_type_other_workout',
+  ),
+  'flexibility': WatchActivityType(
+    watchOs: 'flexibility',
+    wear: 'exercise_type_stretching',
+  ),
+  'yoga': WatchActivityType(watchOs: 'yoga', wear: 'exercise_type_yoga'),
+  'boxing': WatchActivityType(watchOs: 'boxing', wear: 'exercise_type_boxing'),
+  'kickboxing': WatchActivityType(
+    watchOs: 'kickboxing',
+    wear: 'exercise_type_martial_arts',
+  ),
+  'martialArts': WatchActivityType(
+    watchOs: 'martialArts',
+    wear: 'exercise_type_martial_arts',
+  ),
+  'tennis': WatchActivityType(watchOs: 'tennis', wear: 'exercise_type_tennis'),
+  'badminton': WatchActivityType(
+    watchOs: 'badminton',
+    wear: 'exercise_type_badminton',
+  ),
+  'tableTennis': WatchActivityType(
+    watchOs: 'tableTennis',
+    wear: 'exercise_type_table_tennis',
+  ),
+  'cricket': WatchActivityType(
+    watchOs: 'cricket',
+    wear: 'exercise_type_cricket',
+  ),
+  'hockey': WatchActivityType(
+    watchOs: 'hockey',
+    wear: 'exercise_type_other_workout',
+  ),
+  'baseball': WatchActivityType(
+    watchOs: 'baseball',
+    wear: 'exercise_type_baseball',
+  ),
+  'americanFootball': WatchActivityType(
+    watchOs: 'americanFootball',
+    wear: 'exercise_type_american_football',
+  ),
+  'rugby': WatchActivityType(watchOs: 'rugby', wear: 'exercise_type_rugby'),
+  'lacrosse': WatchActivityType(
+    watchOs: 'lacrosse',
+    wear: 'exercise_type_other_workout',
+  ),
+  'soccer': WatchActivityType(watchOs: 'soccer', wear: 'exercise_type_football'),
+  'basketball': WatchActivityType(
+    watchOs: 'basketball',
+    wear: 'exercise_type_basketball',
+  ),
+  'volleyball': WatchActivityType(
+    watchOs: 'volleyball',
+    wear: 'exercise_type_volleyball',
+  ),
+  'squash': WatchActivityType(watchOs: 'squash', wear: 'exercise_type_squash'),
+  'golf': WatchActivityType(watchOs: 'golf', wear: 'exercise_type_golf'),
+  'climbing': WatchActivityType(
+    watchOs: 'climbing',
+    wear: 'exercise_type_rock_climbing',
+  ),
+};
+
+/// The type a named Health kind registers as, or null for a name this table
+/// does not carry — a kind from a newer phone is treated as absent (D-17003).
+WatchActivityType? _kindType(String? activity) =>
+    activity == null ? null : _kindTypes[activity];
 
 const WatchActivityType _running = WatchActivityType(
   watchOs: 'running',
@@ -187,27 +272,20 @@ const WatchActivityType _flexibility = WatchActivityType(
   wear: 'exercise_type_flexibility',
 );
 
-/// The Health kinds the phone may name for an exercise and the table maps to a
-/// type of their own (D-16803).
-const Set<String> _namedHealthKinds = {
-  'cycling',
-  'rowing',
-  'walking',
-  'hiking',
-  'running',
-};
-
-/// The type one exercise registers as, from what it can measure: a hold is
-/// tested first (a plank has `hold` and `sets`), then distance — refined by the
-/// Health kind the phone named, when it named one — then reps/sets/load;
-/// anything else is the generic type.
+/// The type one exercise registers as, from what it can measure and the Health
+/// kind the phone named for it: the kind is the exercise's own claim and is
+/// consulted first (D-17003); then a hold (a plank has `hold` and `sets`), then
+/// distance, then reps/sets/load; anything else is the generic type. An unknown
+/// kind resolves to nothing and falls through.
 WatchActivityType _forExercise({
   required List<String> capabilities,
   String? healthActivity,
 }) {
+  final named = _kindType(healthActivity);
+  if (named != null) return named;
   if (capabilities.contains('hold')) return _flexibility;
   if (capabilities.contains(WatchGpsPolicy.distanceCapability)) {
-    return _distanceType(healthActivity);
+    return _running;
   }
   if (capabilities.any(const {'reps', 'sets', 'load'}.contains)) {
     return _strength;
@@ -243,15 +321,14 @@ WatchActivityType? _majority(List<WatchActivityType> types) {
 }
 
 /// The majority Health kind [exercises] name; a tie goes to the earliest named
-/// one. Null when no exercise names one — an exercise that names nothing must
-/// not vote, or a Cardio routine's unnamed lift would tie every named walk
-/// (D-16803).
+/// one. Null when no exercise names a kind this table carries — an exercise that
+/// names nothing must not vote, or a Cardio routine's unnamed lift would tie
+/// every named walk (D-16803), and neither must a name the wrist does not know,
+/// which is treated as absent (plan 170 D-17003).
 WatchActivityType? _forNamedHealthKinds(List<Map<String, Object?>> exercises) {
   final named = [
     for (final exercise in exercises)
-      if (exercise['healthActivity'] case final String kind
-          when _namedHealthKinds.contains(kind))
-        _distanceType(kind),
+      ?_kindType(exercise['healthActivity'] as String?),
   ];
   return _majority(named);
 }

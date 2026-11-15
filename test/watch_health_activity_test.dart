@@ -1,8 +1,11 @@
-// Plan 75, Phase 2 (phone): the Health workout kind a distance exercise
-// records as on the wrist, derived from its discipline (D-3).
+// Plan 75, Phase 2 (phone): the Health workout kind an exercise records as on
+// the wrist, derived from its discipline (D-3); widened to every discipline by
+// plan 170 (D-17001/D-17002).
 //
 // Scenario mapping:
 //   S-10511 `healthActivityOf`, one test per arm → `S-10511 ...`
+//   S-17001 the discipline table covers every seeded discipline → `S-17001 ...`
+//   S-17002 the kind does not depend on capabilities → `S-17002 ...`
 //   S-10512 the catalog builder carries the kind → `S-10512 ...`
 //   S-10513 the session slot carries it and the envelope validates → `S-10513 ...`
 //   S-10514 the `routines_down` fallback list and efforts carry it → `S-10514 ...`
@@ -14,6 +17,7 @@ import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/mock/seed_data.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
@@ -34,120 +38,225 @@ List<Map<String, Object?>> _objects(Object? value) =>
 
 void main() {
   group('S-10511 healthActivityOf, one arm at a time', () {
-    Object? of(String? disciplineId, String exerciseId, List<String> caps) =>
+    Object? of(String? disciplineId, String exerciseId) =>
         WatchReferenceSync.healthActivityOf(
           disciplineId: disciplineId,
           exerciseId: exerciseId,
-          capabilities: caps,
         );
 
     test('S-10511 the running discipline records as running', () {
-      expect(
-        of('discipline-running', 'exercise-easy-run', [
-          ExerciseCapability.time,
-          ExerciseCapability.distance,
-        ]),
-        'running',
-      );
+      expect(of('discipline-running', 'exercise-easy-run'), 'running');
     });
 
     test('S-10511 the cycling discipline records as cycling', () {
-      expect(
-        of('discipline-cycling', 'exercise-zone-2-ride', [
-          ExerciseCapability.time,
-          ExerciseCapability.distance,
-        ]),
-        'cycling',
-      );
+      expect(of('discipline-cycling', 'exercise-zone-2-ride'), 'cycling');
     });
 
     test('S-10511 the rowing discipline records as rowing', () {
-      expect(
-        of('discipline-rowing', 'exercise-row-500m', [
-          ExerciseCapability.time,
-          ExerciseCapability.distance,
-        ]),
-        'rowing',
-      );
+      expect(of('discipline-rowing', 'exercise-row-500m'), 'rowing');
     });
 
     test('S-10511 a walking exercise records as walking', () {
       expect(
-        of('discipline-walking', 'exercise-brisk-walk', [
-          ExerciseCapability.time,
-          ExerciseCapability.distance,
-        ]),
+        of('discipline-walking', 'exercise-brisk-walk'),
         'walking',
       );
     });
 
     test('S-10511 the built-in Hike records as hiking', () {
-      expect(
-        of('discipline-walking', 'exercise-hike', [
-          ExerciseCapability.time,
-          ExerciseCapability.distance,
-        ]),
-        'hiking',
-      );
+      expect(of('discipline-walking', 'exercise-hike'), 'hiking');
     });
 
     test('S-10511 Rucking records as hiking', () {
-      expect(
-        of('discipline-walking', 'exercise-rucking', [
-          ExerciseCapability.time,
-          ExerciseCapability.distance,
-        ]),
-        'hiking',
-      );
+      expect(of('discipline-walking', 'exercise-rucking'), 'hiking');
     });
 
     test('S-10511 a custom walking exercise records as walking', () {
-      expect(
-        of('discipline-walking', 'custom-trek', [
-          ExerciseCapability.time,
-          ExerciseCapability.distance,
-        ]),
-        'walking',
-      );
+      expect(of('discipline-walking', 'custom-trek'), 'walking');
     });
 
-    test('S-10511 the swimming discipline records as nothing', () {
-      expect(
-        of('discipline-swimming', 'exercise-pool-swim', [
-          ExerciseCapability.time,
-          ExerciseCapability.distance,
-        ]),
-        isNull,
-      );
+    test('S-10511 the swimming discipline records as swimming', () {
+      expect(of('discipline-swimming', 'exercise-pool-swim'), 'swimming');
     });
 
-    test('S-10511 machine cardio records as nothing', () {
+    test('S-10511 machine cardio records as mixed cardio', () {
       expect(
-        of('discipline-machine-cardio', 'exercise-elliptical', [
-          ExerciseCapability.time,
-          ExerciseCapability.distance,
-        ]),
-        isNull,
+        of('discipline-machine-cardio', 'exercise-elliptical'),
+        'mixedCardio',
       );
     });
 
     test('S-10511 no discipline records as nothing', () {
+      expect(of(null, 'custom-trek'), isNull);
+    });
+
+    test('S-10511 cycling without distance still records as cycling', () {
       expect(
-        of(null, 'custom-trek', [
-          ExerciseCapability.time,
-          ExerciseCapability.distance,
-        ]),
+        of('discipline-cycling', 'exercise-zone-2-ride'),
+        'cycling',
+        reason: 'a capability shed after the fact never takes the kind away',
+      );
+    });
+  });
+
+  group('S-17001 the discipline table covers every seeded discipline', () {
+    test('S-17001 every seeded discipline names a kind, and only padel does '
+        'not', () {
+      final seeded = {
+        for (final discipline in SeedData.sampleDisciplines) discipline.id,
+      };
+      expect(
+        seeded,
+        hasLength(37),
+        reason: 'the seeded catalog is the table\'s key set',
+      );
+      expect(
+        seeded.difference(
+          WatchReferenceSync.healthActivityByDiscipline.keys.toSet(),
+        ),
+        {'discipline-padel'},
+        reason: 'S-17001 a discipline added to the seed must decide its kind; '
+            'HealthKit has no padel type, so padel stays unmapped',
+      );
+      for (final id in seeded.difference({'discipline-padel'})) {
+        expect(
+          WatchReferenceSync.healthActivityOf(
+            disciplineId: id,
+            exerciseId: 'custom-anything',
+          ),
+          isNotNull,
+          reason: 'S-17001 $id names its own Health kind',
+        );
+      }
+    });
+
+    test('S-17001 the mapped kinds are the disciplines\' own', () {
+      for (final (id, kind) in [
+        ('discipline-swimming', 'swimming'),
+        ('discipline-machine-cardio', 'mixedCardio'),
+        ('discipline-conditioning', 'conditioning'),
+        ('discipline-isometric-holds', 'isometricHolds'),
+        ('discipline-calisthenics', 'calisthenics'),
+        ('discipline-powerlifting', 'traditionalStrengthTraining'),
+        ('discipline-muay-thai', 'kickboxing'),
+        ('discipline-bjj', 'martialArts'),
+        ('discipline-yoga', 'yoga'),
+        ('discipline-soccer', 'soccer'),
+        ('discipline-climbing', 'climbing'),
+      ]) {
+        expect(
+          WatchReferenceSync.healthActivityOf(
+            disciplineId: id,
+            exerciseId: 'custom-anything',
+          ),
+          kind,
+          reason: 'S-17001 $id',
+        );
+      }
+    });
+
+    test('S-17001 an unmapped, unknown or absent discipline names nothing', () {
+      expect(
+        WatchReferenceSync.healthActivityOf(
+          disciplineId: 'discipline-padel',
+          exerciseId: 'custom-padel',
+        ),
+        isNull,
+        reason: 'S-17001 the sports modality keeps its Other',
+      );
+      expect(
+        WatchReferenceSync.healthActivityOf(
+          disciplineId: 'discipline-retired',
+          exerciseId: 'custom-anything',
+        ),
+        isNull,
+      );
+      expect(
+        WatchReferenceSync.healthActivityOf(
+          disciplineId: null,
+          exerciseId: 'custom-anything',
+        ),
         isNull,
       );
     });
+  });
 
-    test('S-10511 cycling without distance records as nothing', () {
-      expect(
-        of('discipline-cycling', 'exercise-zone-2-ride', [
-          ExerciseCapability.time,
-        ]),
-        isNull,
+  group('S-17002 the kind does not depend on capabilities', () {
+    test('S-17002 a hold, a timed and a conditioning exercise each name '
+        'their kind', () {
+      for (final (disciplineId, capabilities, kind) in [
+        (
+          'discipline-yoga',
+          [ExerciseCapability.hold, ExerciseCapability.time],
+          'yoga',
+        ),
+        (
+          'discipline-active-recovery',
+          [ExerciseCapability.time],
+          'preparationAndRecovery',
+        ),
+        (
+          'discipline-conditioning',
+          [ExerciseCapability.time, ExerciseCapability.reps],
+          'conditioning',
+        ),
+        (
+          'discipline-stretching',
+          [ExerciseCapability.hold, ExerciseCapability.time],
+          'flexibility',
+        ),
+      ]) {
+        expect(
+          capabilities.contains(ExerciseCapability.distance),
+          isFalse,
+          reason: 'S-17002 the fixture is a non-distance exercise',
+        );
+        expect(
+          WatchReferenceSync.healthActivityOf(
+            disciplineId: disciplineId,
+            exerciseId: 'custom-anything',
+          ),
+          kind,
+          reason: 'S-17002 $disciplineId names its kind with no distance',
+        );
+      }
+    });
+
+    test('S-17002 the wire carries a yoga kind with no distance', () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+      repository.clear();
+      const at = 1788000000000;
+      await repository.createExercise(
+        Exercise(
+          id: 'custom-yoga',
+          name: 'Custom Yoga',
+          disciplineId: 'discipline-yoga',
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
       );
+      await repository.setExerciseCapabilities('custom-yoga', [
+        ExerciseCapability.hold,
+        ExerciseCapability.time,
+        ExerciseCapability.sets,
+      ]);
+
+      final batches = await WatchReferenceSync.buildExercisesDown(
+        repository: repository,
+        generatedAt: _generatedAt,
+      );
+
+      final exercises = _objects(
+        _asObject(batches.single['payload'])['exercises'],
+      );
+      expect(
+        exercises.single['healthActivity'],
+        'yoga',
+        reason: 'S-17002 the kind travels even though the exercise cannot '
+            'cover distance',
+      );
+      expect(loadProtocolValidator().validateEnvelope(batches.single), isEmpty);
     });
   });
 
@@ -404,6 +513,20 @@ void main() {
         ExerciseCapability.reps,
         ExerciseCapability.load,
       ]);
+      await repository.createExercise(
+        Exercise(
+          id: 'ex-yoga',
+          name: 'Tree Pose',
+          disciplineId: 'discipline-yoga',
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      await repository.setExerciseCapabilities('ex-yoga', [
+        ExerciseCapability.hold,
+        ExerciseCapability.time,
+        ExerciseCapability.sets,
+      ]);
 
       phoneState = WorkoutState(repository);
       final settings = SettingsState(repository, fakePreferencesService());
@@ -451,6 +574,25 @@ void main() {
         reason: 'S-10513 the slot the wrist would read is one the schema '
             'accepts',
       );
+    });
+
+    test('S-10513 a hold-only yoga slot carries its own kind', () async {
+      await phoneState.createNewSession(modality: null);
+      await phoneState.addExerciseToSession(
+        (await repository.getExerciseById('ex-yoga'))!,
+      );
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await pumpEventQueue();
+
+      final answer = radio.lastOfType('session_snapshot');
+      final slots = _objects(_asObject(answer['payload'])['exercises']);
+      expect(
+        slots.single['healthActivity'],
+        'yoga',
+        reason: 'S-10513 the slot names yoga without covering distance',
+      );
+      expect(loadProtocolValidator().validateEnvelope(answer), isEmpty);
     });
   });
 }

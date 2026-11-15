@@ -1,5 +1,5 @@
 // Plan 118 — S-19201: the Conditioning discipline row; S-19202: the
-// conditioning rows of the New-row table; S-19209: no Health kind for them.
+// conditioning rows of the New-row table; S-19209: their Health kind.
 //
 // The bundled catalog must carry one Conditioning discipline
 // (`discipline-conditioning`, key `conditioning`) under
@@ -7,9 +7,10 @@
 // `SeedData.sampleDisciplines`, and the Resistance / Lifting discipline
 // filter must list it last. Phase 2A's rows and Phase 2B's rows (D-19202)
 // carry the planned name, pattern, capabilities, muscles and equipment, and
-// the discipline lists exactly them. None of them carries a Health kind: no
-// row has `distance`, so `healthActivityOf` is null and the wire object has
-// no `healthActivity` key (D-19210).
+// the discipline lists exactly them. Every row names the `conditioning`
+// Health kind whether or not it covers distance: plan 170 removed the
+// capability gate (D-17002), superseding D-19210's "no Health kind" for these
+// rows.
 // `docs/plans/2026-11-05-118-conditioning-catalog-plan/2026-11-05-118-conditioning-catalog-plan.md`.
 //
 // Pure except S-19209's wire check, which reads a fresh Mock and opens no
@@ -133,22 +134,21 @@ void main() {
     });
   });
 
-  group('S-19209 no Health kind for the conditioning rows', () {
-    test('healthActivityOf is null for every row', () {
+  group('S-19209 every conditioning row names the conditioning kind', () {
+    test('healthActivityOf answers conditioning for every row', () {
       for (final row in conditioningCatalogRows) {
         expect(
           WatchReferenceSync.healthActivityOf(
             disciplineId: 'discipline-conditioning',
             exerciseId: 'exercise-${row.suffix}',
-            capabilities: row.caps,
           ),
-          isNull,
+          'conditioning',
           reason: row.suffix,
         );
       }
     });
 
-    test('the wire object of exercise-burpee has no healthActivity', () async {
+    test('the wire object of exercise-burpee carries healthActivity', () async {
       final repository = MockWorkoutRepository();
       await repository.initialize();
 
@@ -169,7 +169,7 @@ void main() {
       ];
 
       expect(burpees, hasLength(1), reason: 'the catalog sends Burpee once');
-      expect(burpees.single.containsKey('healthActivity'), isFalse);
+      expect(burpees.single['healthActivity'], 'conditioning');
     });
   });
 }

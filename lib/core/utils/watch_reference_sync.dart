@@ -25,7 +25,6 @@ library;
 import 'dart:ui' show Color;
 
 import '../constants/block_types.dart';
-import '../constants/capability.dart';
 import '../constants/metric_ids.dart';
 import '../constants/water_constants.dart';
 import '../sync_protocol/phone_envelope.dart';
@@ -89,7 +88,6 @@ class _ExerciseResolver {
       healthActivity: WatchReferenceSync.healthActivityOf(
         disciplineId: _disciplines[exerciseId],
         exerciseId: exerciseId,
-        capabilities: capabilities,
       ),
     );
   }
@@ -587,32 +585,72 @@ abstract final class WatchReferenceSync {
     },
   );
 
-  /// The Health workout kind a distance exercise records as on the wrist (plan
-  /// 75, D-3), from its discipline: running, cycling and rowing as themselves,
-  /// walking as walking (hiking for the built-in Hike and Rucking, which share
-  /// the walking discipline). Null for an exercise that cannot cover distance
-  /// or whose discipline has no kind of its own — the wrist then records it as
-  /// it always has, a run.
+  /// The Health workout kind each seeded discipline names on the wrist (plan
+  /// 170, D-17001), keyed by the discipline id the exercise row carries.
+  ///
+  /// `discipline-padel` is deliberately absent: HealthKit has no padel type and
+  /// `racquetball` would mislabel the match, so the sports modality's Other
+  /// stays. Every other seeded discipline names its honest kind.
+  static const Map<String, String> healthActivityByDiscipline = {
+    'discipline-running': 'running',
+    'discipline-cycling': 'cycling',
+    'discipline-swimming': 'swimming',
+    'discipline-rowing': 'rowing',
+    'discipline-walking': 'walking',
+    'discipline-powerlifting': 'traditionalStrengthTraining',
+    'discipline-bodybuilding': 'traditionalStrengthTraining',
+    'discipline-weightlifting': 'traditionalStrengthTraining',
+    'discipline-calisthenics': 'calisthenics',
+    'discipline-isometric-holds': 'isometricHolds',
+    'discipline-conditioning': 'conditioning',
+    'discipline-machine-cardio': 'mixedCardio',
+    'discipline-active-recovery': 'preparationAndRecovery',
+    'discipline-stretching': 'flexibility',
+    'discipline-yoga': 'yoga',
+    'discipline-boxing': 'boxing',
+    'discipline-muay-thai': 'kickboxing',
+    'discipline-bjj': 'martialArts',
+    'discipline-judo': 'martialArts',
+    'discipline-karate': 'martialArts',
+    'discipline-mma': 'martialArts',
+    'discipline-tennis': 'tennis',
+    'discipline-badminton': 'badminton',
+    'discipline-table-tennis': 'tableTennis',
+    'discipline-cricket': 'cricket',
+    'discipline-ice-hockey': 'hockey',
+    'discipline-baseball': 'baseball',
+    'discipline-american-football': 'americanFootball',
+    'discipline-rugby': 'rugby',
+    'discipline-lacrosse': 'lacrosse',
+    'discipline-soccer': 'soccer',
+    'discipline-basketball': 'basketball',
+    'discipline-volleyball': 'volleyball',
+    'discipline-squash': 'squash',
+    'discipline-golf': 'golf',
+    'discipline-climbing': 'climbing',
+  };
+
+  /// The Health workout kind an exercise records as on the wrist (plan 75, D-3,
+  /// widened to every discipline by plan 170, D-17001/D-17002), from the
+  /// discipline its row carries: every seeded discipline names one, and the
+  /// built-in Hike and Rucking name `hiking` rather than `walking`.
+  ///
+  /// Capabilities do not enter into it: a yoga hold or a conditioning round
+  /// names its kind without covering distance. Null for a discipline the table
+  /// does not carry — padel, a discipline added later, or none at all (a custom
+  /// exercise the user left untyped) — and the wrist then keeps its capability
+  /// and modality default.
   static String? healthActivityOf({
     required String? disciplineId,
     required String exerciseId,
-    required List<String> capabilities,
   }) {
-    if (!capabilities.contains(ExerciseCapability.distance)) return null;
-    switch (disciplineId) {
-      case 'discipline-running':
-        return 'running';
-      case 'discipline-cycling':
-        return 'cycling';
-      case 'discipline-rowing':
-        return 'rowing';
-      case 'discipline-walking':
-        return exerciseId == 'exercise-hike' || exerciseId == 'exercise-rucking'
-            ? 'hiking'
-            : 'walking';
-      default:
-        return null;
+    if (disciplineId == null) return null;
+    if (disciplineId == 'discipline-walking') {
+      return exerciseId == 'exercise-hike' || exerciseId == 'exercise-rucking'
+          ? 'hiking'
+          : 'walking';
     }
+    return healthActivityByDiscipline[disciplineId];
   }
 
   /// [color] as the wire spells a theme accent: `#RRGGBB`, upper-case, no alpha.

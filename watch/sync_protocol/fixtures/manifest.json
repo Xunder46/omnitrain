@@ -194,6 +194,12 @@
       "note": "A routine effort and the fallback list MAY name the Health kind too: `ef-ride` and the `ex-ride` fallback both carry `healthActivity: \"cycling\"`."
     },
     {
+      "path": "valid/exercises_down_health_activity_kinds.json",
+      "type": "exercises_down",
+      "scenario": "S-17003",
+      "note": "The widened kind vocabulary: five exercises carry `swimming`, `yoga`, `traditionalStrengthTraining`, `soccer` and `boxing`; only the swim has `distance`, so the kind is independent of capabilities (D-17002)."
+    },
+    {
       "path": "valid/session_snapshot_health_activity.json",
       "type": "session_snapshot",
       "scenario": "S-10501",
@@ -768,8 +774,8 @@
       "type": "exercises_down",
       "scenario": "S-10501",
       "expectedCode": "invalid_enum_value",
-      "expectedReasonContains": "swimming",
-      "note": "`healthActivity` is a closed enum: `\"swimming\"` is not one of the five kinds the phone can name, so the batch is refused."
+      "expectedReasonContains": "unreal-kind",
+      "note": "`healthActivity` is a closed enum: `\"unreal-kind\"` is not one of the kinds the phone can name, so the batch is refused."
     },
     {
       "path": "invalid/bests_down_entry_without_axis.json",
