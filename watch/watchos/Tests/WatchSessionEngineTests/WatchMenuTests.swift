@@ -174,6 +174,16 @@ final class WatchMenuHarness {
     private(set) var rating: WatchEffortRatingState!
     private(set) var menu: WatchMenuState!
 
+    /// Every frame the engine handed to the wrist's uplink, in order — what the
+    /// phone would have heard. The engine emits through `onEmit`, so the harness
+    /// keeps the envelopes themselves rather than a summary of them.
+    private(set) var emittedFrames: [[String: Any]] = []
+
+    /// The frames of one `type`, in the order they were emitted.
+    func emitted(_ type: String) -> [[String: Any]] {
+        emittedFrames.filter { $0["type"] as? String == type }
+    }
+
     init(store: WatchSessionStore = InMemoryWatchSessionStore()) {
         clock = TestClock(instant("2026-07-13T06:00:00Z"))
         self.store = store
@@ -190,6 +200,7 @@ final class WatchMenuHarness {
 
         engine = WatchSessionEngine(
             store: store,
+            onEmit: { [weak self] envelope in self?.emittedFrames.append(envelope) },
             validator: Harness.validator(),
             clock: clock.call,
             idFactory: { nextId("rec") },
@@ -916,6 +927,26 @@ final class WatchMenuTests: XCTestCase {
         )
         XCTAssertEqual(WatchMenuCopy.confirmCancel, "Cancel")
         XCTAssertEqual(WatchMenuCopy.confirmFinish, "Finish")
+
+        // Plan 171 D-17104: the Discard row and its confirmation, in the
+        // owner's words, with no em dash anywhere.
+        XCTAssertEqual(WatchMenuCopy.discardLabel, "Discard Session")
+        XCTAssertEqual(WatchMenuCopy.discardConfirmTitle, "Discard session?")
+        XCTAssertEqual(
+            WatchMenuCopy.discardConfirmBody,
+            "This will permanently delete this session and all its data. You will return to the start screen."
+        )
+        XCTAssertEqual(WatchMenuCopy.discardConfirmCancel, "Cancel")
+        XCTAssertEqual(WatchMenuCopy.discardConfirmDiscard, "Discard")
+        for word in [
+            WatchMenuCopy.discardLabel,
+            WatchMenuCopy.discardConfirmTitle,
+            WatchMenuCopy.discardConfirmBody,
+            WatchMenuCopy.discardConfirmCancel,
+            WatchMenuCopy.discardConfirmDiscard,
+        ] {
+            XCTAssertFalse(word.contains("\u{2014}"), "D-17104 the copy carries no em dash: \(word)")
+        }
     }
 
     // MARK: - S-1108 the source guard
@@ -1561,5 +1592,463 @@ final class WatchMenuTests: XCTestCase {
             deriveExerciseListLetters(twentyOne.menu.addableExercises),
             "S-3108 the menu's letters are the shared function's, not a second gate"
         )
+    }
+}
+
+// MARK: - Reading one property's body
+
+/// The lines of the property `name`, from its declaration through the brace that
+/// closes it, or nil when the file declares no such property.
+private func propertyBlock(_ name: String, in lines: [String]) -> [String]? {
+    guard let start = lines.firstIndex(where: { $0.contains("var \(name):") }) else {
+        return nil
+    }
+
+    var depth = 0
+    var block: [String] = []
+    for line in lines[start...] {
+        block.append(line)
+        depth += line.filter { $0 == "{" }.count - line.filter { $0 == "}" }.count
+        if depth == 0, block.count > 1 { return block }
+    }
+    return nil
+}
+
+// MARK: - S-17101 to S-17112 Discard Session (plan 171)
+
+/// Plan: `docs/plans/2026-11-14-171-watch-discard-workout-plan/2026-11-14-171-watch-discard-workout-plan.md`,
+/// phases 1 and 2: the menu's Discard row.
+///
+/// The model cases run over `WatchMenuHarness`, so the discard the row makes is
+/// the engine's own abandonment and the frames below are the ones the phone
+/// would receive. The view cases are source scans: the watch target's views are
+/// compiled only by the watch scheme, so `swift test` can hold their shape but
+/// not run them; the drawn row and its dialog are the owner's device check
+/// (`docs/watch-app-qa-wrist-logging.md`, step 44).
+final class WatchMenuDiscardTests: XCTestCase {
+
+    // MARK: - S-17102 confirm-then-discard, and Cancel changes nothing
+
+    /// D-17102: a discard is `abandonSession()`, so the session ends `abandoned`
+    /// and the phone hears the terminal lifecycle frame the engine builds for
+    /// it, stamped with the wrist's own instant (D-120). Cancel is the view's
+    /// own no-op, asserted below in the source scan.
+    func testS17102DiscardAbandonsAtTheWristsInstantAndTellsThePhone() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        XCTAssertEqual(harness.engine.session?.status, WatchSessionStatus.active, "S-17102 the fixture is live")
+        XCTAssertTrue(harness.emitted("session_lifecycle").isEmpty, "S-17102 nothing has ended yet, so Cancel has nothing to undo")
+
+        harness.clock.advance(120)
+        let discarded = await harness.menu.discard()
+        let ended = try XCTUnwrap(discarded, "S-17102 a discard hands back the ended record")
+
+        XCTAssertEqual(harness.engine.session?.status, WatchSessionStatus.abandoned, "S-17102 the session ends abandoned")
+        XCTAssertEqual(ended.status, WatchSessionStatus.abandoned, "S-17102 and the record says so")
+        XCTAssertEqual(ended.recordedAt, harness.clock.call(), "D-120 the end is stamped at the wrist's instant")
+
+        let frames = harness.emitted("session_lifecycle")
+        XCTAssertEqual(frames.count, 1, "S-17102 one abandonment frame, no more")
+        let payload = try XCTUnwrap(
+            try XCTUnwrap(frames.first, "S-17102 the frame is emitted")["payload"] as? [String: Any],
+            "S-17102 the frame carries a payload"
+        )
+        XCTAssertEqual(frames.first?["sessionId"] as? String, harness.sessionId, "S-17102 it names the session")
+        XCTAssertEqual(payload["state"] as? String, WatchLifecycleState.abandoned, "S-17102 the phone hears `abandoned`")
+        XCTAssertEqual(payload["at"] as? String, utcIso(harness.clock.call()), "S-17102 stamped with the discard's own instant")
+    }
+
+    /// The view's half of S-17102: `state.discard()` is reached from the alert's
+    /// destructive Discard alone, Cancel runs nothing, and no haptic plays
+    /// (D-17104).
+    func testS17102TheViewDiscardsOnlyFromTheAlertsDiscardButton() throws {
+        let source = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift")
+        let body = try XCTUnwrap(
+            propertyBlock("discardRow", in: sourceLines(source)),
+            "S-17102 the menu view has a discardRow"
+        )
+
+        XCTAssertEqual(occurrences(of: "state.discard()", in: source), 1, "S-17102 the model's discard is reached from one place")
+        let confirm = try XCTUnwrap(
+            body.firstIndex {
+                $0.trimmingCharacters(in: .whitespaces)
+                    == "Button(WatchMenuCopy.discardConfirmDiscard, role: .destructive) {"
+            },
+            "S-17102 the alert carries a destructive Discard"
+        )
+        let call = try XCTUnwrap(
+            body.firstIndex { $0.contains("await state.discard()") },
+            "S-17102 the alert's Discard runs the model's discard"
+        )
+        XCTAssertGreaterThan(call, confirm, "S-17102 and only that button does")
+        XCTAssertTrue(
+            body.contains { $0.trimmingCharacters(in: .whitespaces) == "Button(WatchMenuCopy.discardConfirmCancel, role: .cancel) {}" },
+            "S-17102 Cancel is a no-op"
+        )
+        XCTAssertTrue(
+            body.contains { $0.contains(".alert(WatchMenuCopy.discardConfirmTitle") },
+            "S-17102 the question is the discard's own"
+        )
+        XCTAssertTrue(
+            body.contains { $0.trimmingCharacters(in: .whitespaces) == "Text(WatchMenuCopy.discardConfirmBody)" },
+            "S-17102 and the message is its body"
+        )
+        XCTAssertTrue(
+            body.contains { $0.trimmingCharacters(in: .whitespaces) == "onDiscard()" },
+            "S-17102 the shell is handed the surface back after the discard"
+        )
+        XCTAssertFalse(body.contains { $0.contains("haptics") }, "D-17104 confirming a discard plays nothing")
+    }
+
+    // MARK: - S-17101 the row sits at the bottom of the menu
+
+    /// D-17101: the Discard row is the menu's last row, below End Session,
+    /// `.bordered` like the menu's other rows and never disabled (D-17103).
+    func testS17101TheDiscardRowIsTheMenusLastRow() throws {
+        let lines = sourceLines(try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift"))
+        let finish = try XCTUnwrap(usageLine(of: "finishRow", in: lines), "S-17101 the menu has its End Session row")
+        let discard = try XCTUnwrap(usageLine(of: "discardRow", in: lines), "S-17101 the menu has a Discard row")
+        XCTAssertGreaterThan(discard, finish, "S-17101 Discard is below End Session")
+        XCTAssertEqual(nextLine(after: discard, in: lines), "}", "S-17101 and nothing follows it in the stack")
+
+        let body = try XCTUnwrap(propertyBlock("discardRow", in: lines), "S-17101 the row is the menu's own builder")
+        XCTAssertTrue(
+            body.contains { $0.trimmingCharacters(in: .whitespaces) == ".buttonStyle(.bordered)" },
+            "S-17101 the row wears the menu's bordered style"
+        )
+        XCTAssertFalse(body.contains { $0.contains(".disabled") }, "D-17103 the row is never disabled")
+        XCTAssertTrue(
+            body.contains { $0.contains("role: .destructive") },
+            "S-17101 its confirmation's Discard is destructive"
+        )
+    }
+
+    // MARK: - S-17103 Discard is reachable mid-set
+
+    /// D-17103: the model has no lock guard, so a running work clock cannot
+    /// strand a session the user wants to throw away. The clock ends with the
+    /// session, on the engine's own terminal rule (D-14603).
+    func testS17103DiscardIsReachableMidSet() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        _ = try await harness.engine.startTimer(WatchTimerKind.round, sessionExerciseId: "s1")
+        XCTAssertTrue(harness.menu.isLocked, "S-17103 the fixture is mid-set, so the menu's rows are inert")
+
+        harness.clock.advance(45)
+        let discarded = await harness.menu.discard()
+        let ended = try XCTUnwrap(discarded, "S-17103 a locked menu still discards")
+
+        XCTAssertEqual(ended.status, WatchSessionStatus.abandoned, "S-17103 the session ends")
+        let afterDiscard = (harness.engine.timerFor(WatchTimerKind.round)?.state, harness.engine.timerFor(WatchTimerKind.round)?.stoppedAt)
+
+        // The control: the same fixture ended through End Session. Both go
+        // through the engine's one transition, so the running clock must come
+        // out of a discard exactly as it comes out of an End (D-14602/D-223).
+        let control = await WatchMenuHarness().launch()
+        await control.fixtureA()
+        _ = try await control.engine.startTimer(WatchTimerKind.round, sessionExerciseId: "s1")
+        control.clock.advance(45)
+        await control.menu.finish()
+
+        XCTAssertEqual(control.engine.session?.status, WatchSessionStatus.completed, "S-17103 the control ends")
+        let afterFinish = (control.engine.timerFor(WatchTimerKind.round)?.state, control.engine.timerFor(WatchTimerKind.round)?.stoppedAt)
+        XCTAssertEqual(
+            afterDiscard.0.map { String(describing: $0) },
+            afterFinish.0.map { String(describing: $0) },
+            "D-14602 the running clock ends with the session, exactly as End's does"
+        )
+        XCTAssertEqual(afterDiscard.1, afterFinish.1, "D-14602 at the same kind of instant")
+    }
+
+    // MARK: - S-17104 Discard during a rest stops the rest
+
+    /// D-223: the end stops the rest before the terminal row, and the rest that
+    /// ran travels as its own observation, hung on the entry it followed
+    /// (D-221) — the phone's session is then abandoned with its rest inside it.
+    func testS17104DiscardDuringARestStopsTheRest() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        let surface = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+        let logged = try await surface.log()
+        XCTAssertTrue(surface.isResting, "S-17104 logging a set starts its rest")
+
+        harness.clock.advance(30)
+        _ = await harness.menu.discard()
+
+        XCTAssertFalse(surface.isResting, "S-17104 the rest is stopped")
+        XCTAssertEqual(
+            harness.engine.timerFor(WatchTimerKind.rest)?.stoppedAt,
+            harness.clock.call(),
+            "S-17104 at the discard's own instant"
+        )
+
+        let rest = try XCTUnwrap(
+            harness.emitted("observations_up").compactMap { frame in
+                ((frame["payload"] as? [String: Any])?["events"] as? [[String: Any]])?
+                    .first { $0["kind"] as? String == WatchObservationKind.rest }
+            }.first,
+            "S-17104 the rest that ran is announced"
+        )
+        XCTAssertEqual(rest["afterEntryId"] as? String, logged.recordId, "D-221 the rest hangs on the entry it followed")
+        XCTAssertEqual(rest["endedAt"] as? String, utcIso(harness.clock.call()), "S-17104 ending at the discard")
+    }
+
+    // MARK: - S-17105 no rating prompt for a discard
+
+    /// D-17105: a discarded session owes no rating, because the rating state is
+    /// never reached. The control at the end finishes the same fixture and does
+    /// owe one, so the absence is the discard's doing and not the fixture's.
+    func testS17105ADiscardOwesNoRatingPrompt() async throws {
+        do {
+            let harness = await WatchMenuHarness().launch()
+            await harness.fixtureA()
+            _ = await harness.preferences.applyPreferencesDown(
+                preferencesDown(true, generatedAt: "2026-07-13T05:59:00Z")
+            )
+            await harness.rating.restore()
+            XCTAssertTrue(harness.preferences.asksForEffortRating, "S-17105 the phone asks for a rating")
+
+            _ = await harness.menu.discard()
+
+            XCTAssertTrue(harness.rating.owedSessionIds.isEmpty, "S-17105 a discarded session owes no rating")
+            let prompts = await harness.store.readAll().ratingPrompts
+            XCTAssertTrue(prompts.isEmpty, "S-17105 and no prompt row is stored")
+        }
+
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        _ = await harness.preferences.applyPreferencesDown(
+            preferencesDown(true, generatedAt: "2026-07-13T05:59:00Z")
+        )
+        await harness.rating.restore()
+        await harness.menu.finish()
+        XCTAssertEqual(
+            harness.rating.owedSessionIds,
+            [harness.sessionId],
+            "S-17105 the control: finishing the same fixture owes one"
+        )
+    }
+
+    // MARK: - S-17107 the first ending is final
+
+    /// D-14602/D-17102: the engine hands back the held row when the status is
+    /// already terminal, so a discard after a finish, or a second discard,
+    /// appends nothing and announces nothing.
+    func testS17107TheFirstEndingIsFinalForDiscard() async throws {
+        do {
+            let harness = await WatchMenuHarness().launch()
+            await harness.fixtureA()
+            await harness.menu.finish()
+            XCTAssertEqual(harness.engine.session?.status, WatchSessionStatus.completed, "S-17107 the fixture is finished")
+            let frames = harness.emitted("session_lifecycle").count
+            let rows = await harness.store.readAll().observations.count
+
+            harness.clock.advance(60)
+            let held = await harness.menu.discard()
+
+            XCTAssertEqual(held?.status, WatchSessionStatus.completed, "S-17107 the held record comes back unchanged")
+            XCTAssertEqual(harness.engine.session?.status, WatchSessionStatus.completed, "S-17107 a finished session stays finished")
+            XCTAssertEqual(harness.emitted("session_lifecycle").count, frames, "S-17107 nothing new is announced")
+            let after = await harness.store.readAll().observations.count
+            XCTAssertEqual(after, rows, "S-17107 and no row is appended")
+        }
+
+        do {
+            let harness = await WatchMenuHarness().launch()
+            await harness.fixtureA()
+            let discarded = await harness.menu.discard()
+            let first = try XCTUnwrap(discarded, "S-17107 the first discard ends the session")
+            let frames = harness.emitted("session_lifecycle").count
+            let rows = await harness.store.readAll().observations.count
+
+            harness.clock.advance(60)
+            let held = await harness.menu.discard()
+
+            XCTAssertEqual(held?.recordId, first.recordId, "S-17107 a second discard hands back the same record")
+            XCTAssertEqual(harness.emitted("session_lifecycle").count, frames, "S-17107 nothing new is announced")
+            let after = await harness.store.readAll().observations.count
+            XCTAssertEqual(after, rows, "S-17107 and no row is appended")
+        }
+    }
+
+    // MARK: - S-17108 the platform workout is discarded, never saved
+
+    /// The record the discard produced is what the coordinator sees, and a
+    /// non-active session ends the platform workout with `saving: false`
+    /// (plan 89 D-1) — so nothing reaches Health for a workout the user threw
+    /// away.
+    func testS17108TheDiscardedRecordEndsThePlatformWorkoutUnsaved() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        let active = try XCTUnwrap(harness.engine.session, "S-17108 the fixture has a live session")
+
+        let store = ScriptedPlatformStore()
+        let platform = WatchPlatformWorkout(store: store)
+        let coordinator = WatchWorkoutCoordinator(platform: platform)
+        await coordinator.refresh(active)
+        XCTAssertEqual(store.begun.count, 1, "S-17108 the live session opened a workout")
+
+        let discarded = await harness.menu.discard()
+        let ended = try XCTUnwrap(discarded, "S-17108 the discard ends the session")
+        await coordinator.refresh(ended)
+
+        XCTAssertEqual(store.endSavings, [false], "S-17108 the workout is discarded, never saved")
+        XCTAssertNil(platform.running, "S-17108 and nothing is left open")
+    }
+
+    // MARK: - S-17109 an empty End behaves as a Discard
+
+    /// D-17105: an End with nothing logged is a discard — the phone's own empty
+    /// finish discards too — so nothing empty is saved, no rating is asked for,
+    /// and the phone hears an abandonment.
+    func testS17109AnEmptyEndBehavesAsADiscard() async throws {
+        do {
+            let harness = await WatchMenuHarness().launch()
+            let active = await harness.engine.createSession(modality: "sports")
+            XCTAssertFalse(harness.menu.hasLoggedEfforts, "S-17109 nothing is logged yet")
+
+            let store = ScriptedPlatformStore()
+            let platform = WatchPlatformWorkout(store: store)
+            let coordinator = WatchWorkoutCoordinator(platform: platform)
+            await coordinator.refresh(active)
+
+            await harness.menu.finish()
+
+            XCTAssertEqual(harness.engine.session?.status, WatchSessionStatus.abandoned, "S-17109 an empty End discards")
+            XCTAssertTrue(harness.rating.owedSessionIds.isEmpty, "S-17109 and asks for no rating")
+            await coordinator.refresh(harness.engine.session)
+            XCTAssertEqual(store.endSavings, [false], "S-17109 nothing empty is saved to Health")
+
+            let payload = try XCTUnwrap(
+                try XCTUnwrap(harness.emitted("session_lifecycle").last, "S-17109 the phone is told")["payload"] as? [String: Any]
+            )
+            XCTAssertEqual(payload["state"] as? String, WatchLifecycleState.abandoned, "S-17109 as an abandonment")
+        }
+
+        // A rest, a water tap and a food entry are not the workout: an End on a
+        // session holding nothing but those is still an empty one.
+        do {
+            let harness = await WatchMenuHarness().launch()
+            _ = await harness.engine.createSession(modality: "sports")
+            _ = try await harness.engine.logWaterGlass(.add, loggedAt: harness.clock.call())
+            _ = try await harness.engine.logNutrition(
+                foodId: "food-oats",
+                servings: 1,
+                calories: 120,
+                loggedAt: harness.clock.call()
+            )
+            XCTAssertFalse(harness.menu.hasLoggedEfforts, "S-17109 water and food are not an effort")
+
+            await harness.menu.finish()
+
+            XCTAssertEqual(
+                harness.engine.session?.status,
+                WatchSessionStatus.abandoned,
+                "S-17109 a session holding only water and food is still empty"
+            )
+        }
+
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        XCTAssertTrue(harness.menu.hasLoggedEfforts, "S-17109 fixture A holds efforts")
+        await harness.menu.finish()
+        XCTAssertEqual(
+            harness.engine.session?.status,
+            WatchSessionStatus.completed,
+            "S-17109 an End with something logged finishes, as today"
+        )
+    }
+
+    /// The view's half of S-17109: End reads the emptiness rule, and the empty
+    /// path raises the discard question instead of the Finish one.
+    func testS17109TheEmptyEndRaisesTheDiscardAlert() throws {
+        let body = try XCTUnwrap(
+            propertyBlock(
+                "finishRow",
+                in: sourceLines(try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift"))
+            ),
+            "S-17109 the menu view has a finishRow"
+        )
+
+        let rule = try XCTUnwrap(
+            body.firstIndex { $0.contains("state.hasLoggedEfforts") },
+            "S-17109 End reads the emptiness rule"
+        )
+        let finish = try XCTUnwrap(
+            body.firstIndex { $0.trimmingCharacters(in: .whitespaces) == "confirmingFinish = true" },
+            "S-17109 the Finish question is raised"
+        )
+        let discard = try XCTUnwrap(
+            body.firstIndex { $0.trimmingCharacters(in: .whitespaces) == "confirmingDiscard = true" },
+            "S-17109 the discard question is raised"
+        )
+        XCTAssertGreaterThan(finish, rule, "S-17109 an End with something logged asks Finish")
+        XCTAssertGreaterThan(discard, finish, "S-17109 and an empty one asks Discard instead")
+    }
+
+    // MARK: - S-17110 the logged entries stay; no summary appears
+
+    /// `abandonSession` deletes nothing wrist-side: the entries stay readable,
+    /// and an abandoned session owes no summary, so the wrist returns to the
+    /// start surface rather than showing one (S-9605).
+    func testS17110DiscardKeepsTheLoggedEntriesAndShowsNoSummary() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        let summary = WatchWorkoutSummaryState(engine: harness.engine)
+        summary.note(harness.engine.session)
+        XCTAssertNil(summary.pending, "S-17110 a live session shows no summary")
+
+        _ = await harness.menu.discard()
+
+        let efforts = harness.engine.entries.filter { WatchObservationKind.efforts.contains($0.kind) }
+        XCTAssertEqual(
+            Set(efforts.map(\.recordId)),
+            ["e-s1-1", "e-s1-2", "e-s3-1"],
+            "S-17110 the logged entries stay, and the phone's own deletion still wins"
+        )
+
+        summary.note(harness.engine.session)
+        XCTAssertNil(summary.pending, "S-17110 an abandoned session owes no summary")
+    }
+
+    // MARK: - S-17111 water and food are unaffected
+
+    /// Water and food are the wrist's own rows, outside the session, and the
+    /// discard touches only the session's — so a discarded workout leaves the
+    /// day's intake alone.
+    func testS17111DiscardLeavesWaterAndFoodUntouched() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        let water = try await harness.engine.logWaterGlass(.add, loggedAt: harness.clock.call())
+        let food = try await harness.engine.logNutrition(
+            foodId: "food-oats",
+            servings: 1.5,
+            calories: 320,
+            loggedAt: harness.clock.call()
+        )
+
+        _ = await harness.menu.discard()
+
+        XCTAssertEqual(harness.engine.waterLog.map(\.recordId), [water.recordId], "S-17111 the water row is untouched")
+        XCTAssertEqual(harness.engine.nutritionLog.map(\.recordId), [food.recordId], "S-17111 and so is the food row")
+    }
+
+    // MARK: - Plan 171 item 5: the shell hands the surface back
+
+    /// The sheet's dismissal is the shell's, as it is for Close and Finish: the
+    /// discard's confirmation closes the menu and tells the host the surface
+    /// changed, so the wrist lands on whatever the session's status now means.
+    /// No scenario id: the wiring is Phase 2 item 5, pinned by this scan.
+    func testTheShellPassesTheDiscardClosure() throws {
+        let lines = sourceLines(try menuSource("ios/OmniTrain Watch App/ContentView.swift"))
+        let menu = try XCTUnwrap(lines.firstIndex { $0.contains("WatchMenuView(") }, "the shell builds the menu")
+        let call = lines[menu...].prefix(24).joined(separator: "\n")
+
+        XCTAssertTrue(call.contains("onClose:"), "the menu is handed its close")
+        XCTAssertTrue(call.contains("onFinish:"), "and its finish")
+        let discard = try XCTUnwrap(call.range(of: "onDiscard:"), "and its discard (plan 171)")
+        let closure = String(call[discard.lowerBound...])
+        XCTAssertTrue(closure.contains("isPresented.wrappedValue = false"), "which closes the sheet")
+        XCTAssertTrue(closure.contains("host.noteSurfaceChange()"), "and tells the host the surface changed")
     }
 }

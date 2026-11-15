@@ -680,6 +680,10 @@ private extension View {
                 onFinish: {
                     isPresented.wrappedValue = false
                     host.noteSurfaceChange()
+                },
+                onDiscard: {
+                    isPresented.wrappedValue = false
+                    host.noteSurfaceChange()
                 }
             )
         }

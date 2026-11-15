@@ -506,3 +506,31 @@ frame (plan 87b, open question d;
     (S-12592–S-12598), by `test/watch_snapshot_focus_wrist_test.dart`
     (S-12592–S-12597) and by `test/watch_snapshot_focus_send_test.dart`
     (S-12599, S-12598 importer half).
+
+44. **Discard a session from the wrist — (owner, plan 171).** (a) Start a Free
+    workout on the wrist, log one set, tap the list button: **Discard Session**
+    is the last row, below **End Session**. (b) Tap it: the prompt says
+    "Discard session?" with **Cancel** and a red **Discard**; Cancel changes
+    nothing and feels nothing. (c) Tap Discard Session and then Discard: the
+    menu closes to the Start surface, nothing for this session appears in
+    Fitness, and the phone's open session row is gone with its sets. (d) The
+    same while a timed effort's clock runs: the row is not dimmed and the
+    discard goes through. (e) The same during a rest: the rest screen and its
+    ping stop, and the phone's discarded session carries the rest that ran.
+    (f) Discard a session with nothing logged, then start one and tap **End
+    Session**: the End asks the discard question instead of "Finish Workout?"
+    and saves nothing. Held off-device by `WatchMenuDiscardTests`
+    (`testS17102DiscardAbandonsAtTheWristsInstantAndTellsThePhone`,
+    `…testS17101TheDiscardRowIsTheMenusLastRow`,
+    `…testS17103DiscardIsReachableMidSet`,
+    `…testS17104DiscardDuringARestStopsTheRest`,
+    `…testS17105ADiscardOwesNoRatingPrompt`,
+    `…testS17107TheFirstEndingIsFinalForDiscard`,
+    `…testS17108TheDiscardedRecordEndsThePlatformWorkoutUnsaved`,
+    `…testS17109AnEmptyEndBehavesAsADiscard`,
+    `…testS17110DiscardKeepsTheLoggedEntriesAndShowsNoSummary`,
+    `…testS17111DiscardLeavesWaterAndFoodUntouched`,
+    `…testS17102TheViewDiscardsOnlyFromTheAlertsDiscardButton`,
+    `…testS17109TheEmptyEndRaisesTheDiscardAlert` and
+    `…testTheShellPassesTheDiscardClosure`) and
+    `WatchAccessibilitySourceTests.testS17112TheDiscardRowAndItsConfirmationSpeak`.

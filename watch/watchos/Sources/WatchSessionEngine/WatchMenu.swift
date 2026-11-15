@@ -2,16 +2,17 @@
 //  WatchMenu.swift
 //  WatchSessionEngine
 //
-//  The session menu's model: the ladder as rows, the jump, and Finish. `rows` is
-//  a pure function over the session and the engine's corrected projection, read
-//  on every access rather than cached, so a frame that lands while the menu is
-//  open is already in the list the user sees.
+//  The session menu's model: the ladder as rows, the jump, Finish and Discard.
+//  `rows` is a pure function over the session and the engine's corrected
+//  projection, read on every access rather than cached, so a frame that lands
+//  while the menu is open is already in the list the user sees.
 //
 //  The menu writes no session structure of its own: a jump is the engine's
 //  `selectExercise(slotId:)` through the start paths, Finish is the rating
-//  state's `end()`, and Add Exercise is the start paths' `addExerciseToEnd`,
-//  which appends at the end of the ladder and nowhere else. It mints no ids of
-//  its own and appends no observation.
+//  state's `end()`, Discard is the engine's own `abandonSession()`, and Add
+//  Exercise is the start paths' `addExerciseToEnd`, which appends at the end of
+//  the ladder and nowhere else. It mints no ids of its own and appends no
+//  observation.
 //
 
 import Foundation
@@ -233,6 +234,15 @@ public enum WatchMenuCopy {
     public static let confirmBody = "This action will save and close the workout session."
     public static let confirmCancel = "Cancel"
     public static let confirmFinish = "Finish"
+
+    /// The menu's third action row: it throws the session away, so both the row
+    /// and its confirmation say so (plan 171 D-17104). The body names what is
+    /// lost and where the user lands, because a discard cannot be undone.
+    public static let discardLabel = "Discard Session"
+    public static let discardConfirmTitle = "Discard session?"
+    public static let discardConfirmBody = "This will permanently delete this session and all its data. You will return to the start screen."
+    public static let discardConfirmCancel = "Cancel"
+    public static let discardConfirmDiscard = "Discard"
 }
 
 /// The id a slot answers to: its own `sessionExerciseId`, or the exercise's when
@@ -346,8 +356,42 @@ public final class WatchMenuState {
 
     /// Finishes the session through the rating state's `end()`, so the owed
     /// rating prompt and `finishSession()` stay one implementation.
+    ///
+    /// A session with nothing logged is a discard instead (D-17105): there is
+    /// nothing to save and nothing to rate, which is also what the phone's own
+    /// empty finish does. The menu asks the discard's question for it.
     public func finish() async {
+        guard hasLoggedEfforts else {
+            await discard()
+            return
+        }
         await rating.end()
+    }
+
+    /// Whether the session holds an effort the user logged — what End reads to
+    /// tell a workout worth saving from an empty one (D-17105).
+    ///
+    /// Efforts only: a rest, a water tap and a food entry are not the workout,
+    /// so an End on a session holding nothing but those is still an empty one.
+    /// Read on every access, like `rows`.
+    public var hasLoggedEfforts: Bool {
+        engine.entries.contains { WatchObservationKind.efforts.contains($0.kind) }
+    }
+
+    /// Throws the session away, through the engine's own abandonment: the
+    /// session ends `abandoned`, its timers stop and the phone hears the
+    /// terminal lifecycle frame it already knows how to apply (D-17102).
+    ///
+    /// Deliberately not behind `isLocked` and deliberately not through the
+    /// rating state: a session the user cannot finish is exactly the one they
+    /// need a way out of (D-17103), and a discarded workout owes no rating
+    /// (D-17105). No session, or one that has already ended, changes nothing —
+    /// the engine's terminal guard hands back the held row, so the return value
+    /// is the record that stands.
+    @discardableResult
+    public func discard() async -> WatchSessionRecord? {
+        guard engine.session != nil else { return nil }
+        return await engine.abandonSession()
     }
 
     // MARK: - Add Exercise

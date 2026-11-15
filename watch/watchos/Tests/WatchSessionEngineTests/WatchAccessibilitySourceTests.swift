@@ -234,6 +234,38 @@ final class WatchAccessibilitySourceTests: XCTestCase {
         )
     }
 
+    // MARK: - S-17112: the Discard row and its confirmation speak
+
+    /// Plan 171 D-17104: the row's label is the owner's own text and the
+    /// confirmation's two buttons are read from their words and their roles —
+    /// no invented `.accessibilityLabel`, and the row's element is the one
+    /// S-15304 already pins.
+    func testS17112TheDiscardRowAndItsConfirmationSpeak() throws {
+        let source = try engineSource("WatchMenuView.swift")
+        let row = try XCTUnwrap(
+            propertyBody(named: "discardRow", in: source),
+            "S-17112 the menu view has a discardRow property"
+        )
+
+        XCTAssertTrue(
+            row.contains("Button(WatchMenuCopy.discardLabel)"),
+            "S-17112 the row is read as its own label"
+        )
+        XCTAssertTrue(
+            row.contains("Button(WatchMenuCopy.discardConfirmCancel, role: .cancel) {}"),
+            "S-17112 Cancel reads the owner's word and cancels"
+        )
+        XCTAssertTrue(
+            row.contains("Button(WatchMenuCopy.discardConfirmDiscard, role: .destructive) {"),
+            "S-17112 Discard reads its word and is announced as destructive"
+        )
+        XCTAssertTrue(
+            row.contains("Text(WatchMenuCopy.discardConfirmBody)"),
+            "S-17112 the alert's message is read as its own text"
+        )
+        XCTAssertFalse(row.contains(".accessibilityLabel"), "S-17112 the row invents no label of its own")
+    }
+
     // MARK: - The ratchet: the accessibility coverage cannot shrink
 
     /// Plan 84's partial ratchet: at least six engine files carry a real,

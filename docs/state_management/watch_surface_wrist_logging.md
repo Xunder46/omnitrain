@@ -12,7 +12,7 @@ their logged counts to jump to, then Add Exercise (an A to Z list of the phone's
 whole exercise list; a pick is appended to the end of the ladder, the session
 does not move, the ladder change reaches the phone like any wrist-added
 exercise), then End Session, which asks "Finish Workout?" first (Cancel /
-Finish, the phone's own words;
+Finish, the phone's own words), and last Discard Session (plan 171);
 `WatchMenuTests.testS3401TheMenuCopyIsTheOwnersWords`,
 `…testS3611TheAddListSortsCaseInsensitivelyByName`,
 `…testS3612AddExerciseAppendsAtTheEndAndKeepsThePosition`,
@@ -26,6 +26,31 @@ down from the phone's number, or the wrist's preset with none
 `…testS1402ASlotWithNoNumberKeepsTheWristsPreset`), and the jump alone refused
 while an effort runs (`WatchMenuTests.testS1307TheMenuDoesNotJumpWhileAWorkClockRuns`,
 `…testS3615AddExerciseWorksWhileAWorkClockRuns`).
+
+**Discard Session throws the workout away.** The menu's last row, below End
+Session and never disabled — the session running a work clock, or one the user
+cannot finish, is exactly the one that needs a way out — asks "Discard session?"
+first (Cancel / Discard, the Discard one destructive) and then ends the session
+through the engine's own `abandonSession()`, at the wrist's instant: `abandoned`,
+its rest stopped with the rest-ended observation emitted, no rating prompt owed,
+the logged entries kept, and the phone told the terminal lifecycle frame it
+already applies. The first ending is final: a discard after a finish, or after
+another discard, appends nothing. An End on a session holding no effort — a rest,
+a water tap and a food entry are not efforts — is a discard and asks that
+question instead, so nothing empty is saved to Health. Verified by
+`WatchMenuDiscardTests.testS17102DiscardAbandonsAtTheWristsInstantAndTellsThePhone`,
+`…testS17101TheDiscardRowIsTheMenusLastRow`, `…testS17103DiscardIsReachableMidSet`,
+`…testS17104DiscardDuringARestStopsTheRest`,
+`…testS17105ADiscardOwesNoRatingPrompt`,
+`…testS17107TheFirstEndingIsFinalForDiscard`,
+`…testS17108TheDiscardedRecordEndsThePlatformWorkoutUnsaved`,
+`…testS17109AnEmptyEndBehavesAsADiscard`,
+`…testS17110DiscardKeepsTheLoggedEntriesAndShowsNoSummary`,
+`…testS17111DiscardLeavesWaterAndFoodUntouched`,
+`…testS17102TheViewDiscardsOnlyFromTheAlertsDiscardButton`,
+`…testS17109TheEmptyEndRaisesTheDiscardAlert`,
+`…testTheShellPassesTheDiscardClosure` and
+`WatchAccessibilitySourceTests.testS17112TheDiscardRowAndItsConfirmationSpeak`.
 
 **One Crown turns the armed row.** The logging surface holds one Digital Crown
 binding for the whole view, not one per row: `WatchLoggingModel.armedMetricKey`
@@ -286,7 +311,10 @@ its kind: a round end keeps `.notification`, a hold end plays `.stop`, a
 timed-target end plays `.retry` (`WatchTimerHaptics.cue(for:)` maps the kind
 to a `WatchHapticCue`, `WristHaptics.play` switches on it), and confirming
 Finish in the menu plays one `.success` tap before `finish()`, Cancel none
-(`WatchTimerCueTests.swift` S-15105, S-15106, S-15107). The Wear OS twin keeps
+(`WatchTimerCueTests.swift` S-15105, S-15106, S-15107). A discard plays nothing,
+neither the row nor the confirmation
+(`WatchMenuDiscardTests.testS17102TheViewDiscardsOnlyFromTheAlertsDiscardButton`).
+The Wear OS twin keeps
 one tap.
 
 **A record logged on the wrist is announced with a banner and its own tap.**

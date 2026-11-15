@@ -1,7 +1,7 @@
 # Feature: Discard Workout on the watch (plan 171)
 
-> Status: Iteration 1 active
-> Next handoff: @developer (Phase 1)
+> Status: Implemented (Phases 1–3 complete; awaiting @code-reviewer)
+> Next handoff: @code-reviewer
 > Binding conventions: `docs/global_conventions.md` (+ `docs/design_system.md`, `docs/documentation_standard.md`, `docs/state_management/watch_surface_wrist_logging.md` for the surface this edits)
 
 ## Overview
@@ -435,9 +435,9 @@ test.
 
 ## Progress
 
-- [ ] Phase 1 (@developer): model, copy and behaviour tests
-- [ ] Phase 2 (@developer): view, shell wiring and source-scan guards
-- [ ] Phase 3 (@developer): docs and the QA step
+- [x] Phase 1 (@developer): model, copy and behaviour tests — `WatchMenuCopy`'s five constants, `hasLoggedEfforts`, `discard()`, `finish()`'s empty router; `WatchMenuDiscardTests` 13 tests; full `swift test` 1470 passed, 0 failed (baseline 1456).
+- [x] Phase 2 (@developer): view, shell wiring and source-scan guards — `discardRow` below `finishRow` with its own alert, empty End raises it, `ContentView.menuSheet` passes `onDiscard`; +64 lines `WatchMenuView.swift`, +4 `ContentView.swift`.
+- [x] Phase 3 (@developer): docs and the QA step — Discard paragraph and haptics sentence in `watch_surface_wrist_logging.md`, QA step 44 in `watch-app-qa-wrist-logging.md`; `test/docs_indexing_contract_test.dart` 13 passed; full `test` 7648 passed / 5 failed (4 release-artifact gate tests with no AAB/IPA on this host, 1 concurrent plan-174 Dart test); `lint` 181 issues, unchanged (no Dart file touched).
 
 ## Assumption Log
 
@@ -457,6 +457,22 @@ test.
   because the row's whole point is that a destructive end never happens without
   a confirmation, and "no extra dialog" reads as no *additional* dialog.
   Owner-vetoable (D-17105).
+- **A-171-4 (developer): the harness collects frames.** `WatchMenuHarness` gained
+  `emittedFrames`/`emitted(_:)` and passes `onEmit` to the engine, so S-17102,
+  S-17104 and S-17109 assert the real frames instead of a second harness.
+- **A-171-5 (developer): the discard's alert lives on `discardRow`.** Keeps the
+  one `state.discard()` inside the alert's destructive action, which is what the
+  S-17102 view scan pins; `onDiscard()` is called there, beside the `Task`.
+- **A-171-6 (developer): `hasLoggedEfforts` is public.** The view reads it to
+  route an empty End; efforts-only is the rule the water/food case in S-17109
+  pins.
+- **A-171-7 (developer): `discard()` guards presence, not `status == active`.**
+  A fresh session's status is `started`, so the active guard refused the empty
+  End S-17109 requires; the engine's D-14602 guard still makes a second ending a
+  no-op.
+- **A-171-8 (developer): S-17103's clock claim is comparative.** No ending stops
+  a running work clock (End does not either), so the test compares a discard's
+  round-timer row with End's on the same fixture rather than asserting `stopped`.
 
 ## Feedback
 

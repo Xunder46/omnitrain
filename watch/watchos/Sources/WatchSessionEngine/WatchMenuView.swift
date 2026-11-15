@@ -3,15 +3,17 @@
 //  WatchSessionEngine
 //
 //  The native watchOS session menu: the session's own exercises to jump to, an
-//  Add Exercise row that opens the wrist's own list, then End Session. Food is
-//  logged from the start screen only, not while a session is running. Compiled
-//  only into a watch target, like the other views in this module; the model it
-//  reads is `WatchMenuState` (`WatchMenu.swift`), which the suite covers.
+//  Add Exercise row that opens the wrist's own list, then End Session, then
+//  Discard Session. Food is logged from the start screen only, not while a
+//  session is running. Compiled only into a watch target, like the other views
+//  in this module; the model it reads is `WatchMenuState` (`WatchMenu.swift`),
+//  which the suite covers.
 //
 //  The menu shows the session as it is and adds only through the end of the
 //  ladder: a row is the engine's existing select path, Add Exercise appends the
-//  picked exercise last, and End Session asks first, then is the rating state's
-//  `end()`. It carries no rest control, deletes nothing and mints no ids.
+//  picked exercise last, End Session asks first, then is the rating state's
+//  `end()`, and Discard Session asks first, then throws the session away. It
+//  carries no rest control, deletes nothing and mints no ids.
 //
 
 #if os(watchOS)
@@ -29,6 +31,11 @@ public struct WatchMenuView: View {
 
     private let onClose: () -> Void
     private let onFinish: () -> Void
+
+    /// The shell's own dismissal for a session the user threw away, handed over
+    /// as Close's and Finish's are: the discard ends the session, and the sheet
+    /// closes on the status change it already observes (plan 171 D-17102).
+    private let onDiscard: () -> Void
 
     /// The wrist's "N entries waiting for your phone" line, or nil (plan 51d).
     private let syncNotice: String?
@@ -54,6 +61,11 @@ public struct WatchMenuView: View {
     /// (D-3402).
     @State private var confirmingFinish = false
 
+    /// Set by the Discard row and by an End on an empty session, and read by the
+    /// same confirmation: a discard is the one ending that cannot be undone, so
+    /// it asks first (D-17104).
+    @State private var confirmingDiscard = false
+
     /// How many exercises this menu has added. The rows come from a plain class
     /// that publishes nothing, and the ladder changes with no `revision` of its
     /// own, so the body re-runs only because this value changed (D-3608).
@@ -65,7 +77,8 @@ public struct WatchMenuView: View {
         syncNotice: String? = nil,
         haptics: WatchHaptics = WristHaptics(),
         onClose: @escaping () -> Void,
-        onFinish: @escaping () -> Void
+        onFinish: @escaping () -> Void,
+        onDiscard: @escaping () -> Void
     ) {
         self.state = state
         self.revision = revision
@@ -73,6 +86,7 @@ public struct WatchMenuView: View {
         self.haptics = haptics
         self.onClose = onClose
         self.onFinish = onFinish
+        self.onDiscard = onDiscard
     }
 
     public var body: some View {
@@ -104,6 +118,8 @@ public struct WatchMenuView: View {
                         .padding(.top, 10)
 
                     finishRow
+
+                    discardRow
                 }
                 .padding(Self.surfaceInset)
             }
@@ -178,9 +194,17 @@ public struct WatchMenuView: View {
     /// and the finish stay one implementation, and then hands the surface back.
     /// Tapping it only raises the confirmation: Cancel changes nothing, and the
     /// rating state's `end()` runs on the alert's Finish alone (D-3402).
+    ///
+    /// A session with nothing logged raises the discard's question instead
+    /// (D-17105): an empty End is a discard, so the user confirms the ending
+    /// they are actually about to make.
     private var finishRow: some View {
         Button(Self.finishLabel) {
-            confirmingFinish = true
+            if state.hasLoggedEfforts {
+                confirmingFinish = true
+            } else {
+                confirmingDiscard = true
+            }
         }
         .buttonStyle(.bordered)
         .alert(WatchMenuCopy.confirmTitle, isPresented: $confirmingFinish) {
@@ -194,6 +218,30 @@ public struct WatchMenuView: View {
             }
         } message: {
             Text(WatchMenuCopy.confirmBody)
+        }
+    }
+
+    /// Discard Session throws the session away: the confirmation's words are
+    /// the phone's own, the destructive button runs the model's discard, and
+    /// nothing plays — a discard is not a completion (D-17104).
+    ///
+    /// Never disabled, unlike the rows: a session the user cannot finish is
+    /// exactly the one they need a way out of (D-17103).
+    private var discardRow: some View {
+        Button(WatchMenuCopy.discardLabel) {
+            confirmingDiscard = true
+        }
+        .buttonStyle(.bordered)
+        .alert(WatchMenuCopy.discardConfirmTitle, isPresented: $confirmingDiscard) {
+            Button(WatchMenuCopy.discardConfirmCancel, role: .cancel) {}
+            Button(WatchMenuCopy.discardConfirmDiscard, role: .destructive) {
+                Task {
+                    await state.discard()
+                    onDiscard()
+                }
+            }
+        } message: {
+            Text(WatchMenuCopy.discardConfirmBody)
         }
     }
 }
