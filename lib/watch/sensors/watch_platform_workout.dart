@@ -11,10 +11,11 @@
 /// its workout: a workout left "in progress" by a kill is a lie the health store
 /// keeps telling until something closes it.
 ///
-/// The activity type comes from the modality, and the modality → type table is
-/// shared with the watchOS client (`watch/contract/watch_sensor_contract.json`),
-/// so both wrists register the same thing. Whatever the table says, an unmapped
-/// modality is a generic workout rather than no workout at all.
+/// The type comes from the exercises' named Health kind first, then the
+/// modality, and the modality → type table is shared with the watchOS client
+/// (`watch/contract/watch_sensor_contract.json`), so both wrists register the
+/// same thing. Whatever the table says, an unmapped modality is a generic
+/// workout rather than no workout at all.
 library;
 
 import '../../core/constants/capability.dart';
@@ -107,6 +108,152 @@ abstract final class WatchActivityTypes {
     if (value is! String || value.isEmpty) return null;
     return byModality.containsKey(value) ? value : null;
   }
+
+  /// The type one exercise registers as, from what it can measure (D-16803).
+  static WatchActivityType forExercise({
+    required List<String> capabilities,
+    String? healthActivity,
+  }) =>
+      _forExercise(capabilities: capabilities, healthActivity: healthActivity);
+
+  /// The majority type of [exercises]; a tie goes to the earliest. Null for an
+  /// empty list: the type is not known yet.
+  static WatchActivityType? forExercises(List<Map<String, Object?>> exercises) =>
+      _forExercises(exercises);
+
+  /// What [session] registers as (D-16803, superseding plan 75 D-2's precedence
+  /// half): the majority Health kind its exercises name, when any names one;
+  /// otherwise its modality's own type (unchanged); otherwise, for a Free
+  /// workout, the majority of its exercises. Null while none is known, so the
+  /// caller registers the generic type.
+  ///
+  /// The wrist fixes the type once the workout opens — HealthKit cannot retype
+  /// an `HKWorkoutSession` — so an exercise added later never retypes it
+  /// (S-8808).
+  static WatchActivityType? forSession(WatchSessionRecord session) {
+    final named = _forNamedHealthKinds(session.exercises);
+    if (named != null) return named;
+    final modality = session.modality;
+    if (modality != null) return forModality(modality);
+    return _forExercises(session.exercises);
+  }
+}
+
+/// The activity type the Health kind the phone named for an exercise registers
+/// as, when the table maps it to one of its own (D-16803); anything else —
+/// null, "running", a kind this table does not carry — stays running.
+/// Mirrors the Swift client's `WatchActivityTypes.distanceType`.
+WatchActivityType _distanceType(String? activity) {
+  switch (activity) {
+    case 'cycling':
+      return _cycling;
+    case 'rowing':
+      return _rowing;
+    case 'walking':
+      return _walking;
+    case 'hiking':
+      return _hiking;
+    default:
+      return _running;
+  }
+}
+
+const WatchActivityType _running = WatchActivityType(
+  watchOs: 'running',
+  wear: 'exercise_type_running',
+);
+const WatchActivityType _cycling = WatchActivityType(
+  watchOs: 'cycling',
+  wear: 'exercise_type_biking',
+);
+const WatchActivityType _rowing = WatchActivityType(
+  watchOs: 'rowing',
+  wear: 'exercise_type_rowing',
+);
+const WatchActivityType _walking = WatchActivityType(
+  watchOs: 'walking',
+  wear: 'exercise_type_walking',
+);
+const WatchActivityType _hiking = WatchActivityType(
+  watchOs: 'hiking',
+  wear: 'exercise_type_hiking',
+);
+const WatchActivityType _strength = WatchActivityType(
+  watchOs: 'traditionalStrengthTraining',
+  wear: 'exercise_type_strength_training',
+);
+const WatchActivityType _flexibility = WatchActivityType(
+  watchOs: 'flexibility',
+  wear: 'exercise_type_flexibility',
+);
+
+/// The Health kinds the phone may name for an exercise and the table maps to a
+/// type of their own (D-16803).
+const Set<String> _namedHealthKinds = {
+  'cycling',
+  'rowing',
+  'walking',
+  'hiking',
+  'running',
+};
+
+/// The type one exercise registers as, from what it can measure: a hold is
+/// tested first (a plank has `hold` and `sets`), then distance — refined by the
+/// Health kind the phone named, when it named one — then reps/sets/load;
+/// anything else is the generic type.
+WatchActivityType _forExercise({
+  required List<String> capabilities,
+  String? healthActivity,
+}) {
+  if (capabilities.contains('hold')) return _flexibility;
+  if (capabilities.contains(WatchGpsPolicy.distanceCapability)) {
+    return _distanceType(healthActivity);
+  }
+  if (capabilities.any(const {'reps', 'sets', 'load'}.contains)) {
+    return _strength;
+  }
+  return WatchActivityTypes.generic;
+}
+
+/// The majority type of [exercises]; a tie goes to the type of the earliest
+/// exercise that reaches the highest count. Null for an empty list: the type is
+/// not known yet.
+WatchActivityType? _forExercises(List<Map<String, Object?>> exercises) {
+  if (exercises.isEmpty) return null;
+  final types = [
+    for (final exercise in exercises)
+      _forExercise(
+        capabilities:
+            (exercise['capabilities'] as List?)?.cast<String>() ?? const [],
+        healthActivity: exercise['healthActivity'] as String?,
+      ),
+  ];
+  return _majority(types);
+}
+
+/// The majority of [types]; a tie goes to the earliest one.
+WatchActivityType? _majority(List<WatchActivityType> types) {
+  if (types.isEmpty) return null;
+  final counts = <String, int>{};
+  for (final type in types) {
+    counts[type.watchOs] = (counts[type.watchOs] ?? 0) + 1;
+  }
+  final best = counts.values.reduce((a, b) => a > b ? a : b);
+  return types.firstWhere((type) => counts[type.watchOs] == best);
+}
+
+/// The majority Health kind [exercises] name; a tie goes to the earliest named
+/// one. Null when no exercise names one — an exercise that names nothing must
+/// not vote, or a Cardio routine's unnamed lift would tie every named walk
+/// (D-16803).
+WatchActivityType? _forNamedHealthKinds(List<Map<String, Object?>> exercises) {
+  final named = [
+    for (final exercise in exercises)
+      if (exercise['healthActivity'] case final String kind
+          when _namedHealthKinds.contains(kind))
+        _distanceType(kind),
+  ];
+  return _majority(named);
 }
 
 /// Whether a session's modality calls for GPS.
@@ -175,7 +322,8 @@ class WatchPlatformWorkout {
   Future<WatchActivityType> start(WatchSessionRecord session) async {
     if (_running != null) await end();
 
-    final activityType = WatchActivityTypes.forModality(session.modality);
+    final activityType =
+        WatchActivityTypes.forSession(session) ?? WatchActivityTypes.generic;
     await _store.begin(activityType.watchOs);
     _running = activityType;
     return activityType;

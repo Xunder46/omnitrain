@@ -182,10 +182,41 @@ public enum WatchActivityTypes {
         return types.first { counts[$0.watchOs] == best }
     }
 
-    /// What `session` registers as: its modality's own type when it has one
-    /// (unchanged), otherwise the majority of its exercises. nil while neither
-    /// is known.
+    /// The Health kinds the phone may name for an exercise and the table above
+    /// maps to a type of their own (D-16803).
+    private static let namedHealthKinds: Set<String> = [
+        "cycling", "rowing", "walking", "hiking", "running",
+    ]
+
+    /// The majority type of the Health kinds `exercises` name; a tie goes to the
+    /// earliest named one. nil when no exercise names one — an exercise that
+    /// names nothing must not vote, or a Cardio routine's unnamed lift would tie
+    /// every named walk (D-16803).
+    private static func forNamedHealthKinds(
+        _ exercises: [[String: Any]]
+    ) -> WatchActivityType? {
+        let named = exercises
+            .compactMap { $0["healthActivity"] as? String }
+            .filter { namedHealthKinds.contains($0) }
+        guard !named.isEmpty else { return nil }
+
+        let types = named.map { distanceType($0) }
+        var counts: [String: Int] = [:]
+        for type in types { counts[type.watchOs, default: 0] += 1 }
+        let best = counts.values.max() ?? 0
+        return types.first { counts[$0.watchOs] == best }
+    }
+
+    /// What `session` registers as (D-16803, superseding plan 75 D-2's
+    /// precedence half): the majority Health kind its exercises name, when any
+    /// names one; otherwise its modality's own type (unchanged); otherwise, for a
+    /// Free workout, the majority of its exercises. nil while none is known, so
+    /// the lifecycle waits.
+    ///
+    /// The type is fixed once the workout opens — HealthKit cannot retype an
+    /// `HKWorkoutSession` — so an exercise added later never retypes it (S-8808).
     public static func forSession(_ session: WatchSessionRecord) -> WatchActivityType? {
+        if let named = forNamedHealthKinds(session.exercises) { return named }
         if let modality = session.modality { return forModality(modality) }
         return forExercises(session.exercises)
     }
@@ -399,7 +430,10 @@ public final class WatchPlatformWorkout {
             ended.append(activityType)
         }
 
-        running = nil
+        // Only a recovery that closed something unregisters it: a store that
+        // reports nothing stranded must not clear a workout this process holds
+        // (D-16802, S-16802).
+        if !ended.isEmpty { running = nil }
         return ended
     }
 
@@ -552,6 +586,13 @@ public final class WatchWorkoutCoordinator {
     }
 
     private func recover(_ storedSession: () async -> WatchSessionRecord?) async {
+        // Once per open workout (D-16801, S-16801): the launch's recovery runs
+        // twice — the system's workout-recovery relaunch, then `restore()` — and
+        // a process that already holds a workout has nothing of a previous one
+        // left to recover. The second call must not undo the first one's
+        // adoption.
+        guard platform.running == nil else { return }
+
         let stored = await storedSession()
         let stillActive = stored?.status == WatchSessionStatus.active
         // Plan 140: a session that is still active continues the workout the

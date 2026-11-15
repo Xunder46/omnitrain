@@ -55,6 +55,14 @@ Map<String, Object?> _slot(String id, List<String> capabilities) => {
   'capabilities': capabilities,
 };
 
+/// One protocol slot carrying the Health kind the phone named for it — the
+/// shape `watch_session_adoption_bridge.dart` writes for a Brisk Walk.
+Map<String, Object?> _namedSlot(
+  String id,
+  List<String> capabilities,
+  String healthActivity,
+) => {..._slot(id, capabilities), 'healthActivity': healthActivity};
+
 /// The sensor hardware, with the permissions the user granted and two streams
 /// the test drives. Every subscription is counted, so "was the radio woken for
 /// work that has no distance" is an assertion rather than an assumption.
@@ -960,6 +968,72 @@ void main() {
       expect(state.liveDistanceLabel, '1.0');
       expect(state.paceLabel, '8:00 /mi');
       expect(UnitFormatter.metresPerUnit('miles'), closeTo(1609.34, 0.01));
+    });
+  });
+
+  group('S-16810 the mirror types a session like the wrist', () {
+    /// The platform type one fresh session of `modality` with `slot` registers
+    /// as, through the real platform workout and the fake health store. A fresh
+    /// engine per case: one wrist holds one live session, so a second
+    /// `createSession` would answer the first.
+    Future<String> begun(
+      String? modality,
+      Map<String, Object?> slot,
+    ) async {
+      final fresh = WatchSessionEngine(
+        InMemoryWatchSessionStore(),
+        clock: clock.call,
+      );
+      final session = await fresh.createSession(
+        modality: modality,
+        exercises: [slot],
+      );
+      return (await WatchPlatformWorkout(store: health).start(session)).watchOs;
+    }
+
+    /// The contract's own answer for a Health kind (`distanceActivityTypes`),
+    /// so this group cannot drift from the Swift client's table.
+    Object? contractWatchOs(String kind) =>
+        ((_contract()['distanceActivityTypes']! as Map)[kind] as Map)['watchos'];
+
+    Map<String, Object?> walkSlot() => _namedSlot(
+      'sx-walk',
+      [ExerciseCapability.time, ExerciseCapability.distance],
+      'walking',
+    );
+
+    Map<String, Object?> liftSlot() => _slot('sx-lift', [
+      ExerciseCapability.reps,
+      ExerciseCapability.sets,
+      ExerciseCapability.load,
+    ]);
+
+    Map<String, Object?> runSlot() => _slot('sx-run', [
+      ExerciseCapability.time,
+      ExerciseCapability.distance,
+    ]);
+
+    test('S-16810 a named walk beats the cardio modality', () async {
+      expect(
+        await begun(Modality.cardioEndurance, walkSlot()),
+        contractWatchOs('walking'),
+      );
+    });
+
+    test('S-16810 unnamed exercises keep the modality', () async {
+      expect(
+        await begun(Modality.cardioEndurance, liftSlot()),
+        contractWatchOs('running'),
+      );
+      expect(
+        await begun(Modality.sports, liftSlot()),
+        WatchActivityTypes.generic.watchOs,
+      );
+    });
+
+    test('S-16810 a free workout keeps its exercise answer', () async {
+      expect(await begun(null, walkSlot()), contractWatchOs('walking'));
+      expect(await begun(null, runSlot()), contractWatchOs('running'));
     });
   });
 }

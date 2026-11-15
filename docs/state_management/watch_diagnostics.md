@@ -34,20 +34,28 @@ one chatty type, so a long workout cannot push the interesting events out of the
 `frame_handler_failed` from the bridge (and `frame_not_sent` from the engine when the validator refuses a frame the
 engine itself built); `frame_send_refused` when the radio refuses a live send after the call
 returned, durable frames then queued; `frame_rejected` when the engine must refuse an incoming frame this build
-cannot read; `workout_begin`, `workout_end` (`saving`/`discarded`), `workout_adopted` and `workout_recovered`
-from the platform workout. Verified by `WatchDiagnosticsHooksTests`
+cannot read; `workout_begin`, `workout_end` (`saving`/`discarded`), `workout_adopted` and
+`workout_recovered` from the platform workout; `workout_end` with the detail `discarded_held <name>`
+when a second begin ends the session the store still held, and `workout_saved <name>` /
+`workout_save_failed <name>` around its `finishWorkout()`, from the app target's
+`HealthKitWorkoutStore` — so a walk that never reached Health says so, and a begin that discards a
+held session names the type it dropped. Verified by `WatchDiagnosticsHooksTests`
 (`testS14206SendOutcomesAreRecordedFrameSent`,
 `testS14208ADeliveredFrameIsRecordedAndItsHandlerFailureToo`,
 `testS14209ARefusedIncomingFrameIsRecordedFrameRejectedOnce`, `testS14209ARefusedOwnFrameIsRecordedFrameNotSent`,
 `testS14210ThePlatformWorkoutRecordsItsLife`), by `WatchDiagnosticsSourceTests`
 (`testS14213TheAppNotesTheRecoveryRelaunch`, `testS14213TheHostNotesReachabilityLinkProblemAndScene`,
-`testS14213TheRadioNotesTheLateRefusal`) and by `WatchDiagnosticsLogTests`
+`testS14213TheRadioNotesTheLateRefusal`), by
+`WatchWorkoutStoreSourceTests.testS16809TheStoreNotesTheSaveOutcomeAndTheHeldDiscard` (plan 168
+D-16804) and by `WatchDiagnosticsLogTests`
 (`testS14205NoteLaunchNamesThePreviousRunAndNoneWhenEmpty`).
 
 **Wiring.** The log is built once in `WatchAppHost.init` (`ios/OmniTrain Watch App/ContentView.swift`) and handed
-to `OmniTrainWatchConnectivity`, `WatchConnectivityBridge`, `WatchSessionEngine` and `WatchPlatformWorkout` as a
+to `OmniTrainWatchConnectivity`, `WatchConnectivityBridge`, `WatchSessionEngine`, `WatchPlatformWorkout` and
+`HealthKitWorkoutStore` as a
 trailing optional `diagnostics:` parameter; `nil` records nothing and changes nothing. Verified by
-`WatchDiagnosticsSourceTests.testS14213TheHostBuildsTheLogOnceAndHandsItOn` and
+`WatchDiagnosticsSourceTests.testS14213TheHostBuildsTheLogOnceAndHandsItOn`,
+`WatchWorkoutStoreSourceTests.testS16809TheStoreNotesTheSaveOutcomeAndTheHeldDiscard` and
 `WatchDiagnosticsHooksTests.testS14211TheHooksChangeNothingAboutWhatHappens`.
 
 **The screen.** The Start screen's last button, "Diagnostics" (`WatchStartView`'s `onOpenDiagnostics`), opens

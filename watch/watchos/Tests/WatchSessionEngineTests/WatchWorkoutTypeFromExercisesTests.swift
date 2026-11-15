@@ -18,6 +18,14 @@
 //    S-8810 the lifecycle waits for a known type   → `testS8810...`
 //    S-8811 empty is unknown; no capabilities is generic → `testS8811...`
 //
+//  Plan 168 (D-16803): the exercises' agreed Health kind beats the modality.
+//
+//    S-16804 a named walk beats the Cardio modality       → `testS16804...`
+//    S-16805 named kinds: majority, ties earliest         → `testS16805...`
+//    S-16806 unnamed exercises keep the modality          → `testS16806...`
+//    S-16807 a Free workout keeps its exercise answer     → `testS16807...`
+//    S-16808 a later named kind never retypes the open one → `testS16808...`
+//
 //  Nothing here touches the platform's health service: the stores are the seam
 //  the workout is asserted through, so the file runs on macOS beside
 //  `swift test`.
@@ -31,14 +39,21 @@ final class WatchWorkoutTypeFromExercisesTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    /// One protocol slot carrying `capabilities`.
-    private func slot(_ id: String, _ capabilities: [String]) -> [String: Any] {
-        [
+    /// One protocol slot carrying `capabilities`, and the Health kind the phone
+    /// named for it when the fixture needs one.
+    private func slot(
+        _ id: String,
+        _ capabilities: [String],
+        healthActivity: String? = nil
+    ) -> [String: Any] {
+        var slot: [String: Any] = [
             "sessionExerciseId": id,
             "exerciseId": "ex-\(id)",
             "name": id,
             "capabilities": capabilities,
         ]
+        if let healthActivity { slot["healthActivity"] = healthActivity }
+        return slot
     }
 
     private func lift(_ id: String = "sx-lift") -> [String: Any] {
@@ -47,6 +62,17 @@ final class WatchWorkoutTypeFromExercisesTests: XCTestCase {
 
     private func run(_ id: String = "sx-run") -> [String: Any] {
         slot(id, ["time", "distance"])
+    }
+
+    /// A distance slot whose exercise the phone named `walking` — the Brisk
+    /// Walk fixture (seed `exercise-brisk-walk`, discipline walking).
+    private func walk(_ id: String = "sx-walk") -> [String: Any] {
+        slot(id, ["time", "distance"], healthActivity: "walking")
+    }
+
+    /// A distance slot whose exercise the phone named `running`.
+    private func namedRun(_ id: String = "sx-named-run") -> [String: Any] {
+        slot(id, ["time", "distance"], healthActivity: "running")
     }
 
     private func hold(_ id: String = "sx-hold") -> [String: Any] {
@@ -365,6 +391,164 @@ final class WatchWorkoutTypeFromExercisesTests: XCTestCase {
             WatchActivityTypes.forExercises([["sessionExerciseId": "sx-1", "name": "sx-1"]]),
             WatchActivityTypes.generic,
             "a slot with no `capabilities` key counts as the generic type"
+        )
+    }
+
+    // MARK: - S-16804 a named walking kind beats the Cardio modality
+
+    func testS16804AWalkNamedByTheExerciseBeatsTheCardioModality() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        let session = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [walk()]
+        )
+
+        XCTAssertEqual(
+            WatchActivityTypes.forSession(session)?.watchOs,
+            "walking",
+            "S-16804 the exercise's named kind beats the modality (D-16803)"
+        )
+
+        let store = ScriptedPlatformStore()
+        let (coordinator, _) = makeCoordinator(store)
+        await coordinator.refresh(session)
+
+        XCTAssertEqual(store.begun, ["walking"], "S-16804 and Health is opened as Outdoor Walk")
+    }
+
+    // MARK: - S-16805 named kinds disagree: majority, ties earliest
+
+    func testS16805TheNamedKindsMajorityAndItsTie() async throws {
+        // A majority of the named kinds.
+        do {
+            let harness = Harness()
+            let engine = await harness.runningEngine()
+            let session = await engine.createSession(
+                modality: "cardio_endurance",
+                exercises: [walk(), namedRun(), namedRun()]
+            )
+
+            XCTAssertEqual(
+                WatchActivityTypes.forSession(session)?.watchOs,
+                "running",
+                "S-16805 two named runs outnumber one named walk"
+            )
+        }
+
+        // A tie between named kinds.
+        do {
+            let harness = Harness()
+            let engine = await harness.runningEngine()
+            let session = await engine.createSession(
+                modality: "cardio_endurance",
+                exercises: [walk(), namedRun()]
+            )
+
+            XCTAssertEqual(
+                WatchActivityTypes.forSession(session)?.watchOs,
+                "walking",
+                "S-16805 a tie goes to the earliest named exercise"
+            )
+        }
+    }
+
+    // MARK: - S-16806 unnamed exercises keep the modality
+
+    func testS16806UnnamedExercisesKeepTheModality() async throws {
+        // A Cardio routine whose only slot names no Health kind.
+        do {
+            let harness = Harness()
+            let engine = await harness.runningEngine()
+            let session = await engine.createSession(
+                modality: "cardio_endurance",
+                exercises: [lift()]
+            )
+
+            XCTAssertEqual(
+                WatchActivityTypes.forSession(session)?.watchOs,
+                "running",
+                "S-16806 an unnamed slot leaves the modality's own type"
+            )
+        }
+
+        // The same slot under another modality.
+        do {
+            let harness = Harness()
+            let engine = await harness.runningEngine()
+            let session = await engine.createSession(
+                modality: "sports",
+                exercises: [lift()]
+            )
+
+            XCTAssertEqual(
+                WatchActivityTypes.forSession(session)?.watchOs,
+                "other",
+                "S-16806 sports still answers its generic type"
+            )
+        }
+    }
+
+    // MARK: - S-16807 a Free workout keeps its exercise answer
+
+    func testS16807AFreeWorkoutKeepsItsExerciseAnswer() async throws {
+        // A Free workout whose first exercise names walking.
+        do {
+            let harness = Harness()
+            let engine = await harness.runningEngine()
+            let session = await engine.createSession(
+                modality: nil,
+                exercises: [walk()]
+            )
+
+            XCTAssertEqual(
+                WatchActivityTypes.forSession(session)?.watchOs,
+                "walking",
+                "S-16807 with no modality the named exercise answers"
+            )
+        }
+
+        // A Free workout with a distance slot that names nothing: the
+        // capability default, unchanged.
+        do {
+            let harness = Harness()
+            let engine = await harness.runningEngine()
+            let session = await engine.createSession(
+                modality: nil,
+                exercises: [run()]
+            )
+
+            XCTAssertEqual(
+                WatchActivityTypes.forSession(session)?.watchOs,
+                "running",
+                "S-16807 a capability-only distance slot stays running"
+            )
+        }
+    }
+
+    // MARK: - S-16808 a later named kind never retypes the open workout
+
+    func testS16808ALaterNamedKindNeverRetypesTheOpenWorkout() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil)
+
+        let store = ScriptedPlatformStore()
+        let (coordinator, platform) = makeCoordinator(store)
+
+        await coordinator.refresh(try XCTUnwrap(engine.session))
+        _ = await engine.insertExercise(walk(), moveTo: true)
+        await coordinator.refresh(try XCTUnwrap(engine.session))
+        XCTAssertEqual(store.begun, ["walking"], "S-16808 the first known answer opens it as a walk")
+
+        _ = await engine.insertExercise(namedRun(), moveTo: true)
+        await coordinator.refresh(try XCTUnwrap(engine.session))
+
+        XCTAssertEqual(store.begun.count, 1, "S-16808 the open workout is not begun again")
+        XCTAssertEqual(
+            platform.running?.watchOs,
+            "walking",
+            "S-16808 HealthKit cannot retype an open session, so the type stays the first answer"
         )
     }
 }

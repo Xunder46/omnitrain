@@ -138,24 +138,38 @@ the session and never overrides or nulls one it already holds
 never override, never null`), while a session with no modality still takes the
 exercises' majority (`WatchWorkoutTypeFromExercisesTests.testS8804TheMajorityDecides`).
 
-The type itself: a session with a modality keeps the modality table's type; a
-session with none takes the majority of its exercises' capabilities — `hold`
-→ flexibility, else `distance` → the kind the phone named for that exercise
-(`healthActivity`: cycling, rowing, walking or hiking; running when it named
-none — see `WatchHealthActivityTests`), else any of `reps`/`sets`/`load` →
-traditionalStrengthTraining, else other — with a tie going to the earliest
-exercise that reaches the top count and an empty list meaning "not yet known"
-(`WatchWorkoutTypeFromExercisesTests.testS8801ALiftSessionRegistersAsStrengthTraining`,
+The type itself comes from `WatchActivityTypes.forSession`, resolved once when
+the workout opens: the exercises' agreed Health kind first — when at
+least one slot names a kind the table maps to a type of its own (`cycling`,
+`rowing`, `walking`, `hiking`, `running`), the majority of the named kinds
+decides and a tie goes to the earliest named one — then a session with a modality
+keeps the modality table's type, then a session with none takes the majority of
+its exercises' capabilities — `hold` → flexibility, else `distance` → the kind the
+phone named for that exercise (`healthActivity`: cycling, rowing, walking or
+hiking; running when it named none — see `WatchHealthActivityTests`), else any of
+`reps`/`sets`/`load` → traditionalStrengthTraining, else other — with a tie going
+to the earliest exercise that reaches the top count and an empty list meaning
+"not yet known" (`WatchWorkoutTypeFromExercisesTests.testS8801ALiftSessionRegistersAsStrengthTraining`,
 `…testS8802ARunSessionRegistersAsRunningAndOutdoors`,
 `…testS8803AHoldRegistersAsFlexibilityAndAPlankStaysOne`,
 `…testS8804TheMajorityDecides`, `…testS8805ATieGoesToTheEarliestExercise`,
 `…testS8806ATimedSlotIsGenericAndAMajorityIsNot`,
 `…testS8810TheLifecycleWaitsForAKnownType`,
-`…testS8811EmptyIsUnknownAndACapabilityLessSlotIsGeneric`).
-The store asks to share the workout type and active energy and to read heart
-rate, steps and active energy — one request — and collects active energy on
-the live data source, so the saved workout carries calories
-(`WatchSensorSourceSourceTests.testS8812TheStoreSharesAndReadsActiveEnergySoTheWorkoutSavesCalories`).
+`…testS8811EmptyIsUnknownAndACapabilityLessSlotIsGeneric`). A named kind beats the
+modality, so a "Brisk Walk" inside a Cardio routine records as Outdoor Walk, while
+a routine whose exercises name nothing keeps that modality's type (plan 168
+D-16803, which supersedes the precedence half of plan 75 D-2):
+`WatchWorkoutTypeFromExercisesTests.testS16804AWalkNamedByTheExerciseBeatsTheCardioModality`,
+`…testS16805TheNamedKindsMajorityAndItsTie`, `…testS16806UnnamedExercisesKeepTheModality`,
+`…testS16807AFreeWorkoutKeepsItsExerciseAnswer`, and the Dart mirror
+`test/watch_sensor_recording_test.dart`, group `S-16810 the mirror types a session like the wrist`.
+The store asks to share the workout type, active energy and walking/running
+distance and to read heart rate, steps, active energy and that distance — one
+request — and collects active energy and `.distanceWalkingRunning` on
+the live data source, so the saved workout carries calories and the distance of
+a walk or run
+(`WatchSensorSourceSourceTests.testS8812TheStoreSharesAndReadsActiveEnergySoTheWorkoutSavesCalories`,
+`WatchWorkoutStoreSourceTests.testS16809TheStoreCollectsAndSharesDistance`).
 The ask is made through `HealthKitWorkoutStore.requestAccess()`, which answers
 as `WatchHealthAccess` (`allowed` / `off` / `unavailable`) and joins the one
 memoised request, so no second sheet rises later
@@ -363,7 +377,15 @@ keeps its collected totals, the feed is pointed at it again, and nothing is
 saved or restarted, so one session stays one Fitness workout. A workout that is
 not live, or a store that cannot adopt, falls back to ending it: saved when the
 persisted session is still active (the reopened app then opens a new workout for
-the rest of it, OQ-1) and discarded otherwise. An adopted workout is held until
+the rest of it, OQ-1) and discarded otherwise. Recovery is **once per open
+workout**: the launch and the system's relaunch both run it, and the second call
+returns immediately while a workout is held, because there is nothing of the
+previous process left to recover and the first call's adoption must stand — a
+store that reports nothing stranded never unregisters a workout this process
+holds, so a second begin cannot discard the adopted builder (plan 168 D-16801,
+D-16802; `WatchRelaunchRecoveryTests.testS16801TheSecondRecoveryKeepsTheAdoptedWorkout`,
+`…testS16802RecoveryWithNothingStrandedLeavesAHeldWorkoutOpen`,
+`…testS16803ASecondRecoveryAfterAFallThroughAddsNoEnd`). An adopted workout is held until
 the launch's own `restore()` has read the session: the screen's refresh runs
 before that and sees no session yet, so it must not close what the launch just
 adopted (`WatchWorkoutAdoptBeforeRestoreTests.swift`
@@ -502,9 +524,12 @@ type table and the capability profile the GPS decision depends on live in
 a change on one platform fails the other's tests. The contract carries the
 modality table only
 (`WatchSensorRecordingTests.testS007EveryMappedModalityNamesBothPlatforms` pins
-its values); the majority rule that types a session with no modality lives in
-Swift alone, `WatchActivityTypes.forSession`, pinned by the
-`WatchWorkoutTypeFromExercisesTests` group.
+its values); the precedence that types a session — named Health kinds, then the
+modality, then the capability majority — lives in both clients,
+`WatchActivityTypes.forSession` in Swift and its Dart mirror in
+`lib/watch/sensors/watch_platform_workout.dart`, pinned on each side by
+`WatchWorkoutTypeFromExercisesTests` (S-16804–S-16807) and by
+`test/watch_sensor_recording_test.dart` (group `S-16810 the mirror types a session like the wrist`).
 - **A reading is stored, never sent.** Sensor rows are written through the same
 append entry point as every other row and emit nothing; the measured distance
 reaches the phone inside the logged effort. Verified by

@@ -199,8 +199,13 @@ final class WatchAppHost: ObservableObject {
         // the sensors read one authorization outcome, not two. Its location
         // adapter is built here, on the main actor, over a `CLLocationManager`
         // that only calls back on the thread that created it (D-2303, D-2305).
+        //
+        // It also gets the diagnostics log (plan 168 D-16804), so the workout's
+        // save outcome and any held-session discard are visible like the
+        // package's own workout lines.
         let healthStore = HealthKitWorkoutStore(
-            location: WatchTrackedLocation(source: CoreLocationRawSource())
+            location: WatchTrackedLocation(source: CoreLocationRawSource()),
+            diagnostics: diagnostics
         )
         let recorder = WatchSensorRecorder(engine: engine, source: healthStore.sensorSource)
         // The workout coordinator is built before the logging state (plan 82

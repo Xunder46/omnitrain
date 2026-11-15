@@ -372,16 +372,37 @@ only the predicted files.
 
 ## Progress
 
-- [ ] Phase 1 — the relaunch's second recovery no longer clobbers the adoption
-- [ ] Phase 2 — the exercises' agreed Health kind wins when they name one
-- [ ] Phase 3 — the Dart mirror moves with the rule
-- [ ] Phase 4 — the store's outcome is visible, and Health gets its distance
+- [x] Phase 1 — **Complete**. `recover(_:)` returns early when a workout is already running and
+  `recoverInProgress` clears `running` only once it has ended something; 3 new tests, suite total
+  1446/0.
+- [x] Phase 2 — **Complete**. `forSession` is named Health kind → modality → exercise capability →
+  nil; 5 new tests, `WatchWorkoutTypeFromExercisesTests` 16/16.
+- [x] Phase 3 — **Complete**. The Dart mirror carries the same four tiers and `start` asks it;
+  `test/watch_sensor_recording_test.dart` 41/41.
+- [x] Phase 4 — **Complete**. Save outcome, held discard and `.distanceWalkingRunning` are in the
+  store and wired; 2 source-scan tests, full `swift-test` 1446/0.
 
 ## Assumption Log
 
-Empty at handoff (planner run; no code written). Executors append per the Decide-and-Log protocol
-(`docs/global_conventions.md`). Entries already marked for the owner: D-16803 (reverses plan 75
-D-2's precedence — owner to confirm), D-16805 (route-on-adopt deferred — owner to confirm).
+- **Fixtures use a fresh engine and store per case.** A `WatchSessionEngine` holds one live session
+  (a second `createSession` returns the existing one), so a shared engine silently rewrote the
+  scenario's fixture; each test now builds its own.
+- **`HealthKitWorkoutStore` kept `init(location:)`.** `WatchSensorSourceSourceTests.testS3312`
+  asserts that exact initializer text, and Phase 4's unpredicted red would have forced editing it.
+  Instead `init(location:diagnostics:)` is the designated initializer and a `convenience
+  init(location:)` forwards `nil`. Neighbour green, test untouched.
+- **Phase 3's guard was proved by mutation, not `prove-red`.** The changed line already existed
+  (`start`'s `forModality` call), so the proof is: original line recorded, call swapped to
+  `forModality(session.modality)`, focused file RED, exact original restored, 41/41 green.
+  Recorded in the evidence file.
+- **The full Dart suite is red in another plan's files.** `watch_session_import_test.dart` (S-16703,
+  16704, 16705), `watch_session_adoption_bridge_test.dart` (S-16706) and a compile error in
+  `watch_convergence_harness_test.dart` (`_plan167Tests` missing) are in-flight plan-167 work; none
+  imports `watch_platform_workout.dart`. Left alone and reported, not absorbed.
+- **No lint baseline is recorded in this plan.** `gateway.sh lint` reports 183 pre-existing notices
+  and none in the two Dart files this plan touches; that count is the comparison point.
+- **No thread-sanitizer check exists.** `gateway.sh list` has no such check, so the brief's form
+  could not be run; `swift-test` is the whole Swift gate.
 
 ## Feedback
 

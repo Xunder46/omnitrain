@@ -16,7 +16,11 @@
 //  calories and the Move ring counts them), and
 //  `docs/plans/2026-10-24-68-run-route-map-plan/2026-10-24-68-run-route-map-plan.md`
 //  (plan 68: the store also records the Health route of an outdoor run through
-//  `HealthKitRouteRecorder`; the route never decides the workout's save). Every rule about *when* a workout opens or closes
+//  `HealthKitRouteRecorder`; the route never decides the workout's save), and
+//  `docs/plans/2026-11-14-168-health-walk-type-and-relaunch-plan/2026-11-14-168-health-walk-type-and-relaunch-plan.md`
+//  (plan 168 D-16804, D-16805: the save outcome and a held-session discard are
+//  noted in the diagnostics log, and the store collects and shares walking and
+//  running distance). Every rule about *when* a workout opens or closes
 //  lives in the package, where `swift test` exercises it on macOS
 //  (`WatchWorkoutCoordinatorTests`). What is left here is the platform call
 //  itself, so this file is the one part of the keep-alive no desktop test can
@@ -87,6 +91,10 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// permission question and the fixes never pass through here.
     private let location: WatchTrackedLocation
 
+    /// Where the workout's outcome is recorded (plan 168 D-16804); nil records
+    /// nothing.
+    private let diagnostics: WatchDiagnosticsLog?
+
     /// The live readings of the workout this store opens (D-2103). Built on
     /// first use, over a closure that asks this store for its authorization
     /// outcome: the feed holds no reference back to the store, and the store is
@@ -103,8 +111,19 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// The location adapter arrives from the host, which builds it on the main
     /// actor over a `CLLocationManager` that must be created there (D-2303,
     /// D-2305).
-    init(location: WatchTrackedLocation) {
+    ///
+    /// The diagnostics log is the package's own (plan 168 D-16804), so a save
+    /// outcome and a held-session discard are visible in the wrist's log rather
+    /// than swallowed here.
+    init(location: WatchTrackedLocation, diagnostics: WatchDiagnosticsLog?) {
         self.location = location
+        self.diagnostics = diagnostics
+    }
+
+    /// The store of a host that holds no log: `nil` records nothing, the rule
+    /// every optional log in the app follows (plan 142 D-14202).
+    convenience init(location: WatchTrackedLocation) {
+        self.init(location: location, diagnostics: nil)
     }
 
     // MARK: - WatchPlatformWorkoutStore
@@ -119,8 +138,17 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
 
         // The platform grants one workout at a time; a second begin replaces the
         // first rather than leaving two open, and discards it: its session's end
-        // is not known here (plan 89 D-2).
-        if session != nil { await end(saving: false) }
+        // is not known here (plan 89 D-2). Ending a workout this store was still
+        // holding loses everything it collected, so the discard is logged
+        // (plan 168 D-16804): this is the statement that destroyed the first 25
+        // minutes of the owner's walk.
+        if let held = session {
+            diagnostics?.note(
+                "workout_end",
+                detail: "discarded_held \(Self.name(for: held.workoutConfiguration.activityType))"
+            )
+            await end(saving: false)
+        }
 
         let configuration = HKWorkoutConfiguration()
         configuration.activityType = Self.activityType(for: activityType)
@@ -139,6 +167,12 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
             dataSource.enableCollection(for: HKQuantityType(.heartRate), predicate: nil)
             dataSource.enableCollection(for: HKQuantityType(.stepCount), predicate: nil)
             dataSource.enableCollection(for: HKQuantityType(.activeEnergyBurned), predicate: nil)
+            // Walking and running distance, so a walk or run Health agrees with
+            // exists carries its distance (plan 168 D-16805).
+            dataSource.enableCollection(
+                for: HKQuantityType(.distanceWalkingRunning),
+                predicate: nil
+            )
 
             collection.dataSource = dataSource
             collection.delegate = sensorFeed
@@ -221,12 +255,17 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         }
         var saved: HKWorkout?
         if saving {
+            let name = Self.name(for: openSession.workoutConfiguration.activityType)
             do {
                 try await openBuilder.endCollection(at: Date())
                 saved = try await openBuilder.finishWorkout()
+                diagnostics?.note("workout_saved", detail: name)
             } catch {
                 // The session is already closed, which is the part that matters: a
-                // saved workout is a bonus, a workout left open is a lie.
+                // saved workout is a bonus, a workout left open is a lie. The
+                // failure is still recorded, so a walk that never reached Health
+                // says so (plan 168 D-16804).
+                diagnostics?.note("workout_save_failed", detail: name)
             }
         } else {
             // Not saved (plan 89 D-1): the builder and its samples are dropped,
@@ -364,15 +403,15 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// callers share that one in-flight request rather than each reading a
     /// half-settled answer.
     ///
-    /// Share the workout type and active energy, so the workout saves its
-    /// calories and the Move ring counts them (plan 58, D-5), and the workout
-    /// route, so an outdoor run saves its map (plan 68 D-7); read heart rate,
-    /// steps and active energy. The builder's statistics only carry the types
-    /// asked for here, so a read left out is a stream that never produces
-    /// anything (D-2103). A refusal, or a request
-    /// that cannot be answered, means `begin` does nothing — the session keeps
-    /// running without a workout, exactly as it does when the phone denies a
-    /// sync.
+    /// Share the workout type, active energy and walking/running distance, so
+    /// the workout saves its calories and its distance (plan 58 D-5, plan 168
+    /// D-16805), and the workout route, so an outdoor run saves its map (plan 68
+    /// D-7); read heart rate, steps, active energy and that distance. The
+    /// builder's statistics only carry the types asked for here, so a read left
+    /// out is a stream that never produces anything (D-2103). A refusal, or a
+    /// request that cannot be answered, means `begin` does nothing — the session
+    /// keeps running without a workout, exactly as it does when the phone denies
+    /// a sync.
     private func resolveAuthorization() async -> Bool {
         if let task = authorization { return await task.value }
 
@@ -380,9 +419,12 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
             do {
                 try await healthStore.requestAuthorization(
                     toShare: [HKObjectType.workoutType(), HKQuantityType(.activeEnergyBurned),
+                              HKQuantityType(.distanceWalkingRunning),
                               HKSeriesType.workoutRoute()],
                     read: [HKQuantityType(.heartRate), HKQuantityType(.stepCount),
-                           HKQuantityType(.activeEnergyBurned), HKObjectType.workoutType(),
+                           HKQuantityType(.activeEnergyBurned),
+                           HKQuantityType(.distanceWalkingRunning),
+                           HKObjectType.workoutType(),
                            HKSeriesType.workoutRoute()]
                 )
                 return healthStore.authorizationStatus(for: HKObjectType.workoutType())
