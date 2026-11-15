@@ -36,7 +36,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
       await _timerManager.persistActiveRounds();
       await _timerManager.persistActiveTimedEntries();
 
-      final now = atMs ?? DateTime.now().millisecondsSinceEpoch;
+      final now = atMs ?? _clock().millisecondsSinceEpoch;
       await _timerManager.persistOpenRests(now);
       final updatedSession = TrainingSession(
         id: _currentSession!.id,
@@ -158,7 +158,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
     if (_currentSession!.endedAtMs != null) return;
 
     try {
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final updatedSession = TrainingSession(
         id: _currentSession!.id,
         ownerUserId: _currentSession!.ownerUserId,
@@ -217,7 +217,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
     _clearError();
 
     try {
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final updatedSession = TrainingSession(
         id: _currentSession!.id,
         ownerUserId: _currentSession!.ownerUserId,
@@ -250,7 +250,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
     if (durationSecs <= 0) return;
     _clearError();
     try {
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final newEndedAtMs = math.max(
         _currentSession!.startedAtMs,
         _currentSession!.startedAtMs + (durationSecs * 1000),
@@ -319,7 +319,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
         qualityRating: session.qualityRating,
         isRolling: session.isRolling,
         createdAtMs: session.createdAtMs,
-        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        updatedAtMs: _clock().millisecondsSinceEpoch,
       );
 
       await _repository.updateSession(updatedSession);
@@ -362,7 +362,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
       await _repository.updateSessionFeeling(sessionId, feeling);
 
       if (_currentSession?.id == sessionId) {
-        final now = DateTime.now().millisecondsSinceEpoch;
+        final now = _clock().millisecondsSinceEpoch;
         _currentSession = TrainingSession(
           id: _currentSession!.id,
           ownerUserId: _currentSession!.ownerUserId,
@@ -419,7 +419,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
     if (_currentSession?.id != sessionId) return;
     if (_currentSession!.sessionFeeling == feeling) return;
 
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = _clock().millisecondsSinceEpoch;
     _currentSession = TrainingSession(
       id: _currentSession!.id,
       ownerUserId: _currentSession!.ownerUserId,
@@ -448,7 +448,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
 
     try {
       if (_currentSession?.id == sessionId) {
-        final now = DateTime.now().millisecondsSinceEpoch;
+        final now = _clock().millisecondsSinceEpoch;
         final updatedSession = TrainingSession(
           id: _currentSession!.id,
           ownerUserId: _currentSession!.ownerUserId,

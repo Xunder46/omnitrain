@@ -13,7 +13,7 @@ extension SessionCoreIOMethods on SessionCore {
     _clearError();
 
     try {
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final sessionId = 'session-$now';
 
       final session = TrainingSession(
@@ -312,7 +312,7 @@ extension SessionCoreIOMethods on SessionCore {
     _clearError();
 
     try {
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       var segmentCounter = 0;
 
       for (final segmentEntry in manifest.segments) {

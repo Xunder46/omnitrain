@@ -130,10 +130,10 @@ class TimerManager {
   final void Function() _clearErrorCallback;
   Map<String, List<EffortObservation>>? _observations;
 
-  /// The clock behind a new timed instance's id and stamps, and behind the
-  /// start and finish stamps of timed entries and rounds. A test that must
-  /// repeat a millisecond — the collision D-338 guards against — passes one
-  /// that stands still.
+  /// The clock behind every stamp this manager writes. The file reads no wall
+  /// clock directly: a pinned clock drives the lines and the duration reads
+  /// alike (plan 169 D-16903). A test that must repeat a millisecond — the
+  /// collision D-338 guards against — passes one that stands still.
   final DateTime Function() _clock;
 
   final Map<String, List<RoundInstance>> _roundInstances = {};
@@ -599,7 +599,7 @@ class TimerManager {
     try {
       final existing = _roundInstances[effortId] ?? [];
       final roundIndex = existing.length;
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final instance = RoundInstance(
         id: 'round-$effortId-$roundIndex-$now',
         effortId: effortId,
@@ -678,7 +678,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final updated = old.copyWith(
         state: RoundState.paused,
         pausedAtMs: now,
@@ -704,7 +704,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final pauseDuration = old.pausedAtMs != null
           ? (now - old.pausedAtMs!)
           : 0;
@@ -773,7 +773,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final totalPausedMs =
           old.state == RoundState.paused && old.pausedAtMs != null
           ? old.totalPausedDurationMs + (now - old.pausedAtMs!)
@@ -813,7 +813,7 @@ class TimerManager {
       if (list == null || roundIndex >= list.length) return false;
       await _repository.deleteRoundInstance(list[roundIndex].id);
       list.removeAt(roundIndex);
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       for (int i = roundIndex; i < list.length; i++) {
         final r = list[i];
         final reindexed = r.copyWith(roundIndex: i, updatedAtMs: now);
@@ -844,7 +844,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final updated = old.copyWith(
         plannedDurationSecs: newDurationSecs,
         updatedAtMs: now,
@@ -878,7 +878,7 @@ class TimerManager {
         return <int>[];
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final touched = <int>[];
       for (int i = fromIndex; i < list.length; i++) {
         final old = list[i];
@@ -1052,7 +1052,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final updated = old.copyWith(
         state: TimedState.paused,
         pausedAtMs: now,
@@ -1078,7 +1078,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final pauseDuration = old.pausedAtMs != null
           ? (now - old.pausedAtMs!)
           : 0;
@@ -1150,7 +1150,7 @@ class TimerManager {
       await _repository.deleteTimedInstance(list[entryIndex].id);
       list.removeAt(entryIndex);
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       for (int i = entryIndex; i < list.length; i++) {
         final t = list[i];
         final reindexed = t.copyWith(entryIndex: i, updatedAtMs: now);
@@ -1248,7 +1248,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final updated = old.copyWith(
         targetDurationSecs: newTargetSecs,
         updatedAtMs: now,
@@ -1292,7 +1292,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
 
       for (var i = 0; i < list.length; i++) {
         final rest = list[i];
@@ -1336,7 +1336,7 @@ class TimerManager {
       final idx = list.indexWhere((r) => r.entryIndex == entryIndex);
       if (idx == -1) return;
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final rest = list[idx];
       final effectiveEnd = _effectiveRestEndMs(rest, now);
       final updated = rest.copyWith(
@@ -1372,7 +1372,7 @@ class TimerManager {
       final rest = list[idx];
       if (rest.restEndMs != null) return; // already closed
       if (rest.restIsPaused) return; // already paused
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final updated = rest.copyWith(
         restIsPaused: true,
         restPausedAtMs: now,
@@ -1405,7 +1405,7 @@ class TimerManager {
       final rest = list[idx];
       if (rest.restEndMs != null) return; // already closed
       if (!rest.restIsPaused) return; // already running
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final pauseStart = rest.restPausedAtMs ?? now;
       final additionalPauseMs = now - pauseStart;
       final updated = rest.copyWith(
@@ -1431,7 +1431,7 @@ class TimerManager {
       // Only return elapsed time for OPEN rests (restEndMs == null).
       // Closed rests return 0 since they are no longer accumulating.
       if (rest.restEndMs != null) return 0;
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       return rest.elapsedSeconds(now);
     } catch (_) {
       return 0;
@@ -1509,7 +1509,7 @@ class TimerManager {
     final closedRests = <EntryRest>[];
     final list = _entryRests[effortId];
     if (list == null) return closedRests;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = _clock().millisecondsSinceEpoch;
     for (var i = 0; i < list.length; i++) {
       final rest = list[i];
       if (rest.restEndMs != null) continue;
@@ -1585,7 +1585,7 @@ class TimerManager {
       final list = _timedInstances[effortId];
       if (list == null || entryIndex >= list.length) return;
       final old = list[entryIndex];
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       // Synthesise timestamps so elapsedMs == durationSecs * 1000.
       final startedAtMs = old.startedAtMs > 0
           ? old.startedAtMs
@@ -1622,7 +1622,7 @@ class TimerManager {
       final list = _roundInstances[effortId];
       if (list == null || roundIndex >= list.length) return;
       final old = list[roundIndex];
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final startedAtMs = old.startedAtMs > 0
           ? old.startedAtMs
           : now - (durationSecs * 1000);

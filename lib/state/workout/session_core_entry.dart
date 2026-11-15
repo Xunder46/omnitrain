@@ -18,7 +18,7 @@ extension SessionCoreEntryMethods on SessionCore {
               orElse: () => _segments.first,
             )
           : _segments.first;
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
 
       String effortKind;
       if (effortKindOverride != null) {
@@ -161,7 +161,7 @@ extension SessionCoreEntryMethods on SessionCore {
         return;
       }
 
-      final now = atMs ?? DateTime.now().millisecondsSinceEpoch;
+      final now = atMs ?? _clock().millisecondsSinceEpoch;
       final existingObservations =
           _observations[effortId] ?? <EffortObservation>[];
       // Every kind of new entry is numbered above every number the effort
@@ -348,7 +348,7 @@ extension SessionCoreEntryMethods on SessionCore {
           rpeRating: oldObs.rpeRating,
           restDurationMs: oldObs.restDurationMs,
           createdAtMs: oldObs.createdAtMs,
-          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+          updatedAtMs: _clock().millisecondsSinceEpoch,
         );
 
         await _repository.updateObservation(newObs);
@@ -356,7 +356,7 @@ extension SessionCoreEntryMethods on SessionCore {
 
         _notify();
       } else if (metricKey == 'extra-weight') {
-        final now = DateTime.now().millisecondsSinceEpoch;
+        final now = _clock().millisecondsSinceEpoch;
         final number = effort.effortKind == 'set'
             // A set's row joins the set it was entered for, by that set's own
             // number (D-325), so a gap left by an old delete cannot move it to
@@ -528,7 +528,7 @@ extension SessionCoreEntryMethods on SessionCore {
     final entries = getEffortDistanceEntries(effortId);
     if (entryIndex < 0 || entryIndex >= entries.length) return;
 
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = _clock().millisecondsSinceEpoch;
     final hasDistance = metres > 0;
 
     // Every entry before the edited one that has no row yet gets a
@@ -630,7 +630,7 @@ extension SessionCoreEntryMethods on SessionCore {
         rpeRating: oldObs.rpeRating,
         restDurationMs: oldObs.restDurationMs,
         createdAtMs: oldObs.createdAtMs,
-        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        updatedAtMs: _clock().millisecondsSinceEpoch,
       );
       await _repository.updateObservation(newObs);
       observations[obsIndex] = newObs;

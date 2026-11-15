@@ -56,6 +56,11 @@ class SessionCore {
   final TimerManager _timerManager;
   final ExerciseLibrary _exerciseLibrary;
 
+  /// The clock behind every persisted stamp this core writes. Injected the
+  /// way the adoption bridge and the session importer inject theirs; the
+  /// default is the real clock, so production reads today's instants.
+  final DateTime Function() _clock;
+
   /// Optional platform-health write pipeline. Null in tests and in
   /// builds without a health integration; the lifecycle calls it only
   /// after a session has been persisted.
@@ -113,11 +118,13 @@ class SessionCore {
     WatchLateEntryRecovery? lateEntryRecovery,
     bool Function(String sessionId)? wristRunsSession,
     ActiveEnergyService? activeEnergy,
+    DateTime Function()? clock,
   }) : _notify = notify,
        _setErrorCallback = setError,
        _clearErrorCallback = clearError,
        _timerManager = timerManager,
        _exerciseLibrary = exerciseLibrary,
+       _clock = clock ?? DateTime.now,
        _healthSync = healthSync,
        _lateEntryRecovery = lateEntryRecovery,
        _wristRunsSession = wristRunsSession,

@@ -42,7 +42,8 @@ class WorkoutState extends ChangeNotifier {
   /// no watch, and every test that does not exercise the recovery, passes
   /// nothing and the restore behaves exactly as it did before (D-803).
   ///
-  /// [clock] is the timer's clock seam; the default is the real clock.
+  /// [clock] is the workout state's clock seam — the timer's stamps AND the
+  /// session core's persisted stamps; the default is the real clock.
   ///
   /// [wristRunsSession] answers whether the wrist is running a session, and so
   /// saves its own Fitness workout for it (plan 89c1 D-2). Null without a
@@ -92,6 +93,7 @@ class WorkoutState extends ChangeNotifier {
       lateEntryRecovery: watchLateEntryRecovery,
       wristRunsSession: wristRunsSession,
       activeEnergy: activeEnergy,
+      clock: clock,
     );
     _timerManager.bindObservations(_sessionCore.observationsMap);
     _screenAwake = SessionScreenAwake(

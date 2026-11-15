@@ -170,23 +170,28 @@ void main() {
       // cannot arrive silently (D-14508: the report is the product).
       const knownClasses = <String, String>{
         'status':
-            'plan 161 Phases 1-3 landed — 94 kind-hits over 73 seeds at 2000 and '
-            '7 over 5 at 200 (149/112 before): the remainder is the A-161-05 '
-            'residue, the phone\'s own session row is stamped by the wall clock '
-            '(`session_core_lifecycle.endSession`), so its end can never tie with a '
-            'grid-stamped wrist end (S-14512 records the permanent case)',
+            're-measured after plan 169 (D-16905, D-16906) — 3 kind-hits over 2 '
+            'shipping seeds at 200 (94, 145) plus 1 only after the harness-only '
+            're-assert (138): 94/95 over 73 seeds at 2000 and 7 over 5 at 200 '
+            'before the seam. Plan 169 removed A-161-05\'s cause — the phone\'s '
+            'own session row is now stamped by the pair clock '
+            '(`WorkoutState(clock:)`, S-14512/S-16904/S-16905) — so an end can '
+            'tie with a grid-stamped wrist end. What remains is not that cause '
+            'and is not shrunk here: plan 169 Residue',
         'absorbing':
             'minimal trace found after PR 3 (seed 111 → 4 actions, A-146c-14): '
             'the wrist completes a session then starts its next Free workout and '
             'the same session reports active again (5 of 2000 after plan 161, 22 '
-            'before)',
+            'before; 0 at 2000 after plan 169, on a trace nothing else diverges '
+            'on)',
         'timers':
             'does not reproduce — 0 traces confirmed at 2000 seeds in Phase 4 '
             'and seed 1814 converges when replayed alone (A-146c-16); D-14635\'s '
             'seam is unconfirmed and the residue is deferred',
         'entries':
             'mostly fixed by plan 161 Phase 2 — 14 at 2000 before, 0 in one run '
-            'and 2 (seeds 499, 819) in the next after: check 3 ignores the '
+            'and 2 (seeds 499, 819) in the next after; plan 169 re-measures 9 at '
+            '2000. Check 3 ignores the '
             'phone\'s own annotation kinds (`WatchInboxEntry.phoneKinds`), and what '
             'is left is a wrist-vs-wrist entry difference that moves between runs '
             '(plan 161 Residue)',
@@ -204,13 +209,13 @@ void main() {
       // *kind* is caught by `unknown` below. Heal stalls are excluded: they are
       // not deterministic.
       // Per 200 seeds, so the 2000-seed soak measures instead of failing on a
-      // count that only grows with the seed total. Plan 161 re-measured after
-      // the frame clock and the entry filter: 5 on both 200-seed runs (seeds
-      // 29, 43, 94, 162, 169) and 73, then 75, at 1..2000. 8 is that
-      // measurement plus two seeds of headroom in 200-seed units, 80 at 2000,
-      // and it is the lowest constant that keeps the soak green; 14 was the
-      // pre-161 budget.
-      final shippingRatchet = (kSeedCount * 8 / 200).ceil();
+      // count that only grows with the seed total. Plan 169 re-measured after
+      // the phone half joined the pair clock (D-16905): 4 on both 200-seed runs
+      // (seeds 94, 123, 145, 167) against plan 161's 5 (seeds 29, 43, 94, 162,
+      // 169), and 31 of 2000 (1933 converge). 6 is 4 plus two seeds of headroom
+      // in 200-seed units, 60 at 2000. It only ever moves down (D-16906,
+      // D-16306).
+      final shippingRatchet = (kSeedCount * 6 / 200).ceil();
 
       final shippingKinds = <int, List<String>>{};
       final syntheticOnly = <int>[];

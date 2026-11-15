@@ -28,6 +28,7 @@ import 'helpers/watch_pair_harness.dart';
 void main() {
   _triageFaultTests();
   _b2Tests();
+  _plan169Tests();
   _plan161Tests();
   _plan167Tests();
   test(
@@ -697,6 +698,125 @@ void main() {
   });
 }
 
+// Plan 169: the phone half's own stamps on the pair clock. D-16904/D-16905,
+// S-16904, S-16905, S-16906; harness `_gridClock`
+// (`test/helpers/watch_pair_harness.dart`).
+void _plan169Tests() {
+  test('S-16904 the phone\'s own end lands on the pair clock', () async {
+    final harness = await WatchPairHarness.build();
+    final runner = harness.runner;
+
+    await runner.perform(runner.phoneStartsSession());
+    final sessionId = harness.phone.currentSession!.id;
+    await runner.perform(runner.phoneFinishes());
+
+    final row = await harness.repository.getSession(sessionId);
+    expect(row, isNotNull, reason: runner.traceText());
+    final gridMs = harness.clock.now.millisecondsSinceEpoch;
+    final gapMs = (row!.endedAtMs! - gridMs).abs();
+    expect(
+      gapMs,
+      lessThanOrEqualTo(100),
+      reason:
+          'the finished row\'s end is the pair clock\'s instant, not the wall '
+          'clock\'s (D-16905): ended at ${row.endedAtMs}, the grid holds '
+          '$gridMs\n${runner.traceText()}',
+    );
+  });
+
+  test('S-16905 a same-millisecond discard-and-restart mints a fresh session '
+      'id', () async {
+    // Adversarial: no `TimeAdvances` between the discard and the restart, so a
+    // standing clock mints `session-$nowMs` twice (the wrapper's `lastMs`
+    // exists to prevent exactly this — D-16905).
+    final harness = await WatchPairHarness.build();
+    final runner = harness.runner;
+
+    await runner.perform(runner.phoneStartsSession());
+    final firstId = harness.phone.currentSession!.id;
+    await runner.perform(runner.phoneDiscards());
+    await runner.perform(runner.phoneStartsSession());
+    final secondId = harness.phone.currentSession!.id;
+
+    expect(
+      secondId,
+      isNot(firstId),
+      reason:
+          'two sessions in one grid millisecond are two ids\n'
+          '${runner.traceText()}',
+    );
+    expect(harness.phoneDiscardedSessions, contains(firstId));
+    expect(
+      harness.phoneDiscardedSessions,
+      isNot(contains(secondId)),
+      reason:
+          'the runner\'s per-id bookkeeping names the discarded session only\n'
+          '${runner.traceText()}',
+    );
+
+    final report = await runner.checkConvergence();
+    expect(
+      report.statusMismatches,
+      isEmpty,
+      reason:
+          'the live session is not read as the discarded one\n'
+          '${runner.traceText()}',
+    );
+    expect(report.phoneOnlySessions, isEmpty, reason: runner.traceText());
+  });
+
+  test('S-16906 rest and timer stamps land on the grid', () async {
+    final harness = await WatchPairHarness.build();
+    final runner = harness.runner;
+
+    await runner.perform(runner.phoneStartsSession());
+    final sessionId = harness.phone.currentSession!.id;
+    final efforts = (await harness.repository.getEffortsBySegment()).values
+        .expand((group) => group)
+        .toList();
+    final effortId = efforts.single.id;
+    await runner.perform(runner.phoneStartsRest());
+
+    final rests = await harness.repository.getEntryRests(effortId);
+    expect(rests, isNotEmpty, reason: runner.traceText());
+    final rowMs = rests.last.restStartMs;
+    final phoneTimers = _timersOf(harness.graph.timerPush.snapshotTimers());
+    final restTimer = phoneTimers['rest'];
+    expect(
+      restTimer,
+      isA<Map>(),
+      reason:
+          'the phone\'s rest timer reaches the frames it pushes\n'
+          '${runner.traceText()}',
+    );
+    final frameMs = DateTime.parse(
+      (restTimer! as Map)['startedAt'] as String,
+    ).millisecondsSinceEpoch;
+
+    expect(
+      (rowMs - harness.clock.now.millisecondsSinceEpoch).abs(),
+      lessThanOrEqualTo(100),
+      reason:
+          'the rest row is stamped by the pair clock (D-16903/D-16905): '
+          '$rowMs\n${runner.traceText()}',
+    );
+    expect(
+      (frameMs - rowMs).abs(),
+      lessThanOrEqualTo(100),
+      reason:
+          'the rest row and the mirror timer\'s `startedAt` are one '
+          'grid-coherent instant: row $rowMs, frame $frameMs\n'
+          '${runner.traceText()}',
+    );
+
+    await runner.perform(runner.phoneFinishes());
+    expect(
+      (await harness.repository.getSession(sessionId))?.endedAtMs,
+      isNotNull,
+    );
+  });
+}
+
 /// A side's timer map by kind: the phone's mirror state's `timers`, the wrist's
 /// session-snapshot payload's `timers` (D-14514).
 Map<String, Object?> _timersOf(Object? timers) =>
@@ -854,40 +974,37 @@ void _b2Tests() {
         isEmpty,
         reason: 'an end is final on each side\n${runner.traceText()}',
       );
-      // Plan 161 (D-16102) put the wrist and the phone's frames on the pair's
-      // one clock; the phone's own session row is still stamped by
-      // `WorkoutState`'s wall clock, which no seam reaches (A-161-05). Re-read
-      // on the grid the ends are therefore ordered as follows:
-      // - the wrist's discard is on the pair's grid, the finished row's end is
-      //   the wall clock, so D-14630 still reads the discard as the earlier end
-      //   and the finished row goes — the phone reads `abandoned`;
-      // - the phone's `completed` frame carries the same grid instant as the
-      //   wrist's discard, so D-14601's tie-break keeps the finish on the wrist.
-      // The check reports that disagreement; it is not a within-tolerance tie
-      // (the two stamps are nearly four days apart). Recorded as residue.
+      // Plan 169 pinned the phone half to the pair clock (D-16905), so the
+      // finished row's end is a grid instant like the wrist's discard rather
+      // than A-161-05's wall-clock stamp. Re-read on one clock the ends
+      // resolve per D-14601/D-14630: the discard is not earlier by more than
+      // the skew tolerance (the wrapper's `_gridClock` drift is a few ms), so
+      // the finish stands on both sides and the pair agrees (S-16908).
       expect(
         report.phoneStatus[label],
-        WatchSessionStatus.abandoned,
-        reason: 'the wrist\'s earlier discard wins\n${runner.traceText()}',
+        WatchSessionStatus.completed,
+        reason:
+            'the finished row survives: its end is on the pair clock\n'
+            '${runner.traceText()}',
       );
       expect(
         report.wristStatus[label],
         WatchSessionStatus.completed,
         reason:
-            'the phone\'s finish and the wrist\'s discard are one instant, '
-            'so the finish wins\n${runner.traceText()}',
+            'the phone\'s finish and the wrist\'s discard are within the skew '
+            'tolerance, so the finish wins on the wrist\n'
+            '${runner.traceText()}',
       );
       expect(
         report.statusMismatches,
-        hasLength(1),
-        reason: 'the pair disagrees, and the check says so: '
-            '${runner.traceText()}',
+        isEmpty,
+        reason: 'the pair agrees on one clock\n${runner.traceText()}',
       );
-      expect(report.converged, isFalse, reason: runner.traceText());
+      expect(report.converged, isTrue, reason: runner.traceText());
       expect(
         await harness.repository.getSession(sessionId),
-        isNull,
-        reason: 'a winning discard deletes the finished workout (D-14632)',
+        isNotNull,
+        reason: 'a finish that wins keeps the workout (D-14632)',
       );
     },
   );

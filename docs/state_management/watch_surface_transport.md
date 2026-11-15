@@ -190,6 +190,20 @@ the harness grid a seed's class no longer moves with the seed total: the 200- an
 (`S-14509 every random seed converges, or diverges inside a class the plan
 names`).
 
+Plan 169 extended that seam to the phone's own rows: `WatchPairHarness.build`
+builds `WorkoutState(repository, clock: _gridClock(clock))`, so every session,
+effort, observation and rest stamp the phone persists is a pair-clock instant —
+`S-16904 the phone's own end lands on the pair clock` and `S-16906 rest and
+timer stamps land on the grid`. `_gridClock` is strictly monotone over the grid,
+because a discard and a restart inside one millisecond would otherwise mint
+`session-$nowMs` twice and the runner's per-id bookkeeping would read the new
+session as the discarded one — `S-16905 a same-millisecond discard-and-restart
+mints a fresh session id`. With both ends on one clock,
+`S-14512 a phone end against a wrist abandon while apart is recorded` reads by
+the standing rules again (a finish and a discard inside the skew tolerance tie,
+the finish wins, the workout survives — S-16908), and the re-measurement lowered
+the shipping ratchet from 8 to 6 per 200 seeds (4 on both runs, D-16906).
+
 Two ends that land within `kEndSkewToleranceMs` of each other are recorded as a
 tie, not a mismatch: `endsWithinSkewToleranceMs` (the millisecond twin of
 `areEndsWithinSkew`) puts the pair in `ConvergenceReport.withinSkewEndTies`,

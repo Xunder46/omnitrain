@@ -38,6 +38,16 @@ It also takes an optional `wristRunsSession` predicate, `main.dart` passing the
 watch graph's `LiveSessionMirrorState.wristRunsSession`: `endSession` reads it to
 leave the Health write to the watch (plan 89c1 D-2). Null without a watch.
 
+It also takes an optional `clock`, the seam plan 169 added (D-16904): the one
+value feeds `TimerManager` **and** `SessionCore`, so every session, effort,
+observation and rest stamp the session core persists comes from a single source,
+while an end the caller names (`endSession(atMs:)`, `catchUpEndedSession(atMs)`,
+`addEntry(atMs:)`) still stores exactly that instant. `lib/main.dart` passes
+none, so production keeps reading the real clock; tests pin it —
+`test/workout_state_clock_seam_test.dart` (`S-16901 with a fixed injected clock
+every persisted session stamp carries it`) and the watch harness's grid clock
+(`S-16904`, `S-16905`, `S-16906` in `test/watch_convergence_harness_test.dart`).
+
 It also takes an optional `screenAwake` (`ScreenAwakePort`), the keep-awake port
 plan 120 wires from `createScreenAwakePort()`; null falls back to
 `ScreenAwakePort.noop()`. The facade builds the `SessionScreenAwake` on it and

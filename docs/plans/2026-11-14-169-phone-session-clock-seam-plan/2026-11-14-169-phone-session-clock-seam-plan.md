@@ -558,10 +558,18 @@ only); `…-169-…-plan.evidence.md`.
 
 ## Progress
 
-- [ ] Phase 1 — the session-core clock seam (@developer)
-- [ ] Phase 2 — pin the harness and re-derive (@developer)
-- [ ] Phase 3 — re-measure and ratchet (@developer)
-- [ ] Phase 4 — docs delta and residue sweep (@developer)
+- [x] Phase 1 — the session-core clock seam (@developer): landed; S-16901 red at HEAD
+      (`Actual: 'session-1794704546325'`) → green; `DateTime.now` left only as the `_clock` default.
+- [x] Phase 2 — pin the harness and re-derive (@developer): `_gridClock` pin + S-16904/S-16905/
+      S-16906 green with three mutation proofs; S-14512 re-derived (both ends `completed`,
+      `converged` true); harness file `+36` green. **One unplanned red**: the pin makes
+      `watch/sync_protocol/fixtures/replay/seed-408.json` stale (its rest `startedAtMs` was a
+      wall-clock value), so S-15207 fails — see Feedback; the fixture refresh was not applied.
+- [x] Phase 3 — re-measure and ratchet (@developer): 200-seed sweep ×3 identical
+      (`194` converge, `[94, 123, 145, 167]`); 2000-seed soak `1933` converge, 31 shipping,
+      `{status 41, entries 9, heal 19}`, `absorbing 0`; ratchet 8 → 6.
+- [x] Phase 4 — docs delta and residue sweep (@developer): both pages updated, residue greps show
+      only the `_clock` default and D-16902's list, no schema/seed change.
 
 ## Assumption Log
 
@@ -572,29 +580,51 @@ Derived interpretations, offered for veto before the first handoff that depends 
   rows and the `restElapsedSecs` read, not only the rests the brief names. Options: rests
   only (leaves `_timerDisagreements`' `startedAt` comparison half-coherent); chosen: all 19
   sites, because the file already carries the `_clock` seam and partial routing would stamp
-  one row from two clocks. Owner to confirm.
+  one row from two clocks. Owner to confirm. — Landed as written; status awaiting ratification.
 - **A-169-02 (D-16904, owner to confirm)** The existing `WorkoutState(clock:)` parameter is
   reused instead of adding a second seam (plan 161 added `frameClock` beside `clock` because
   the ledger's clock had to stay separate; here TimerManager and SessionCore have no such
-  conflict — one clock for both is the coherent reading). Owner to confirm.
+  conflict — one clock for both is the coherent reading). Owner to confirm. — Landed as
+  written; status awaiting ratification.
 - **A-169-03 (D-16905, owner to confirm)** The harness pin is a strictly monotone wrapper
   rather than the bare `clock.call`, to prevent same-ms session-id reuse after a discard. Options:
   bare pin + an id-uniqueness guard in `createNewSession` (a product change for a harness
-  need); chosen: the test-side wrapper. Owner to confirm.
+  need); chosen: the test-side wrapper. Owner to confirm. — Landed as written, proved by the
+  S-16905 mutation; status awaiting ratification.
 - **A-169-04 (D-16906, owner to confirm)** The ratchet cap is the current constant 8
-  (measured + 2, never above 8) — A-161-03's policy carried to this plan. Owner to confirm.
+  (measured + 2, never above 8) — A-161-03's policy carried to this plan. Owner to confirm. —
+  Applied (8 → 6, from 4 measured on three runs); status awaiting ratification.
 - **A-169-05 (S-16908, planner, vetoable before Phase 2's handoff)** The post-seam reading
   of S-14512 is derived, not observed: on coherent stamps the wrist's discard is not earlier
   by more than the tolerance, so the phone keeps its finished row and the pair resolves per
   D-14630/D-15403; the executor records the exact observed statuses in the evidence file and
   the owner vetoes the wording there if the engine's late-completed path resolves
-  differently.
+  differently. — Observed `phone completed wrist completed, 0 mismatch(es)`, `converged`;
+  status awaiting ratification.
 - **A-169-06 (planner)** The brief's "rolling flag" inventory item: no wall-clock read writes
   `isRolling` anywhere — grep over `lib/` shows every writer copies the flag from an existing
   row or a caller's bool (`session_core_lifecycle.dart:57,176,235,272,320,380,437,466`;
   `hive_workout_repository.dart:1096`; `mock_workout_repository.dart:346,535`); nothing to
-  seam.
+  seam. — Confirmed by grep; nothing needed.
+
+- **A-169-07 (D-16904, developer)** The decision predicted exactly one pre-existing test that
+  passes `WorkoutState(clock:)` (`test/watch_session_queue_test.dart`). There are three —
+  `test/watch_session_auto_push_test.dart`, `test/watch_snapshot_focus_send_test.dart` and
+  `watch_session_queue_test.dart`. All pass their own clocks and none asserts an absolute
+  stamp; the suites stay green, so the seam is a no-op for them.
+- **A-169-08 (phase 0, developer)** The scenario header names S-16901…S-16908 while the body also
+  defines S-16909 (the two 200-seed runs agree). Both are implemented; the numbering gap is
+  cosmetic.
+- **A-169-09 (S-16901, developer)** The pin uses `createNewSession()`'s default modality so the
+  `set` entry kind writes an observation row; the `sports`/`round` kind writes none, and the
+  scenario asserts observation stamps.
 
 ## Feedback
 
-[empty — fold into a new Iteration block when non-empty, then clear]
+- **D-16905's corpus claim is wrong (Phase 2, executor).** The decision says phone-side stamps
+  never enter a replay recording; `watch/sync_protocol/fixtures/replay/seed-408.json` records a
+  phone rest `startedAtMs` of `1795301201000` (wall clock), so the pin makes that fixture stale
+  and S-15207 red — the one failure in the full suite (`+7626 ~4 -1`). Regenerating the corpus
+  (`--dart-define=REPLAY_CORPUS_WRITE=true`) plus a `swift-test --filter WatchReplayTests` run is
+  the remedy; both write/verify a checked-in fixture outside this phase's Predicted Files, so
+  they were left to the governor. Evidence: `.evidence.md` §Plan-unpredicted red.

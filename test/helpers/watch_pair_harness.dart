@@ -675,6 +675,31 @@ class WristEngineArgs {
 /// engine from.
 typedef WristEngineFactory = WatchSessionEngine Function(WristEngineArgs args);
 
+/// The phone half's clock: the pair clock's instant, made strictly monotone.
+///
+/// A standing pair clock mints the same `session-$nowMs` id twice when a
+/// session is discarded and another started with no [TimeAdvances][] between,
+/// and the runner's per-id bookkeeping (`phoneDiscardedSessions`, the
+/// phone/wrist end maps) would then read the new session as the discarded one
+/// (plan 169 D-16905). Each read is therefore at least one millisecond after
+/// the last, never behind the grid instant; the drift stays far inside
+/// [kEndSkewToleranceMs], so plan 161's same-instant ties stay ties.
+///
+/// [TimeAdvances]: HarnessRunner.perform
+///
+/// A phone relaunch (plan 163's `relaunchPhone`) must build its new
+/// `WorkoutState` with `clock: _gridClock(clock)` too, or the rebuilt phone
+/// falls back to the wall clock and the pair loses this seam (plan 169 D-16907).
+DateTime Function() _gridClock(TestClock clock) {
+  var lastMs = 0;
+  return () {
+    final gridMs = clock.now.millisecondsSinceEpoch;
+    final nextMs = max(gridMs, lastMs + 1);
+    lastMs = nextMs;
+    return DateTime.fromMillisecondsSinceEpoch(nextMs);
+  };
+}
+
 /// One phone and one wrist, joined by a [PairRadio] and a shared [TestClock].
 class WatchPairHarness {
   WatchPairHarness._({
@@ -780,7 +805,7 @@ class WatchPairHarness {
       name: exerciseName,
       capabilities: capabilities,
     );
-    final phone = WorkoutState(repository);
+    final phone = WorkoutState(repository, clock: _gridClock(clock));
     final settings = SettingsState(repository, fakePreferencesService());
     await settings.initialize();
     final failures = <Object>[];
