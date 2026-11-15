@@ -343,11 +343,11 @@ struct WatchModalityStartGridView: View {
     /// The same wrist-scale gap the surface uses, in both directions.
     static let surfaceInset = 4.0
 
-    /// A cell is a square: its height is its width, so the grid is as tall as the
-    /// wrist is wide and the routines beneath it scroll into view (owner call,
-    /// 2026-11-15, after seeing the 44-point strips on a wrist). The four labels
+    /// A cell is wider than it is tall (1.4 : 1): square was too big on a wrist
+    /// (owner call, 2026-11-15), the 44-point strips were too small, so the height
+    /// follows the width and the routines are a short scroll away. The four labels
     /// are one line each and shrink a little rather than wrap.
-    static let cellAspectRatio = 1.0
+    static let cellAspectRatio = 1.4
 
     /// The one corner radius, applied once. The button's own style draws a second,
     /// darker rounded fill over a coloured background and leaves a double edge,
