@@ -41,6 +41,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/block_types.dart';
 import 'package:omnitrain/core/constants/capability.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
+import 'package:omnitrain/core/services/diagnostics_log.dart';
+import 'package:omnitrain/core/services/diagnostics_storage.dart';
 import 'package:omnitrain/core/services/health_platform_service.dart';
 import 'package:omnitrain/core/services/health_sync_service.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
@@ -159,6 +161,7 @@ Future<_Phone> _phone(
   HealthSyncService? healthSync,
   DateTime Function()? clock,
   DateTime Function()? bridgeClock,
+  DiagnosticsLog? diagnostics,
 }) async {
   final failures = <Object>[];
   final skipped = <({String held, String offered})>[];
@@ -168,6 +171,7 @@ Future<_Phone> _phone(
     transport: transport,
     clock: () => _adoptedAt,
     onFailure: (error, stack) => fail('the watch session inbox failed: $error'),
+    diagnostics: diagnostics,
   );
   final mirror = LiveSessionMirrorState(
     transport: WatchInboxStagingTransport(inner: transport, inbox: inbox),
@@ -180,6 +184,7 @@ Future<_Phone> _phone(
     clock: bridgeClock ?? () => _adoptedAt,
     onFailure: (error, stack) => failures.add(error),
     onSkipped: (held, offered) => skipped.add((held: held, offered: offered)),
+    diagnostics: diagnostics,
   );
   final state = WorkoutState(repository, healthSync: healthSync);
   bridge.bindWorkoutState(state);
@@ -203,6 +208,411 @@ Future<_Phone> _phone(
     failures: failures,
     skipped: skipped,
   );
+}
+
+/// The bridge's own notes (plan 174): what it decided about a wrist session,
+/// in the log's fixed vocabulary and nothing else.
+void adoptionDiagnosticsTests() {
+  group('plan 174 the log records what the bridge decided', () {
+    DiagnosticsLog newLog() => DiagnosticsLog(
+      storage: InMemoryDiagnosticsStorage(),
+      clock: () => _adoptedAt,
+    );
+
+    String iso(int ms) =>
+        DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
+
+    /// The notes of [kind], in the order the log recorded them.
+    List<DiagnosticsEvent> notes(DiagnosticsLog log, String kind) => [
+      for (final event in log.events())
+        if (event.kind == kind) event,
+    ];
+
+    /// The detail lines of [kind], in order, so a test can say exactly what
+    /// the log holds.
+    List<String?> lines(DiagnosticsLog log, String kind) => [
+      for (final event in notes(log, kind)) event.detail,
+    ];
+
+    /// What the mirror hands the bridge for an active wrist session.
+    Map<String, Object?> converged(String sessionId) => {
+      'sessionId': sessionId,
+      'status': WatchSessionStatus.active,
+      'exercises': [_slot('sl-1', 'ex-bench')],
+    };
+
+    /// A `session_started` report for [sessionId], stamped [at].
+    Map<String, Object?> startReport(
+      String sessionId, {
+      required String at,
+    }) => {
+      'protocolVersion': SyncProtocolValidator.protocolVersion,
+      'messageId': 'msg-start-$sessionId',
+      'sessionId': sessionId,
+      'type': 'session_started',
+      'origin': 'watch',
+      'sentAt': '2026-10-05T10:00:00Z',
+      'payload': {'sessionId': sessionId, 'at': at},
+    };
+
+    /// A session row that is already history, as an earlier import left it.
+    Future<void> historyRow(WorkoutRepository repository, String id) async {
+      final atMs = _adoptedAt.millisecondsSinceEpoch;
+      await repository.createSession(
+        TrainingSession(
+          id: id,
+          ownerUserId: LoggedEntryRows.ownerUserId,
+          startedAtMs: atMs - 3600000,
+          endedAtMs: atMs - 1800000,
+          createdAtMs: atMs - 3600000,
+          updatedAtMs: atMs - 1800000,
+        ),
+      );
+    }
+
+    test('S-17401 a fresh adoption notes its decision and the row it wrote',
+        () async {
+      final repository = await _repository();
+      final log = newLog();
+      final phone = await _phone(repository, diagnostics: log);
+
+      await phone.router.receive(_s1Envelope());
+
+      final startMs = phone.state.currentSession!.startedAtMs;
+      expect(
+        (await repository.getSession('s-w1'))?.startedAtMs,
+        startMs,
+        reason: 'the fixture: the snapshot path writes the row at once',
+      );
+      expect(
+        notes(log, 'adoption_decision'),
+        hasLength(1),
+        reason: 'S-17401 one snapshot is one decision',
+      );
+      expect(
+        notes(log, 'adoption_decision').single.session,
+        's-w1',
+        reason: 'S-17401 the decision names the session it was about',
+      );
+      expect(lines(log, 'adoption_decision'), [
+        'adopted status=active start=${iso(startMs)}',
+      ]);
+      expect(
+        lines(log, 'session_row_created'),
+        ['path=snapshot start=${iso(startMs)} end=none'],
+        reason: 'S-17401 the start the log names is the row\'s own',
+      );
+    });
+
+    test('S-17402 a refused adoption is noted once, not fifty times',
+        () async {
+      final repository = await _repository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-phone-1',
+        efforts: const [('effort-a', 'ex-bench')],
+        loggedEffortId: 'effort-a',
+      );
+      final log = newLog();
+      final phone = await _phone(repository, diagnostics: log);
+      await phone.state.loadHistoricalSession('session-phone-1');
+
+      for (var i = 0; i < 50; i++) {
+        expect(
+          await phone.bridge.consider(converged('s-w2')),
+          WatchSessionAdoption.refusedConflict,
+        );
+      }
+
+      expect(
+        notes(log, 'adoption_decision'),
+        hasLength(1),
+        reason: 'S-17402 fifty snapshots of one conflict say one thing',
+      );
+      expect(notes(log, 'adoption_decision').single.session, 's-w2');
+      expect(
+        lines(log, 'adoption_decision'),
+        ['skipped reason=held_session held=session-phone-1'],
+        reason: 'S-17402 fifty snapshots of one conflict say one thing',
+      );
+    });
+
+    test('S-17403 a snapshot of a session already in history is noted once',
+        () async {
+      final repository = await _repository();
+      await historyRow(repository, 's-w3');
+      final log = newLog();
+      final phone = await _phone(repository, diagnostics: log);
+
+      for (var i = 0; i < 10; i++) {
+        expect(
+          await phone.bridge.consider(converged('s-w3')),
+          WatchSessionAdoption.alreadyEnded,
+        );
+      }
+
+      expect(
+        notes(log, 'adoption_decision'),
+        hasLength(1),
+        reason: 'S-17403 ten snapshots of history say one thing',
+      );
+      expect(notes(log, 'adoption_decision').single.session, 's-w3');
+      expect(lines(log, 'adoption_decision'), ['skipped reason=already_history']);
+    });
+
+    test('S-17412 a burst of repeats leaves one line per decision', () async {
+      final repository = await _repository();
+      final log = newLog();
+      final phone = await _phone(repository, diagnostics: log);
+      await phone.router.receive(_s1Envelope());
+      final adoptedMs = phone.state.currentSession!.startedAtMs;
+
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-phone-1',
+        efforts: const [('effort-a', 'ex-bench')],
+        loggedEffortId: 'effort-a',
+      );
+      await phone.state.loadHistoricalSession('session-phone-1');
+      await historyRow(repository, 's-hist');
+
+      for (var i = 0; i < 150; i++) {
+        await phone.bridge.consider(converged('s-w2'));
+        await phone.bridge.consider(converged('s-hist'));
+      }
+      await phone.bridge.onSessionStarted(
+        startReport('s-w9', at: '2026-10-05T09:30:00Z'),
+      );
+
+      expect(lines(log, 'adoption_decision'), [
+        'adopted status=active start=${iso(adoptedMs)}',
+        'skipped reason=held_session held=session-phone-1',
+        'skipped reason=already_history',
+      ]);
+      expect(
+        lines(log, 'session_row_created'),
+        [
+          'path=snapshot start=${iso(adoptedMs)} end=none',
+          'path=started start=2026-10-05T09:30:00.000Z end=none',
+        ],
+        reason: 'S-17412 a reported start is a row the log names once',
+      );
+      expect(
+        notes(log, 'session_row_created').last.session,
+        's-w9',
+        reason: 'S-17412 the report\'s own session is the one named',
+      );
+    });
+
+    test('S-17404 the row a start report opens is noted with the wrist\'s '
+        'start', () async {
+      final repository = await _repository();
+      final log = newLog();
+      final phone = await _phone(repository, diagnostics: log);
+
+      await phone.bridge.onSessionStarted(
+        startReport('s-w4', at: '2026-10-05T09:30:00Z'),
+      );
+
+      expect(
+        lines(log, 'session_row_created'),
+        ['path=started start=2026-10-05T09:30:00.000Z end=none'],
+      );
+      expect(notes(log, 'session_row_created').single.session, 's-w4');
+      expect(
+        (await repository.getSession('s-w4'))?.startedAtMs,
+        DateTime.utc(2026, 10, 5, 9, 30).millisecondsSinceEpoch,
+        reason: 'S-17404 the noted start is the stored one',
+      );
+    });
+
+    test('S-17407 a claimed end beyond the bound is noted as clamped', () async {
+      final repository = await _repository();
+      final log = newLog();
+      var bridgeNow = _adoptedAt;
+      final phone = await _phone(
+        repository,
+        diagnostics: log,
+        bridgeClock: () => bridgeNow,
+      );
+      await phone.router.receive(_s1Envelope());
+      final startMs = phone.state.currentSession!.startedAtMs;
+      bridgeNow = DateTime.fromMillisecondsSinceEpoch(
+        startMs + 3600000,
+        isUtc: true,
+      );
+
+      final claimedMs = startMs + 6 * 3600000;
+      await phone.router.receive(
+        _lifecycle(
+          's-w1',
+          state: WatchLifecycleState.completed,
+          atMs: claimedMs,
+        ),
+      );
+      await pumpEventQueue();
+
+      final boundedMs = startMs + 3600000 + 300000;
+      expect(
+        lines(log, 'end_clamped'),
+        ['from=${iso(claimedMs)} to=${iso(boundedMs)} who=lifecycle'],
+      );
+      expect(
+        lines(log, 'end_applied'),
+        ['who=end_session instant=${iso(boundedMs)} status=completed'],
+      );
+      expect(
+        (await repository.getSession('s-w1'))?.endedAtMs,
+        boundedMs,
+        reason: 'S-17407 the noted end is the one the row holds',
+      );
+    });
+
+    test('S-17409 an applied end is noted with who and its instant', () async {
+      final repository = await _repository();
+      final log = newLog();
+      var bridgeNow = _adoptedAt;
+      final phone = await _phone(
+        repository,
+        diagnostics: log,
+        bridgeClock: () => bridgeNow,
+      );
+      await phone.router.receive(_s1Envelope());
+      final startMs = phone.state.currentSession!.startedAtMs;
+      bridgeNow = DateTime.fromMillisecondsSinceEpoch(
+        startMs + 3600000,
+        isUtc: true,
+      );
+
+      final endMs = startMs + 1800000;
+      await phone.router.receive(
+        _lifecycle('s-w1', state: WatchLifecycleState.completed, atMs: endMs),
+      );
+      await pumpEventQueue();
+
+      expect(
+        lines(log, 'end_clamped'),
+        isEmpty,
+        reason: 'S-17409 an end inside the bound is not a clamp',
+      );
+      expect(
+        lines(log, 'end_applied'),
+        ['who=end_session instant=${iso(endMs)} status=completed'],
+      );
+    });
+
+    test('S-17409b a later end on a finished row is noted as a catch-up',
+        () async {
+      final repository = await _repository();
+      final log = newLog();
+      var bridgeNow = _adoptedAt;
+      final phone = await _phone(
+        repository,
+        diagnostics: log,
+        bridgeClock: () => bridgeNow,
+      );
+      await phone.router.receive(_s1Envelope());
+      final startMs = phone.state.currentSession!.startedAtMs;
+      bridgeNow = DateTime.fromMillisecondsSinceEpoch(
+        startMs + 3600000,
+        isUtc: true,
+      );
+      await phone.state.endSession(atMs: startMs + 600000);
+
+      final laterMs = startMs + 1200000;
+      await phone.router.receive(
+        _lifecycle('s-w1', state: WatchLifecycleState.completed, atMs: laterMs),
+      );
+      await pumpEventQueue();
+
+      expect(
+        lines(log, 'end_applied'),
+        ['who=catchup instant=${iso(laterMs)} status=completed'],
+        reason: 'S-17409b the phone\'s own finish happened first',
+      );
+    });
+
+    test('S-17409c a completed frame with no instant is noted as none',
+        () async {
+      final repository = await _repository();
+      final log = newLog();
+      final phone = await _phone(repository, diagnostics: log);
+      await phone.router.receive(_s1Envelope());
+
+      await phone.router.receive(
+        _lifecycle('s-w1', state: WatchLifecycleState.completed),
+      );
+      await pumpEventQueue();
+
+      expect(
+        lines(log, 'end_applied'),
+        ['who=end_session instant=none status=completed'],
+        reason: 'S-17409c the frame named no instant, and the log says so',
+      );
+      expect(lines(log, 'end_clamped'), isEmpty);
+    });
+
+    test('S-17410 an applied discard is noted with who it was', () async {
+      final repository = await _repository();
+      final log = newLog();
+      var bridgeNow = _adoptedAt;
+      final phone = await _phone(
+        repository,
+        diagnostics: log,
+        bridgeClock: () => bridgeNow,
+      );
+      await phone.router.receive(_s1Envelope());
+
+      await phone.router.receive(
+        _lifecycle('s-w1', state: WatchLifecycleState.abandoned),
+      );
+      await pumpEventQueue();
+
+      expect(lines(log, 'discard_applied'), ['who=held']);
+      expect(
+        await repository.getSession('s-w1'),
+        isNull,
+        reason: 'S-17410 the noted discard is the one that happened',
+      );
+    });
+
+    test('S-17410b a discard earlier than the phone\'s finish is noted as such',
+        () async {
+      final repository = await _repository();
+      final log = newLog();
+      var bridgeNow = _adoptedAt;
+      final phone = await _phone(
+        repository,
+        diagnostics: log,
+        bridgeClock: () => bridgeNow,
+      );
+      await phone.router.receive(_s1Envelope());
+      final startMs = phone.state.currentSession!.startedAtMs;
+      bridgeNow = DateTime.fromMillisecondsSinceEpoch(
+        startMs + 3600000,
+        isUtc: true,
+      );
+      final phoneEndMs = startMs + 600000;
+      await phone.state.endSession(atMs: phoneEndMs);
+
+      await phone.router.receive(
+        _lifecycle(
+          's-w1',
+          state: WatchLifecycleState.abandoned,
+          atMs: phoneEndMs - 5000,
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(
+        lines(log, 'discard_applied'),
+        ['who=finished'],
+        reason: 'S-17410b the earlier ending is the discard that was always '
+            'the truth',
+      );
+      expect(await repository.getSession('s-w1'), isNull);
+    });
+  });
 }
 
 /// One ladder slot as the wrist sends it.
@@ -418,6 +828,8 @@ class _RewriteSpy extends HealthSyncService {
 }
 
 void main() {
+  adoptionDiagnosticsTests();
+
   test('S-1 a wrist snapshot becomes the phone\'s in-progress session', () async {
     final repository = await _repository();
     final phone = await _phone(repository);

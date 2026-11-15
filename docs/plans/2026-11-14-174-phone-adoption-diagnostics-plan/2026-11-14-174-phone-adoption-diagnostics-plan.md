@@ -478,16 +478,26 @@ the site list.
 
 ## Progress
 
-- [ ] Phase 1: the seam (@developer)
-- [ ] Phase 2: the bridge's notes (@developer)
-- [ ] Phase 3: the importer's notes (@developer)
-- [ ] Phase 4: docs and the full suite (@developer)
+- [x] Phase 1: the seam (@developer) — optional `DiagnosticsLog?` threaded through importer, inbox, bridge (`super.diagnostics`), `createWatchSync`; structural guard green, proven RED at HEAD.
+- [x] Phase 2: the bridge's notes (@developer) — 11 tests (S-17401..S-17404, S-17407, S-17409/09b/09c, S-17410/10b, S-17412) green; three mutations proved them; group +11.
+- [x] Phase 3: the importer's notes (@developer) — 6 tests (S-17405, S-17406 A/B, S-17408/08b, S-17409) written red (`+0 -6`) then green; file `+91`, three mutations proved them.
+- [x] Phase 4: docs and the full suite (@developer) — "The phone's decisions." block + verified-by names in `watch_diagnostics.md`; sweep 14 hits at the D-17402 sites only; full suite `+7653 ~4`, lint 181 (baseline).
 
 ## Assumption Log
 
 *(empty at handoff — the owner was unavailable; every defaulted choice is marked **owner to
 confirm** in the Ledger: D-17401 seam, D-17402 vocabulary, D-17403 dedupe, D-17404 privacy,
 D-17405 supersedes D-16407. Executors append here (≤3 lines each); the reviewer adjudicates.)*
+
+- **`_catchUpEnd` reads `status=none` when no `_End` is in scope.** Options: thread the `_End` through, or note
+  `none`. Chose `none` (the importer's catch-up has no end to name); the fixture path always has one, so tests read
+  `completed`. Reviewer may prefer threading.
+- **Both new test groups were proved by mutation, not `prove-red HEAD`.** The tests name a `diagnostics:` parameter
+  that does not exist at HEAD, so they cannot compile there; original lines recorded in the evidence file instead.
+- **`_applyFollowedEnd` notes nothing itself.** It builds a `_Pass`, so the row and end notes come from
+  `_createSession`/`_catchUpEnd` exactly once; noting in both would double-count the end.
+- **Instants are `.000Z` UTC, second precision at most.** `DateTime.toIso8601String()` on UTC millis; chosen for
+  exactness over brevity, so the doc shows `<UTC>` rather than a format string.
 
 ## Feedback
 

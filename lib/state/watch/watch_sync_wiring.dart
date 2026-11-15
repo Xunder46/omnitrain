@@ -179,6 +179,7 @@ class _WiringAdoptionBridge extends WatchSessionAdoptionBridge {
     super.onSkipped,
     super.onPlanStarted,
     super.validator,
+    super.diagnostics,
   });
 
   WorkoutState? _boundState;
@@ -262,6 +263,9 @@ Future<WatchSyncGraph?> createWatchSync({
     // The graph's protocol gate, shared with the inbox, the mirror and the
     // bridges below; production passes none and the frames are read as before.
     validator: validator,
+    // Plan 174 (D-17401): the log records what the bridge decided about a
+    // wrist session; null records nothing.
+    diagnostics: diagnostics,
   );
   final inbox = WatchSessionInbox(
     repository: repository,
@@ -288,6 +292,8 @@ Future<WatchSyncGraph?> createWatchSync({
     // A rating the import wrote reaches the session's Fitness workout as its
     // effort (plan 90 D-4).
     healthSync: healthSync,
+    // Plan 174 (D-17401): the importer's own decisions reach the log.
+    diagnostics: diagnostics,
   );
   // Built after the mirror, but the projection below reads it.
   WatchTimerPush? timerPushForSnapshots;

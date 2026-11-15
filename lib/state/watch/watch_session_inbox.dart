@@ -26,6 +26,7 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/platform/watch_delivery.dart';
+import '../../core/services/diagnostics_log.dart';
 import '../../core/services/health_sync_service.dart';
 import '../../core/services/watch_session_importer.dart';
 import '../../core/sync_protocol/message_validator.dart';
@@ -119,6 +120,10 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     Future<void> Function(String sessionId)? onSensorSummaryAttached,
     Future<void> Function(String sessionId)? onSessionHistoryChanged,
     HealthSyncService? healthSync,
+
+    /// The phone's diagnostics log (plan 174, D-17401), forwarded to the
+    /// importer this inbox builds; null records nothing.
+    DiagnosticsLog? diagnostics,
   }) : _repository = repository,
        _transport = transport,
        _validator = validator,
@@ -135,6 +140,7 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
        _importer = WatchSessionImporter(
          repository: repository,
          clock: clock ?? _utcNow,
+         diagnostics: diagnostics,
        );
 
   static DateTime _utcNow() => DateTime.now().toUtc();

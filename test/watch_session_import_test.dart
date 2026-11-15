@@ -32,6 +32,8 @@
 // `test/helpers/watch_capture_import_harness.dart`.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/services/diagnostics_log.dart';
+import 'package:omnitrain/core/services/diagnostics_storage.dart';
 import 'package:omnitrain/core/services/health_platform_service.dart';
 import 'package:omnitrain/core/services/health_sync_service.dart';
 import 'package:omnitrain/core/services/watch_session_importer.dart';
@@ -4217,6 +4219,275 @@ void main() {
   // floored end (== the arrival start) drops to the wrist's end. Only earlier:
   // the phone's start is never pushed later, a `followed` end never touches it,
   // and a real phone end survives.
+  group('import diagnostics notes', () {
+    final now = _phoneNow.millisecondsSinceEpoch;
+
+    String iso(int ms) =>
+        DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
+
+    DiagnosticsLog newLog() => DiagnosticsLog(
+      storage: InMemoryDiagnosticsStorage(),
+      clock: () => _phoneNow,
+    );
+
+    /// The detail of every note of [kind], oldest first.
+    List<String> notes(DiagnosticsLog log, String kind) => [
+      for (final event in log.events())
+        if (event.kind == kind) event.detail ?? '',
+    ];
+
+    Future<void> stage(
+      WorkoutRepository repository,
+      String sessionId,
+      Map<String, Object?> event,
+    ) => repository.stageWatchInboxEntry(
+      WatchInboxEntry(
+        entryId: event['entryId']! as String,
+        watchSessionId: sessionId,
+        kind: event['kind']! as String,
+        origin: WatchInboxEntry.originWatch,
+        payload: Map<String, dynamic>.of(event),
+        receivedAtMs: now,
+      ),
+    );
+
+    /// A row the phone holds, with no segment or effort of its own.
+    Future<void> heldRow(
+      WorkoutRepository repository,
+      String sessionId, {
+      required int startedAtMs,
+      required int endedAtMs,
+    }) => repository.createSession(
+      TrainingSession(
+        id: sessionId,
+        ownerUserId: 'u-174',
+        startedAtMs: startedAtMs,
+        endedAtMs: endedAtMs,
+        createdAtMs: startedAtMs,
+        updatedAtMs: startedAtMs,
+      ),
+    );
+
+    test('S-17405 an imported history row is noted with both stamps', () async {
+      final repository = await _repository();
+      final log = newLog();
+      final started = now - 1800000;
+      final ended = now - 600000;
+      await stage(repository, 'w-3', _set('e-17405', loggedAt: iso(started)));
+      await stage(
+        repository,
+        'w-3',
+        _end('w-3', startedAt: iso(started), endedAt: iso(ended)),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('w-3', phoneOwnsSession: false);
+
+      expect(
+        notes(log, 'session_row_created'),
+        ['path=import start=${iso(started)} end=${iso(ended)}'],
+        reason:
+            'S-17405 the history row an import writes is noted with the '
+            'wrist’s own two stamps',
+      );
+      expect(
+        notes(log, 'end_applied'),
+        ['who=import instant=${iso(ended)} status=completed'],
+        reason: 'S-17405 the end the row was created with is an applied end',
+      );
+    });
+
+    test('S-17406 A a merge’s start correction is noted', () async {
+      final repository = await _repository();
+      final log = newLog();
+      final floor = now - 60000;
+      await heldRow(repository, 's-17406a', startedAtMs: floor, endedAtMs: floor);
+      await stage(
+        repository,
+        's-17406a',
+        _end(
+          's-17406a',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(now - 560000),
+        ),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('s-17406a', phoneOwnsSession: true);
+
+      expect(
+        notes(log, 'session_start_corrected'),
+        ['from=${iso(floor)} to=${iso(now - 1800000)} path=merge'],
+        reason:
+            'S-17406 A the wrist’s end carries the start the D-153 floor lost, '
+            'and the merge says so',
+      );
+      expect(
+        notes(log, 'end_applied'),
+        isEmpty,
+        reason: 'S-17406 A a merge never writes the wrist’s end (G2/D-5)',
+      );
+    });
+
+    test('S-17406 B an import’s start correction is noted', () async {
+      final repository = await _repository();
+      final log = newLog();
+      final floor = now - 60000;
+      await heldRow(repository, 's-17406b', startedAtMs: floor, endedAtMs: floor);
+      await stage(
+        repository,
+        's-17406b',
+        _end(
+          's-17406b',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(now - 560000),
+        ),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('s-17406b', phoneOwnsSession: false);
+
+      expect(
+        notes(log, 'session_start_corrected'),
+        ['from=${iso(floor)} to=${iso(now - 1800000)} path=import'],
+        reason:
+            'S-17406 B a row the phone no longer holds is corrected by the '
+            'import path, and the note names that path',
+      );
+    });
+
+    test('S-17408 an import clamps a future end and notes it', () async {
+      final repository = await _repository();
+      final log = newLog();
+      final ended = now + 21600000;
+      await stage(
+        repository,
+        'w-4',
+        _set('e-17408', loggedAt: iso(now - 1800000)),
+      );
+      await stage(
+        repository,
+        'w-4',
+        _end(
+          'w-4',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(ended),
+        ),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('w-4', phoneOwnsSession: false);
+
+      expect(
+        notes(log, 'end_clamped'),
+        ['from=${iso(ended)} to=${iso(now + 300000)} who=import'],
+        reason:
+            'S-17408 plan 164 bounds an arriving end at this phone’s clock plus '
+            'five minutes, and the log says what was cut',
+      );
+      expect(
+        (await repository.getSession('w-4'))!.endedAtMs,
+        now + 300000,
+        reason: 'S-17408 the stored end is the bounded instant',
+      );
+    });
+
+    test('S-17408 b the catch-up bound is noted too', () async {
+      final repository = await _repository();
+      final log = newLog();
+      await heldRow(
+        repository,
+        's-17408b',
+        startedAtMs: now - 1800000,
+        endedAtMs: now - 600000,
+      );
+      await stage(
+        repository,
+        's-17408b',
+        _set('e-17408b', loggedAt: iso(now + 21600000)),
+      );
+      await stage(
+        repository,
+        's-17408b',
+        _end(
+          's-17408b',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(now - 300000),
+        ),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('s-17408b', phoneOwnsSession: false);
+
+      expect(
+        notes(log, 'end_clamped'),
+        ['from=${iso(now + 21600000)} to=${iso(now + 300000)} who=import'],
+        reason:
+            'S-17408 b a set the wrist stamped in the future cannot push the '
+            'stored end past the bound either',
+      );
+      expect(
+        (await repository.getSession('s-17408b'))!.endedAtMs,
+        now + 300000,
+        reason: 'S-17408 b the moved end is the bounded one',
+      );
+    });
+
+    test('S-17409 an applied import end names who and the instant', () async {
+      final repository = await _repository();
+      final log = newLog();
+      await heldRow(
+        repository,
+        's-17409',
+        startedAtMs: now - 1800000,
+        endedAtMs: now - 600000,
+      );
+      await stage(
+        repository,
+        's-17409',
+        _end(
+          's-17409',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(now - 300000),
+        ),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('s-17409', phoneOwnsSession: false);
+
+      expect(
+        notes(log, 'end_applied'),
+        ['who=import instant=${iso(now - 300000)} status=completed'],
+        reason:
+            'S-17409 the catch-up moved the phone’s end later, and the line '
+            'names the instant it moved to',
+      );
+      expect(
+        (await repository.getSession('s-17409'))!.endedAtMs,
+        now - 300000,
+        reason: 'S-17409 the end the log names is the one the row carries',
+      );
+    });
+  });
+
   group('plan 167 the held row’s start', () {
     final now = _phoneNow.millisecondsSinceEpoch;
 

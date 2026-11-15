@@ -57,4 +57,30 @@ void main() {
       reason: 'the diagnostics log must reach createPlatformWatchTransport',
     );
   });
+
+  // Plan 174 (D-17401, S-17401..S-17412): the same log the transport gets also
+  // reaches the adoption bridge and the inbox — the inbox forwards it to the
+  // importer it builds, which is how the importer's decisions are recorded
+  // without a second seam. A build that drops either argument records nothing
+  // for a wrist session, which is what this scan catches.
+  test('the wiring passes diagnostics to the adoption bridge and the inbox', () {
+    final source = File('lib/state/watch/watch_sync_wiring.dart').readAsStringSync();
+
+    for (final call in const [
+      'final adoption = _WiringAdoptionBridge(',
+      'final inbox = WatchSessionInbox(',
+    ]) {
+      final at = source.indexOf(call);
+      expect(at, greaterThan(0), reason: 'the wiring lost the `$call` build');
+      final end = source.indexOf('\n  );', at);
+      expect(end, greaterThan(at));
+      expect(
+        source.substring(at, end),
+        contains('diagnostics: diagnostics'),
+        reason:
+            '`$call` must receive the graph\'s diagnostics log, or the phone '
+            'records no decision about a wrist session (D-17401)',
+      );
+    }
+  });
 }

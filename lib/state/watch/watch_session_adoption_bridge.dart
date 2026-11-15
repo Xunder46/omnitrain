@@ -25,6 +25,7 @@ import '../../core/constants/capability.dart';
 import '../../core/constants/metric_ids.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/workout_constants.dart';
+import '../../core/services/diagnostics_log.dart';
 import '../../core/services/watch_routine_matcher.dart';
 import '../../core/services/watch_session_importer.dart';
 import '../../core/sync_protocol/end_skew.dart';
@@ -135,6 +136,10 @@ class WatchSessionAdoptionBridge {
     Future<void> Function(String plannedSessionId, String sessionId)?
         onPlanStarted,
     SyncProtocolValidator? validator,
+
+    /// The phone's diagnostics log (plan 174, D-17401); null records nothing
+    /// and changes no decision (D-17405).
+    this.diagnostics,
   }) : _repository = repository,
        _clock = clock ?? DateTime.now,
        _onFailure = onFailure ?? _report,
@@ -145,6 +150,9 @@ class WatchSessionAdoptionBridge {
   final WorkoutRepository _repository;
   final DateTime Function() _clock;
   final void Function(Object error, StackTrace stack) _onFailure;
+
+  /// The phone's diagnostics log; null records nothing (plan 174).
+  final DiagnosticsLog? diagnostics;
 
   /// Where a refused adoption (D-10) is reported — the one observation of a
   /// skip the app has, so tests can see it without reading the debug log.
@@ -199,6 +207,24 @@ class WatchSessionAdoptionBridge {
   /// snapshot carrying it appends nothing back. An entry lives only while the
   /// phone holds the session; a session it has moved on from keeps none.
   final Map<String, Set<String>> _everSeen = {};
+
+  /// The adoption decisions already noted, keyed `session detail`, so the
+  /// notes carry a decision once and not once per snapshot (D-17404).
+  final Set<String> _notedAdoptions = <String>{};
+
+  /// Notes a kind from the plan's fixed vocabulary (D-17402); a null log, and
+  /// a log that refuses the write, change no decision (D-17405).
+  void _note(String kind, {String? session, String? detail}) {
+    diagnostics?.note(kind, session: session, detail: detail);
+  }
+
+  /// Notes an adoption decision once per session and outcome: a wrist
+  /// re-sending a snapshot it has not converged makes the same decision again,
+  /// and the log holds the first one.
+  void _noteAdoption(String sessionId, String detail) {
+    if (!_notedAdoptions.add('$sessionId $detail')) return;
+    _note('adoption_decision', session: sessionId, detail: detail);
+  }
 
   /// Binds the state an adopted session is published into. Until this is called
   /// [consider] adopts nothing: a build with no session state has nowhere to put
@@ -742,6 +768,7 @@ class WatchSessionAdoptionBridge {
     // the snapshot with the session's end so the wrist catches up.
     final existing = await _repository.getSession(sessionId);
     if (existing != null && existing.endedAtMs != null) {
+      _noteAdoption(sessionId, 'skipped reason=already_history');
       return WatchSessionAdoption.alreadyEnded;
     }
 
@@ -770,6 +797,7 @@ class WatchSessionAdoptionBridge {
     // protect.
     if (held != null && target.hasActiveSession) {
       _reportSkipOnce(held.id, sessionId);
+      _noteAdoption(sessionId, 'skipped reason=held_session held=${held.id}');
       return WatchSessionAdoption.refusedConflict;
     }
 
@@ -832,6 +860,14 @@ class WatchSessionAdoptionBridge {
       _onFailure(error, stack);
       rethrow;
     }
+    // S-17401: the decision names the start the session row itself holds, so
+    // the log and the row agree without a second clock read.
+    final startMs =
+        target.currentSession?.startedAtMs ?? _clock().millisecondsSinceEpoch;
+    _noteAdoption(
+      sessionId,
+      'adopted status=active start=${_isoUtc(startMs)}',
+    );
     return WatchSessionAdoption.adopted;
   }
 
@@ -895,7 +931,17 @@ class WatchSessionAdoptionBridge {
       if (state == WatchLifecycleState.completed) {
         final atMs = _instantMs(_asObject(envelope['payload'])['at']);
         if (atMs != null) {
-          await target.catchUpEndedSession(_boundedEnd(atMs));
+          final boundedMs = _boundedEnd(atMs, session: sessionId);
+          await target.catchUpEndedSession(boundedMs);
+          // A catch-up only moves an end that is later than the one the phone
+          // holds; when it does not, no end was applied and nothing is noted.
+          if (boundedMs > held.endedAtMs!) {
+            _note(
+              'end_applied',
+              session: sessionId,
+              detail: 'who=catchup instant=${_isoUtc(boundedMs)} status=completed',
+            );
+          }
         }
       } else if (state == WatchLifecycleState.abandoned) {
         final atMs = _instantMs(_asObject(envelope['payload'])['at']);
@@ -906,6 +952,11 @@ class WatchSessionAdoptionBridge {
         if (atMs != null &&
             endsBeforeHeldMsByMoreThanSkew(atMs, held.endedAtMs!)) {
           await target.discardCurrentSession();
+          _note(
+            'discard_applied',
+            session: sessionId,
+            detail: 'who=finished',
+          );
         }
       }
       return;
@@ -921,12 +972,27 @@ class WatchSessionAdoptionBridge {
         final atMs = _instantMs(_asObject(envelope['payload'])['at']);
         // The watch saved its own workout for this session: the phone's end
         // must not write a second one (plan 89c1 D-1).
+        final boundedMs = atMs == null
+            ? null
+            : _boundedEnd(atMs, session: sessionId);
         await target.endSession(
           writeToHealth: false,
-          atMs: atMs == null ? null : _boundedEnd(atMs),
+          atMs: boundedMs,
+        );
+        _note(
+          'end_applied',
+          session: sessionId,
+          detail: 'who=end_session '
+              'instant=${boundedMs == null ? 'none' : _isoUtc(boundedMs)} '
+              'status=completed',
         );
       case WatchLifecycleState.abandoned:
         await target.discardCurrentSession();
+        _note(
+          'discard_applied',
+          session: sessionId,
+          detail: 'who=held',
+        );
     }
   }
 
@@ -1089,6 +1155,11 @@ class WatchSessionAdoptionBridge {
         atMs: atMs,
       ),
     );
+    _note(
+      'session_row_created',
+      session: sessionId,
+      detail: 'path=started start=${_isoUtc(startMs)} end=none',
+    );
   }
 
   /// The phone's template [routineTemplateId] names, or null — read from the
@@ -1160,6 +1231,11 @@ class WatchSessionAdoptionBridge {
 
     await _writeLadder(sessionId, converged, atMs, routine,
         segmentId: segment.id);
+    _note(
+      'session_row_created',
+      session: sessionId,
+      detail: 'path=snapshot start=${_isoUtc(atMs)} end=none',
+    );
   }
 
   /// Writes the ladder [converged] carries into [sessionId]'s row under
@@ -1528,12 +1604,20 @@ class WatchSessionAdoptionBridge {
   /// stretch the phone's workout, its duration and its Health span into the
   /// future. No lower bound: a past end is a late sync, and the earliest end
   /// rule (D-14630, D-15403) keeps deciding between two ends.
-  int _boundedEnd(int atMs) {
+  int _boundedEnd(int atMs, {String? session}) {
     final boundedMs = clampFutureEndMs(
       atMs,
       _clock().millisecondsSinceEpoch,
     );
-    if (boundedMs != atMs) _reportClampedEnd(atMs, boundedMs);
+    if (boundedMs != atMs) {
+      _reportClampedEnd(atMs, boundedMs);
+      _note(
+        'end_clamped',
+        session: session,
+        detail:
+            'from=${_isoUtc(atMs)} to=${_isoUtc(boundedMs)} who=lifecycle',
+      );
+    }
     return boundedMs;
   }
 

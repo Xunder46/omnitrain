@@ -23,6 +23,7 @@ library;
 
 import 'dart:math' as math;
 
+import 'diagnostics_log.dart';
 import 'watch_routine_matcher.dart';
 import '../constants/block_types.dart';
 import '../constants/metric_ids.dart';
@@ -76,6 +77,7 @@ class WatchSessionImporter {
   WatchSessionImporter({
     required WorkoutRepository repository,
     DateTime Function()? clock,
+    this.diagnostics,
   }) : _repository = repository,
        _clock = clock ?? _utcNow;
 
@@ -83,6 +85,10 @@ class WatchSessionImporter {
 
   final WorkoutRepository _repository;
   final DateTime Function() _clock;
+
+  /// The phone's diagnostics log (plan 174, D-17401); null records nothing and
+  /// changes no decision (D-17405).
+  final DiagnosticsLog? diagnostics;
 
   /// The receiver's clock at decision time, as the plan-164 bound reads it.
   int _nowMs() => _clock().toUtc().millisecondsSinceEpoch;
@@ -230,6 +236,7 @@ class WatchSessionImporter {
       sessionId: watchSessionId,
       end: end,
       nowMs: _nowMs(),
+      diagnostics: diagnostics,
     );
     await pass.run(
       existing: existing,
@@ -266,6 +273,7 @@ class WatchSessionImporter {
       sessionId: watchSessionId,
       end: end,
       nowMs: _nowMs(),
+      diagnostics: diagnostics,
     );
     if (end.status == _completed &&
         await _repository.getSession(watchSessionId) != null) {
@@ -335,6 +343,7 @@ class WatchSessionImporter {
       sessionId: sessionId,
       end: end,
       nowMs: _nowMs(),
+      diagnostics: diagnostics,
     );
     // What only the wrist knows about this session is applied exactly as an
     // import applies it (D-19): the phone's own rating wins and the wrist's
@@ -350,6 +359,15 @@ class WatchSessionImporter {
     final corrected = end == null
         ? null
         : await _carryWristStart(_repository, existing, end);
+    if (corrected != null) {
+      _noteStartCorrected(
+        diagnostics,
+        sessionId,
+        from: existing.startedAtMs,
+        to: corrected.startedAtMs,
+        path: 'merge',
+      );
+    }
     final held = corrected ?? existing;
     await pass._topUpRating(held, unapplied);
     if (end != null && end.row.appliedAtMs == null) {
@@ -513,6 +531,7 @@ class _Pass {
     required this.sessionId,
     required this.nowMs,
     this.end,
+    this.diagnostics,
   }) : _repository = repository;
 
   final WorkoutRepository _repository;
@@ -525,6 +544,9 @@ class _Pass {
   /// The wrist's end, when the pass has one. A merge runs without it (D-13)
   /// and never reaches the code that reads it.
   final _End? end;
+
+  /// The phone's diagnostics log (plan 174, D-17402); null records nothing.
+  final DiagnosticsLog? diagnostics;
 
   /// The rows this pass has written, changed or removed — counted rather than
   /// flagged, because a merge has to name the efforts it wrote into (D-17) and
@@ -581,6 +603,15 @@ class _Pass {
         existing,
         end!,
       );
+      if (corrected != null) {
+        _noteStartCorrected(
+          diagnostics,
+          sessionId,
+          from: existing.startedAtMs,
+          to: corrected.startedAtMs,
+          path: 'import',
+        );
+      }
       final held = corrected ?? existing;
       await _topUpRating(held, unapplied);
       await _catchUpEnd(held, live);
@@ -687,6 +718,31 @@ class _Pass {
     );
     ratingWritten = rating;
     changed = true;
+    // Plan 174 (D-17402): the row an import wrote, the end it carries, and the
+    // clamp that shortened it when the wrist's end was beyond this phone's
+    // bound.
+    final clampedFrom = end.clampedFromMs;
+    if (clampedFrom != null) {
+      diagnostics?.note(
+        'end_clamped',
+        session: sessionId,
+        detail:
+            'from=${_noteIso(clampedFrom)} to=${_noteIso(end.endedAtMs)} '
+            'who=import',
+      );
+    }
+    diagnostics?.note(
+      'session_row_created',
+      session: sessionId,
+      detail:
+          'path=import start=${_noteIso(end.startedAtMs)} '
+          'end=${_noteIso(end.endedAtMs)}',
+    );
+    diagnostics?.note(
+      'end_applied',
+      session: sessionId,
+      detail: 'who=import instant=${_noteIso(end.endedAtMs)} status=${end.status}',
+    );
     await _attachSessionSummary();
   }
 
@@ -755,6 +811,22 @@ class _Pass {
     );
     endMovedFromMs = row;
     changed = true;
+    // Plan 174 (D-17402): the bound shortened where the end could land, and
+    // the row now carries the instant the log names.
+    if (bounded != latest) {
+      diagnostics?.note(
+        'end_clamped',
+        session: session.id,
+        detail: 'from=${_noteIso(latest)} to=${_noteIso(bounded)} who=import',
+      );
+    }
+    diagnostics?.note(
+      'end_applied',
+      session: session.id,
+      detail:
+          'who=import instant=${_noteIso(bounded)} '
+          'status=${end?.status ?? 'none'}',
+    );
   }
 
   Future<String> _segmentId() async {
@@ -2341,12 +2413,18 @@ class _End {
     required this.maxHeartRateBpm,
     required this.activeEnergyKcal,
     required this.setBlocks,
+    this.clampedFromMs,
   });
 
   final WatchInboxEntry row;
   final int loggedAtMs;
   final int startedAtMs;
   final int endedAtMs;
+
+  /// The instant the wrist's end named before this phone's bound shortened it
+  /// (plan 174, D-17402), so the diagnostics log can say what was cut; null
+  /// when the end arrived inside the bound.
+  final int? clampedFromMs;
   final String status;
   final String? modality;
 
@@ -2375,18 +2453,21 @@ class _End {
     }
     final modality = payload['modality'];
     final blocks = payload['setBlockHeartRates'];
+    // Plan 164 (D-16401, D-16408): an arriving end is bounded by this phone's
+    // clock at decision time, and never sits before the wrist's own start — a
+    // frame that claims both stamps in the future imports as a zero-length
+    // workout instead of a negative one. Plan 174 (D-17402): the raw instant
+    // stays on the end, so a clamp can be named.
+    final boundedEndMs = math.max(
+      startedAtMs,
+      math.min(endedAtMs, nowMs + kFutureEndClampMs),
+    );
     return _End(
       row: row,
       loggedAtMs: loggedAtMs,
       startedAtMs: startedAtMs,
-      // Plan 164 (D-16401, D-16408): an arriving end is bounded by this phone's
-      // clock at decision time, and never sits before the wrist's own start —
-      // a frame that claims both stamps in the future imports as a zero-length
-      // workout instead of a negative one.
-      endedAtMs: math.max(
-        startedAtMs,
-        math.min(endedAtMs, nowMs + kFutureEndClampMs),
-      ),
+      endedAtMs: boundedEndMs,
+      clampedFromMs: boundedEndMs == endedAtMs ? null : endedAtMs,
       status: status,
       modality: modality is String && modality.isNotEmpty ? modality : null,
       followed: payload['followed'] == true,
@@ -2426,6 +2507,26 @@ class _End {
 int? _ms(Object? iso) => iso is String
     ? DateTime.tryParse(iso)?.toUtc().millisecondsSinceEpoch
     : null;
+
+/// An instant as the diagnostics log reads it (plan 174, D-17402).
+String _noteIso(int ms) =>
+    DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
+
+/// Plan 174 (D-17402): the wrist's own start replaced the instant the phone's
+/// row carried, and [path] names which branch made the correction.
+void _noteStartCorrected(
+  DiagnosticsLog? diagnostics,
+  String sessionId, {
+  required int from,
+  required int to,
+  required String path,
+}) {
+  diagnostics?.note(
+    'session_start_corrected',
+    session: sessionId,
+    detail: 'from=${_noteIso(from)} to=${_noteIso(to)} path=$path',
+  );
+}
 
 double? _real(Object? value) =>
     value is num && value.isFinite ? value.toDouble() : null;
