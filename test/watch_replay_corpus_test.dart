@@ -69,6 +69,8 @@ class _Step {
         await runner.perform(runner.wristStartsRest());
       case 'wristKill':
         await runner.perform(runner.wristKilled());
+      case 'phoneKill':
+        await runner.perform(runner.phoneKilledAndRelaunched());
       case 'drop':
         await runner.perform(runner.linkDrops());
       case 'rise':
@@ -286,6 +288,26 @@ const List<_Source> kCorpusSources = [
     seed: 857,
     tags: ['kill', 'multi-session', 'entry', 'refused-queued'],
   ),
+  // D-16304: the scripted phone kill. The phone never hears the wrist's set
+  // (it dies while the link is down), the finished session then survives the
+  // wrist's own death, and the heal converges. `phone-kill` is run-only like
+  // `refused-queued`: the recording shows the kill as a gap, not as an event,
+  // because the kill is the harness standing in for a process restart.
+  _Source(
+    'trace-kills',
+    kind: 'trace',
+    steps: [
+      _Step('wristStart'),
+      _Step('drop'),
+      _Step('wristLog'),
+      _Step('phoneKill'),
+      _Step('rise'),
+      _Step('wristFinish'),
+      _Step('wristKill'),
+      _Step('rise'),
+    ],
+    tags: ['kill', 'entry', 'phone-kill'],
+  ),
 ];
 
 /// A re-recording: the canonical recording and what it covers.
@@ -367,7 +389,7 @@ Set<String> _fileTags(ReplayRecording recording) {
 }
 
 /// Tags only the live run can answer for.
-const Set<String> kRunOnlyTags = {'refused-queued', 'no-fault'};
+const Set<String> kRunOnlyTags = {'refused-queued', 'no-fault', 'phone-kill'};
 
 final RegExp _unstableId = RegExp(
   r'[0-9]{10,}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
@@ -781,6 +803,7 @@ void main() {
 
     for (final tag in const [
       'kill',
+      'phone-kill',
       'refused-queued',
       'multi-session',
       'timer',

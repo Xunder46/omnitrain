@@ -61,6 +61,48 @@ void main() {
         throwsArgumentError,
         reason: 'an empty fixture space is a mistake, not a run of nothing',
       );
+      // S-16301: the kill kinds are a fixture space of their own. Both are
+      // actions the shipping app performs, so a trace drawn from them is a
+      // trace of an app dying — not a synthetic re-assert.
+      const killActions = {PhoneKilledAndRelaunched, WristKilled};
+      final killedPhone = <int>{};
+      final killedWrist = <int>{};
+      for (final seed in [1, 2, 3, 4, 5]) {
+        final run = await ConvergenceRun.runSeed(
+          seed,
+          allowedActions: killActions,
+        );
+        final outside = run.actions
+            .where((action) => !killActions.contains(action.runtimeType))
+            .map((action) => action.describe())
+            .toList();
+        expect(outside, isEmpty, reason: 'seed=$seed\n${run.trace}');
+        expect(run.actions, isNotEmpty, reason: 'seed=$seed generated nothing');
+        for (final action in run.actions) {
+          switch (action) {
+            case PhoneKilledAndRelaunched():
+              expect(action.actor, PairActor.phone);
+              expect(action.synthetic, isFalse);
+              expect(action.describe(), 'phone app killed and relaunched');
+              killedPhone.add(seed);
+            case WristKilled():
+              expect(action.actor, PairActor.wrist);
+              expect(action.synthetic, isFalse);
+              expect(action.describe(), 'wrist app killed and relaunched');
+              killedWrist.add(seed);
+            default:
+              fail('seed=$seed minted ${action.describe()}');
+          }
+        }
+      }
+      expect(
+        killedPhone,
+        isNotEmpty,
+        reason:
+            'the generator must be able to draw the phone kill, or the sweep '
+            'never covers one: seeds=${killedPhone.toSet()}',
+      );
+      expect(killedWrist, isNotEmpty, reason: 'the wrist kill is not drawn');
     },
   );
 
@@ -261,7 +303,7 @@ void main() {
       print('S-14509 contract: by class $byClass');
       expect(
         knownClasses.keys.toSet(),
-        {'heal', 'status', 'absorbing', 'entries', 'timers'},
+        kKnownKinds,
         reason:
             'the list above must name every kind `_kindsOf` can report, or a '
             'class could arrive with no owner',
@@ -284,6 +326,114 @@ void main() {
             '$shippingRatchet); this run has ${shippingFinding.length}: '
             '$shippingFinding. The pair disagrees about a workout the user can '
             'have — traffic above the band means a class got much worse.',
+      );
+    },
+    timeout: const Timeout(Duration(minutes: 20)),
+  );
+
+  test(
+    'S-16310 the phone-kill sweep: every seed converges, or diverges inside a '
+    'class the plan names',
+    () async {
+      // Plan 163's separate experiment: the standing action space plus
+      // `PhoneKilledAndRelaunched`, and its OWN ratchet. Adding an action
+      // changes the experiment, so this count is never compared against the
+      // standing 6 above, and the standing 6 is never raised to absorb it.
+      //
+      // The phone-kill sweep's ratchet may only go DOWN from this first
+      // measurement. First measurement (2026-11-14, 200 seeds, twice): 8
+      // shipping divergers on run 1 and 7 on run 2, by class
+      // {status: 6, entries: 1, heal: 1, absorbing: 3} and
+      // {status: 4, entries: 1, heal: 1, absorbing: 3} — every class already in
+      // the register above, so nothing new arrived. 10 is the larger run plus
+      // two seeds of headroom, per 200 seeds. Its residue and shrunk traces
+      // (seed 113: phone abandoned vs wrist completed; seed 145: phone
+      // completed vs wrist abandoned after a refused live frame) are in
+      // `…-163-…-plan.evidence.md`, R-163-1/R-163-2.
+      const phoneKillRatchetPer200 = 10;
+      final phoneKillRatchet =
+          (kSeedCount * phoneKillRatchetPer200 / 200).ceil();
+
+      final phoneKillKinds = <int, List<String>>{};
+      final syntheticOnly = <int>[];
+      final unknown = <String>{};
+      final byClass = <String, int>{};
+      var killedTraces = 0;
+      for (var seed = 1; seed <= kSeedCount; seed++) {
+        var run = await ConvergenceRun.runSeed(
+          seed,
+          allowedActions: kShippingActionsWithPhoneKill,
+        );
+        if (run.trace.contains('phone app killed and relaunched')) {
+          killedTraces++;
+        }
+        if (run.report.converged) {
+          // The same second chance the standing sweep takes: a seed that only
+          // diverges when the harness-only re-assert is in the space is listed
+          // by seed instead of passing as converged (D-14513).
+          run = await ConvergenceRun.runSeed(
+            seed,
+            allowedActions: kEveryAction,
+          );
+          if (run.report.converged) continue;
+          if (run.usedSyntheticAction) {
+            syntheticOnly.add(seed);
+            _tally(_kindsOf(run), byClass, unknown, kKnownKinds);
+            continue;
+          }
+        }
+        final kinds = _kindsOf(run);
+        phoneKillKinds[seed] = kinds;
+        _tally(kinds, byClass, unknown, kKnownKinds);
+        print(
+          'phone-kill seed=$seed diverges on a trace the shipping app can '
+          'perform: ${kinds.join(',')}\n${run.trace}\n'
+          '${run.failures.join('\n')}',
+        );
+      }
+      final phoneKillFinding = phoneKillKinds.entries
+          .where((entry) => entry.value.any((kind) => kind != 'heal'))
+          .map((entry) => entry.key)
+          .toList();
+      final phoneKillFlake = phoneKillKinds.keys
+          .where((seed) => !phoneKillFinding.contains(seed))
+          .toList();
+      print(
+        'S-16310 phone-kill contract: $kSeedCount seeds; '
+        '${kSeedCount - phoneKillKinds.length - syntheticOnly.length} converge; '
+        '${phoneKillFinding.length} diverge on a trace the shipping app can '
+        'perform $phoneKillFinding; ${phoneKillFlake.length} on a heal stall '
+        'alone $phoneKillFlake; ${syntheticOnly.length} only after the '
+        'harness-only re-assert $syntheticOnly; $killedTraces traces carry a '
+        'phone kill',
+      );
+      expect(
+        killedTraces,
+        greaterThan(kSeedCount ~/ 4),
+        reason:
+            'the phone-kill sweep must actually kill the phone: a sweep that '
+            'never mints PhoneKilledAndRelaunched tests nothing (S-16310)',
+      );
+      print('S-16310 phone-kill contract: by class $byClass');
+      expect(
+        unknown,
+        isEmpty,
+        reason:
+            'a divergence class the phone kill exposes and the register does '
+            'not name is a finding: $unknown. Classify it with '
+            'ConvergenceRun.replayActions and Shrinker, record its seeds and '
+            'shrunk trace in the evidence file, then name the PR that owns it '
+            'in `knownClasses`.',
+      );
+      expect(
+        phoneKillFinding.length,
+        lessThanOrEqualTo(phoneKillRatchet),
+        reason:
+            'the first phone-kill measurement is 7-8 shipping divergers per '
+            '200 seeds ($kSeedCount seeds: $phoneKillRatchet); this run has '
+            '${phoneKillFinding.length}: $phoneKillFinding. The pair '
+            'disagrees about a workout the user can have across a phone kill, '
+            'and the class got worse than the measurement.',
       );
     },
     timeout: const Timeout(Duration(minutes: 20)),
@@ -738,8 +888,24 @@ Future<List<PairAction>> _paddedS14503() async {
   ];
 }
 
+/// Every kind `_kindsOf` can report: the register both sweeps attribute to, so
+/// a class neither one names fails both (D-14508).
+const Set<String> kKnownKinds = {
+  'heal',
+  'status',
+  'absorbing',
+  'entries',
+  'timers',
+};
+
 /// Every action the shipping app can perform: the sweep's action space minus
 /// S-14503's synthetic re-assert, which no build can send (D-14513).
+///
+/// It does NOT carry the phone kill: the standing sweep is the measurement it
+/// always was, at its own ratchet, and the phone-kill experiment has its own
+/// space and ratchet beside it (plan 163, the governor's decision of
+/// 2026-11-14 — an action changes the experiment, so the two measurements are
+/// never compared against one constant).
 const Set<Type> kShippingActions = {
   PhoneStartsSession,
   PhoneLogsSet,
@@ -756,6 +922,23 @@ const Set<Type> kShippingActions = {
   RefuseLiveFrame,
   WristKilled,
   TimeAdvances,
+};
+
+/// The shipping space with the phone kill added (plan 163 D-16301/D-16305):
+/// the same actions, plus the phone app dying and relaunching mid-workout.
+const Set<Type> kShippingActionsWithPhoneKill = {
+  ...kShippingActions,
+  PhoneKilledAndRelaunched,
+};
+
+/// Every kind the generator can produce, S-14503's synthetic re-assert
+/// included: the second-chance space. The standing sweep reaches it through
+/// `replay(seed)`; the phone-kill sweep passes it explicitly because that
+/// replay is the space WITHOUT the kill on purpose (the corpus's `seed-*`
+/// recordings are drawn from it, D-16306).
+const Set<Type> kEveryAction = {
+  ...kShippingActionsWithPhoneKill,
+  PhoneReassertsLive,
 };
 
 /// S-14508's mutation: a wrist that never hears that a session ended.

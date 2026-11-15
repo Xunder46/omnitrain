@@ -625,6 +625,22 @@ final class WristKilled extends PairAction {
   String describe() => 'wrist app killed and relaunched';
 }
 
+/// The phone app dying mid-workout and starting again (D-16301, plan 152
+/// D-15210). Kill and relaunch are one action: the app relaunches itself, and a
+/// kill the sweep could not leave would need the heal's reconnect to escape.
+///
+/// What the relaunch keeps and loses is D-16302: the repository (sessions,
+/// staged watch-inbox rows, plans), the settings/nutrition/food-library states
+/// and the radio survive; the mirror's ledger, the adoption bridge's flags and
+/// the pushes' baselines are memory the process held, so they go.
+final class PhoneKilledAndRelaunched extends PairAction {
+  const PhoneKilledAndRelaunched({required super.serial})
+    : super(actor: PairActor.phone);
+
+  @override
+  String describe() => 'phone app killed and relaunched';
+}
+
 final class TimeAdvances extends PairAction {
   TimeAdvances({required super.serial, required this.seconds})
     : assert(seconds >= 1 && seconds <= 90, 'D-14505: 1 s to 90 s'),
@@ -705,10 +721,8 @@ class WatchPairHarness {
   WatchPairHarness._({
     required this.clock,
     required this.repository,
-    required this.phone,
     required this.settings,
     required this.radio,
-    required this.graph,
     required this.exercise,
     required this.failures,
     required this.validator,
@@ -721,10 +735,31 @@ class WatchPairHarness {
   /// The instant both halves read.
   final TestClock clock;
   final MockWorkoutRepository repository;
-  final WorkoutState phone;
+
+  /// The phone half's clock seam, held for the pair's lifetime so a relaunch
+  /// keeps the monotonicity the phone's session ids rely on (plan 169 D-16905,
+  /// D-16907): a fresh closure per relaunch would restart the counter and could
+  /// mint an id the killed process already used.
+  late final DateTime Function() _phoneClock;
+
+  /// The phone's session state, rebuilt by [relaunchPhone] (D-16302).
+  late WorkoutState _phone;
+  WorkoutState get phone => _phone;
+
   final SettingsState settings;
+
+  /// The states the graph is handed. They survive a phone kill: every value they
+  /// show is repository-backed, so a rebuild would lose the fake preferences
+  /// service's settings and nothing else (D-16302, P-2).
+  late final NutritionState _nutrition;
+  late final FoodLibraryState _foodLibrary;
+
   final PairRadio radio;
-  final WatchSyncGraph graph;
+
+  /// The phone's watch graph, rebuilt by [relaunchPhone] the way [build] builds
+  /// it (D-16302).
+  late WatchSyncGraph _graph;
+  WatchSyncGraph get graph => _graph;
 
   /// The catalog exercise a phone session holds: one with `['time','distance']`
   /// capabilities, as plan 128's pair seeds.
@@ -805,7 +840,6 @@ class WatchPairHarness {
       name: exerciseName,
       capabilities: capabilities,
     );
-    final phone = WorkoutState(repository, clock: _gridClock(clock));
     final settings = SettingsState(repository, fakePreferencesService());
     await settings.initialize();
     final failures = <Object>[];
@@ -814,28 +848,12 @@ class WatchPairHarness {
       clock: clock,
       onFailure: (error, stack) => failures.add(error),
     );
-    final graph = (await createWatchSync(
-      repository: repository,
-      nutritionState: NutritionState(repository),
-      foodLibraryState: FoodLibraryState(repository),
-      settingsState: settings,
-      transport: radio,
-      clock: clock.call,
-      frameClock: clock.call,
-      onFailure: (error, stack) => failures.add(error),
-      validator: validator,
-    ))!;
-    graph.adoption.bindWorkoutState(phone);
-    graph.autoPush.bindWorkoutState(phone);
-    graph.timerPush.bindWorkoutState(phone);
 
     final harness = WatchPairHarness._(
       clock: clock,
       repository: repository,
-      phone: phone,
       settings: settings,
       radio: radio,
-      graph: graph,
       exercise: Exercise(
         id: exerciseId,
         name: exerciseName,
@@ -848,8 +866,46 @@ class WatchPairHarness {
       engineFactory: engineFactory,
       recordReplay: recordReplay,
     );
+    harness._phoneClock = _gridClock(clock);
+    harness._nutrition = NutritionState(repository);
+    harness._foodLibrary = FoodLibraryState(repository);
+    await harness._launchPhone();
     await harness._launchWrist();
     return harness;
+  }
+
+  /// Builds the phone's half the way the app does: a `WorkoutState` over the
+  /// held repository and the shipping graph over the same repository, settings
+  /// and radio, with the three states bound to it (D-14501, D-16302).
+  ///
+  /// The phone-side state this call leaves behind — the mirror's ledger, the
+  /// adoption bridge's flags, the pushes' baselines — is what a phone kill
+  /// destroys, because it belongs to the objects built here.
+  Future<void> _launchPhone() async {
+    final phone = WorkoutState(repository, clock: _phoneClock);
+    _phone = phone;
+    final graph = (await createWatchSync(
+      repository: repository,
+      nutritionState: _nutrition,
+      foodLibraryState: _foodLibrary,
+      settingsState: settings,
+      transport: radio,
+      clock: clock.call,
+      frameClock: clock.call,
+      onFailure: (error, stack) => failures.add(error),
+      validator: validator,
+    ))!;
+    graph.adoption.bindWorkoutState(phone);
+    graph.autoPush.bindWorkoutState(phone);
+    graph.timerPush.bindWorkoutState(phone);
+    _graph = graph;
+    // The app restores a dangling session on HomeScreen's first frame
+    // (`checkForInProgressSession` then `loadHistoricalSession`), so a
+    // relaunched phone still owns the session it had in progress. Without this
+    // the harness could start a second session beside an open row — a trace the
+    // shipping app never performs (A-145-19).
+    final dangling = await phone.checkForInProgressSession();
+    if (dangling != null) await phone.loadHistoricalSession(dangling.id);
   }
 
   /// Builds the wrist's engine, paths and orchestrator over the held store, and
@@ -884,6 +940,21 @@ class WatchPairHarness {
   Future<void> relaunchWrist() async {
     await _launchWrist();
     await _engine.restore();
+  }
+
+  /// A phone kill models the process dying, not the data (D-16302): a fresh
+  /// [WorkoutState] and a fresh graph over the SAME repository, settings,
+  /// nutrition and food-library state, and the same radio.
+  ///
+  /// What does not survive is memory the old objects held — the mirror's ledger
+  /// (`_completedRecord`, `_fates`, `_unconfirmedEnds`…), the adoption bridge's
+  /// `_plansAwaitingEnd`, the pushes' baselines — so a session's end the phone
+  /// had not stored is owed again, and the stored row answers (plan 128 D-3).
+  /// The radio is untouched: its queues model the OS layer, not the process
+  /// (P-3), and its one phone inbound slot is re-bound by the new graph.
+  Future<void> relaunchPhone() async {
+    await _launchPhone();
+    await settle();
   }
 
   /// What a phone→wrist frame reaches: a request is answered, a message goes on
@@ -1006,6 +1077,10 @@ class WatchPairHarness {
   });
 
   /// Records the wrist's process death — the one event with no arguments.
+  ///
+  /// A PHONE kill records nothing here (D-16303): the recorder captures the
+  /// wrist's input timeline, and a phone death's effect reaches the wrist as
+  /// recorded frames, the same treatment `LinkDrops`/`LinkRises` get (D-15202).
   void recordReplayKill() => _recordReplayEvent('kill');
 }
 
@@ -1032,6 +1107,7 @@ const Set<Type> kNoSessionActions = {
   LinkRises,
   RefuseLiveFrame,
   WristKilled,
+  PhoneKilledAndRelaunched,
   TimeAdvances,
 };
 
@@ -1102,6 +1178,8 @@ class HarnessRunner {
   RefuseLiveFrame refuseNext({required PairActor from, String? type}) =>
       RefuseLiveFrame(serial: _next(), from: from, type: type);
   WristKilled wristKilled() => WristKilled(serial: _next());
+  PhoneKilledAndRelaunched phoneKilledAndRelaunched() =>
+      PhoneKilledAndRelaunched(serial: _next());
   TimeAdvances advanceTime(int seconds) =>
       TimeAdvances(serial: _next(), seconds: seconds);
 
@@ -1185,6 +1263,11 @@ class HarnessRunner {
         case WristKilled():
           harness.recordReplayKill();
           await harness.relaunchWrist();
+        case PhoneKilledAndRelaunched():
+          // A phone kill records no replay event (D-16303): the recorder
+          // captures the wrist's input timeline, and the kill's effect reaches
+          // the wrist as recorded frames — the treatment LinkDrops/LinkRises get.
+          await harness.relaunchPhone();
         case TimeAdvances(:final seconds):
           clock.advance(Duration(seconds: seconds));
           harness.noteClockGrid();
@@ -2064,7 +2147,18 @@ class ConvergenceRun {
   /// The action kinds this generator can produce, with the weight each is
   /// drawn by: sessions happen often, endings more often than discards, and
   /// link faults often enough to matter (D-14510).
-  static List<_ActionOption> _options(Random random, HarnessRunner runner) => [
+  ///
+  /// [phoneKill] adds `PhoneKilledAndRelaunched` to the space. It defaults to
+  /// false: the phone kill is a separate experiment, so the standing sweep's
+  /// draws — and every corpus `seed-*` recording made from them — stay exactly
+  /// as they were before plan 163 (D-16306; the brief of 2026-11-14). A caller
+  /// that lists the kill in [ConvergenceRun.runSeed]'s `allowedActions` gets it
+  /// turned on by `_mint`.
+  static List<_ActionOption> _options(
+    Random random,
+    HarnessRunner runner, {
+    bool phoneKill = false,
+  }) => [
     _ActionOption(PhoneStartsSession, 8, runner.phoneStartsSession),
     _ActionOption(PhoneLogsSet, 10, () => runner.phoneLogsSet()),
     _ActionOption(PhoneFinishes, 6, runner.phoneFinishes),
@@ -2092,6 +2186,12 @@ class ConvergenceRun {
       );
     }),
     _ActionOption(WristKilled, 3, runner.wristKilled),
+    if (phoneKill)
+      _ActionOption(
+        PhoneKilledAndRelaunched,
+        3,
+        runner.phoneKilledAndRelaunched,
+      ),
     _ActionOption(
       TimeAdvances,
       6,
@@ -2100,12 +2200,20 @@ class ConvergenceRun {
   ];
 
   /// Mints one action by weight, from the kinds [allowedActions] permits.
+  ///
+  /// The phone kill is drawable only when [allowedActions] names it, so the
+  /// standing space (which does not) reproduces the pre-plan-163 draw stream
+  /// exactly (D-16306).
   static PairAction _mint(
     Random random,
     HarnessRunner runner,
     Set<Type>? allowedActions,
   ) {
-    final options = _options(random, runner);
+    final options = _options(
+      random,
+      runner,
+      phoneKill: allowedActions?.contains(PhoneKilledAndRelaunched) ?? false,
+    );
     final allowed = allowedActions == null
         ? options
         : [

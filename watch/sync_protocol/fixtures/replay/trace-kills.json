@@ -1,0 +1,35 @@
+{
+  "formatVersion": 1,
+  "source": {"kind":"trace","name":"trace-kills"},
+  "gridStartMs": 1794301200000,
+  "events": [
+    {"t":"action","clockMs":1794301200000,"name":"start","exercises":[{"sessionExerciseId":"sx-ex-run-1","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"]}]},
+    {"t":"action","clockMs":1794301200000,"name":"logSet","event":{"entryId":"w-entry-1","eventId":"w-entry-1","kind":"timed","loggedAt":"2026-11-10T09:00:00.000Z","sessionExerciseId":"sx-ex-run-1","exerciseId":"ex-run","startedAt":"2026-11-21T22:46:40.000Z","endedAt":"2026-11-10T09:00:00.000Z"}},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-1","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:00:00.000Z","payload":{"entryIds":["w-entry-1"]}}},
+    {"t":"action","clockMs":1794301200000,"name":"finish"},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-2","sessionId":"s-w-1","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:00:00.000Z","payload":{"state":"completed","at":"2026-11-10T09:00:00.000Z"}}},
+    {"t":"frame","clockMs":1794301200000,"envelope":{"protocolVersion":1,"messageId":"x-3","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:00:00.000Z","payload":{"entryIds":["end-s-w-1"]}}},
+    {"t":"kill","clockMs":1794301200000},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-4","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:00:31.000Z","payload":{"entryIds":["end-s-w-1","w-entry-1"]}}},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-5","sessionId":"s-w-1","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:00:31.000Z","payload":{"state":"completed","at":"2026-11-10T09:00:31.000Z"}}},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-6","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:00:31.000Z","payload":{"entryIds":["end-s-w-1","w-entry-1"]}}},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-7","sessionId":"s-w-1","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:00:31.000Z","payload":{"state":"completed","at":"2026-11-10T09:00:31.000Z"}}},
+    {"t":"frame","clockMs":1794301262000,"envelope":{"protocolVersion":1,"messageId":"x-8","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:01:02.000Z","payload":{"entryIds":["end-s-w-1","w-entry-1"]}}},
+    {"t":"frame","clockMs":1794301262000,"envelope":{"protocolVersion":1,"messageId":"x-9","sessionId":"s-w-1","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:01:02.000Z","payload":{"state":"completed","at":"2026-11-10T09:01:02.000Z"}}},
+    {"t":"frame","clockMs":1794301262000,"envelope":{"protocolVersion":1,"messageId":"x-10","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:01:02.000Z","payload":{"entryIds":["end-s-w-1","w-entry-1"]}}},
+    {"t":"frame","clockMs":1794301262000,"envelope":{"protocolVersion":1,"messageId":"x-11","sessionId":"s-w-1","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:01:02.000Z","payload":{"state":"completed","at":"2026-11-10T09:01:02.000Z"}}}
+  ],
+  "expected": {
+    "current": "s-w-1",
+    "sessions": {
+      "s-w-1": {
+        "status": "completed",
+        "entries": [
+          "end-s-w-1",
+          "w-entry-1"
+        ],
+        "timers": {}
+      }
+    }
+  }
+}

@@ -234,9 +234,35 @@ this harness reading fault, not the pair, and is unskipped and green.
 The harness has one synthetic action, `phoneReassertsLive`, which no build can
 send; it is excluded from `kShippingActions`, so a finding that needs it is
 reported as such (`F-2`'s shrunk trace does; the shipping flavour of the same
-hole is seed 50 in the plan's evidence file). A phone app killed and relaunched
-is not modelled either — only `WristKilled` exists — so nothing here covers the
-phone losing a session to its own process death.
+hole is seed 50 in the plan's evidence file).
+
+Both kill kinds are actions the shipping app can perform. `WristKilled` models
+the wrist app dying and its engine restarting over the same store;
+`phoneKilledAndRelaunched` (`test/helpers/watch_pair_harness.dart`) models the
+phone's process death — a fresh `WorkoutState` and a fresh `WatchSyncGraph` over
+the same repository, settings, nutrition and food-library state, and the same
+radio, with the mirror's ledger, the adoption bridge's flags and the pushes'
+baselines left behind. The relaunched phone restores a dangling session the way
+HomeScreen's first frame does, and it keeps the pair clock plan 169 pinned, so
+its stamps stay on the grid — `S-16302 the relaunched phone's stamps stay on the
+pair clock` (`test/watch_convergence_kill_test.dart`) fails at 406 s of skew if
+the relaunch stamps from the wall clock. The scripted consequences are
+`S-16302 the owed end survives a phone kill`, `S-16303 the first ending survives
+a phone kill`, `S-16304 staged inbox rows survive the phone's death`,
+`S-16305 a kill on an idle pair is a no-op`, `S-16306 a phone kill while the link
+is down` and `S-16307 double kill is idempotent`.
+
+The sweep runs the kill in a second, separate measurement rather than adding it
+to `kShippingActions`: the option list is parametric (`_options(..., phoneKill:
+bool)`), the standing space keeps its pre-plan-163 draws — so the corpus's
+`seed-*` recordings stay byte-identical — and
+`S-16310 the phone-kill sweep: every seed converges, or diverges inside a class
+the plan names` measures `kShippingActionsWithPhoneKill` under its own ratchet,
+with a floor that the run actually killed the phone. The corpus covers the kill
+once, scripted: `trace-kills` in `test/watch_replay_corpus_test.dart` is
+declared with the run-only `phone-kill` tag and is replayed by
+`S-15202 every corpus recording replays into a fresh Dart wrist and reproduces
+its expected summary`.
 
 ### Differential Swift replay
 

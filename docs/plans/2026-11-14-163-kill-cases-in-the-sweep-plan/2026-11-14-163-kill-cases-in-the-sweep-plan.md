@@ -317,30 +317,30 @@ None — test-only change; no screen, widget or shared UI piece is touched.
 
 ### Phase 1: the phone-kill action in the harness (@developer)
 
-1. [ ] Add `final class PhoneKilledAndRelaunched extends PairAction` —
+1. [x] Add `final class PhoneKilledAndRelaunched extends PairAction` —
        `test/helpers/watch_pair_harness.dart` · `PhoneKilledAndRelaunched` (after
        `WristKilled`, :621-626): actor `PairActor.phone`, non-synthetic,
        `describe() => 'phone app killed and relaunched'`.
-2. [ ] Add the mint — `test/helpers/watch_pair_harness.dart` ·
+2. [x] Add the mint — `test/helpers/watch_pair_harness.dart` ·
        `HarnessRunner.phoneKilledAndRelaunched()` (beside `wristKilled`, :1080).
-3. [ ] Make the phone half reassignable and share one construction path —
+3. [x] Make the phone half reassignable and share one construction path —
        `test/helpers/watch_pair_harness.dart` · `WatchPairHarness` (`phone`/`graph`
        final fields :695-701 → backing fields + getters; extract the `createWatchSync`
        call and the three binds (:774-789) from `build()` :748-799 into a private
        `_launchPhone()` that `build()` calls once; the constructor no longer takes
        `phone`/`graph`).
-4. [ ] Add the relaunch — `test/helpers/watch_pair_harness.dart` ·
+4. [x] Add the relaunch — `test/helpers/watch_pair_harness.dart` ·
        `WatchPairHarness.relaunchPhone()` (beside `relaunchWrist` :859-862): a new
        `WorkoutState(repository)` over the SAME repository/settings/radio
        (D-16302), then `_launchPhone()`; `await settle()`.
-5. [ ] Wire the case — `test/helpers/watch_pair_harness.dart` ·
+5. [x] Wire the case — `test/helpers/watch_pair_harness.dart` ·
        `HarnessRunner.perform` (:1108-1168):
        `case PhoneKilledAndRelaunched(): await harness.relaunchPhone();`.
-6. [ ] Join the no-session fixture space —
+6. [x] Join the no-session fixture space —
        `test/helpers/watch_pair_harness.dart` · `kNoSessionActions` (:1002-1011); add a
        one-line comment at `recordReplayKill` (:984) that a phone kill records nothing
        (D-16303).
-7. [ ] Extend the seam test (structural guard for the fixture space) —
+7. [x] Extend the seam test (structural guard for the fixture space) —
        `test/watch_convergence_random_test.dart` · test `the allowed-actions seam
        produces only the kinds it is given` (:69-101): add a pass over seeds 1..5 with
        `{PhoneKilledAndRelaunched, WristKilled}` asserting
@@ -354,38 +354,51 @@ counts into the evidence file; `gateway.sh git-diff --name-only` shows no file o
 the two above.
 **Predicted Files**: `test/helpers/watch_pair_harness.dart`;
 `test/watch_convergence_random_test.dart`.
-**Phase 1 verification notes (Conductor, date):** —
+**Phase 1 verification notes (Conductor, date):** 2026-11-14, @developer — **Complete**.
+Seam test RED before the option (`test/watch_convergence_random_test.dart:98:7`, "the
+generator must be able to draw the phone kill"), green after Phase 2.1; `S-14502` green
+(draw stream deterministic). `_gridClock` is held once per pair (`_phoneClock`) so a
+relaunch keeps the phone's id monotonicity (plan 169 D-16905/D-16907). F-163-1's
+dangling-session restore is in `_launchPhone()`. Evidence: the plan's evidence file.
 ### Phase 1.Y: remediation — BLOCKS Phase 1 closure
 (any harness fault the seam test finds: fix before Phase 2; a structural guard is
 S-16301 itself)
 
 ### Phase 2: the sweep carries the action; the 200-seed re-measurement (@developer)
 
-1. [ ] Add the weighted option — `test/helpers/watch_pair_harness.dart` ·
+1. [x] Add the weighted option — `test/helpers/watch_pair_harness.dart` ·
        `_options` (:2039-2075):
        `_ActionOption(PhoneKilledAndRelaunched, 3, runner.phoneKilledAndRelaunched)`
        directly after `WristKilled` (:2069).
-2. [ ] Join the shipping space — `test/watch_convergence_random_test.dart` ·
+2. [x] Join the shipping space — `test/watch_convergence_random_test.dart` ·
        `kShippingActions` (:738-755): add `PhoneKilledAndRelaunched`.
-3. [ ] Measure — run `.github/copilot/scripts/macos/gateway.sh test
+3. [x] Measure — run `.github/copilot/scripts/macos/gateway.sh test
        test/watch_convergence_random_test.dart --dart-define=CONVERGENCE_SEEDS=200`
        TWICE; record both runs' per-kind counts and the S-14509 contract line in
        `<plan>.evidence.md` (S-16308).
-4. [ ] Classify every new class — `ConvergenceRun.replayActions` +
+4. [x] Classify every new class — `ConvergenceRun.replayActions` +
        `Shrinker.shrink` on each unknown class; Residue R-163-2… in the evidence file
        with seeds and shrunk traces (D-16306a); enter `test/watch_convergence_random_test.dart`
        · `knownClasses` (:171-191) with the residue pointer. No fixes (D-16307).
-5. [ ] Revise the constants — `test/watch_convergence_random_test.dart` ·
-       `shippingRatchet` (:216-226) and the `knownClasses` comment counts: per-class
-       lines only downward, the standing 8 not raised (D-16306b); re-take the
-       measurements the comments state (:171-204).
+5. [x] Revise the constants — resolved by the governor's 163c decision (P-9): the
+       standing space is restored to its pre-plan 15 members with `kShippingActions`
+       and its ratchet of 6 UNCHANGED, and the kill joins the new
+       `kShippingActionsWithPhoneKill` with its own measured ratchet, 10 per 200 seeds.
 
 **Done Criteria**: the sweep file green at 200 seeds twice (both runs' output in the
 evidence file); `gateway.sh git-diff --name-only` shows only the two Phase-1/2 files
 plus the evidence file; every `unknown` expect green.
 **Predicted Files**: `test/helpers/watch_pair_harness.dart`;
 `test/watch_convergence_random_test.dart`; `…-163-…-plan.evidence.md`.
-**Phase 2 verification notes (Conductor, date):** —
+**Phase 2 verification notes (Conductor, date):** 2026-11-14, @developer — **Complete**.
+Measured ABOVE the standing ratchet of 6 (run 1: 8 shipping divergers, run 2: 7, by class
+`{status: 6, entries: 1, heal: 1, absorbing: 3}` and `{status: 4, entries: 1, heal: 1,
+absorbing: 3}`), which blocked the phase at the time. The governor's 163c decision
+resolved it without raising anything: `kShippingActions` was restored to its pre-plan-163
+15 members (ratchet 6, 4 divergers `[94, 123, 145, 167]` re-measured), and the phone kill
+moved into the new `kShippingActionsWithPhoneKill` (ratchet 10, measured 8 and 7). No NEW
+class either way — `status`, `entries`, `absorbing`, `heal` are all in `knownClasses`, so
+item 4 is satisfied. Seeds and shrunk traces are in the evidence file.
 ### Phase 2.Y: remediation — BLOCKS Phase 2 closure
 (a classified class that gets worse between the two runs: re-shrink before the soak)
 
@@ -395,36 +408,47 @@ New file `test/watch_convergence_kill_test.dart`, plain `test()` (never `testWid
 FakeAsync never completes the graph's real awaits), one test per scenario, each
 asserting `run.report` fields in the F-n style; every test's comment names its S-id.
 
-1. [ ] S-16302 — `test/watch_convergence_kill_test.dart` · test
+1. [x] S-16302 — `test/watch_convergence_kill_test.dart` · test
        `S-16302 the owed end survives a phone kill`: replayActions over the scenario's
        action list; `statusMismatches`/`entryDuplicates` empty, heal converged.
-2. [ ] S-16303 — same file · test `S-16303 the first ending survives a phone kill`:
+2. [x] S-16303 — same file · test `S-16303 the first ending survives a phone kill`:
        `absorbingViolations` empty; the ends resolve per D-15403/D-15405 (a comment
        states which stamps the fixture uses).
-3. [ ] S-16304 — same file · test `S-16304 staged inbox rows survive the phone's
+3. [x] S-16304 — same file · test `S-16304 staged inbox rows survive the phone's
        death`: the staged entries reach history once; no phantom row (assert via the
        repository and `entryMismatches`).
-4. [ ] S-16305 — same file · test `S-16305 a kill on an idle pair is a no-op`.
-5. [ ] S-16306 — same file · test `S-16306 a phone kill while the link is down`.
-6. [ ] S-16307 — same file · test `S-16307 double kill is idempotent`.
+4. [x] S-16305 — same file · test `S-16305 a kill on an idle pair is a no-op`.
+5. [x] S-16306 — same file · test `S-16306 a phone kill while the link is down`.
+6. [x] S-16307 — same file · test `S-16307 double kill is idempotent`.
+7. [x] The clock pin — same file · test `S-16302 the relaunched phone's stamps stay on
+       the pair clock` (P-6): the relaunch's stamps stay within the pair's
+       `_gridClock`, so a relaunch cannot re-mint a used session id (D-16905/D-16907).
 
 **Done Criteria**: `gateway.sh test test/watch_convergence_kill_test.dart` green (paste
 counts); if any assertion is red, the divergence is classified per D-16306a — a RED
 SCRIPTED TEST IS A FINDING, not a reason to weaken the assertion.
 **Predicted Files**: `test/watch_convergence_kill_test.dart` (new);
 `…-163-…-plan.evidence.md`.
-**Phase 3 verification notes (Conductor, date):** —
+**Phase 3 verification notes (Conductor, date):** 2026-11-14, @developer — **Complete**.
+`gateway.sh test test/watch_convergence_kill_test.dart` → `+7: All tests passed!`.
+Two guards were proven by mutation on the harness (originals restored exactly): dropping
+`clock: _phoneClock` from the relaunched `WorkoutState` turns the pair-clock guard red
+(406 s of skew), and commenting out the dangling-session restore turns S-16304 and the
+clock guard red. S-16304's first assertion was wrong, not the code: inbox rows are never
+deleted (applied tombstones), so it asserts "no row with `appliedAtMs == null`". Evidence:
+the plan's evidence file.
 ### Phase 3.Y: remediation — BLOCKS Phase 3 closure
 
 ### Phase 4: the corpus gains the kill trace (@developer)
 
-1. [ ] Add the step — `test/watch_replay_corpus_test.dart` · `_Step.run` (:47-86):
+1. [x] Add the step — `test/watch_replay_corpus_test.dart` · `_Step.run` (:47-86):
        `case 'phoneKill': await runner.perform(runner.phoneKilledAndRelaunched());`.
-2. [ ] Add the source — same file · `kCorpusSources` (:137-295): `trace-kills`
+2. [x] Add the source — same file · `kCorpusSources` (:137-295): `trace-kills`
        (kind `trace`) with D-16304's steps and tags `['kill', 'phone-kill']`.
-3. [ ] Declare the tag — same file: add `'phone-kill'` to the floor list (:735-752)
+3. [x] Declare the tag — same file: add `'phone-kill'` to the floor list (:735-752)
        and to `kRunOnlyTags` (it is invisible in the file, like `refused-queued`).
-4. [ ] Regenerate — run `gateway.sh test test/watch_replay_corpus_test.dart
+4. [ ] Regenerate — **governor action** (`REPLAY_CORPUS_WRITE=true` is denied to this
+       mode): run `gateway.sh test test/watch_replay_corpus_test.dart
        --dart-define=REPLAY_CORPUS_WRITE=true`: every source re-recorded (the Phase 2
        option changed the seed streams, D-16304); tags re-derived; the floors stay
        backed by `trace-kills`.
@@ -444,30 +468,38 @@ the corpus directory + the two test files.
 `watch/sync_protocol/fixtures/replay/trace-kills.json` (new, generated);
 `watch/sync_protocol/fixtures/replay/*.json` + `manifest.json` (regenerated);
 `…-163-…-plan.evidence.md`.
-**Phase 4 verification notes (Conductor, date):** —
+**Phase 4 verification notes (Conductor, date):** 2026-11-14, @developer — items 1-3
+**done**; 4-6 **Blocked on the governor's regeneration** (`REPLAY_CORPUS_WRITE=true` is
+denied to this mode). Red exactly as predicted at the pre-regeneration tree: S-15202
+`the corpus is missing trace-kills.json — regenerate with ... REPLAY_CORPUS_WRITE=true`,
+S-15204 (the manifest lists 16 sources, not 17) and S-15207 (`stale recordings:
+['trace-kills.json']`) — `+4 ~1 -3` on this file. No other corpus test moved, so the
+`phoneKill` step and the `phone-kill` tag are the only deltas.
 ### Phase 4.Y: remediation — BLOCKS Phase 4 closure
 
 ### Phase 5: the 2000-seed soak, docs, residue sweep (@developer)
 
-1. [ ] Soak — run `gateway.sh test test/watch_convergence_random_test.dart
+1. [x] Soak — run `gateway.sh test test/watch_convergence_random_test.dart
        --dart-define=CONVERGENCE_SEEDS=2000` (900 s budget; if it times out — exit
        124 — diagnose, never re-run unchanged: record the partial counts and measure
        the constant on a 1000-seed run scaled to 200-seed units, flagged in the
        evidence file, owner to confirm).
-2. [ ] Finalize the constants per D-16306 with the soak's numbers;
+2. [x] Finalize the constants per D-16306 with the soak's numbers;
        `<plan>.evidence.md` carries the full red→green table.
-3. [ ] Docs delta — `docs/state_management/watch_surface_transport.md` · the
+3. [x] Docs delta — `docs/state_management/watch_surface_transport.md` · the
        "Convergence testing" section (~:144-181): name both kill actions in the
        action space and the corpus's `phone-kill` coverage; the doc is 274 lines
        (~12 KB) — far under the 52 KB split band, no part page needed.
-4. [ ] Residue sweep — grep proving zero readers of any replaced representation:
+4. [x] Residue sweep — grep proving zero readers of any replaced representation:
        `PhoneKilled\b` (plan 152's unbuilt name) appears in no code, only in plan docs;
        `kShippingActions` contains both kill kinds; `WristKilled` readers unchanged;
        record the grep counts.
 5. [ ] Close out — `gateway.sh lint` (compare the issue count with the repo's
        pre-existing baseline), `gateway.sh test test/watch_convergence_random_test.dart
        test/watch_convergence_kill_test.dart test/watch_replay_corpus_test.dart` green;
-       Progress and Assumption Log updated.
+       Progress and Assumption Log updated. **Blocked on Phase 4.4**: lint is at the
+       baseline 181, both sweeps and the kill tests are green, the corpus file is red
+       until the governor regenerates.
 
 **Done Criteria**: the soak's output in the evidence file; `git-diff --name-only` shows
 NO file under `lib/` or `watch/watchos/Sources/` (D-16307); the docs page's new text
@@ -475,7 +507,14 @@ present; the three test files green.
 **Predicted Files**: `test/watch_convergence_random_test.dart`;
 `docs/state_management/watch_surface_transport.md`; `…-163-…-plan.evidence.md`;
 `…-163-…-plan.md` (Progress/Assumption Log only).
-**Phase 5 verification notes (Conductor, date):** —
+**Phase 5 verification notes (Conductor, date):** 2026-11-14, @developer — items 1-4
+**done**, item 5 **Blocked on Phase 4.4** (the regeneration). Soak: 2000 seeds in 5m43s,
+all 17 tests in that file green — standing sweep 1933 converge / 31 shipping divergers
+(ratchet 60), kill sweep 1894 converge / 76 shipping divergers (ratchet 100), 1086 of the
+kill sweep's traces carrying a kill. Docs delta in the "Convergence testing" section of
+`docs/state_management/watch_surface_transport.md`; residue sweep clean. Full suite
+`+7632 ~4 -3`: the only reds are the three corpus tests Phase 4.4 fixes. Evidence: the
+plan's evidence file.
 ### Phase 5.Y: remediation — BLOCKS Phase 5 closure
 
 ## Files Affected (whole feature)
@@ -522,11 +561,20 @@ present; the three test files green.
 
 ## Progress
 
-- [ ] Phase 1 — the phone-kill action in the harness
-- [ ] Phase 2 — the sweep carries the action; 200-seed re-measurement
-- [ ] Phase 3 — kill semantics, scripted
-- [ ] Phase 4 — the corpus gains the kill trace
-- [ ] Phase 5 — the 2000-seed soak, docs, residue sweep
+- [x] Phase 1 — the phone-kill action in the harness — **Complete** (seam green;
+      S-14502 green; harness file 36/36)
+- [x] Phase 2 — the sweep carries the action; 200-seed re-measurement — **Complete**
+      via the governor's 163c split: `kShippingActions` back to its pre-plan 15 members
+      (ratchet 6, measured 4), `kShippingActionsWithPhoneKill` new (ratchet 10, measured
+      8 and 7); no constant raised
+- [x] Phase 3 — kill semantics, scripted — **Complete** (`+7`; two harness guards proven
+      by mutation)
+- [ ] Phase 4 — the corpus gains the kill trace — items 1-3 done (step, source, tag);
+      **Blocked on the governor's regeneration** (`REPLAY_CORPUS_WRITE=true`); red until
+      then: S-15202/S-15204/S-15207, exactly as predicted
+- [ ] Phase 5 — the 2000-seed soak, docs, residue sweep — items 1-4 done (soak 2000
+      seeds, docs delta, residue clean, lint at the 181 baseline); item 5 Blocked on the
+      same regeneration
 
 ## Assumption Log
 
@@ -551,7 +599,60 @@ them (Phase 1 depends on P-1..P-3; Phase 2 on P-4..P-5):
   the coverage this plan exists to get. Owner to confirm.
 - **P-5 (D-16306)** The ratchet policy as written (per-class lines only downward; a new
   class gets its own measured line; the standing 8 not raised). Owner to confirm.
+- **P-6 (D-16302/D-16907, @developer)** `_launchPhone()` builds the phone's
+  `WorkoutState` with ONE `_phoneClock = _gridClock(clock)` held for the pair's lifetime,
+  not a fresh closure per relaunch. Options: a fresh `_gridClock` per relaunch (literal
+  reading of D-16907) — rejected because the grid counter would restart and could re-mint
+  a session id the killed process already used (breaks D-16905's monotonicity). Owner to
+  confirm.
+- **P-7 (D-16302/F-163-1, @developer)** `_launchPhone()` runs the HomeScreen's first-frame
+  restore (`checkForInProgressSession()` then `loadHistoricalSession(dangling.id)`) so a
+  relaunch meets the row the app would. Proven load-bearing: removing the restore turns
+  8/7 shipping divergers into 34 on the same 200 seeds (evidence file).
+- **P-8 (D-16306b, @developer)** Measured 8 and 7 against the standing 6 is reported, not
+  fixed: every diverging seed belongs to an already-known class (`status`, `entries`,
+  `absorbing`), D-16307 forbids a production fix, and a constant may only go down. The
+  plan stops here for the owner; no number was raised.
+- **P-9 (D-16306b, 163c governor decision, @developer)** The constant conflict is resolved
+  by SPLITTING the space, not by raising a number: `kShippingActions` returns to its
+  pre-plan-163 15 members with its ratchet of 6 untouched, and the phone kill lives in the
+  new `kShippingActionsWithPhoneKill` with its own measured ratchet of 10 per 200 seeds.
+  Options: raise the standing 6 (forbidden by D-16306b); lower the kill's weight to 2
+  (would have hidden the `status` class the plan exists to expose). Restoring the 15
+  members also restores the pre-plan draw stream, so the `seed-*` recordings stay
+  comparable and only the added source is new.
+- **P-10 (S-16310, @developer)** The kill sweep gets a second chance on
+  `kEveryAction` (`kShippingActionsWithPhoneKill` plus the harness-only
+  `PhoneReassertsLive`), the same courtesy the standing sweep pays: a converged restricted
+  run is re-run unrestricted, and a divergence that only the re-assert produces is tallied
+  as `syntheticOnly` instead of a finding. Without it the 200-seed count reads 8 rather
+  than 8 findings + 1 synthetic-only (seed 152). The kill sweep therefore also asserts
+  `killedTraces > kSeedCount ~/ 4` so it cannot pass by never killing the phone.
+- **P-11 (Phase 3/S-16304, @developer)** Inbox rows are put-if-absent and never deleted;
+  `clearWatchInboxApplied` stamps `applied_at_ms` as a tombstone. S-16304 therefore
+  asserts "no row with `appliedAtMs == null`" plus an `endedAtMs != null` terminal state,
+  not "the inbox is empty" (the first assertion written was wrong, not the code).
 
 ## Feedback
 
-[empty — fold into a new Iteration block when non-empty, then clear]
+**Phase 2's ratchet conflict is resolved (163c governor decision, P-9).** Adding the
+phone kill to the shipping space took the 200-seed count from 6 to 8 (run 1) and 7
+(run 2). Instead of raising 6, the standing space was restored to its pre-plan 15 members
+(ratchet 6, measured 4) and the kill moved into `kShippingActionsWithPhoneKill` with its
+own ratchet, 10, measured 8 and 7 at 200 seeds and 76 at 2000. No constant went up.
+Phases 3 and 5 are done; Phase 4 items 1-3 are done and the corpus is red until the
+governor runs the regeneration (`REPLAY_CORPUS_WRITE=true` is denied to this mode) — that,
+and Phase 5 item 5, are the only things left in this plan.
+
+## Open Items
+
+- Corpus stale: `gateway.sh test test/watch_replay_corpus_test.dart
+  --dart-define=REPLAY_CORPUS_WRITE=true`, then `gateway.sh swift-test` — governor only.
+  Until it runs, S-15202/S-15204/S-15207 are red. Blocks Phase 4.4-6 and Phase 5.5.
+- Sweep-vs-replay asymmetry: `status` seeds 46/76/105/152 need the full harness to
+  reproduce, so a `replayActions` shrinker under-reports that class.
+- `status` class flakes between runs (seed 76 diverged in run 1 and not in run 2 at 200
+  seeds; at 2000 the `status`/`absorbing` split is 53/36) and so does the synthetic-only
+  bucket (seed 4 in one of three runs), so neither can be per-run exact. The ratchets are
+  set on totals, not per class.
+- The two >52-seed sweeps now cost ~5m45s at 2000 seeds; the soak stays a manual run.
