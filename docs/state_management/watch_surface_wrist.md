@@ -381,19 +381,19 @@ Verified by `WatchSyncNoAnswerTests` (S-9001:
 `WatchPhoneProblemWiringSourceTests.testS9004TheHostRaisesTheNoAnswerAndLinkLines`.
 
 **One list serves both entry points.** The picker and the menu's Add Exercise
-list render the same `WatchExerciseLetterList` (`WatchExerciseListView.swift`),
+list render the same `WatchExerciseGroupList` (`WatchExerciseListView.swift`),
 each supplying only its own rows and its own action (D-3105, D-3112); it is a
-`List` rather than a `LazyVStack`, so a letter jump lands on a measured row
-(D-3106). Verified by
+`List` rather than a `LazyVStack`, and with a modality to rank it the list
+opens with the Recommended group first, the titled groups read as VoiceOver
+section headers and the untitled one adds none (D-19905; the grouping at the
+entry points, `WatchMenuTests.testS19913BothEntryPointsGroupWithTheRealModality`;
+the headers,
+`WatchMenuTests.testS19920TheTitledGroupsAreHeadersAndTheUntitledAddsNone`).
+Verified by
 `WatchMenuTests.testS3106AOneListServesBothEntryPoints`.
 
-Within it the sections are walked by position: only the *first* run of a key
-carries its letter as the scroll id, so a key that opens two runs — a digit name
-sorts before `A`, a `~` name after `Z` — cannot put two views under one identity
-the reader holds (`WatchMenuTests.testS3114ARepeatedLetterRunsCarryOneScrollId`,
-D-3117). The grid is drawn by the watch app target, which `swift test` does not
-compile. The picker carries no phone hint: the phone's status is the start
-surface's line.
+The picker carries no phone hint: the phone's status is the start surface's
+line.
 
 The wrist shell's second surface — the logging view, its effort kinds and the one menu list — is described on its own page: [The Watch Surface — the Wrist's Logging Session](watch_surface_wrist_logging.md).
 

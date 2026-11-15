@@ -33,6 +33,11 @@ public struct WatchCatalogExercise: Equatable {
     /// shared by the catalog entry and the slot.
     public static let healthActivityKey = "healthActivity"
 
+    /// The protocol key the phone's primary-modality recommendation travels
+    /// under (plan 199, D-19904). It rides the catalog entry alone: a slot
+    /// never carries it.
+    public static let recommendedForKey = "recommendedFor"
+
     public let exerciseId: String
     public let name: String
 
@@ -54,18 +59,25 @@ public struct WatchCatalogExercise: Equatable {
     /// decides (D-2).
     public let healthActivity: String?
 
+    /// The primary modalities the phone's own picker recommends the exercise
+    /// for; empty when it named none. The wrist never scores, it compares
+    /// (plan 199, D-19903).
+    public let recommendedFor: [String]
+
     public init(
         exerciseId: String,
         name: String,
         capabilities: [String],
         roundDurationSecs: Int? = nil,
-        healthActivity: String? = nil
+        healthActivity: String? = nil,
+        recommendedFor: [String] = []
     ) {
         self.exerciseId = exerciseId
         self.name = name
         self.capabilities = capabilities
         self.roundDurationSecs = roundDurationSecs
         self.healthActivity = healthActivity
+        self.recommendedFor = recommendedFor
     }
 
     public init(json: [String: Any]) throws {
@@ -74,7 +86,8 @@ public struct WatchCatalogExercise: Equatable {
             name: try requiredString(json, "name"),
             capabilities: (json["capabilities"] as? [String]) ?? [],
             roundDurationSecs: Self.roundSeconds(json[Self.roundDurationKey]),
-            healthActivity: json[Self.healthActivityKey] as? String
+            healthActivity: json[Self.healthActivityKey] as? String,
+            recommendedFor: (json[Self.recommendedForKey] as? [String]) ?? []
         )
     }
 
@@ -163,7 +176,21 @@ public struct WatchCatalogExercise: Equatable {
         ]
         if let roundDurationSecs { json[Self.roundDurationKey] = roundDurationSecs }
         if let healthActivity { json[Self.healthActivityKey] = healthActivity }
+        if !recommendedFor.isEmpty { json[Self.recommendedForKey] = recommendedFor }
         return json
+    }
+
+    /// This exercise with the recommendation the synced list holds for its id
+    /// (plan 199, D-19907).
+    public func carrying(recommendedFor keys: [String]) -> WatchCatalogExercise {
+        WatchCatalogExercise(
+            exerciseId: exerciseId,
+            name: name,
+            capabilities: capabilities,
+            roundDurationSecs: roundDurationSecs,
+            healthActivity: healthActivity,
+            recommendedFor: keys
+        )
     }
 }
 

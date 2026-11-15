@@ -195,6 +195,18 @@ Future<void> _pumpUntil(bool Function() done) async {
 /// must truncate away.
 final TestClock clock = TestClock(DateTime.utc(2026, 10, 23, 12, 0, 0, 123, 456));
 
+/// The `exercises_down` batch indices the seeded catalog fills at the
+/// builder's default batch size (plan 199: 50, so a full catalog's
+/// recommended-modality keys stay under the transport's frame budget,
+/// D-19916) — the list the handler must send, in index order.
+Future<List<int>> seededBatchIndices(MockWorkoutRepository repository) async {
+  final batches = await WatchReferenceSync.buildExercisesDown(
+    repository: repository,
+    generatedAt: clock.now,
+  );
+  return [for (var index = 0; index < batches.length; index++) index];
+}
+
 void main() {
   late MockWorkoutRepository repository;
   late SettingsState settings;
@@ -277,7 +289,7 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2, 3],
+        await seededBatchIndices(repository),
         reason: 'S-9201 the exercise batches follow the three frames',
       );
       for (final type in _referenceFrames) {
@@ -749,7 +761,7 @@ void main() {
       }
       expect(
         transport.batchIndices,
-        [0, 1, 2, 3],
+        await seededBatchIndices(repository),
         reason: 'S-9209 the version differs, so the whole list travels even '
             'though the bundle was skipped',
       );

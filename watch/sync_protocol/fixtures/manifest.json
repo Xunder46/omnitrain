@@ -252,6 +252,12 @@
       "type": "observations_up",
       "scenario": "S-13466",
       "note": "A completed wrist end carries the session's heart-rate summary and the measured active energy, 412.6 kcal (plan 134c1 D-13460, D-13462)."
+    },
+    {
+      "path": "valid/exercises_down_recommended_for.json",
+      "type": "exercises_down",
+      "scenario": "S-19904",
+      "note": "The exercise list names the modalities it suits: `ex-circuit` carries `recommendedFor` with all four keys in the enum's order, `ex-tennis` names `sports` alone, and `ex-bench` carries no such key — the field is omitted when the exercise is recommended for nothing."
     }
   ],
   "invalid": [
@@ -984,6 +990,22 @@
       "expectedCode": "constraint_violation",
       "expectedReasonContains": "expected at least 0, found -1",
       "note": "The schema's `minimum: 0` on `activeEnergyKcal` refuses a negative total; a zero total is never sent because the receiver treats it as absent (plan D-13460, D-13462). Both validators phrase the minimum as this message, so the reason names it verbatim."
+    },
+    {
+      "path": "invalid/exercises_down_unknown_recommended_for.json",
+      "type": "exercises_down",
+      "scenario": "S-19905",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "curling",
+      "note": "`recommendedFor` is a closed enum: `\"curling\"` is not one of the modalities the phone's picker ranks by, so the batch is refused."
+    },
+    {
+      "path": "invalid/exercises_down_recommended_for_empty.json",
+      "type": "exercises_down",
+      "scenario": "S-19905",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1 items, found 0",
+      "note": "`recommendedFor` carries at least one key: an empty array trips the key's `minItems`; the key is omitted instead. Both validators phrase `minItems` as this message, so the reason names it verbatim."
     }
   ],
   "scenarios": [

@@ -251,6 +251,67 @@ final class WatchHealthActivityTests: XCTestCase {
         )
     }
 
+    // MARK: - S-19906 the recommendation round-trips (plan 199)
+
+    func testS19906CatalogJsonReadsTheRecommendation() throws {
+        let json: [String: Any] = [
+            "exerciseId": "ex-ride-77",
+            "name": "Ride 77",
+            "capabilities": ["time", "distance"],
+            "recommendedFor": ["cardio_endurance", "sports"],
+        ]
+        let exercise = try WatchCatalogExercise(json: json)
+        XCTAssertEqual(exercise.recommendedFor, ["cardio_endurance", "sports"])
+    }
+
+    func testS19906CatalogJsonRoundTripsTheRecommendation() throws {
+        let json: [String: Any] = [
+            "exerciseId": "ex-ride-77",
+            "name": "Ride 77",
+            "capabilities": ["time", "distance"],
+            "recommendedFor": ["cardio_endurance", "sports"],
+        ]
+        let exercise = try WatchCatalogExercise(json: json)
+        XCTAssertEqual(
+            try WatchCatalogExercise(json: exercise.toJson()),
+            exercise,
+            "toJson carries what init(json:) read"
+        )
+        XCTAssertEqual(exercise.toJson()[WatchCatalogExercise.recommendedForKey] as? [String], ["cardio_endurance", "sports"])
+    }
+
+    func testS19906CatalogJsonWithoutTheRecommendationCarriesNone() throws {
+        let json: [String: Any] = [
+            "exerciseId": "ex-bench-77",
+            "name": "Bench 77",
+            "capabilities": ["reps", "sets", "load"],
+        ]
+        let exercise = try WatchCatalogExercise(json: json)
+        XCTAssertEqual(exercise.recommendedFor, [])
+        XCTAssertFalse(
+            exercise.toJson().keys.contains(WatchCatalogExercise.recommendedForKey),
+            "an empty recommendation keeps today's payload: the key is absent, not empty"
+        )
+    }
+
+    func testS19906TheSlotNeverCarriesTheRecommendation() throws {
+        let exercise = WatchCatalogExercise(
+            exerciseId: "ex-ride-77",
+            name: "Ride 77",
+            capabilities: ["time", "distance"],
+            recommendedFor: ["cardio_endurance", "sports"]
+        )
+        XCTAssertFalse(
+            exercise.toSlot().keys.contains(WatchCatalogExercise.recommendedForKey),
+            "a slot never carries the recommendation (plan 199, D-19904)"
+        )
+        XCTAssertEqual(
+            WatchCatalogExercise(slot: exercise.toSlot())?.recommendedFor,
+            [],
+            "the slot read back carries none either"
+        )
+    }
+
     // MARK: - S-10506 the store's source carries the exact arms
 
     func testS10506ActivityTypeCarriesTheFourDistanceArms() throws {

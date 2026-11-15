@@ -264,10 +264,9 @@ private struct WatchAddExerciseList: View {
     }
 
     var body: some View {
-        WatchExerciseLetterList(
+        WatchExerciseGroupList(
             leading: [],
-            sections: state.addExerciseSections,
-            letters: state.addExerciseLetters,
+            groups: state.addExerciseGroups,
             emptyText: WatchMenuCopy.addExerciseEmpty,
             onPickLeading: { _, _ in },
             onPick: { exercise in

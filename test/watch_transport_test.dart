@@ -387,6 +387,18 @@ Future<void> _seedRoutine(
   );
 }
 
+/// The `exercises_down` batch indices the seeded catalog fills at the
+/// builder's default batch size (plan 199: 50, so a full catalog's
+/// recommended-modality keys stay under the transport's frame budget,
+/// D-19916) — the list the wiring must send, in index order.
+Future<List<int>> seededBatchIndices(MockWorkoutRepository repository) async {
+  final batches = await WatchReferenceSync.buildExercisesDown(
+    repository: repository,
+    generatedAt: _now,
+  );
+  return [for (var index = 0; index < batches.length; index++) index];
+}
+
 void main() {
   late _Link link;
   late MockWorkoutRepository repository;
@@ -682,10 +694,8 @@ void main() {
         types.skip(3),
         [
           'planned_down',
-          'exercises_down',
-          'exercises_down',
-          'exercises_down',
-          'exercises_down',
+          for (final _ in await seededBatchIndices(repository))
+            'exercises_down',
           'bests_down',
         ],
         reason: 'D-3834 the whole exercise list travels, after the routines '

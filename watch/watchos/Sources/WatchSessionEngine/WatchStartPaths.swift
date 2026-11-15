@@ -362,12 +362,20 @@ public final class WatchSessionStartPaths {
     public var exercisesVersion: String? { activeExercisesVersion }
 
     /// Everything the wrist may offer offline, recents first (S-003).
+    ///
+    /// Each exercise carries the SYNCED list's recommendation for its id when
+    /// the synced list names the id, else its own (plan 199, D-19907).
     public var fallbackExercises: [WatchCatalogExercise] {
-        deriveFallbackExercises(
+        var syncedKeys: [String: [String]] = [:]
+        for exercise in syncedFallback where syncedKeys[exercise.exerciseId] == nil {
+            syncedKeys[exercise.exerciseId] = exercise.recommendedFor
+        }
+
+        return deriveFallbackExercises(
             recents: recents,
             syncedFallback: syncedFallback,
             routines: storedRoutines
-        )
+        ).map { $0.carrying(recommendedFor: syncedKeys[$0.exerciseId] ?? $0.recommendedFor) }
     }
 
     /// What the phone offered alongside the routines: the active exercise list
@@ -750,6 +758,20 @@ public final class WatchSessionStartPaths {
         pendingModalityStart = nil
     }
 
+    /// The modality the exercise lists rank by (plan 199, D-19906): the tile's
+    /// while a modality start is pending, otherwise the live session's own, and
+    /// nil when there is none — then the list is one plain A-to-Z run. A session
+    /// that already holds exercises always ranks by its own modality, so a tile
+    /// left pending by a picker that never reported its dismissal cannot outlive
+    /// the start it was for.
+    public var listModality: String? {
+        let session = engine.session
+        let holdsExercises = !(session?.exercises.isEmpty ?? true)
+        if !holdsExercises, let pendingModalityStart { return pendingModalityStart }
+        guard let own = session?.modality, !own.isEmpty else { return nil }
+        return own
+    }
+
     /// Starts a session carrying `modality` whose first and only slot is
     /// `exercise` — the grid's tap and the user's choice in one (plan 176,
     /// D-17608).
@@ -828,8 +850,8 @@ public final class WatchSessionStartPaths {
     /// `addableExercises` order (D-3111).
     ///
     /// The identity the picker is built on — its available rows are this list —
-    /// so what the grid gate counts (`deriveExerciseListLetters`) is what the
-    /// user sees, not the size of a list the ladder has already shrunk. An
+    /// so the rows the picker offers are what the user sees, not the size of a
+    /// list the ladder has already shrunk. An
     /// exercise the ladder holds is offered once, as its in-session row.
     public var availablePickerExercises: [WatchCatalogExercise] {
         let onLadder = Set(

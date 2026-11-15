@@ -17,33 +17,21 @@
 //  the menu's own Add Exercise list — its order, the append it makes at the end
 //  of the ladder, the frame that announcement emits, and the lock it ignores.
 //
-//  S-3900 to S-3907 of
-//  `docs/plans/2026-10-11-23e3-watch-add-exercise-letters-plan/2026-10-11-23e3-watch-add-exercise-letters-plan.md`:
-//  the letters a long Add Exercise list carries, the threshold below which it
-//  carries none, and the label of one letter button. S-3908, added with the
-//  23e3 order-retention fix, pins that the entries follow the list's order even
-//  when the `#` key sorts last.
-//
 //  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
 //  scenarios S-3101 to S-3104 and S-3111 (decisions D-3101, D-3102, D-3103,
 //  D-3109, D-3114): the menu's extra gap above Add Exercise, the list button the
 //  rest screen carries, the one sheet both surfaces open, and the rest a jump or
 //  an add leaves running while a log closes it and starts the next one.
 //
-//  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
-//  Phase 2A, scenarios S-3105 and S-3108 (decisions D-3104, D-3110): the list
-//  the user reads split into the runs the grid jumps by, and the one
-//  `addLetterGridThreshold` site both surfaces read.
+//  Plan: `docs/plans/2026-11-15-199-watch-exercise-list-modality-first-plan/2026-11-15-199-watch-exercise-list-modality-first-plan.md`,
+//  phase P1 (decisions D-19901, D-19902, D-19905, D-19912): the letter grid and
+//  the letter sections are gone from both exercise lists, and the S-19912
+//  source guard that the deleted symbols occur nowhere in Sources.
 //
 //  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
 //  Phase 2B, scenario S-3106 (decisions D-3105, D-3106, D-3112): both entry
 //  points render the one shared exercise list, and the lazy stack whose
-//  unmeasured rows made the letter jump miss is gone from all three files.
-//
-//  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
-//  fix round 1, scenario S-3114 (decision D-3117): a key that opens two runs of
-//  the list carries one scroll id, on its first run, and the shared list derives
-//  its ids from `scrollTargetLetters(of:)`.
+//  unmeasured rows placed them by estimate is gone from all three files.
 //
 //  Fixture A is the register's three-slot ladder: two live efforts on `s1`, none
 //  on `s2`, one on `s3`, and a fourth `s1` effort the phone deleted.
@@ -101,16 +89,6 @@ private func menuEntry(
     )
 }
 
-/// The key the list's own order implies for a name: its FIRST character,
-/// whitespace and all, uppercased when that character is a letter, otherwise
-/// `"#"`, and `"#"` for a name with no character at all (D-3850). Written out
-/// here so the S-3905 property checks the rule rather than restating the
-/// production code.
-private func letterKey(of name: String) -> String {
-    guard let first = name.first else { return "#" }
-    return first.isLetter ? String(first).uppercased() : "#"
-}
-
 // MARK: - Reading source text (the app target has no test target to run in)
 
 /// A repository file, read from `Fixtures.repositoryRoot`, with every comment
@@ -151,7 +129,7 @@ private func occurrences(of needle: String, in source: String) -> Int {
     source.components(separatedBy: needle).count - 1
 }
 
-/// The 25-name list S-3900 walks: two names on A and on B, then one per letter
+/// The 25-name list S-19923 walks: two names on A and on B, then one per letter
 /// through W, in the order the list's own lowercase sort gives.
 private let letterCatalogNames = [
     "apple", "Avocado", "banana", "Blueberry", "cherry", "date", "elderberry",
@@ -313,7 +291,7 @@ final class WatchMenuHarness {
     }
 
     /// The phone's catalog with one exercise per name, in the order the phone
-    /// sent them: the long lists the letter grid is about (S-3900…S-3907). Ids
+    /// sent them: the long lists the group shape is about (S-19907, S-19909). Ids
     /// are `ex-l<position>` so a scenario can name an exercise by where the
     /// phone put it, whatever its name sorts to.
     @discardableResult
@@ -992,7 +970,7 @@ final class WatchMenuTests: XCTestCase {
         for file in ["WatchMenuView.swift", "WatchStartView.swift"] {
             let source = try menuSource("\(sources)/\(file)")
             XCTAssertTrue(
-                source.contains("WatchExerciseLetterList"),
+                source.contains("WatchExerciseGroupList"),
                 "S-3106 \(file) renders the shared exercise list"
             )
             XCTAssertFalse(
@@ -1003,7 +981,7 @@ final class WatchMenuTests: XCTestCase {
 
         let shared = try menuSource("\(sources)/WatchExerciseListView.swift")
         XCTAssertTrue(
-            shared.contains("WatchExerciseLetterList"),
+            shared.contains("WatchExerciseGroupList"),
             "S-3106 the shared component is what both entry points render"
         )
         XCTAssertFalse(
@@ -1222,375 +1200,329 @@ final class WatchMenuTests: XCTestCase {
         )
     }
 
-    // MARK: - S-3900…S-3907 the Add Exercise letter grid (23e3)
+    // MARK: - S-19923/S-19912 the groups the list is read in (plan 199)
 
-    /// The letters a long list carries: one entry per first letter the list
-    /// has, in the list's own order, each naming the exercise its run starts
-    /// with. A second name on the same letter adds no second entry.
-    func testS3900TheLettersFollowTheListsOwnOrder() async {
+    /// The harness session has no modality, so the Add Exercise list over it is
+    /// one untitled group whose names equal `addableExercises` in the list's own
+    /// order (plan 199, D-19905, S-19923): the 25-name catalog, each exercise
+    /// once, nothing reordered.
+    func testS19923TheAddExerciseListIsOneUntitledGroupWithNoModality() async {
         let harness = await WatchMenuHarness().launch()
         await harness.applyLetterCatalog(letterCatalogNames)
 
         let offered = harness.menu.addableExercises
-        let letters = harness.menu.addExerciseLetters
+        let groups = harness.menu.addExerciseGroups
 
+        XCTAssertEqual(groups.count, 1, "S-19923 the 25-name list is one group")
+        XCTAssertNil(groups.first?.title, "S-19923 one group wears no title")
         XCTAssertEqual(
-            letters.map(\.letter),
-            [
-                "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
-                "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W",
-            ],
-            "S-3900 one entry per first letter, in list order"
-        )
-        XCTAssertEqual(letters.count, 23, "S-3900 the two second names on A and B add no entry")
-        XCTAssertEqual(
-            letters.first?.firstExerciseId,
-            offered.first { $0.name == "apple" }?.exerciseId,
-            "S-3900 the A entry starts at the list's first exercise"
+            groups.first?.exercises.map(\.name),
+            offered.map(\.name),
+            "S-19923 the group is the list itself, in the list's own order"
         )
         XCTAssertEqual(
-            letters.first { $0.letter == "B" }?.firstExerciseId,
-            offered.first { $0.name == "banana" }?.exerciseId,
-            "S-3900 each entry starts at its own first exercise"
+            groups.first?.exercises.count,
+            offered.count,
+            "S-19923 each exercise appears once"
         )
-        XCTAssertEqual(offered.first?.name, "apple", "S-3900 plain lowercase text puts apple before Avocado")
+
+        let small = await WatchMenuHarness().launch()
+        await small.applyLetterCatalog(["apple", "banana", "cherry"])
+        let smallGroups = small.menu.addExerciseGroups
+        XCTAssertEqual(smallGroups.count, 1, "S-19923 a three-name list is one group too")
+        XCTAssertNil(smallGroups.first?.title, "S-19923 and it wears no title")
+        XCTAssertEqual(
+            smallGroups.first?.exercises.map(\.name),
+            ["apple", "banana", "cherry"],
+            "S-19923 the input order is untouched"
+        )
+
+        let empty = await WatchMenuHarness().launch()
+        XCTAssertTrue(empty.menu.addableExercises.isEmpty, "S-19923 the fresh wrist offers nothing")
+        XCTAssertEqual(empty.menu.addExerciseGroups, [], "S-19923 an empty list has no groups")
     }
 
-    /// Digits and symbols open one shared `#` entry, and it sorts first because
-    /// the list sorts by plain lowercase text.
-    func testS3901DigitsAndSymbolsShareOneHashEntryFirst() async {
-        let harness = await WatchMenuHarness().launch()
-        await harness.applyLetterCatalog(
-            ["1 min sprint", "5 minute plank", "(warm up)"] + (1...20).map { "b\($0)" }
+    /// The grid is deleted with every symbol that only served it (D-19901,
+    /// S-19912): the list view carries no scroll machinery, and the deleted
+    /// names occur in no file the watch package compiles.
+    func testS19912TheLetterGridAndItsSymbolsAreGone() throws {
+        let list = try menuSource(
+            "watch/watchos/Sources/WatchSessionEngine/WatchExerciseListView.swift"
         )
+        XCTAssertFalse(list.contains("LazyVGrid"), "S-19912 the list view has no LazyVGrid")
+        XCTAssertFalse(list.contains("letterGrid"), "S-19912 the list view has no letterGrid")
+        XCTAssertFalse(list.contains("ScrollViewReader"), "S-19912 the list view has no ScrollViewReader")
+        XCTAssertFalse(list.contains("scrollTo"), "S-19912 the list view has no scrollTo")
 
-        let offered = harness.menu.addableExercises
-        let letters = harness.menu.addExerciseLetters
+        let files = try FileManager.default
+            .contentsOfDirectory(at: Fixtures.sourcesRoot, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "swift" }
 
-        XCTAssertEqual(
-            letters.map(\.letter),
-            ["#", "B"],
-            "S-3901 the three non-letter names share one entry, ahead of every letter"
-        )
-        XCTAssertEqual(
-            letters.first?.firstExerciseId,
-            offered.first { $0.name == "(warm up)" }?.exerciseId,
-            "S-3901 the # entry starts at the first of its names in list order"
-        )
-        XCTAssertEqual(offered.first?.name, "(warm up)", "S-3901 a symbol sorts before a digit before a letter")
-    }
-
-    /// The threshold is the owner's number, and it is a floor on the list, not
-    /// an exclusive bound: exactly 20 shows nothing.
-    func testS3902TheGridNeedsMoreThanTheThreshold() async {
-        XCTAssertEqual(WatchMenuCopy.addLetterGridThreshold, 20, "S-3902 the owner's threshold")
-
-        let short = await WatchMenuHarness().launch()
-        await short.applyLetterCatalog((1...20).map { "exercise \($0)" })
-        XCTAssertEqual(
-            short.menu.addableExercises.count,
-            WatchMenuCopy.addLetterGridThreshold,
-            "S-3902 the short list holds exactly the threshold"
-        )
-        XCTAssertEqual(short.menu.addExerciseLetters, [], "S-3902 at the threshold there is no grid")
-
-        let long = await WatchMenuHarness().launch()
-        await long.applyLetterCatalog((1...21).map { "exercise \($0)" })
-        XCTAssertFalse(long.menu.addExerciseLetters.isEmpty, "S-3902 one past the threshold there is a grid")
-    }
-
-    /// Case is not a letter of its own: "apple" and "Avocado" are one `A`.
-    func testS3903CaseIsOneLetterPerFirstCharacter() async {
-        let harness = await WatchMenuHarness().launch()
-        await harness.applyLetterCatalog(
-            ["apple", "Avocado", "banana"] + (1...20).map { "berry \($0)" }
-        )
-
-        let offered = harness.menu.addableExercises
-        let a = harness.menu.addExerciseLetters.filter { $0.letter == "A" }
-
-        XCTAssertEqual(a.count, 1, "S-3903 apple and Avocado are one A entry")
-        XCTAssertEqual(
-            a.first?.firstExerciseId,
-            offered.first { $0.name == "apple" }?.exerciseId,
-            "S-3903 the A entry starts at the exercise the list shows first"
-        )
-    }
-
-    /// An accented initial has its own letter and sits where the list puts it:
-    /// plain lowercase text puts "Élan" after "zebra", so `É` is the last entry.
-    func testS3904AnAccentedInitialIsItsOwnLetterAndSortsLast() async {
-        let harness = await WatchMenuHarness().launch()
-        await harness.applyLetterCatalog(["zebra", "Élan"] + (1...20).map { "berry \($0)" })
-
-        let offered = harness.menu.addableExercises
-        let letters = harness.menu.addExerciseLetters
-
-        XCTAssertEqual(letters.last?.letter, "É", "S-3904 the accent keeps its own letter, at the end")
-        XCTAssertEqual(
-            letters.last?.firstExerciseId,
-            offered.last?.exerciseId,
-            "S-3904 Élan is the list's own last exercise"
-        )
-        XCTAssertEqual(offered.last?.name, "Élan", "S-3904 the list puts the accent after z")
-        XCTAssertEqual(
-            letters.first { $0.letter == "Z" }?.firstExerciseId,
-            offered.first { $0.name == "zebra" }?.exerciseId,
-            "S-3904 zebra is its own Z entry"
-        )
-    }
-
-    /// The letters partition the list with no gap and no overlap: entry *i*
-    /// covers exactly the exercises from its own first exercise up to the next
-    /// entry's, and every entry names an exercise the list holds.
-    func testS3905EveryLetterEntryCoversAContiguousRun() async throws {
-        let harness = await WatchMenuHarness().launch()
-        var names: [String] = ["  apple"]
-        for index in 0..<120 {
-            switch index % 8 {
-            case 0: names.append("apple \(index)")
-            case 1: names.append("Banana \(index)")
-            case 2: names.append("\(index) reps")
-            case 3: names.append("(hold) \(index)")
-            case 4: names.append("cherry \(index)")
-            case 5: names.append("Élan \(index)")
-            case 6: names.append("dip \(index)")
-            default: names.append("  zebra \(index)")
+        // The watch app target compiles its own Swift files beside the package's
+        // Sources: the walk reaches those too, so a deleted symbol cannot hide
+        // there.
+        let appRoot = Fixtures.repositoryRoot
+            .appendingPathComponent("ios/OmniTrain Watch App", isDirectory: true)
+        var appFiles: [URL] = []
+        if let enumerator = FileManager.default.enumerator(
+            at: appRoot,
+            includingPropertiesForKeys: nil
+        ) {
+            for case let url as URL in enumerator where url.pathExtension == "swift" {
+                appFiles.append(url)
             }
         }
-        await harness.applyLetterCatalog(names)
+        XCTAssertFalse(
+            appFiles.isEmpty,
+            "S-19912 the watch app target directory was found and its Swift files walked"
+        )
 
-        let offered = harness.menu.addableExercises
-        let letters = harness.menu.addExerciseLetters
-        XCTAssertFalse(letters.isEmpty, "S-3905 a 120-name list carries letters")
-
-        var positionOf: [String: Int] = [:]
-        for (position, exercise) in offered.enumerated() {
-            positionOf[exercise.exerciseId] = position
-        }
-
-        for (entryIndex, entry) in letters.enumerated() {
-            let start = try XCTUnwrap(
-                positionOf[entry.firstExerciseId],
-                "S-3905 \(entry.letter) names an exercise the list holds"
-            )
-            let end = entryIndex + 1 < letters.count
-                ? try XCTUnwrap(positionOf[letters[entryIndex + 1].firstExerciseId])
-                : offered.count
-            XCTAssertLessThan(start, end, "S-3905 the entries are in list order")
-            for position in start..<end {
-                XCTAssertEqual(
-                    letterKey(of: offered[position].name),
-                    entry.letter,
-                    "S-3905 every exercise in an entry's run wears its letter"
+        for name in [
+            "WatchAddExerciseLetter",
+            "addExerciseLetterKey",
+            "deriveAddExerciseLetters",
+            "scrollTargetLetters",
+            "deriveExerciseListLetters",
+            "addLetterGridThreshold",
+            "addLetterJumpLabel",
+            "addExerciseLetters",
+            "WatchExerciseLetterList",
+        ] {
+            for file in files + appFiles {
+                let relative = file.path.dropFirst(Fixtures.repositoryRoot.path.count + 1)
+                let source = try menuSource(String(relative))
+                XCTAssertFalse(
+                    source.contains(name),
+                    "S-19912 \(name) occurs nowhere in Sources or the watch app target, found in \(file.lastPathComponent)"
                 )
             }
         }
-
-        XCTAssertEqual(letters.first?.firstExerciseId, offered.first?.exerciseId, "S-3905 the first entry opens the list")
-        XCTAssertEqual(
-            letters.last?.firstExerciseId,
-            offered.first { letterKey(of: $0.name) == letters.last?.letter }?.exerciseId,
-            "S-3905 the last entry opens its own run"
-        )
     }
 
-    /// The one string a letter button says to VoiceOver (D-3852).
-    func testS3906TheJumpLabelNamesTheLetter() {
-        XCTAssertEqual(WatchMenuCopy.addLetterJumpLabel("A"), "Jump to A")
-        XCTAssertEqual(WatchMenuCopy.addLetterJumpLabel("#"), "Jump to #")
-    }
+    // MARK: - S-19907/S-19908/S-19917/S-19918/S-19919 the modality grouping (plan 199)
 
-    /// A name with no character at all — or only whitespace, leading or not — is
-    /// `#`, not a crash and not a letter: a leading space sorts before every
-    /// letter, so it belongs in the `#` run and adds no `A` entry of its own.
-    func testS3907AnEmptyNameIsHashedAndDoesNotCrash() async {
-        let harness = await WatchMenuHarness().launch()
-        await harness.applyLetterCatalog(["" , "   ", " apple"] + (1...20).map { "berry \($0)" })
-
-        let offered = harness.menu.addableExercises
-        let letters = harness.menu.addExerciseLetters
-
-        XCTAssertEqual(letters.map(\.letter), ["#", "B"], "S-3907 an empty name, a spaces-only name and a leading-space name are hashed")
-        XCTAssertFalse(
-            letters.contains { $0.letter == "A" },
-            "S-3907 a leading-space name adds no A entry: it sits in the # run"
-        )
-        XCTAssertEqual(
-            letters.first?.firstExerciseId,
-            offered.first?.exerciseId,
-            "S-3907 the empty name is the list's first exercise"
-        )
-    }
-
-    /// The entries follow the LIST's order, not the alphabetical order of their
-    /// keys: `~` is above `z` in the plain-lowercase sort, so a "~stretch" name
-    /// sits last and its `#` entry comes last too, unlike S-3901's `#` run that
-    /// opens a list of digits and symbols.
-    func testS3908ASymbolThatSortsAfterZGetsItsHashEntryAtTheEnd() async {
-        let harness = await WatchMenuHarness().launch()
-        await harness.applyLetterCatalog(letterCatalogNames + ["~stretch"])
-
-        let offered = harness.menu.addableExercises
-        let letters = harness.menu.addExerciseLetters
-
-        XCTAssertGreaterThan(
-            offered.count,
-            WatchMenuCopy.addLetterGridThreshold,
-            "S-3908 the list is long enough to carry the grid"
-        )
-        XCTAssertEqual(
-            letters.map(\.letter),
-            [
-                "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
-                "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "#",
-            ],
-            "S-3908 one entry per key, in the list's own order, the # run last"
-        )
-        XCTAssertEqual(offered.last?.name, "~stretch", "S-3908 the list sorts a tilde name after z")
-        XCTAssertEqual(letters.last?.letter, "#", "S-3908 the last entry is the # run")
-        XCTAssertEqual(
-            letters.last?.firstExerciseId,
-            offered.last?.exerciseId,
-            "S-3908 the # entry opens its run at the tilde name"
-        )
-    }
-
-    // MARK: - S-3105/S-3108 the sections the list is read in
-
-    /// The list the user reads is the list the grid jumps by: one section per
-    /// key, in the list's own order, and the concatenation of their exercises is
-    /// `addableExercises` exactly — nothing dropped, nothing repeated, nothing
-    /// reordered (D-3104, D-3110).
-    func testS3105ASectionsFollowTheListAndTheLettersAgree() async throws {
-        let harness = await WatchMenuHarness().launch()
-        // 120 mixed names: four per letter A-Z, the three keys that sort before
-        // every letter (a leading space, a symbol and a digit), one accented name
-        // that sorts after `z`, and twelve lowercase names among the uppercase
-        // ones.
-        var names: [String] = [" stray", "-dash hold", "3x3 press", "Élan"]
-        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
-            names.append(contentsOf: [
-                "\(letter)pple",
-                "\(letter)nt",
-                "\(letter)corn",
-                "\(letter)lmond",
-            ])
+    /// The list's A-to-Z walk, each exercise named with the recommendation the
+    /// phone sent for it. Pure `deriveExerciseGroups` — no harness.
+    private func modalityList(
+        _ exercises: [(name: String, recommendedFor: [String])]
+    ) -> [WatchCatalogExercise] {
+        exercises.map {
+            WatchCatalogExercise(
+                exerciseId: "ex-\($0.name.lowercased().replacingOccurrences(of: " ", with: "-"))",
+                name: $0.name,
+                capabilities: ["reps"],
+                recommendedFor: $0.recommendedFor
+            )
         }
-        names.append(contentsOf: "ABCDEFGHIJKL".map { "\($0) route" })
-        await harness.applyLetterCatalog(names)
-
-        let offered = harness.menu.addableExercises
-        let letters = harness.menu.addExerciseLetters
-        let sections = deriveExerciseSections(offered)
-
-        XCTAssertEqual(offered.count, 120, "S-3105 the fixture is the 120-name list")
-        XCTAssertEqual(
-            sections.map(\.letter),
-            letters.map(\.letter),
-            "S-3105 one section per key, in the list's own order"
-        )
-        XCTAssertEqual(
-            sections.flatMap(\.exercises).map(\.exerciseId),
-            offered.map(\.exerciseId),
-            "S-3105 the sections are the list itself: in order, nothing dropped or repeated"
-        )
-        XCTAssertEqual(
-            sections.compactMap { $0.exercises.first?.exerciseId },
-            letters.map(\.firstExerciseId),
-            "S-3105 each section opens at the exercise its letter entry names"
-        )
-        XCTAssertEqual(sections.first?.letter, "#", "S-3105 the keys that sort first open the list")
-        XCTAssertEqual(sections.last?.letter, "É", "S-3105 the accent is its own section, last")
     }
 
-    // MARK: - S-3114 the scroll id a repeated key's runs carry (plan 31 fix round 1)
+    /// A stable partition, Recommended then Other, each keeping the A-to-Z
+    /// order, titles the phone's own words (plan 199, D-19905, S-19907).
+    func testS19907TheModalityListSplitsIntoRecommendedThenOther() {
+        let input = modalityList([
+            (name: "Arm Curl", recommendedFor: ["resistance_lifting"]),
+            (name: "Bike", recommendedFor: ["cardio_endurance"]),
+            (name: "Climb", recommendedFor: ["cardio_endurance"]),
+            (name: "Dips", recommendedFor: ["resistance_lifting"]),
+            (name: "Zumba", recommendedFor: ["cardio_endurance"]),
+        ])
 
-    /// One key can open two runs — a digit name sorts before `A`, a `~` name
-    /// after `Z`, and both key to `#` — so the run a `ScrollViewReader` keeps
-    /// cannot be the whole list: two sections sharing one id are two views with
-    /// one identity, and the `#` jump could land on either.
-    ///
-    /// `scrollTargetLetters(of:)` is the rule — the first run of every key, once
-    /// each, in the sections' order — and the shared list derives its ids from
-    /// that function and from nothing else (D-3117).
-    func testS3114ARepeatedLetterRunsCarryOneScrollId() async throws {
-        let harness = await WatchMenuHarness().launch()
-        await harness.applyLetterCatalog(letterCatalogNames + ["3x3 press", "~stretch"])
+        let groups = deriveExerciseGroups(input, modality: "cardio_endurance")
 
-        let offered = harness.menu.addableExercises
-        let sections = deriveExerciseSections(offered)
-        let targets = scrollTargetLetters(of: sections)
-
+        XCTAssertEqual(groups.count, 2, "S-19907 the list splits into two groups")
         XCTAssertEqual(
-            sections.filter { $0.letter == "#" }.map(\.exercises.count),
-            [1, 1],
-            "S-3114 the fixture opens the # key twice, one exercise each"
+            groups.first?.title,
+            WatchMenuCopy.recommendedGroupTitle,
+            "S-19907 the first group wears the phone's Recommended word"
         )
         XCTAssertEqual(
-            sections.first?.exercises.first?.name,
-            "3x3 press",
-            "S-3114 the digit name opens the first # run"
+            groups.last?.title,
+            WatchMenuCopy.otherGroupTitle,
+            "S-19907 the second group wears the phone's Other word"
         )
         XCTAssertEqual(
-            sections.last?.exercises.first?.name,
-            "~stretch",
-            "S-3114 the tilde name opens the last # run"
+            groups.first?.exercises.map(\.name),
+            ["Bike", "Climb", "Zumba"],
+            "S-19907 the recommended exercises, in the input's own order"
         )
         XCTAssertEqual(
-            targets.filter { $0 == "#" }.count,
-            1,
-            "S-3114 the repeated key carries one id, not one per run"
+            groups.last?.exercises.map(\.name),
+            ["Arm Curl", "Dips"],
+            "S-19907 the others, in the input's own order"
         )
         XCTAssertEqual(
-            Set(targets).count,
-            targets.count,
-            "S-3114 no id appears twice in one reader"
-        )
-        XCTAssertEqual(
-            targets,
-            harness.menu.addExerciseLetters.map(\.letter),
-            "S-3114 the ids are exactly the letters the grid jumps by, in order"
-        )
-        XCTAssertEqual(
-            targets,
-            sections.map(\.letter).reduce(into: [String]()) { letters, letter in
-                if !letters.contains(letter) { letters.append(letter) }
-            },
-            "S-3114 every key is kept at its first run"
-        )
-
-        let shared = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchExerciseListView.swift")
-        XCTAssertTrue(
-            shared.contains("scrollTargetLetters(of:"),
-            "S-3114 the shared list takes its scroll ids from the pinned rule"
+            groups.flatMap(\.exercises).map(\.name),
+            ["Bike", "Climb", "Zumba", "Arm Curl", "Dips"],
+            "S-19907 the concatenation holds each exercise exactly once"
         )
     }
 
-    /// The grid's threshold is one gate over the rows a surface offers (D-3110):
-    /// 20 carry none, 21 carry them, and what the menu shows is that gate's
-    /// output — never a second reading of the literal.
-    func testS3108ATheLetterGridAppearsOverTwentyRows() async {
-        let twenty = await WatchMenuHarness().launch()
-        await twenty.applyLetterCatalog((1...20).map { "berry \($0)" })
+    /// One non-empty group is untitled, whichever side is empty
+    /// (plan 199, D-19905, S-19908).
+    func testS19908OneNonEmptyGroupIsOneUntitledGroup() {
+        let allRecommended = modalityList([
+            (name: "Bike", recommendedFor: ["cardio_endurance"]),
+            (name: "Climb", recommendedFor: ["cardio_endurance"]),
+        ])
+        let allGroups = deriveExerciseGroups(allRecommended, modality: "cardio_endurance")
+        XCTAssertEqual(allGroups.count, 1, "S-19908 all recommended is one group")
+        XCTAssertNil(allGroups.first?.title, "S-19908 and it wears no title")
+        XCTAssertEqual(allGroups.first?.exercises, allRecommended, "S-19908 the input is returned untouched")
 
-        XCTAssertEqual(twenty.menu.addableExercises.count, 20, "S-3108 the fixture is the threshold's own count")
-        XCTAssertTrue(twenty.menu.addExerciseLetters.isEmpty, "S-3108 20 rows carry no grid")
+        let noneRecommended = modalityList([
+            (name: "Arm Curl", recommendedFor: ["resistance_lifting"]),
+            (name: "Dips", recommendedFor: ["resistance_lifting"]),
+        ])
+        let noneGroups = deriveExerciseGroups(noneRecommended, modality: "cardio_endurance")
+        XCTAssertEqual(noneGroups.count, 1, "S-19908 none recommended is one group too")
+        XCTAssertNil(noneGroups.first?.title, "S-19908 and it wears no title either")
+        XCTAssertEqual(noneGroups.first?.exercises, noneRecommended, "S-19908 the input is returned untouched")
+    }
+
+    /// No modality is one plain A-to-Z run even when exercises carry keys, and
+    /// an empty list has no groups (plan 199, D-19905, S-19909).
+    func testS19909NoModalityIsOneUntitledGroupEvenWhenExercisesCarryKeys() {
+        let input = modalityList([
+            (name: "Bike", recommendedFor: ["cardio_endurance"]),
+            (name: "Dips", recommendedFor: ["resistance_lifting"]),
+        ])
+
+        let groups = deriveExerciseGroups(input, modality: nil)
+        XCTAssertEqual(groups.count, 1, "S-19909 no modality is one group")
+        XCTAssertNil(groups.first?.title, "S-19909 and it wears no title")
+        XCTAssertEqual(groups.first?.exercises, input, "S-19909 the input order is untouched")
+
         XCTAssertEqual(
-            deriveExerciseListLetters(twenty.menu.addableExercises),
+            deriveExerciseGroups([], modality: "cardio_endurance"),
             [],
-            "S-3108 the shared list function is empty at the threshold itself"
+            "S-19909 an empty list has no groups"
+        )
+        XCTAssertEqual(
+            deriveExerciseGroups([], modality: nil),
+            [],
+            "S-19909 an empty list has no groups with no modality either"
+        )
+    }
+
+    /// An unknown key is kept in the model but matches no modality, so the
+    /// exercise is Other (plan 199, D-19905, S-19917).
+    func testS19917AnUnknownRecommendationIsKeptAndIsOther() {
+        let input = modalityList([
+            (name: "Broom Twist", recommendedFor: ["curling"]),
+        ])
+
+        let groups = deriveExerciseGroups(input, modality: "sports")
+        XCTAssertEqual(groups.count, 1, "S-19917 curling is not sports, so one group")
+        XCTAssertNil(groups.first?.title, "S-19917 and it is untitled: only the exercise is in it")
+        XCTAssertEqual(groups.first?.exercises.first?.recommendedFor, ["curling"], "S-19917 the key is kept in the model")
+
+        let both = deriveExerciseGroups(
+            input + modalityList([(name: "Tennis Drill", recommendedFor: ["sports"])]),
+            modality: "sports"
+        )
+        XCTAssertEqual(both.count, 2, "S-19917 beside a sports exercise the two split")
+        XCTAssertEqual(both.last?.exercises.map(\.name), ["Broom Twist"], "S-19917 the curling exercise is Other")
+    }
+
+    /// The wire has no `uniqueItems` (D-19904): a repeated key matches once and
+    /// the exercise appears exactly once in the concatenation
+    /// (plan 199, D-19905, S-19918).
+    func testS19918ARepeatedKeyMatchesOnceAndAppearsOnce() {
+        let input = modalityList([
+            (name: "Tennis Drill", recommendedFor: ["sports", "sports"]),
+        ])
+
+        let groups = deriveExerciseGroups(input, modality: "sports")
+        XCTAssertEqual(
+            groups.flatMap(\.exercises),
+            input,
+            "S-19918 the concatenation holds the exercise exactly once"
+        )
+        XCTAssertEqual(
+            groups.first?.exercises.first?.recommendedFor,
+            ["sports", "sports"],
+            "S-19918 the wire's values are kept verbatim"
+        )
+    }
+
+    /// An exercise whose name is empty keeps its input position within its
+    /// group — no special case (plan 199, S-19919).
+    func testS19919AnEmptyNameKeepsItsInputPositionWithinItsGroup() {
+        let input = modalityList([
+            (name: "Arm Curl", recommendedFor: ["resistance_lifting"]),
+            (name: "", recommendedFor: ["cardio_endurance"]),
+            (name: "Zumba", recommendedFor: ["cardio_endurance"]),
+        ])
+
+        let groups = deriveExerciseGroups(input, modality: "cardio_endurance")
+        XCTAssertEqual(groups.count, 2, "S-19919 the list splits")
+        XCTAssertEqual(
+            groups.first?.exercises.map(\.name),
+            ["", "Zumba"],
+            "S-19919 the empty name keeps its place in its group"
+        )
+        XCTAssertEqual(
+            groups.last?.exercises.map(\.name),
+            ["Arm Curl"],
+            "S-19919 and the others keep theirs"
+        )
+        XCTAssertEqual(
+            groups.flatMap(\.exercises).map(\.name),
+            ["", "Zumba", "Arm Curl"],
+            "S-19919 the concatenation holds each exercise exactly once"
+        )
+    }
+
+    // MARK: - S-19913/S-19920 the grouped surfaces' source guards (plan 199)
+
+    /// Both entry points pass `listModality` — no nil modality anywhere
+    /// (plan 199, D-19906, S-19913).
+    func testS19913BothEntryPointsGroupWithTheRealModality() throws {
+        let start = try menuSource(
+            "watch/watchos/Sources/WatchSessionEngine/WatchStartView.swift"
+        )
+        XCTAssertEqual(
+            occurrences(
+                of: "groups: deriveExerciseGroups(paths.availablePickerExercises, modality: paths.listModality),",
+                in: start
+            ),
+            1,
+            "S-19913 the picker passes the listModality grouping, exactly once"
+        )
+        XCTAssertFalse(
+            start.contains("modality: nil"),
+            "S-19913 no entry point passes a nil modality any more"
         )
 
-        let twentyOne = await WatchMenuHarness().launch()
-        await twentyOne.applyLetterCatalog((1...21).map { "berry \($0)" })
-
-        XCTAssertEqual(twentyOne.menu.addableExercises.count, 21, "S-3108 one row past the threshold")
-        XCTAssertEqual(twentyOne.menu.addExerciseLetters.map(\.letter), ["B"], "S-3108 21 rows carry the grid")
+        let menu = try menuSource(
+            "watch/watchos/Sources/WatchSessionEngine/WatchMenu.swift"
+        )
         XCTAssertEqual(
-            twentyOne.menu.addExerciseLetters,
-            deriveExerciseListLetters(twentyOne.menu.addableExercises),
-            "S-3108 the menu's letters are the shared function's, not a second gate"
+            occurrences(of: "deriveExerciseGroups(addableExercises, modality: paths.listModality)", in: menu),
+            1,
+            "S-19913 the menu's Add Exercise list reads the same accessor, exactly once"
+        )
+    }
+
+    /// The titled groups are section headers for VoiceOver; the untitled group
+    /// adds none (plan 199, S-19920).
+    func testS19920TheTitledGroupsAreHeadersAndTheUntitledAddsNone() throws {
+        let list = try menuSource(
+            "watch/watchos/Sources/WatchSessionEngine/WatchExerciseListView.swift"
+        )
+        XCTAssertTrue(
+            list.contains("if let title = group.title {"),
+            "S-19920 the header is drawn only for a titled group"
+        )
+        XCTAssertTrue(list.contains("Text(title)"), "S-19920 the header row is the group's title")
+        XCTAssertTrue(list.contains("} header: {"), "S-19920 the titled group carries a header")
+        XCTAssertFalse(
+            list.contains("Section(header"),
+            "S-19920 no header is built unconditionally"
+        )
+        XCTAssertFalse(
+            list.contains("Text(group.title"),
+            "S-19920 no header is drawn from the optional itself: an untitled group adds no header row"
         )
     }
 }

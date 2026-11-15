@@ -459,10 +459,9 @@ public struct WatchExercisePickerView: View {
     }
 
     public var body: some View {
-        WatchExerciseLetterList(
+        WatchExerciseGroupList(
             leading: inSessionRows,
-            sections: deriveExerciseSections(paths.availablePickerExercises),
-            letters: deriveExerciseListLetters(paths.availablePickerExercises),
+            groups: deriveExerciseGroups(paths.availablePickerExercises, modality: paths.listModality),
             emptyText: Self.emptyText,
             onPickLeading: { slotId, exercise in
                 Task { await select(.inSession(slotId: slotId, exercise: exercise)) }

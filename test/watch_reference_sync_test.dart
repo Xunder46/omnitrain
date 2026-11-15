@@ -450,7 +450,7 @@ void main() {
       );
     });
 
-    test('S-3843 250 exercises arrive as three batches in name order', () async {
+    test('S-3843 250 exercises arrive as five batches in name order', () async {
       // Two of the names carry the number 100 in opposite cases, so the
       // phone's case-insensitive order ties them (broken by id) and puts the
       // lowercase one among the `Exercise …` names, while Dart's code-unit
@@ -475,8 +475,8 @@ void main() {
 
       expect(
         batches,
-        hasLength(3),
-        reason: 'S-3843 250 exercises are three batches of at most 100',
+        hasLength(5),
+        reason: 'S-3843 250 exercises are five batches of at most 50',
       );
 
       final versions = <String>{};
@@ -490,7 +490,7 @@ void main() {
 
         final payload = _asObject(batch['payload']);
         expect(payload['batchIndex'], index);
-        expect(payload['batchCount'], 3);
+        expect(payload['batchCount'], 5);
         expect(payload['totalCount'], 250);
         versions.add(payload['catalogVersion']! as String);
 
@@ -515,7 +515,7 @@ void main() {
           for (final batch in batches)
             _objects(_asObject(batch['payload'])['exercises']).length,
         ],
-        [100, 100, 50],
+        [50, 50, 50, 50, 50],
         reason: 'S-3843 the last batch carries the remainder',
       );
 
@@ -594,10 +594,12 @@ void main() {
         generatedAt: _generatedAt,
       );
 
+      final totalCount =
+          _asObject(batches.first['payload'])['totalCount']! as int;
       expect(
         batches,
-        hasLength(4),
-        reason: 'S-3858 the seeded catalog is more than three batches',
+        hasLength((totalCount + 49) ~/ 50),
+        reason: 'S-3858 the seeded catalog splits into batches of at most 50',
       );
       for (var index = 0; index < batches.length; index++) {
         final bytes = utf8.encode(jsonEncode(batches[index])).length;
@@ -622,11 +624,13 @@ void main() {
         generatedAt: _generatedAt,
       );
 
+      final totalCount =
+          _asObject(batches.first['payload'])['totalCount']! as int;
       expect(
         batches,
-        hasLength(4),
-        reason: 'S-19306 the seeded catalog of more than 300 holds is four '
-            'batches of at most 100',
+        hasLength((totalCount + 49) ~/ 50),
+        reason: 'S-19306 the seeded catalog of holds splits into batches of '
+            'at most 50',
       );
 
       final yogaIds = {
@@ -734,16 +738,71 @@ void main() {
     test('S-3844 the vector, over the wire objects themselves', () {
       expect(
         WatchReferenceSync.exercisesVersionOf(vector),
-        'v1-2-004dbda823a1b308',
-        reason: 'S-3844 the version of the D-3832 vector',
+        'v1-2-a54c55d8e2a62688',
+        reason: 'S-3844 the version of the D-3832 vector, now hashed over six '
+            'fields (plan 199, D-19908)',
       );
       expect(
         WatchReferenceSync.exercisesVersionOf([
           vector[0],
           {...vector[1], 'name': 'Bike!'},
         ]),
-        'v1-2-6a71268979e6d5bd',
+        'v1-2-78fd31f9b9eeadbd',
         reason: 'S-3844 the same vector with Bike! as the second name',
+      );
+    });
+
+    test('S-19902 a healthActivity-only diff is another version', () {
+      const base = 'v1-2-a54c55d8e2a62688';
+      const withActivity = 'v1-2-676b3859a710d411';
+
+      final version = WatchReferenceSync.exercisesVersionOf([
+        vector[0],
+        {...vector[1], 'healthActivity': 'running'},
+      ]);
+
+      expect(version, withActivity, reason: 'S-19902 the pinned value');
+      expect(version, isNot(base), reason: 'S-19902 the diff changes the hash');
+    });
+
+    test('S-19902 a recommendedFor-only diff is another version', () {
+      const base = 'v1-2-a54c55d8e2a62688';
+      const one = 'v1-2-02c7b79ec97ba906';
+      const two = 'v1-2-6c227635c04c06a5';
+
+      final single = WatchReferenceSync.exercisesVersionOf([
+        vector[0],
+        {...vector[1], 'recommendedFor': ['cardio_endurance']},
+      ]);
+      final pair = WatchReferenceSync.exercisesVersionOf([
+        vector[0],
+        {
+          ...vector[1],
+          'recommendedFor': ['cardio_endurance', 'sports'],
+        },
+      ]);
+
+      expect(single, one, reason: 'S-19902 the pinned value, one modality');
+      expect(single, isNot(base), reason: 'S-19902 the diff changes the hash');
+      expect(pair, two, reason: 'S-19902 the pinned value, two modalities');
+      expect(pair, isNot(base), reason: 'S-19902 the diff changes the hash');
+    });
+
+    test('S-19902 the vector in the other insertion order keeps its version',
+        () async {
+      await holdVector(reversed: true);
+
+      final batches = await WatchReferenceSync.buildExercisesDown(
+        repository: repository,
+        generatedAt: _generatedAt,
+      );
+
+      expect(
+        _asObject(batches.single['payload'])['catalogVersion'],
+        'v1-2-a54c55d8e2a62688',
+        reason: 'S-19902 the version is a function of the list\'s content '
+            'only, and the sender sorts, so the other insertion order is the '
+            'same version',
       );
     });
 
@@ -758,7 +817,7 @@ void main() {
       expect(batches, hasLength(1));
       expect(
         _asObject(batches.single['payload'])['catalogVersion'],
-        'v1-2-004dbda823a1b308',
+        'v1-2-a54c55d8e2a62688',
         reason: 'S-3844 the sender derives the same version the function does, '
             'from the rows it read',
       );

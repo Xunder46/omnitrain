@@ -47,155 +47,50 @@ public struct WatchMenuRow: Equatable {
     }
 }
 
-/// One letter of the Add Exercise list's jump grid, and the exercise a tap on
-/// it brings to the top (D-3850).
+/// One run of a list the user reads (plan 199, D-19902): its title, shown only
+/// when the list has two groups, and its exercises in the list's own order.
 ///
-/// The pair is the whole entry: the key's own letter, and the id of the first
-/// exercise whose name keys to it in the list's order. The grid reads the
-/// letter, the tap names the id, and neither is derived again on the wrist.
-public struct WatchAddExerciseLetter: Equatable {
-    /// The key: a name's first character uppercased when it is a letter,
-    /// otherwise `"#"`.
-    public let letter: String
-
-    /// The `exerciseId` of the list's first exercise with this key.
-    public let firstExerciseId: String
-
-    public init(letter: String, firstExerciseId: String) {
-        self.letter = letter
-        self.firstExerciseId = firstExerciseId
-    }
-}
-
-/// The key a name sorts under in the Add Exercise grid: its first character
-/// uppercased when that character is a letter, otherwise `"#"` (D-3850).
-///
-/// The key is read from the FIRST character as it is, whitespace included: a
-/// name that starts with whitespace keys to `"#"`, like a name with nothing to
-/// read at all. The list sorts that name into the `#` run — a leading space
-/// sorts before every letter — so reading past the whitespace would point an
-/// entry at a region the name does not sit in and break the grid's contiguity.
-/// The uppercasing is `String.uppercased()`, the same text the list's own
-/// lowercase sort uses, and deliberately not a locale collation: the grid must
-/// agree with the order the user reads.
-func addExerciseLetterKey(of name: String) -> String {
-    guard let first = name.first else { return "#" }
-    return first.isLetter ? String(first).uppercased() : "#"
-}
-
-/// The list's letters in the order it shows them: one entry per distinct key,
-/// keyed at the first exercise that carries it (D-3850).
-///
-/// `exercises` is `addableExercises`, so the entries come out in the list's own
-/// A-to-Z order rather than alphabetical by key: a `#` run opens the grid — a
-/// name that is empty, starts with whitespace, a digit or a symbol sits there,
-/// because the list puts it before every letter — and an accented letter sits
-/// wherever the plain-lowercase sort put it.
-public func deriveAddExerciseLetters(
-    _ exercises: [WatchCatalogExercise]
-) -> [WatchAddExerciseLetter] {
-    var seen = Set<String>()
-    var letters: [WatchAddExerciseLetter] = []
-
-    for exercise in exercises {
-        let key = addExerciseLetterKey(of: exercise.name)
-        guard seen.insert(key).inserted else { continue }
-        letters.append(
-            WatchAddExerciseLetter(letter: key, firstExerciseId: exercise.exerciseId)
-        )
-    }
-
-    return letters
-}
-
-/// One run of a list the user reads: the key every exercise in it wears and
-/// those exercises, in the list's own order (D-3104, D-3110).
-///
-/// The runs are contiguous rather than one-per-key: a key that appears again
-/// after another key opens a second section, because the concatenation of a
-/// list's sections is that list — nothing dropped, nothing repeated, nothing
-/// reordered. `deriveAddExerciseLetters` may skip a repeat, since a jump needs
-/// one target per key; a list that is read needs every row once.
-public struct WatchExerciseSection: Equatable {
-    /// The key the run sorts under: the same key `WatchAddExerciseLetter`
-    /// carries, read through `addExerciseLetterKey(of:)`.
-    public let letter: String
+/// The concatenation of a list's groups is that list — nothing dropped, nothing
+/// repeated, nothing reordered.
+public struct WatchExerciseGroup: Equatable {
+    /// The group's header, or nil for a list that is one plain run.
+    public let title: String?
 
     public let exercises: [WatchCatalogExercise]
 
-    public init(letter: String, exercises: [WatchCatalogExercise]) {
-        self.letter = letter
+    public init(title: String?, exercises: [WatchCatalogExercise]) {
+        self.title = title
         self.exercises = exercises
     }
 }
 
-/// The list split into the runs it is read in: one section per key, in the
-/// list's own order, keyed through `addExerciseLetterKey(of:)` (D-3110).
+/// The list split into the groups it is read in (plan 199, D-19905).
 ///
-/// Pure, one pass, no sorting: an A-to-Z input (`addableExercises`) comes back
-/// with the `#` run first and an accented name last, exactly as it was handed
-/// over.
-public func deriveExerciseSections(
-    _ exercises: [WatchCatalogExercise]
-) -> [WatchExerciseSection] {
-    var sections: [WatchExerciseSection] = []
-    var open: [WatchCatalogExercise] = []
-    var openKey: String?
-
-    for exercise in exercises {
-        let key = addExerciseLetterKey(of: exercise.name)
-        if key == openKey {
-            open.append(exercise)
-            continue
-        }
-
-        if let openKey {
-            sections.append(WatchExerciseSection(letter: openKey, exercises: open))
-        }
-        openKey = key
-        open = [exercise]
+/// Pure and in order: `exercises` is `addableExercises`, already A to Z, and the
+/// groups keep that order — a stable partition, nothing dropped, repeated or
+/// reordered. With a modality the list splits into Recommended (the exercises
+/// whose `recommendedFor` names the modality) then Other, titled only when both
+/// are non-empty; one non-empty group, or no modality, is one untitled group.
+/// Unknown keys in `recommendedFor` are kept but never match.
+public func deriveExerciseGroups(
+    _ exercises: [WatchCatalogExercise],
+    modality: String?
+) -> [WatchExerciseGroup] {
+    guard !exercises.isEmpty else { return [] }
+    guard let modality else {
+        return [WatchExerciseGroup(title: nil, exercises: exercises)]
     }
 
-    if let openKey {
-        sections.append(WatchExerciseSection(letter: openKey, exercises: open))
+    let recommended = exercises.filter { $0.recommendedFor.contains(modality) }
+    let others = exercises.filter { !$0.recommendedFor.contains(modality) }
+    guard !recommended.isEmpty, !others.isEmpty else {
+        return [WatchExerciseGroup(title: nil, exercises: exercises)]
     }
 
-    return sections
-}
-
-/// The letters a list's sections carry as scroll ids: the first run of every
-/// key, once each, in the sections' own order (D-3117).
-///
-/// One `ScrollViewReader` may hold only one view per id, and
-/// `deriveExerciseSections` opens a second section whenever a key reappears — a
-/// digit name sorts before `A` and a `~` name after `Z`, so `#` can open twice.
-/// The grid jumps by letter, so the id sits on the run that letter names and the
-/// later runs carry none: the reader's ids are exactly the grid's letters, and a
-/// tap lands on the first run the grid's entry points at.
-public func scrollTargetLetters(of sections: [WatchExerciseSection]) -> [String] {
-    var seen = Set<String>()
-    var letters: [String] = []
-
-    for section in sections where seen.insert(section.letter).inserted {
-        letters.append(section.letter)
-    }
-
-    return letters
-}
-
-/// The letters a list jumps by: the list's entries, or none at all while it is
-/// short enough to scroll by hand (D-3851, D-3110).
-///
-/// The one home of `WatchMenuCopy.addLetterGridThreshold`. Both surfaces that
-/// show the grid — the menu's Add Exercise list and the picker's — read this,
-/// never the literal, so the two cannot disagree about where the grid begins.
-/// A pure function of the list it is given: the caller decides which list that
-/// is (`WatchMenuState.addableExercises`, `WatchStartPaths.availablePickerExercises`).
-public func deriveExerciseListLetters(
-    _ exercises: [WatchCatalogExercise]
-) -> [WatchAddExerciseLetter] {
-    guard exercises.count > WatchMenuCopy.addLetterGridThreshold else { return [] }
-    return deriveAddExerciseLetters(exercises)
+    return [
+        WatchExerciseGroup(title: WatchMenuCopy.recommendedGroupTitle, exercises: recommended),
+        WatchExerciseGroup(title: WatchMenuCopy.otherGroupTitle, exercises: others),
+    ]
 }
 
 /// The menu's fixed copy, and the confirmation's (D-3401).
@@ -216,19 +111,16 @@ public enum WatchMenuCopy {
     /// title bar.
     public static let addExerciseTitle = "Add Exercise"
 
+    /// The first group's header, when the list splits into two: the phone's own
+    /// picker's word for the exercises its rule recommends (plan 199, D-19903).
+    public static let recommendedGroupTitle = "Recommended"
+
+    /// The second group's header: the phone's own word for everything its rule
+    /// does not recommend (plan 199, D-19903).
+    public static let otherGroupTitle = "Other"
+
     /// Said in place of rows when the phone has sent no exercise down yet.
     public static let addExerciseEmpty = "No exercises yet. Sync with your phone."
-
-    /// How many exercises the Add Exercise list may hold and still fit a few
-    /// scrolls: at or below this count the letter grid would cost more than it
-    /// saves, so it is not shown (D-3851).
-    public static let addLetterGridThreshold: Int = 20
-
-    /// What one letter button of the Add Exercise grid says to VoiceOver
-    /// (D-3852).
-    public static func addLetterJumpLabel(_ letter: String) -> String {
-        "Jump to \(letter)"
-    }
 
     public static let confirmTitle = "Finish Workout?"
     public static let confirmBody = "This action will save and close the workout session."
@@ -400,21 +292,10 @@ public final class WatchMenuState {
     /// (23c, D-3605).
     public var addableExercises: [WatchCatalogExercise] { paths.addableExercises }
 
-    /// The letters the Add Exercise list jumps by, in the list's own order, or
-    /// `[]` when the list is short enough to scroll by hand (D-3850, D-3851).
-    ///
-    /// A pure function of `addableExercises`, read on every access: a list that
-    /// changes size across the threshold gains or loses the grid with it. The
-    /// threshold itself lives once, in `deriveExerciseListLetters`, which the
-    /// picker reads too (D-3110).
-    public var addExerciseLetters: [WatchAddExerciseLetter] {
-        deriveExerciseListLetters(addableExercises)
-    }
-
-    /// The Add Exercise list split into the runs it is read in, in the list's
-    /// own order (D-3104, D-3110).
-    public var addExerciseSections: [WatchExerciseSection] {
-        deriveExerciseSections(addableExercises)
+    /// The Add Exercise list split into the groups it is read in, in the list's
+    /// own order (plan 199, D-19905).
+    public var addExerciseGroups: [WatchExerciseGroup] {
+        deriveExerciseGroups(addableExercises, modality: paths.listModality)
     }
 
     /// Adds `exercise` at the end of the ladder, through the start paths.

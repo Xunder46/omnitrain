@@ -136,35 +136,29 @@ hardware yet.
     tap **Sync**: it appears in **Add Exercise** in its A-to-Z place. Turning
     the phone's Bluetooth off mid-way is not part of this step. The behaviour
     behind it is pinned off-device by `test/watch_reference_sync_test.dart`
-    (`S-3843 250 exercises arrive as three batches in name order`),
+    (`S-3843 250 exercises arrive as five batches in name order`),
     `test/watch_sync_request_handler_test.dart` (`S-3850 the wrist names the
     current version: no batch travels`, `S-3854 a sync with the sent version
     sends no batch, and a custom exercise stales it`) and
     `WatchMenuTests.testS3611TheAddListSortsCaseInsensitivelyByName`.
-14. **Jump to a letter in a long exercise list — (owner).** Sync so the wrist
-    holds the full list, then open **Add Exercise**: above the rows sits a grid
-    of the letters the list actually has, four per row — not the whole alphabet
-    — and a name the list put under a digit or a symbol sits under `#`, which is
-    first, while an accented initial like **Élan** has its own letter at the
-    end. Tap a letter: the list moves so that letter's first exercise is at the
-    top, nothing is added and the screen does not close; a letter jump is a
-    scroll, not a pick. Far letters land too: the list measures every row it
-    holds, so a tap on **T** brings T's own exercise to the top instead of
-    estimating and missing it (D-3106). Tap an exercise as before: it is still
-    added at the end of the session's list and the screen returns to the menu.
-    With a short list — a fresh install with 20 exercises or fewer at **Sync**
-    — there is no grid at all. The modality grid's picker is the other entry point
-    and draws the same list in the same order: the grid is its first row, then
-    the exercises the session already holds, then the one section per letter.
-    The one component both render is pinned by
-    `WatchMenuTests.testS3106AOneListServesBothEntryPoints`. The letters and
-    their order are pinned off-device by
-    `WatchMenuTests.testS3900TheLettersFollowTheListsOwnOrder`,
-    `…testS3901DigitsAndSymbolsShareOneHashEntryFirst`,
-    `…testS3902TheGridNeedsMoreThanTheThreshold`,
-    `…testS3904AnAccentedInitialIsItsOwnLetterAndSortsLast` and
-    `…testS3905EveryLetterEntryCoversAContiguousRun`; the grid itself is drawn
-    by the watch app target, which `swift test` does not compile.
+14. **Recommended exercises first — (owner).** Sync so the wrist holds the
+    full list, then tap **Cardio** on the Start screen: the exercise picker
+    opens with a small **Recommended** header and, under it, the exercises
+    that suit Cardio, A to Z — for example Running, Cycling, Rowing — then an
+    **Other** header and everything else, A to Z. There is no row of letters
+    and no letter headers. Tap **Resistance** instead and the lifting
+    exercises come first. Tap an exercise and the session starts with it, as
+    before. On a Free-style or plan-started session — one with no modality —
+    **Add Exercise** is one plain A-to-Z list; during a Cardio session,
+    **Add Exercise** puts the cardio exercises first. The grouping and its
+    entry points are pinned off-device by
+    `WatchMenuTests.testS19907TheModalityListSplitsIntoRecommendedThenOther`,
+    `…testS19908OneNonEmptyGroupIsOneUntitledGroup`,
+    `…testS19909NoModalityIsOneUntitledGroupEvenWhenExercisesCarryKeys`,
+    `…testS19913BothEntryPointsGroupWithTheRealModality` and
+    `WatchSessionStartPathsTests.testS19911ListModalityFollowsThePendingStartThenTheSession`;
+    that the letter grid and its symbols are gone is pinned by
+    `WatchMenuTests.testS19912TheLetterGridAndItsSymbolsAreGone`.
 15. **The menu is one tap away during a rest — (owner).** Log a set so the rest
     screen is up: it carries the same top-right list button the logging screen
     does, and tapping it opens the same menu over the rest. Tap **Add

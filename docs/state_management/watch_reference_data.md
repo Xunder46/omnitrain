@@ -21,9 +21,15 @@ other platform's suite too.
 `fallbackExercises` is the list that keeps a synced routine loggable offline.
 It is not the whole catalog: a phone with more than 300 seeded exercises would send tens
 of kilobytes for a list the wrist mostly does not need at start time. The whole list
-travels as `exercises_down` instead, in batches of at most 100 exercises, each
+travels as `exercises_down` instead, in batches of at most 50 exercises, each
 batch naming a version, its index, the version's batch count and its total
-exercise count.
+exercise count (the default pinned by
+`test/watch_reference_sync_test.dart`, group
+`S-3840..S-3843, S-3845, S-3846 the phone sends the list in batches`, test
+`S-3858 the first batch of the seeded catalog stays under the frame budget`,
+whose reason says the seeded catalog splits into batches of at most 50;
+the validated range stays 1..100,
+`S-3846 a batch size outside 1..100 is refused`).
 
 Both messages are walked against the schemas by
 `SyncProtocolFixturesTests.testEveryValidFixtureConforms` and
@@ -120,29 +126,84 @@ neither list names it, so a routine the wrist holds is always loggable
 (`testS3817RoutineCoverageAndTheActiveListAreUnionedOnce`,
 `testS003FallbackListUnionsRecentsAndRoutineExercisesInContractOrder`).
 `addableExercises` is that same list, sorted A to Z for the Add Exercise menu
-(`testS3611TheAddListSortsCaseInsensitivelyByName`); a list of more than
-`WatchMenuCopy.addLetterGridThreshold` (20) also carries the letter grid it
-jumps by, one entry per distinct first key in the list's own order, with digits,
-symbols and empty names sharing a `#` that opens the grid (a symbol above `z`,
-such as `~`, sorts last, so the `#` entry then sits at the end:
-`testS3908ASymbolThatSortsAfterZGetsItsHashEntryAtTheEnd`) and an accented
-initial in the plain-lowercase place its name sorted to
-(`testS3900TheLettersFollowTheListsOwnOrder`,
-`testS3902TheGridNeedsMoreThanTheThreshold`,
-`testS3905EveryLetterEntryCoversAContiguousRun`). `deriveExerciseSections` reads
-that same list as the runs the grid jumps by, in the same order, so the
-concatenation of its sections is the list itself
-(`testS3105ASectionsFollowTheListAndTheLettersAgree`).
+(`testS3611TheAddListSortsCaseInsensitivelyByName`); it has no letter grid. The
+letter grid, the per-letter section headers and the symbols that fed them were
+removed with plan 199, and a guard pins every one of them gone
+(`WatchMenuTests.testS19912TheLetterGridAndItsSymbolsAreGone`).
 
 The startup picker offers the same list: `availablePickerExercises` is
 `addableExercises` in its own order minus the exercises the live ladder already
 holds, so an exercise the user is on is offered once, as its own in-session row
 (`testS3107ATheFreePickerOffersTheAvailableExercisesAToZ`,
 `testS3113AThePickerRowsAndTheAvailableExercisesAgree`). `pickerRows` are those
-rows behind the ladder's own, and the picker's grid is `deriveExerciseListLetters`
-over the rows it offers — the one gate both surfaces read
-(`testS3108ATheLetterGridAppearsOverTwentyRows` for the menu's list,
-`testS3113AThePickerRowsAndTheAvailableExercisesAgree` for the picker's).
+rows behind the ladder's own
+(`testS3113AThePickerRowsAndTheAvailableExercisesAgree`).
+
+With a modality to rank it, the offered list is grouped: `WatchMenu.swift`'s
+`deriveExerciseGroups` partitions the already-A-to-Z list into a **Recommended
+group** — the exercises whose `recommendedFor` names the modality — and then
+**Other**, each keeping the A-to-Z order, and the two groups are titled
+`Recommended` / `Other` only when both are non-empty; one non-empty group, or
+no modality, is one untitled group. Unknown keys in `recommendedFor` are kept
+but never match, a repeated key matches once and appears once, and an empty
+name keeps its input position within its group
+(`WatchMenuTests.testS19907TheModalityListSplitsIntoRecommendedThenOther`,
+`…testS19908OneNonEmptyGroupIsOneUntitledGroup`,
+`…testS19909NoModalityIsOneUntitledGroupEvenWhenExercisesCarryKeys`,
+`…testS19917AnUnknownRecommendationIsKeptAndIsOther`,
+`…testS19918ARepeatedKeyMatchesOnceAndAppearsOnce`,
+`…testS19919AnEmptyNameKeepsItsInputPositionWithinItsGroup`); the titled
+groups are VoiceOver section headers and the untitled one adds none
+(`WatchMenuTests.testS19920TheTitledGroupsAreHeadersAndTheUntitledAddsNone`).
+Which modality ranks the list is the entry point's: `listModality` is the tile's
+modality while a modality start is pending and the live session's own modality
+otherwise
+(`WatchSessionStartPathsTests.testS19911ListModalityFollowsThePendingStartThenTheSession`),
+and both entry points — the picker from a tile and the menu's Add Exercise over
+a running session — group with the real modality
+(`WatchMenuTests.testS19913BothEntryPointsGroupWithTheRealModality`).
+
+### The recommendation rides the list
+
+`recommendedFor` is the phone's word, not the wrist's: the phone computes it
+with `WatchReferenceSync.recommendedModalitiesOf`, which applies its own
+exercise-picker rule `ModalityConfig.isRecommended` — a score of 50 or more,
+from the exercise's capabilities and its discipline's category — to each of the
+four primary modalities in `Modality.primaryHomeTiles` and omits the key when
+no modality passes; the wrist never scores
+(`test/watch_health_activity_test.dart`, group
+`S-19901 recommendedFor on the exercise list`, tests `S-19901 the exercise
+list carries the recommended modalities` and `S-19901 recommendedModalitiesOf,
+the picker rule as a pure function`). The field rides the `exercises_down`
+batches and `routines_down.fallbackExercises` and nothing else: the routine
+`effort` and the session slot never carry it
+(`test/watch_health_activity_test.dart`, same group, tests `S-19903 the
+routine carries it on the fallback exercise, nowhere else` and `S-19903 the
+session slot never carries the key`).
+
+The wrist reads it verbatim: `WatchCatalogExercise.recommendedFor` is an array
+of modality keys; empty or absent means none, so an older phone, or an old
+stored catalog, gives every exercise no recommendation and the list stays one
+plain A-to-Z list
+(`WatchHealthActivityTests.testS19906CatalogJsonReadsTheRecommendation`,
+`…testS19906CatalogJsonRoundTripsTheRecommendation`,
+`…testS19906CatalogJsonWithoutTheRecommendationCarriesNone`,
+`…testS19906TheSlotNeverCarriesTheRecommendation`). A recent stored before the
+field existed carries none and borrows the synced list's keys for its id when
+the synced list names it
+(`WatchSessionStartPathsTests.testS19910ARecentBorrowsTheSyncedListRecommendation`);
+a stored `exercises_down` frame that carries the field groups the list
+(`WatchSessionStartPathsTests.testS19914AStoredRecommendedForFrameGroupsTheList`).
+
+The field also stales the version: `exercisesVersionOf` hashes
+`id|name|capabilities|roundDurationSecs|healthActivity|recommendedFor`, so
+every wrist that synced before this change derives a different version and is
+sent the list again once, at its next Sync
+(`test/watch_reference_sync_test.dart`, group
+`S-3844 the exercise list version`, tests `S-19902 a healthActivity-only diff
+is another version` and `S-19902 a recommendedFor-only diff is another
+version`; `test/watch_sync_request_handler_test.dart`, `S-19916 a version the
+pre-change phone derived stales the list`).
 
 ## Routing and the request frame
 
@@ -219,7 +280,7 @@ S-3845, S-3846 the phone sends the list in batches`, test `S-3841 the fallback
 list is the exercises the routines use`; a phone with no routine still answers,
 with both lists empty, `S-3840 no templates: a message with both lists empty`),
 and then the whole catalog as `exercises_down` batches
-(`S-3843 250 exercises arrive as three batches in name order`). When the
+(`S-3843 250 exercises arrive as five batches in name order`). When the
 request names the version of the list the phone would send, the batches are
 omitted
 (`test/watch_sync_request_handler_test.dart`, group `S-3850…S-3853 the phone
@@ -362,7 +423,7 @@ nothing: no banner, no record tap, no change. Verified by
 
 ### The phone's sender since 23e2
 
-The phone sends the exercise list as `exercises_down` batches of at most 100,
+The phone sends the exercise list as `exercises_down` batches of at most 50,
 skips them when the request names the same version the list derives to, and
 stops at the first batch the radio did not carry; `routines_down` from then on
 carries only the routines' exercises. The tests named in the section above pin

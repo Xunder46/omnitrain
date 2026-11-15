@@ -9,6 +9,7 @@
 //   S-10512 the catalog builder carries the kind → `S-10512 ...`
 //   S-10513 the session slot carries it and the envelope validates → `S-10513 ...`
 //   S-10514 the `routines_down` fallback list and efforts carry it → `S-10514 ...`
+//   S-19901/S-19903 `recommendedFor` on the lists → `S-19901 ...`, `S-19903 ...`
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/capability.dart';
@@ -593,6 +594,259 @@ void main() {
         reason: 'S-10513 the slot names yoga without covering distance',
       );
       expect(loadProtocolValidator().validateEnvelope(answer), isEmpty);
+    });
+  });
+
+  group('S-19901 recommendedFor on the exercise list', () {
+    late MockWorkoutRepository repository;
+    late String cardioDiscipline;
+    late String resistanceDiscipline;
+
+    setUp(() async {
+      repository = MockWorkoutRepository();
+      await repository.initialize();
+      repository.clear();
+
+      const at = 1788000000000;
+      // clear() wipes the mock's discipline rows along with everything else,
+      // so the test re-seeds the two rows it needs and then discovers them the
+      // way production reads them: by category, first match wins.
+      Future<void> addDiscipline(String id, String categoryId, String name) =>
+          repository.upsertDiscipline(
+            Discipline(
+              id: id,
+              categoryId: categoryId,
+              key: name.toLowerCase(),
+              name: name,
+              createdAtMs: at,
+              updatedAtMs: at,
+            ),
+          );
+      await addDiscipline('discipline-running', 'category-cardio', 'Running');
+      await addDiscipline(
+        'discipline-powerlifting',
+        'category-resistance',
+        'Powerlifting',
+      );
+
+      cardioDiscipline = (await repository.getDisciplines())
+          .firstWhere(
+            (entry) => entry.categoryId == 'category-cardio',
+          )
+          .id;
+      resistanceDiscipline = (await repository.getDisciplines())
+          .firstWhere(
+            (entry) => entry.categoryId == 'category-resistance',
+          )
+          .id;
+
+      Future<void> exercise(
+        String id,
+        String name,
+        String? disciplineId,
+        List<String> capabilities,
+      ) async {
+        await repository.createExercise(
+          Exercise(
+            id: id,
+            name: name,
+            disciplineId: disciplineId,
+            createdAtMs: at,
+            updatedAtMs: at,
+          ),
+        );
+        await repository.setExerciseCapabilities(id, capabilities);
+      }
+
+      await exercise('exercise-running', 'Running', cardioDiscipline, [
+        ExerciseCapability.time,
+        ExerciseCapability.distance,
+      ]);
+      await exercise('exercise-bench', 'Bench Press', resistanceDiscipline, [
+        ExerciseCapability.reps,
+        ExerciseCapability.sets,
+        ExerciseCapability.load,
+      ]);
+      await exercise(
+        'exercise-mystery',
+        'Mystery',
+        null,
+        [ExerciseCapability.reps],
+      );
+    });
+
+    test('S-19901 the exercise list carries the recommended modalities',
+        () async {
+      final batches = await WatchReferenceSync.buildExercisesDown(
+        repository: repository,
+        generatedAt: _generatedAt,
+      );
+
+      final exercises = _objects(
+        _asObject(batches.single['payload'])['exercises'],
+      );
+      final running = exercises.singleWhere(
+        (exercise) => exercise['exerciseId'] == 'exercise-running',
+      );
+      final bench = exercises.singleWhere(
+        (exercise) => exercise['exerciseId'] == 'exercise-bench',
+      );
+      final mystery = exercises.singleWhere(
+        (exercise) => exercise['exerciseId'] == 'exercise-mystery',
+      );
+
+      expect(
+        running['recommendedFor'],
+        ['cardio_endurance'],
+        reason: 'S-19901 40 category + 30 capability = 70, at or over 50',
+      );
+      expect(
+        bench['recommendedFor'],
+        ['resistance_lifting'],
+        reason: 'S-19901 40 category + 30 capability = 70, at or over 50',
+      );
+      expect(
+        mystery.containsKey('recommendedFor'),
+        isFalse,
+        reason: 'S-19901 a best score of 10 stays under 50, and an empty list '
+            'omits the key',
+      );
+
+      for (final batch in batches) {
+        expect(loadProtocolValidator().validateEnvelope(batch), isEmpty);
+      }
+    });
+
+    test('S-19903 the routine carries it on the fallback exercise, nowhere '
+        'else', () async {
+      const at = 1788000000000;
+      await repository.createTemplate(
+        WorkoutTemplate(
+          id: 'routine-run',
+          ownerUserId: null,
+          name: 'Just Run',
+          description: null,
+          focusModality: null,
+          primaryDisciplineId: null,
+          note: null,
+          isBuiltInDemo: false,
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      await repository.createTemplateSegment(
+        TemplateSegment(
+          id: 'seg-run',
+          templateId: 'routine-run',
+          orderIndex: 0,
+          segmentType: 'strength_sets',
+          disciplineId: null,
+          name: 'Segment 1',
+          note: null,
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      await repository.createTemplateEffort(
+        TemplateEffort(
+          id: 'eff-run',
+          templateSegmentId: 'seg-run',
+          orderIndex: 0,
+          effortKind: 'interval',
+          modality: null,
+          exerciseId: 'exercise-running',
+          note: null,
+          restSeconds: null,
+          restType: null,
+          createdAtMs: at,
+        ),
+      );
+
+      final message = await WatchReferenceSync.buildRoutinesDown(
+        repository: repository,
+        generatedAt: _generatedAt,
+      );
+
+      final payload = _asObject(message['payload']);
+      final fallback = _objects(payload['fallbackExercises']);
+      final running = fallback.singleWhere(
+        (exercise) => exercise['exerciseId'] == 'exercise-running',
+      );
+      expect(running['recommendedFor'], ['cardio_endurance']);
+
+      final efforts = _objects(
+        _objects(_objects(payload['routines']).single['segments'])
+            .single['efforts'],
+      );
+      expect(
+        efforts.single.containsKey('recommendedFor'),
+        isFalse,
+        reason: 'S-19903 the closed effort shape never carries the key '
+            '(D-19904)',
+      );
+
+      expect(loadProtocolValidator().validateEnvelope(message), isEmpty);
+    });
+
+    test('S-19903 the session slot never carries the key', () async {
+      final phoneState = WorkoutState(repository);
+      final settings = SettingsState(repository, fakePreferencesService());
+      await settings.initialize();
+      final radio = _PhoneRadio();
+      final created = (await createWatchSync(
+        repository: repository,
+        nutritionState: NutritionState(repository),
+        foodLibraryState: FoodLibraryState(repository),
+        settingsState: settings,
+        transport: radio,
+        clock: () => _now,
+      ))!;
+      created.adoption.bindWorkoutState(phoneState);
+
+      await phoneState.createNewSession(modality: null);
+      await phoneState.addExerciseToSession(
+        (await repository.getExerciseById('exercise-running'))!,
+      );
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await pumpEventQueue();
+
+      final answer = radio.lastOfType('session_snapshot');
+      final slots = _objects(_asObject(answer['payload'])['exercises']);
+      expect(
+        slots.single['recommendedFor'],
+        isNull,
+        reason: 'S-19903 the sessionExercise shape never carries the key '
+            '(D-19904)',
+      );
+    });
+
+    test('S-19901 recommendedModalitiesOf, the picker rule as a pure function',
+        () {
+      expect(
+        WatchReferenceSync.recommendedModalitiesOf(
+          capabilities: [ExerciseCapability.time, ExerciseCapability.distance],
+          categoryId: 'category-cardio',
+        ),
+        ['cardio_endurance'],
+      );
+      expect(
+        WatchReferenceSync.recommendedModalitiesOf(
+          capabilities: [
+            ExerciseCapability.reps,
+            ExerciseCapability.sets,
+            ExerciseCapability.load,
+          ],
+          categoryId: 'category-resistance',
+        ),
+        ['resistance_lifting'],
+      );
+      expect(
+        WatchReferenceSync.recommendedModalitiesOf(
+          capabilities: [ExerciseCapability.reps],
+          categoryId: null,
+        ),
+        isEmpty,
+      );
     });
   });
 }

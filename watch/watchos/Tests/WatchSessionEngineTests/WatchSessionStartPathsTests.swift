@@ -312,7 +312,8 @@ private func exercisesDown(
     index: Int,
     count: Int,
     total: Int,
-    ids: [String]
+    ids: [String],
+    exercises: [[String: Any]]? = nil
 ) -> [String: Any] {
     [
         "protocolVersion": 1,
@@ -326,7 +327,8 @@ private func exercisesDown(
             "batchIndex": index,
             "batchCount": count,
             "totalCount": total,
-            "exercises": ids.map { id in
+            "exercises": exercises ?? ids.map {
+                id in
                 [
                     "exerciseId": id,
                     "name": id.hasPrefix("ex-") ? String(id.dropFirst(3)) : id,
@@ -402,8 +404,8 @@ private func usedSession(
     )
 }
 
-/// The names of a catalog-only message, one per first letter: 21 rows, one past
-/// `WatchMenuCopy.addLetterGridThreshold`, all in A-to-Z order already.
+/// The names of a catalog-only message, one per first letter: 21 rows, all in
+/// A-to-Z order already.
 private let listedCatalogNames = [
     "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel",
     "India", "Juliett", "Kilo", "Lima", "Mike", "November", "Oscar", "Papa",
@@ -498,6 +500,223 @@ final class WatchSessionStartPathsTests: XCTestCase {
         for exerciseId in referenced {
             XCTAssertTrue(offered.contains(exerciseId), "\(exerciseId) is not offered")
         }
+    }
+
+    // MARK: - S-19910/S-19911/S-19914 the lists rank by a real modality (plan 199)
+
+    /// A recent stored before this change carries no `recommendedFor`; the
+    /// synced list's own entry for the id is what the grouping reads
+    /// (plan 199, D-19907).
+    func testS19910ARecentBorrowsTheSyncedListRecommendation() async throws {
+        let store = InMemoryWatchSessionStore()
+        _ = await store.append(
+            .session(
+                try usedSession(
+                    sessionId: "s-used-19910",
+                    recordedAt: "2026-07-13T16:00:00Z",
+                    slots: [
+                        (exerciseId: "ex-plank", name: "Plank"),
+                        (exerciseId: "ex-ghost", name: "Ghost Raise"),
+                    ]
+                )
+            )
+        )
+        let harness = WatchStartHarness(store: store)
+        await harness.launch()
+        let stored = try await harness.receive(
+            exercisesDown(
+                version: "v19910",
+                generatedAt: "2026-07-13T17:00:00Z",
+                index: 0,
+                count: 1,
+                total: 1,
+                ids: ["ex-plank"],
+                exercises: [
+                    [
+                        "exerciseId": "ex-plank",
+                        "name": "Plank",
+                        "capabilities": ["sets", "reps", "load"],
+                        "recommendedFor": ["sports"],
+                    ] as [String: Any],
+                ]
+            )
+        )
+        XCTAssertTrue(stored, "S-19910 the synced list is in")
+
+        let plank = try XCTUnwrap(
+            harness.paths.fallbackExercises.first { $0.exerciseId == "ex-plank" }
+        )
+        XCTAssertEqual(
+            plank.recommendedFor,
+            ["sports"],
+            "S-19910 the recent wears the synced list's recommendation for its id"
+        )
+        let ghost = try XCTUnwrap(
+            harness.paths.fallbackExercises.first { $0.exerciseId == "ex-ghost" }
+        )
+        XCTAssertEqual(
+            ghost.recommendedFor,
+            [],
+            "S-19910 a recent the sync does not know carries none"
+        )
+
+        // The picker reads `availablePickerExercises`, which is the list minus
+        // the live session's ladder — so the free workout is live, as the
+        // surface the scenario is about would be.
+        _ = await harness.paths.startFreeWorkout()
+
+        let groups = deriveExerciseGroups(
+            harness.paths.availablePickerExercises,
+            modality: "sports"
+        )
+        XCTAssertEqual(groups.count, 2, "S-19910 both groups are non-empty")
+        XCTAssertEqual(groups.first?.title, WatchMenuCopy.recommendedGroupTitle, "S-19910 the first group is Recommended")
+        XCTAssertEqual(groups.last?.title, WatchMenuCopy.otherGroupTitle, "S-19910 the second group is Other")
+        XCTAssertEqual(
+            groups.first?.exercises.map(\.name),
+            ["Plank"],
+            "S-19910 the sync-known recent is Recommended for sports"
+        )
+        XCTAssertEqual(
+            groups.last?.exercises.map(\.name),
+            ["Ghost Raise"],
+            "S-19910 the recent the sync does not know is Other"
+        )
+    }
+
+    /// The tile's modality while a start is pending, the live session's own
+    /// otherwise, nil when there is neither (plan 199, D-19906).
+    func testS19911ListModalityFollowsThePendingStartThenTheSession() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        XCTAssertEqual(harness.paths.listModality, nil, "S-19911 no start, no session, no modality")
+
+        harness.paths.beginModalityStart("sports")
+        XCTAssertEqual(harness.paths.listModality, "sports", "S-19911 the tile's modality ranks the list")
+
+        await harness.paths.cancelModalityStart()
+        XCTAssertEqual(harness.paths.listModality, nil, "S-19911 the start mode is dropped and no session is held")
+
+        _ = await harness.engine.createSession(modality: "resistance_lifting")
+        XCTAssertEqual(
+            harness.paths.listModality,
+            "resistance_lifting",
+            "S-19911 a running session's own modality ranks the list"
+        )
+
+        harness.paths.beginModalityStart("sports")
+        XCTAssertEqual(
+            harness.paths.listModality,
+            "sports",
+            "S-19911 a pending start wins over the session's own modality"
+        )
+
+        let free = WatchStartHarness()
+        await free.launch()
+        _ = await free.engine.createSession(modality: nil)
+        XCTAssertEqual(free.paths.listModality, nil, "S-19911 a session with no modality ranks nothing")
+    }
+
+    /// A session that already holds exercises ranks by its own modality even
+    /// with a tile still pending, so a picker that never reported its dismissal
+    /// cannot leave a stale tile ranking the list (plan 199, S-19922).
+    func testS19922AStalePendingTileDoesNotRankASessionThatHoldsExercises() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        harness.paths.beginModalityStart("sports")
+
+        _ = await harness.engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [[
+                "sessionExerciseId": "sx-a",
+                "exerciseId": "ex-a",
+                "name": "Exercise A",
+                "capabilities": ["sets", "reps", "load"],
+            ] as [String: Any]]
+        )
+        XCTAssertEqual(
+            harness.paths.listModality,
+            "resistance_lifting",
+            "S-19922 a session holding exercises ranks by its own modality, not the stale tile"
+        )
+
+        await harness.engine.abandonSession()
+        let empty = await harness.engine.createSession(modality: "resistance_lifting")
+        XCTAssertTrue(empty.exercises.isEmpty, "S-19922 the empty session holds nothing")
+        XCTAssertEqual(
+            harness.paths.listModality,
+            "sports",
+            "S-19922 an empty session still ranks by the pending tile, the user's live intent"
+        )
+    }
+
+    /// The S-19904 fixture shape stored through the wrist's real apply path
+    /// (plan 199, S-19914): the grouped list shows the recommended exercises
+    /// first, under the phone's own titles.
+    func testS19914AStoredRecommendedForFrameGroupsTheList() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        let result = await harness.paths.applyExercisesDown(
+            exercisesDown(
+                version: "v1-3-recommended",
+                generatedAt: "2026-11-01T09:00:00Z",
+                index: 0,
+                count: 1,
+                total: 3,
+                ids: ["ex-circuit", "ex-tennis", "ex-bench"],
+                exercises: [
+                    [
+                        "exerciseId": "ex-circuit",
+                        "name": "Jump Rope Circuit",
+                        "capabilities": ["time", "rounds"],
+                        "recommendedFor": [
+                            "cardio_endurance", "resistance_lifting",
+                            "isometric_stretching", "sports",
+                        ],
+                    ] as [String: Any],
+                    [
+                        "exerciseId": "ex-tennis",
+                        "name": "Tennis Rally Drill",
+                        "capabilities": ["time", "rounds"],
+                        "recommendedFor": ["sports"],
+                    ] as [String: Any],
+                    [
+                        "exerciseId": "ex-bench",
+                        "name": "Barbell Bench Press",
+                        "capabilities": ["reps", "sets", "load", "bilateral"],
+                    ] as [String: Any],
+                ]
+            )
+        )
+        XCTAssertTrue(result.stored, "S-19914 the fixture-shaped frame stores")
+        XCTAssertTrue(result.activated, "S-19914 one batch is the whole list")
+
+        let groups = deriveExerciseGroups(
+            harness.paths.availablePickerExercises,
+            modality: "sports"
+        )
+        XCTAssertEqual(groups.count, 2, "S-19914 the list splits into two groups")
+        XCTAssertEqual(
+            groups.first?.title,
+            WatchMenuCopy.recommendedGroupTitle,
+            "S-19914 the first group is the phone's Recommended word"
+        )
+        XCTAssertEqual(
+            groups.first?.exercises.map(\.name),
+            ["Jump Rope Circuit", "Tennis Rally Drill"],
+            "S-19914 the recommended exercises come first, in the list's own A-to-Z order"
+        )
+        XCTAssertEqual(
+            groups.last?.title,
+            WatchMenuCopy.otherGroupTitle,
+            "S-19914 the second group is the phone's Other word"
+        )
+        XCTAssertEqual(
+            groups.last?.exercises.map(\.name),
+            ["Barbell Bench Press"],
+            "S-19914 the exercise with no recommendation is Other"
+        )
     }
 
     // MARK: - S-001 start from a routine, phone offline
@@ -2376,9 +2595,8 @@ final class WatchSessionStartPathsTests: XCTestCase {
         assertPickerListsAgree(harness.paths, "S-3107 the two lists agree after the add")
     }
 
-    /// The picker's two lists agree in every state, and its grid gate counts the
-    /// rows it actually offers (D-3110, D-3111) — 21 available rows carry the
-    /// grid, 20 do not.
+    /// The picker's two lists agree in every state, over the rows it actually
+    /// offers (D-3110, D-3111).
     func testS3113AThePickerRowsAndTheAvailableExercisesAgree() async throws {
         // (a) the contract's own catalog
         let contractStore = InMemoryWatchSessionStore()
@@ -2405,10 +2623,6 @@ final class WatchSessionStartPathsTests: XCTestCase {
             ["ex-barbell-bench-press", "ex-goblet-squat", "ex-plank", "ex-pull-up"],
             "S-3113 (a) A to Z"
         )
-        XCTAssertTrue(
-            deriveExerciseListLetters(contract.paths.availablePickerExercises).isEmpty,
-            "S-3113 (a) four rows are nowhere near the threshold"
-        )
 
         // (b) a catalog-only message with one letter per row, no routines
         let long = WatchStartHarness()
@@ -2423,19 +2637,9 @@ final class WatchSessionStartPathsTests: XCTestCase {
             "S-3113 (b) every exercise the catalog offers is available"
         )
         XCTAssertEqual(long.paths.pickerRows.map(\.exerciseId).count, listedCatalogNames.count)
-        XCTAssertEqual(
-            deriveExerciseListLetters(long.paths.availablePickerExercises).first?.letter,
-            "A",
-            "S-3113 (b) 21 rows carry the grid, and it opens where the list does"
-        )
-        XCTAssertEqual(
-            deriveExerciseListLetters(long.paths.availablePickerExercises).count,
-            listedCatalogNames.count,
-            "S-3113 (b) one entry per row, one letter each"
-        )
 
         // (c) the same catalog with the first exercise on the ladder: 20 rows are
-        // left, which is the threshold itself
+        // left, and the ladder's exercise is no longer available
         let shortened = WatchStartHarness()
         await shortened.launch()
         _ = try await shortened.receive(try catalogOnlyMessage(names: listedCatalogNames))
@@ -2452,10 +2656,6 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertFalse(
             shortened.paths.availablePickerExercises.contains { $0.exerciseId == first.exerciseId },
             "S-3113 (c) the ladder's exercise is offered once"
-        )
-        XCTAssertTrue(
-            deriveExerciseListLetters(shortened.paths.availablePickerExercises).isEmpty,
-            "S-3113 (c) 20 rows carry no grid"
         )
         let rows = shortened.paths.pickerRows
         XCTAssertEqual(rows.first?.exerciseId, first.exerciseId, "S-3113 (c) its own row comes first")

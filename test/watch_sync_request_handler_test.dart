@@ -463,6 +463,18 @@ Future<void> _seedSet(
   );
 }
 
+/// The `exercises_down` batch indices the repository's exercise list fills at
+/// the builder's default batch size (plan 199: 50, so a full catalog's
+/// recommended-modality keys stay under the transport's frame budget,
+/// D-19916) — the list the handler must send, in index order.
+Future<List<int>> seededBatchIndices(MockWorkoutRepository repository) async {
+  final batches = await WatchReferenceSync.buildExercisesDown(
+    repository: repository,
+    generatedAt: _now,
+  );
+  return [for (var index = 0; index < batches.length; index++) index];
+}
+
 void main() {
   late MockWorkoutRepository repository;
   late SettingsState settings;
@@ -620,21 +632,19 @@ void main() {
             'S-253 the preferences lead, the foods follow them (empty on a '
             'phone with none, S-15204), and the routines close the bundle',
       );
+      final expectedBatches = await seededBatchIndices(repository);
       expect(
         transport.batchIndices,
-        [0, 1, 2, 3],
+        expectedBatches,
         reason:
-            'S-3851 the seeded catalog fills four batches of at most 100, '
+            'S-3851 the seeded catalog fills batches of at most 50, '
             'sent one at a time in index order',
       );
       expect(
         transport.types.skip(3),
         [
           'planned_down',
-          'exercises_down',
-          'exercises_down',
-          'exercises_down',
-          'exercises_down',
+          for (final _ in expectedBatches) 'exercises_down',
           'bests_down',
         ],
         reason:
@@ -657,7 +667,7 @@ void main() {
 
         expect(
           transport.batchIndices,
-          [0, 1, 2, 3],
+          await seededBatchIndices(repository),
           reason:
               'S-3852 the version differs from the list the phone holds, so '
               'the whole list travels again',
@@ -740,6 +750,77 @@ void main() {
     },
   );
 
+  group(
+    'S-19916 a version the pre-change phone derived stales the list',
+    () {
+      setUp(() async {
+        // The D-3832 two-exercise vector as repository rows, with no
+        // discipline rows: the catalog the phone derives now is the same list
+        // the pre-change phone sent, and only the canonical text differs
+        // (plan 199, D-19908).
+        repository.clear();
+        final at = _now.millisecondsSinceEpoch;
+        await repository.createExercise(
+          Exercise(id: 'a', name: 'Apple', createdAtMs: at, updatedAtMs: at),
+        );
+        await repository.setExerciseCapabilities('a', const ['sets', 'reps']);
+        await repository.createExercise(
+          Exercise(
+            id: 'b',
+            name: 'Bike',
+            defaultRoundDurationSecs: 600,
+            createdAtMs: at,
+            updatedAtMs: at,
+          ),
+        );
+        await repository.setExerciseCapabilities(
+          'b',
+          const ['time', 'distance'],
+        );
+      });
+
+      test('S-19916 a wrist holding the old five-field version receives the '
+          'list again, and the fresh version still matches', () async {
+        expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+        expect(
+          transport.sentVersion,
+          'v1-2-a54c55d8e2a62688',
+          reason: 'S-19916 the phone derives the six-field version for the '
+              'same catalog the pre-change phone sent',
+        );
+
+        transport.sent.clear();
+        await handler.handle(
+          WatchTransportRequest.routines,
+          exercisesVersion: 'v1-2-004dbda823a1b308',
+        );
+        expect(
+          transport.ofType('exercises_down'),
+          isNotEmpty,
+          reason: 'S-19916 the old five-field version matches nothing the new '
+              'phone derives, so the whole list travels again (D-19908)',
+        );
+        expect(
+          transport.sentVersion,
+          'v1-2-a54c55d8e2a62688',
+          reason: 'S-19916 the batches name the freshly derived version',
+        );
+
+        transport.sent.clear();
+        await handler.handle(
+          WatchTransportRequest.routines,
+          exercisesVersion: 'v1-2-a54c55d8e2a62688',
+        );
+        expect(
+          transport.ofType('exercises_down'),
+          isEmpty,
+          reason: 'S-19916 a wrist naming the freshly built version gets no '
+              'batch',
+        );
+      });
+    },
+  );
+
   group('S-3903 the phone sends its units with the preferences', () {
     Map<String, Object?> sentPreferences() =>
         asObject(transport.ofType('preferences_down').single['payload']);
@@ -779,14 +860,12 @@ void main() {
             'S-7101 the preferences lead, then the foods, then the routines; '
             'the exercise list follows them',
       );
+      final expectedBatches = await seededBatchIndices(repository);
       expect(
         transport.types.skip(3),
         [
           'planned_down',
-          'exercises_down',
-          'exercises_down',
-          'exercises_down',
-          'exercises_down',
+          for (final _ in expectedBatches) 'exercises_down',
           'bests_down',
         ],
         reason:
@@ -795,7 +874,7 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2, 3],
+        expectedBatches,
         reason: 'S-7101 the food list does not displace the exercise batches',
       );
     });
@@ -919,7 +998,7 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2, 3],
+        await seededBatchIndices(repository),
         reason: 'S-7104 the exercise batches are untouched',
       );
     });
@@ -947,7 +1026,7 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2, 3],
+        await seededBatchIndices(repository),
         reason:
             'S-7105 a refused foods frame is not a reason to hold back the '
             'exercise list',
@@ -1061,7 +1140,7 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2, 3],
+        await seededBatchIndices(repository),
         reason: 'S-8310 the exercise list still travels',
       );
       expect(
@@ -1205,7 +1284,7 @@ void main() {
       );
       expect(
         transport.batchIndices,
-        [0, 1, 2, 3],
+        await seededBatchIndices(repository),
         reason: 'S-87a-7 a refused bests frame is not a reason to hold back '
             'the exercise list',
       );

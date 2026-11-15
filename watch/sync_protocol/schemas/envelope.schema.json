@@ -133,7 +133,17 @@
           "minimum": 1,
           "description": "The length of ONE round or period in seconds as the phone knows it. Omitted when unknown, and ignored by a receiver for any effort that is not a round."
         },
-        "healthActivity": { "$ref": "#/$defs/healthActivity" }
+        "healthActivity": { "$ref": "#/$defs/healthActivity" },
+        "recommendedFor": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "enum": ["cardio_endurance", "resistance_lifting", "isometric_stretching", "sports"]
+          },
+          "description": "The primary modalities this exercise is recommended for, as the phone's own exercise picker ranks it (ModalityConfig.isRecommended). Present only when the exercise is recommended for at least one; omitted otherwise. The phone sends each key once; a receiver treats a key it does not know as matching nothing."
+        }
       }
     },
     "sessionExercise": {

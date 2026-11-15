@@ -1,0 +1,22 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-exdown-recommended-bad-1",
+  "type": "exercises_down",
+  "origin": "phone",
+  "sentAt": "2026-11-01T09:00:00Z",
+  "payload": {
+    "generatedAt": "2026-11-01T09:00:00Z",
+    "catalogVersion": "v1-3-recommended",
+    "batchIndex": 0,
+    "batchCount": 1,
+    "totalCount": 1,
+    "exercises": [
+      {
+        "exerciseId": "ex-curling",
+        "name": "Curling Stone Slide",
+        "capabilities": ["time"],
+        "recommendedFor": ["curling"]
+      }
+    ]
+  }
+}

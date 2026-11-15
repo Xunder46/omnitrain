@@ -26,6 +26,8 @@ import 'dart:ui' show Color;
 
 import '../constants/block_types.dart';
 import '../constants/metric_ids.dart';
+import '../constants/modality.dart';
+import '../constants/modality_config.dart';
 import '../constants/water_constants.dart';
 import '../sync_protocol/phone_envelope.dart';
 import '../sync_protocol/wire_timestamps.dart';
@@ -50,6 +52,7 @@ typedef _SyncedExercise = ({
   List<String> capabilities,
   int? defaultRoundDurationSecs,
   String? healthActivity,
+  List<String> recommendedFor,
 });
 
 /// Resolves exercises to what the wire carries, reading each one's capabilities
@@ -62,6 +65,8 @@ class _ExerciseResolver {
   final Map<String, int?> _defaultRoundSecs = {};
   final Map<String, List<String>> _capabilities = {};
   final Map<String, String?> _disciplines = {};
+  final Map<String, String> _categoryByDiscipline = {};
+  bool _disciplinesRead = false;
 
   Future<_SyncedExercise?> resolve(String? exerciseId) async {
     if (exerciseId == null) return null;
@@ -71,6 +76,12 @@ class _ExerciseResolver {
         _names[exercise.id] = exercise.name;
         _defaultRoundSecs[exercise.id] = exercise.defaultRoundDurationSecs;
         _disciplines[exercise.id] = exercise.disciplineId;
+      }
+    }
+    if (!_disciplinesRead) {
+      _disciplinesRead = true;
+      for (final discipline in await _repository.getDisciplines()) {
+        _categoryByDiscipline[discipline.id] = discipline.categoryId;
       }
     }
     final name = _names[exerciseId];
@@ -88,6 +99,12 @@ class _ExerciseResolver {
       healthActivity: WatchReferenceSync.healthActivityOf(
         disciplineId: _disciplines[exerciseId],
         exerciseId: exerciseId,
+      ),
+      recommendedFor: WatchReferenceSync.recommendedModalitiesOf(
+        capabilities: capabilities,
+        categoryId: _disciplines[exerciseId] == null
+            ? null
+            : _categoryByDiscipline[_disciplines[exerciseId]],
       ),
     );
   }
@@ -283,7 +300,8 @@ abstract final class WatchReferenceSync {
   ///
   /// The exercise's own period length travels with it (D-1411) whenever it holds
   /// one: a catalog entry declares no effort kind, so the wrist decides at pick
-  /// time whether the length applies (D-1404).
+  /// time whether the length applies (D-1404). Plan 199 adds the modalities the
+  /// phone itself recommends the exercise for, omitted when that list is empty.
   static Map<String, Object?> _catalogExerciseJson(_SyncedExercise exercise) =>
       {
         'exerciseId': exercise.id,
@@ -291,6 +309,8 @@ abstract final class WatchReferenceSync {
         'capabilities': exercise.capabilities,
         if (exercise.healthActivity != null)
           'healthActivity': exercise.healthActivity,
+        if (exercise.recommendedFor.isNotEmpty)
+          'recommendedFor': exercise.recommendedFor,
         if (exercise.defaultRoundDurationSecs != null &&
             exercise.defaultRoundDurationSecs! >= 1)
           'roundDurationSecs': exercise.defaultRoundDurationSecs!,
@@ -308,13 +328,16 @@ abstract final class WatchReferenceSync {
   /// The list is split into batches of at most [batchSize] and each batch names
   /// the version of the whole list, so the wrist can tell "I already hold this"
   /// from "this changed" and can tell a complete list from a half-arrived one.
+  /// The default is 50, not the schema's maximum of 100, because the batch that
+  /// carries the recommended-modality keys of a full catalog must stay under
+  /// the transport's frame budget (plan 199, D-19916).
   /// A phone with nothing to send answers `[]` rather than an empty batch: the
   /// schema wants at least one exercise in a batch, and nothing is what such a
   /// phone has to say.
   static Future<List<Map<String, Object?>>> buildExercisesDown({
     required WorkoutRepository repository,
     required DateTime generatedAt,
-    int batchSize = 100,
+    int batchSize = 50,
   }) async {
     if (batchSize < 1 || batchSize > 100) {
       throw ArgumentError.value(
@@ -367,19 +390,24 @@ abstract final class WatchReferenceSync {
   /// list's content only (D-3832).
   ///
   /// The canonical text is the wire objects in wire order, each as
-  /// `exerciseId|name|cap1,cap2|roundDurationSecs-or-empty`, joined by newlines.
+  /// `exerciseId|name|cap1,cap2|roundDurationSecs-or-empty|healthActivity-or-empty|recommendedFor-comma-joined-or-empty`,
+  /// joined by newlines.
   /// Two hashes run over its UTF-16 code units, each kept below 2^32 after every
   /// step, so the arithmetic also stays below 2^53 and the web build derives the
   /// same version the phone does. The count leads the version so a longer list
   /// cannot pass for a shorter one; a rename, an added or removed exercise, a
   /// changed capability or a changed period length is another version, while the
-  /// same content in another order is not.
+  /// same content in another order is not. The Health kind and the recommended
+  /// modalities are part of the text so a wrist that synced before they existed
+  /// receives the list again (plan 199, D-19908).
   static String exercisesVersionOf(List<Map<String, Object?>> exercises) {
     final canonical = [
       for (final exercise in exercises)
         '${exercise['exerciseId']}|${exercise['name']}|'
             '${(exercise['capabilities']! as List).join(',')}|'
-            '${exercise['roundDurationSecs'] ?? ''}',
+            '${exercise['roundDurationSecs'] ?? ''}|'
+            '${exercise['healthActivity'] ?? ''}|'
+            '${((exercise['recommendedFor'] as List?) ?? const []).join(',')}',
     ].join('\n');
 
     var first = 5381;
@@ -652,6 +680,24 @@ abstract final class WatchReferenceSync {
     }
     return healthActivityByDiscipline[disciplineId];
   }
+
+  /// The primary modalities an exercise is recommended for, by the phone's own
+  /// exercise-picker rule (`ModalityConfig.isRecommended`, score of 50 or more),
+  /// in `Modality.primaryHomeTiles` order (plan 199, D-19903).
+  ///
+  /// The wrist never scores: it only compares the keys it was sent with the
+  /// modality a list was opened for, so its "Recommended" is this one.
+  static List<String> recommendedModalitiesOf({
+    required List<String> capabilities,
+    required String? categoryId,
+  }) => [
+    for (final modality in Modality.primaryHomeTiles)
+      if (ModalityConfig.configs[modality]!.isRecommended(
+        exerciseCapabilities: capabilities,
+        exerciseCategoryId: categoryId,
+      ))
+        modality,
+  ];
 
   /// [color] as the wire spells a theme accent: `#RRGGBB`, upper-case, no alpha.
   ///
