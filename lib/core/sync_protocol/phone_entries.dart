@@ -51,6 +51,29 @@ abstract final class PhoneEntries {
   /// The wire kind of a phone round entry.
   static const String roundKind = 'round';
 
+  /// The prefix every id this class mints starts with (D-33).
+  static const String entryIdPrefix = 'entry-';
+
+  /// Whether [entryId] is in the id space the phone mints for its own entries —
+  /// `entry-<sessionExerciseId>-<n>` (D-33), whatever the entry's kind.
+  ///
+  /// The wrist never mints this shape (a `UUID` string, or the harness's
+  /// `w-entry-<n>`), so a wrist-sent entry carrying it is the phone's own,
+  /// echoed back: the wrist's snapshot reports the entries the phone sent it as
+  /// well as its own. The receivers refuse it (D-17503…D-17505).
+  ///
+  /// Grammar only, never an existence check: a phone that deleted its newest
+  /// group of a slot and logged nothing new reuses that number later (D-113.3),
+  /// so resolving the id against the session's rows would treat an echo of the
+  /// deleted group as new and bring the set back.
+  static bool isPhoneEntryId(String entryId) {
+    if (!entryId.startsWith(entryIdPrefix)) return false;
+    final body = entryId.substring(entryIdPrefix.length);
+    final cut = body.lastIndexOf('-');
+    if (cut <= 0) return false;
+    return int.tryParse(body.substring(cut + 1)) != null;
+  }
+
   /// [groups] as the wire entries of the slot [sessionExerciseId].
   ///
   /// [exerciseId] is the exercise the slot holds. [wristLoggedAtMs] is the

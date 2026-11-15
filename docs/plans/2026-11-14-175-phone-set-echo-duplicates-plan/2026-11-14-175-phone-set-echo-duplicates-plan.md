@@ -537,11 +537,38 @@ possibly `docs/state_management/watch_surface.md`, evidence file.
 
 ## Progress
 
-- [ ] Phase 1 — the red tests (@developer)
-- [ ] Phase 2 — the fix (@developer)
-- [ ] Phase 3 — the sweep re-measure and the register (@developer)
-- [ ] Phase 4 — the Swift pin and the corpus source (@developer)
-- [ ] Phase 5 — docs delta and residue sweep (@developer)
+- [x] Phase 1 — the red tests (@developer) — 10 tests in 3 files, all proved RED at HEAD
+  (S-17502/S-17503/S-17504 history path in `watch_session_import_test`, 5 harness
+  cases, 2 seed cases); evidence file §Phase 1.
+- [x] Phase 2 — the fix (@developer) — `PhoneEntries.isPhoneEntryId` + three refusals;
+  35 changed lines in `lib/`; all 12 plan-175 tests green; mutation B (staging refusal)
+  and C (`apply` filter) each turn a witness red, A (`_mergeHeld`) does not — A-175-8.
+- [x] Phase 3 — the sweep re-measure and the register (@developer) — 2000 seeds: contract
+  1949 converge / 31 shipping divergers / **0 heal stalls**, kill 1906 / 76 / **0 heal
+  stalls**; `heal` class retired in the register; ratchets unchanged (A-175-10);
+  evidence file §Phase 3.
+- [ ] Phase 4 — the Swift pin and the corpus source (@developer) — **Blocked (scope)**:
+  the `trace-echo` source is added (`test/watch_replay_corpus_test.dart`) but the corpus
+  cannot be re-recorded from this run (`REPLAY_CORPUS_WRITE=true` is denied), and the
+  fix leaves 5 existing recordings stale (`trace-s14501`, `trace-f7`, `trace-a2`,
+  `seed-408`, `seed-857`), so `S-15202/S-15204/S-15207` are red until then. The Swift
+  pin was not written: `WatchSessionEngineTests.swift` is owned by the parallel plan-173
+  run (its working-tree diff) and the standing rule forbids touching it. Both are
+  governor actions — see the handoff.
+- [x] Phase 5 — docs delta and residue sweep (@developer) — capture and sync docs
+  updated (`watch_surface.md` checked, no change required: it names the inbox as a graph
+  component, never the staged ids); both residue greps clean; lint 181 = baseline; docs
+  index and UI-standards contract tests green in the final full run except the corpus
+  failures above.
+
+## Open Items (added by the developer, plan 175)
+
+1. Governor: re-record the corpus — `flutter test --dart-define=REPLAY_CORPUS_WRITE=true test/watch_replay_corpus_test.dart`
+   (6 files: the 5 the fix leaves stale plus the new `trace-echo`).
+2. Governor: the Swift pin `testS17510…` in `WatchSessionEngineTests.swift`, after plan 173's diff lands (A-175-11).
+3. Governor: confirm `trace-echo`'s recorded tags include what it declares, after the re-record.
+4. Pre-existing flake, not plan 175: `logger_feedback_controls_test.dart` `S-5115 … rolling list view`
+   fails under load (green alone and at HEAD); leave it to its owner.
 
 ## Assumption Log
 
@@ -562,8 +589,30 @@ possibly `docs/state_management/watch_surface.md`, evidence file.
   read is fine).
 - A-175-7 The gateway's `test` check accepts `--plain-name`/`--dart-define` args (the
   findings' §8 runs show exactly such commands through the gateway). If refused, the
-  2000-seed re-measures become Governor actions.
+  2000-seed re-measures become Governor actions. — **Confirmed:** all three re-measure
+  commands ran through the gateway inside the 900 s `test` check.
+- A-175-8 The `_mergeHeld` filter is defence in depth, not a red witness: with the
+  staging refusal in place nothing phone-minted reaches the held merge, and forcing the
+  filter true leaves all 12 tests green. Kept because a durable pre-fix staged row can
+  still arrive that way (D-17505); no test distinguishes it, and none pretends to.
+- A-175-9 S-17511 reshaped: group 1 is retained and the echo asks for a deleted group 2.
+  The original wording (a phone-minted id whose whole group the phone deleted) could not
+  fail at HEAD — with no group 1 the snapshot was already empty — so it proved nothing.
+- A-175-10 The register's `heal` class is retired in place (text rewritten to the
+  measured 0) rather than removed from `knownClasses`, because the suite asserts
+  `knownClasses.keys == kKnownKinds`; deleting the key would redden an unrelated assert.
+- A-175-11 Phase 4 split: the Swift pin is left to the governor because
+  `WatchSessionEngineTests.swift` carries the parallel plan-173 run's diff, and the
+  corpus re-recording needs `REPLAY_CORPUS_WRITE=true`, which this run's policy denies.
+  The `trace-echo` source itself is added now so one re-record covers all six files.
 
 ## Feedback
 
-[empty]
+- **Phase 4 cannot close in this run.** The `trace-echo` source is added, but the corpus
+  needs re-recording (`REPLAY_CORPUS_WRITE=true` is denied to this run's shell — a
+  governor action), and the fix additionally leaves five existing recordings stale
+  (`trace-s14501`, `trace-f7`, `trace-a2`, `seed-408`, `seed-857`), which the plan did not
+  foresee: they encode the bug (one extra phone set minted from the wrist's echo per
+  exchange). The Swift pin was not written because `WatchSessionEngineTests.swift` carries
+  the parallel plan-173 diff. Both are in Open Items; re-plan or hand to the governor.
+

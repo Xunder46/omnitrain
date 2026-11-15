@@ -28,6 +28,7 @@ import 'watch_routine_matcher.dart';
 import '../constants/block_types.dart';
 import '../constants/metric_ids.dart';
 import '../sync_protocol/end_skew.dart';
+import '../sync_protocol/phone_entries.dart';
 import '../sync_protocol/wire_limits.dart';
 import '../utils/entry_rows.dart';
 import '../utils/logged_entry_rows.dart';
@@ -204,7 +205,8 @@ class WatchSessionImporter {
     final entries = [
       for (final row in rows)
         if (row.origin == WatchInboxEntry.originWatch &&
-            _effortKinds.contains(row.kind))
+            _effortKinds.contains(row.kind) &&
+            !PhoneEntries.isPhoneEntryId(row.entryId))
           ?_Entry.parse(row, corrections),
     ];
     // What earlier passes turned into rows, and what history should hold now.
@@ -385,7 +387,8 @@ class WatchSessionImporter {
     final entries = [
       for (final row in rows)
         if (row.origin == WatchInboxEntry.originWatch &&
-            _effortKinds.contains(row.kind))
+            _effortKinds.contains(row.kind) &&
+            !PhoneEntries.isPhoneEntryId(row.entryId))
           ?_Entry.parse(row, corrections),
     ];
     // What earlier passes merged, and what the effort should hold now.

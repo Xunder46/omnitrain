@@ -308,6 +308,26 @@ const List<_Source> kCorpusSources = [
     ],
     tags: ['kill', 'entry', 'phone-kill'],
   ),
+  // Plan 175: the phone's own set echoed back by the wrist, over a link drop and
+  // a long silence. The phone logs first, so every snapshot it sends afterwards
+  // carries its own `entry-` id back; before plan 175 each exchange minted a new
+  // set from that echo (`test/watch_session_import_test.dart`, group
+  // `plan 175 the phone’s own minted ids are not wrist news`).
+  _Source(
+    'trace-echo',
+    kind: 'trace',
+    steps: [
+      _Step('phoneStart'),
+      _Step('advance', seconds: 3),
+      _Step('phoneLog'),
+      _Step('wristLog'),
+      _Step('drop'),
+      _Step('rise'),
+      _Step('advance', seconds: 31),
+      _Step('wristFinish'),
+    ],
+    tags: ['entry', 'frame-prefix'],
+  ),
 ];
 
 /// A re-recording: the canonical recording and what it covers.

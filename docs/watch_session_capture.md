@@ -32,7 +32,7 @@ sends for the import; its sensors and the summaries computed from them are in
 
 | Concern | Owner |
 |---|---|
-| Staging what a wrist sends: effort entries, the effort rating, the session end and the rests it observed (D-210), from `observations_up` and from a wrist `session_snapshot` | `WatchSessionInbox.receive`, which `WatchIncomingRouter` calls before the mirror and the nutrition bridge |
+| Staging what a wrist sends: effort entries, the effort rating, the session end and the rests it observed (D-210), from `observations_up` and from a wrist `session_snapshot` — never an entry under an id the phone itself minted (`PhoneEntries.isPhoneEntryId`) | `WatchSessionInbox.receive`, which `WatchIncomingRouter` calls before the mirror and the nutrition bridge |
 | Staging the phone's own corrections and deletions of wrist entries | `WatchInboxStagingTransport`, the mirror's transport in `createWatchSync` |
 | The phone's own effort rating for a wrist session | `WatchSessionInbox.recordPhoneRating` |
 | Asking for the rating, after the fact | The Session Summary's `EffortRatingSheet` — its automatic prompt and its EFFORT row both open it — writing through `WorkoutState.updateSessionFeeling` |
@@ -61,6 +61,22 @@ not of the order it arrived in or how often. Row values come from the wrist's
 own data and from the staging stamps of the phone's annotations, never from the
 phone's clock at import time, which is what makes two arrival orders reach
 identical rows.
+
+**Why the phone's own entries are never staged.** A wrist `session_snapshot`
+reports every entry of the session, including the ones the phone sent it, so each
+exchange echoed the phone's own sets back under the ids it minted
+(`entry-<sessionExerciseId>-<n>`) and the importer wrote a new set group for each
+echo. Staging refuses an id in that grammar by its shape alone, and the importer
+drops one a durable pre-fix row still holds, so an echo is consumed and receipted
+instead of written twice — and a group the phone deleted is not brought back by
+its old id. Verified by "S-17502 a snapshot carrying the phone’s own ids stages
+only the wrist’s own entry", "S-17503 the live events carry the phone’s own ids
+too: only the wrist’s event is staged", "S-17504 a staged row under the phone’s
+own id is consumed, not merged into the phone’s session", "S-17504 a staged row
+under the phone’s own id imports nothing on the history path either" and "S-17511
+a group the phone deleted is never resurrected by its old id"
+(`test/watch_session_import_test.dart`), and by "S-17501 the echo loop adds no
+set (phone first)" (`test/watch_convergence_harness_test.dart`).
 
 **Why an import waits for the session end.** Only the wrist's `session_end`
 says whether a session completed or was abandoned, when it started and ended,

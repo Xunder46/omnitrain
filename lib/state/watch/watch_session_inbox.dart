@@ -30,6 +30,7 @@ import '../../core/services/diagnostics_log.dart';
 import '../../core/services/health_sync_service.dart';
 import '../../core/services/watch_session_importer.dart';
 import '../../core/sync_protocol/message_validator.dart';
+import '../../core/sync_protocol/phone_entries.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import 'live_session_mirror_state.dart';
@@ -603,6 +604,10 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     if (entryId is! String || entryId.isEmpty || required == null) {
       return false;
     }
+    // The wrist's snapshot reports the entries the phone sent it as well as its
+    // own, so an id the phone minted itself (D-33) is the phone's own entry
+    // echoed back — never news, never receipted (D-17504).
+    if (PhoneEntries.isPhoneEntryId(entryId)) return false;
     for (final field in required) {
       if (entry[field] == null) return false;
     }

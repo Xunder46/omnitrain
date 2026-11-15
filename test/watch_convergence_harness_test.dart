@@ -18,6 +18,7 @@
 // engine's and the graph's real awaits never complete.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/platform/watch_delivery.dart';
+import 'package:omnitrain/core/utils/entry_rows.dart';
 import 'package:omnitrain/core/sync_protocol/end_skew.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
@@ -1687,6 +1688,184 @@ void _plan161Tests() {
         );
       },
     );
+  });
+
+  group('plan 175 the phone’s own set is never wrist news (D-17501…D-17506)', () {
+    // The phone mints `entry-<sessionExerciseId>-<n>` (D-33); the wrist mints its
+    // own ids. A set the phone logged still comes back to it inside the wrist's
+    // `session_snapshot` — the snapshot carries the whole session — and the
+    // importer wrote it as a new wrist set, once per exchange (plan 172 §5).
+
+    /// The number of set groups the phone's effort [effortId] holds — one per
+    /// set the phone believes it logged (A-175-6).
+    Future<int> groups(WatchPairHarness harness, String effortId) async =>
+        EntryRows.setGroups(
+          await harness.repository.getEffortObservations(effortId),
+        ).length;
+
+    /// The phone-minted ids the phone's inbox still holds for [sessionId].
+    Future<List<String>> echoed(
+      WatchPairHarness harness,
+      String sessionId,
+    ) async => [
+      for (final row
+          in await harness.repository.getWatchInboxEntriesForSession(sessionId))
+        if (row.entryId.startsWith('entry-')) row.entryId,
+    ];
+
+    /// One sync exchange as the app performs it: the pair clock moves 31 s, the
+    /// queues drain, the wrist reconnects and the phone answers — the heal's
+    /// round without the energy frame (findings §5).
+    Future<void> exchange(WatchPairHarness harness) async {
+      harness.clock.advance(const Duration(seconds: 31));
+      harness.noteClockGrid();
+      await harness.radio.drainQueues();
+      await harness.wristOrchestrator.sync(reconnect: true);
+      await harness.graph.sync();
+      await harness.settle();
+    }
+
+    Future<void> echoLoop({required bool wristFirst}) async {
+      final harness = await WatchPairHarness.build();
+      final runner = harness.runner;
+      await runner.perform(runner.phoneStartsSession());
+      await runner.perform(runner.advanceTime(5));
+      if (wristFirst) {
+        await runner.perform(runner.wristLogsSet());
+        await runner.perform(runner.phoneLogsSet());
+      } else {
+        await runner.perform(runner.phoneLogsSet());
+        await runner.perform(runner.wristLogsSet());
+      }
+      final sessionId = harness.phone.currentSession!.id;
+      final effortId = harness.phoneEfforts.single.id;
+      expect(
+        await groups(harness, effortId),
+        2,
+        reason: 'one set per device before any heal\n${runner.traceText()}',
+      );
+
+      final heal = await runner.heal();
+      expect(heal.converged, isTrue, reason: runner.traceText());
+      expect(
+        await groups(harness, effortId),
+        2,
+        reason:
+            'the heal turned the phone’s own set into a second set\n'
+            '${runner.traceText()}',
+      );
+      for (var round = 0; round < 3; round++) {
+        await exchange(harness);
+        expect(
+          await groups(harness, effortId),
+          2,
+          reason:
+              'exchange ${round + 1} after the heal added a set\n'
+              '${runner.traceText()}',
+        );
+      }
+      expect(
+        await echoed(harness, sessionId),
+        isEmpty,
+        reason:
+            'the phone staged its own minted ids as wrist news\n'
+            '${runner.traceText()}',
+      );
+    }
+
+    test(
+      'S-17501 the echo loop adds no set (phone first)',
+      () => echoLoop(wristFirst: false),
+    );
+
+    test(
+      'S-17501 the echo loop adds no set (wrist first)',
+      () => echoLoop(wristFirst: true),
+    );
+
+    for (final kill in ['phone', 'wrist']) {
+      test('S-17506 the echo loop survives a $kill kill', () async {
+        final harness = await WatchPairHarness.build();
+        final runner = harness.runner;
+        await runner.perform(runner.phoneStartsSession());
+        await runner.perform(runner.advanceTime(5));
+        await runner.perform(runner.phoneLogsSet());
+        await runner.perform(runner.wristLogsSet());
+        final sessionId = harness.phone.currentSession!.id;
+        final effortId = harness.phoneEfforts.single.id;
+        if (kill == 'phone') {
+          await runner.perform(runner.phoneKilledAndRelaunched());
+        } else {
+          await runner.perform(runner.wristKilled());
+        }
+
+        final heal = await runner.heal();
+        expect(heal.converged, isTrue, reason: runner.traceText());
+        final settled = await groups(harness, effortId);
+        expect(
+          settled,
+          greaterThanOrEqualTo(2),
+          reason:
+              'each device’s set survives the kill\n${runner.traceText()}',
+        );
+        for (var round = 0; round < 3; round++) {
+          await exchange(harness);
+          expect(
+            await groups(harness, effortId),
+            settled,
+            reason:
+                'exchange ${round + 1} after the $kill kill added a set\n'
+                '${runner.traceText()}',
+          );
+        }
+        expect(
+          await echoed(harness, sessionId),
+          isEmpty,
+          reason:
+              'the phone staged its own minted ids as wrist news\n'
+              '${runner.traceText()}',
+        );
+      });
+    }
+
+    test('S-17507 wrist logs two, phone one', () async {
+      final harness = await WatchPairHarness.build();
+      final runner = harness.runner;
+      await runner.perform(runner.phoneStartsSession());
+      await runner.perform(runner.advanceTime(5));
+      await runner.perform(runner.wristLogsSet());
+      await runner.perform(runner.wristLogsSet());
+      await runner.perform(runner.phoneLogsSet());
+      final sessionId = harness.phone.currentSession!.id;
+      final effortId = harness.phoneEfforts.single.id;
+      expect(
+        await groups(harness, effortId),
+        3,
+        reason:
+            'two wrist sets and one phone set, and no more\n'
+            '${runner.traceText()}',
+      );
+
+      final heal = await runner.heal();
+      expect(heal.converged, isTrue, reason: runner.traceText());
+      for (var round = 0; round < 3; round++) {
+        await exchange(harness);
+        expect(
+          await groups(harness, effortId),
+          3,
+          reason:
+              'exchange ${round + 1} after the heal added a set\n'
+              '${runner.traceText()}',
+        );
+      }
+      expect(
+        await echoed(harness, sessionId),
+        isEmpty,
+        reason:
+            'the phone staged its own minted ids as wrist news\n'
+            '${runner.traceText()}',
+      );
+    });
   });
 }
 

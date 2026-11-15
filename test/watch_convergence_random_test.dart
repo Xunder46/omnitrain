@@ -16,6 +16,7 @@
 // Plain `test()` throughout: `testWidgets` runs inside FakeAsync, where the
 // engine's and the graph's real awaits never complete.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/utils/entry_rows.dart';
 import 'package:omnitrain/watch/session/watch_records.dart'
     show WatchLifecycleState;
 import 'package:omnitrain/watch/session/watch_session_engine.dart'
@@ -41,6 +42,62 @@ const bool kVerbose = bool.fromEnvironment('CONVERGENCE_VERBOSE');
 Future<ConvergenceRun> replay(int seed) => ConvergenceRun.runSeed(seed);
 
 void main() {
+  group('plan 175 the phone’s own set is never wrist news', () {
+    // The seeds plan 172 §7 shrank to four actions whose only residue was the
+    // heal: each one is a phone session, both devices logging a set, and a
+    // heal. Under the echo they converged only by growing a set per exchange
+    // (findings §5); they are the pinned witness for D-17505.
+    const traces = <int, (int, bool)>{
+      209: (14, false),
+      270: (53, false),
+      316: (82, true),
+      899: (64, true),
+      1662: (61, true),
+    };
+
+    test('S-17505 the healed seeds converge', () async {
+      for (final seed in traces.keys) {
+        final (seconds, wristFirst) = traces[seed]!;
+        final run = await ConvergenceRun.replayActions([
+          PhoneStartsSession(serial: 1),
+          TimeAdvances(serial: 2, seconds: seconds),
+          if (wristFirst) WristLogsSet(serial: 3) else PhoneLogsSet(serial: 3),
+          if (wristFirst) PhoneLogsSet(serial: 4) else WristLogsSet(serial: 4),
+        ]);
+        expect(
+          run.heal.converged,
+          isTrue,
+          reason:
+              'seed $seed replayed: the heal keeps re-offering the phone’s '
+              'own set as wrist news\n${run.trace}',
+        );
+        final groups = EntryRows.setGroups(
+          await run.pair.repository.getEffortObservations(
+            run.pair.phoneEfforts.single.id,
+          ),
+        );
+        expect(
+          groups,
+          hasLength(2),
+          reason:
+              'seed $seed: one set per device, whatever the exchanges\n'
+              '${run.trace}',
+        );
+      }
+    });
+
+    test('S-17505 every healed seed’s generated trace converges', () async {
+      for (final seed in traces.keys) {
+        final run = await ConvergenceRun.runSeed(seed);
+        expect(
+          run.heal.converged,
+          isTrue,
+          reason: 'seed $seed\n${run.trace}',
+        );
+      }
+    });
+  });
+
   test(
     'the allowed-actions seam produces only the kinds it is given',
     () async {
@@ -237,10 +294,17 @@ void main() {
             'phone\'s own annotation kinds (`WatchInboxEntry.phoneKinds`), and what '
             'is left is a wrist-vs-wrist entry difference that moves between runs '
             '(plan 161 Residue)',
+        // Plan 175 retired the `heal` class: the phone re-imported its own
+        // minted ids as wrist sets on every exchange, so the pair never reached
+        // a fixed point and the heal ran out of rounds. Both 2000-seed sweeps now
+        // report 0 heal stalls (plan 175 evidence, Phase 3), and `shippingFlake`
+        // below must stay empty, so a stall is a regression of that path, not a
+        // flake to be tolerated.
         'heal':
-            'flake class — the heal exchange never settles on a handful of '
-            'seeds (the same class test/watch_convergence_harness_test.dart '
-            'records)',
+            'retired by plan 175 — 0 stalls at 200 seeds twice and at 2000 in '
+            'both the standing and the phone-kill sweep (19 stalls with 13 '
+            'heal-only at 2000 before). The class stays named because `_kindsOf` '
+            'can still report it; Plan 175 Phase 3',
       };
       // Measured on seed 1..200 during Phase 5.Y: 42 seeds diverge on a trace
       // the shipping app can perform, and 39 on a second run of the same seeds —
@@ -254,9 +318,10 @@ void main() {
       // count that only grows with the seed total. Plan 169 re-measured after
       // the phone half joined the pair clock (D-16905): 4 on both 200-seed runs
       // (seeds 94, 123, 145, 167) against plan 161's 5 (seeds 29, 43, 94, 162,
-      // 169), and 31 of 2000 (1933 converge). 6 is 4 plus two seeds of headroom
-      // in 200-seed units, 60 at 2000. It only ever moves down (D-16906,
-      // D-16306).
+      // 169), and 31 of 2000 (1933 converge). Plan 175 re-measured 5 of 200
+      // (94, 123, 136, 145, 167) and 31 of 2000 with 0 heal stalls, so the
+      // ratchet is unchanged: 6 is 4 plus two seeds of headroom in 200-seed
+      // units, 60 at 2000. It only ever moves down (D-16906, D-16306).
       final shippingRatchet = (kSeedCount * 6 / 200).ceil();
 
       final shippingKinds = <int, List<String>>{};
@@ -327,6 +392,14 @@ void main() {
             '$shippingFinding. The pair disagrees about a workout the user can '
             'have — traffic above the band means a class got much worse.',
       );
+      expect(
+        shippingFlake,
+        isEmpty,
+        reason:
+            'a heal stall is no longer a tolerated flake: plan 175 removed its '
+            'cause, and the sweep reported 0 at 200 and at 2000 seeds. Heal '
+            'stalls here: $shippingFlake.',
+      );
     },
     timeout: const Timeout(Duration(minutes: 20)),
   );
@@ -349,7 +422,9 @@ void main() {
       // two seeds of headroom, per 200 seeds. Its residue and shrunk traces
       // (seed 113: phone abandoned vs wrist completed; seed 145: phone
       // completed vs wrist abandoned after a refused live frame) are in
-      // `…-163-…-plan.evidence.md`, R-163-1/R-163-2.
+      // `…-163-…-plan.evidence.md`, R-163-1/R-163-2. Plan 175 re-measured 7 of
+      // 200 and 76 of 2000 with 0 heal stalls; the ratchet stays at 10 (the
+      // larger run plus two seeds of headroom per 200).
       const phoneKillRatchetPer200 = 10;
       final phoneKillRatchet =
           (kSeedCount * phoneKillRatchetPer200 / 200).ceil();
@@ -434,6 +509,13 @@ void main() {
             '${phoneKillFinding.length}: $phoneKillFinding. The pair '
             'disagrees about a workout the user can have across a phone kill, '
             'and the class got worse than the measurement.',
+      );
+      expect(
+        phoneKillFlake,
+        isEmpty,
+        reason:
+            'a heal stall is no longer a tolerated flake here either (plan 175 '
+            'Phase 3: 0 at 2000 seeds). Heal stalls: $phoneKillFlake.',
       );
     },
     timeout: const Timeout(Duration(minutes: 20)),

@@ -39,6 +39,7 @@ import 'package:omnitrain/core/services/health_sync_service.dart';
 import 'package:omnitrain/core/services/watch_session_importer.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
+import 'package:omnitrain/core/utils/entry_rows.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -4738,5 +4739,324 @@ void main() {
         reason: 'S-16705 the correction and the set are a history change',
       );
     });
+  });
+
+  group('plan 175 the phone’s own minted ids are not wrist news', () {
+    // The phone mints `entry-<sessionExerciseId>-<n>` for every set it logs
+    // (D-33), and its projection sends those ids to the wrist, which echoes
+    // them back inside its `session_snapshot` — the snapshot carries the whole
+    // session. The importer wrote each one as a new wrist set, once per
+    // exchange (plan 172 §5). D-17503…D-17505: the phone never treats an id it
+    // minted itself as news, on either path.
+
+    final now = _phoneNow.millisecondsSinceEpoch;
+    String iso(int ms) =>
+        DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
+
+    const slot = 'sx-phone';
+
+    /// The effort id the phone's projection mints ids from: the session's own
+    /// slot id, which is also the effort's id.
+    String effortOf(String sessionId) => slot;
+
+    /// What the phone mints for the set it logs at [number] (D-33).
+    String echoOf(String sessionId, {int number = 0}) =>
+        'entry-${effortOf(sessionId)}-$number';
+
+    /// The row the phone holds as its own: one set effort under [slot] with a
+    /// set group per number in [numbers].
+    Future<void> phoneRow(
+      WorkoutRepository repository,
+      String sessionId, {
+      List<int> numbers = const [0],
+    }) async {
+      final effortId = effortOf(sessionId);
+      final start = now - 1800000;
+      await repository.createSession(
+        TrainingSession(
+          id: sessionId,
+          ownerUserId: 'u-175',
+          startedAtMs: start,
+          endedAtMs: now - 300000,
+          createdAtMs: start,
+          updatedAtMs: start,
+        ),
+      );
+      await repository.createSegment(
+        SessionSegment(
+          id: 'seg-$sessionId',
+          sessionId: sessionId,
+          orderIndex: 0,
+          segmentType: 'workout',
+          name: 'Main Workout',
+          createdAtMs: start,
+          updatedAtMs: start,
+        ),
+      );
+      await repository.createEffort(
+        SegmentEffort(
+          id: effortId,
+          segmentId: 'seg-$sessionId',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          effortKind: 'set',
+          exerciseId: 'ex-bench',
+          createdAtMs: start,
+          updatedAtMs: start,
+        ),
+      );
+      for (final number in numbers) {
+        for (final row in LoggedEntryRows.setObservations(
+          effortId: effortId,
+          entryIndex: number,
+          reps: 5,
+          weightKg: 80,
+          exerciseHasLoad: true,
+          atMs: start + number * 60000,
+        )) {
+          await repository.createObservation(row);
+        }
+      }
+    }
+
+    Future<void> stageRow(
+      WorkoutRepository repository,
+      String sessionId,
+      Map<String, Object?> event,
+    ) => repository.stageWatchInboxEntry(
+      WatchInboxEntry(
+        entryId: event['entryId']! as String,
+        watchSessionId: sessionId,
+        kind: event['kind']! as String,
+        origin: WatchInboxEntry.originWatch,
+        payload: Map<String, dynamic>.of(event),
+        receivedAtMs: now,
+      ),
+    );
+
+    /// A wrist snapshot carrying [entries] in the frame the wrist sends.
+    Map<String, Object?> snapshot(
+      String sessionId,
+      List<Map<String, Object?>> entries,
+    ) => {
+      'protocolVersion': SyncProtocolValidator.protocolVersion,
+      'messageId': 'msg-snapshot-echo',
+      'sessionId': sessionId,
+      'type': 'session_snapshot',
+      'origin': 'watch',
+      'sentAt': '2026-09-25T11:00:00Z',
+      'payload': {
+        'sessionId': sessionId,
+        'status': 'completed',
+        'revision': 0,
+        'currentExerciseIndex': 0,
+        'exercises': const <Object?>[],
+        'entries': entries,
+        'timers': const <String, Object?>{},
+      },
+    };
+
+    const wristId = 'w-entry-1';
+    const phoneId = 'entry-sx-bench-1';
+    const phoneId2 = 'entry-sx-bench-2';
+
+    test(
+      'S-17502 a snapshot carrying the phone’s own ids stages only the '
+      'wrist’s own entry',
+      () async {
+        final repository = await _repository();
+        final result = await _inbox(repository, CaptureTransport()).receive(
+          snapshot('s-echo', [
+            _set(wristId, loggedAt: '2026-09-25T10:05:00.000Z'),
+            _set(phoneId, loggedAt: '2026-09-25T10:05:00.000Z'),
+            _set(phoneId2, loggedAt: '2026-09-25T10:05:00.000Z'),
+          ]),
+        );
+
+        expect(
+          result.outcome,
+          WatchInboxOutcome.staged,
+          reason: 'S-17502 the wrist’s own entry is news',
+        );
+        expect(
+          result.stagedEntryIds,
+          [wristId],
+          reason:
+              'S-17502 the phone’s own minted ids are not news; it wrote them '
+              'itself (D-17503)',
+        );
+        for (final id in [phoneId, phoneId2]) {
+          expect(
+            await repository.getWatchInboxEntry(id),
+            isNull,
+            reason: 'S-17502 $id is the phone’s own entry, echoed back',
+          );
+        }
+      },
+    );
+
+    test(
+      'S-17503 the live events carry the phone’s own ids too: only the '
+      'wrist’s event is staged',
+      () async {
+        final repository = await _repository();
+        final result = await _inbox(repository, CaptureTransport()).receive(
+          observationsUp('s-echo', [
+            _set(wristId, loggedAt: '2026-09-25T10:05:00.000Z'),
+            _set(phoneId, loggedAt: '2026-09-25T10:05:00.000Z'),
+          ], messageId: 'msg-live-echo'),
+        );
+
+        expect(
+          result.stagedEntryIds,
+          [wristId],
+          reason: 'S-17503 an event under the phone’s own id is not staged',
+        );
+        expect(
+          result.receiptedEntryIds,
+          isNot(contains(phoneId)),
+          reason: 'S-17503 nothing is owed for an entry the phone wrote',
+        );
+        expect(
+          await repository.getWatchInboxEntry(phoneId),
+          isNull,
+          reason: 'S-17503 the echo never becomes an inbox row',
+        );
+      },
+    );
+
+    test(
+      'S-17504 a staged row under the phone’s own id is consumed, not '
+      'merged into the phone’s session',
+      () async {
+        final repository = await _repository();
+        const sessionId = 's-17504';
+        final echoed = echoOf(sessionId, number: 1);
+        await phoneRow(repository, sessionId);
+        await stageRow(
+          repository,
+          sessionId,
+          _set(echoed, loggedAt: iso(now - 1740000)),
+        );
+        await stageRow(
+          repository,
+          sessionId,
+          _end(sessionId, startedAt: iso(now - 1800000), endedAt: iso(now - 300000)),
+        );
+        final before = EntryRows.setGroups(
+          await repository.getEffortObservations(effortOf(sessionId)),
+        );
+        expect(before, hasLength(1), reason: 'S-17504 the phone’s own set');
+
+        final result = await WatchSessionImporter(
+          repository: repository,
+        ).apply(sessionId, phoneOwnsSession: true);
+
+        expect(
+          EntryRows.setGroups(
+            await repository.getEffortObservations(effortOf(sessionId)),
+          ),
+          hasLength(1),
+          reason:
+              'S-17504 the echoed id adds no set to the session the phone '
+              'holds (D-17504)',
+        );
+        final row = await repository.getWatchInboxEntry(echoed);
+        expect(
+          row?.appliedAtMs,
+          isNotNull,
+          reason: 'S-17504 a durable pre-fix row is marked applied, not left '
+              'to be reapplied',
+        );
+        expect(
+          result.appliedEntryIds,
+          contains(echoed),
+          reason: 'S-17504 and it is receipted, so the wrist stops re-sending',
+        );
+      },
+    );
+
+    test(
+      'S-17504 a staged row under the phone’s own id imports nothing on the '
+      'history path either',
+      () async {
+        final repository = await _repository();
+        const sessionId = 'w-17504';
+        final id = echoOf(sessionId);
+        await stageRow(
+          repository,
+          sessionId,
+          _set(id, loggedAt: iso(now - 1800000)),
+        );
+        await stageRow(
+          repository,
+          sessionId,
+          _end(sessionId, startedAt: iso(now - 1800000), endedAt: iso(now - 300000)),
+        );
+
+        final result = await WatchSessionImporter(
+          repository: repository,
+        ).apply(sessionId);
+
+        expect(
+          await repository.getSession(sessionId),
+          isNull,
+          reason:
+              'S-17504 a session the wrist reports with only the phone’s own '
+              'ids has nothing to import (D-17504)',
+        );
+        expect(
+          (await repository.getWatchInboxEntry(id))?.appliedAtMs,
+          isNotNull,
+          reason: 'S-17504 the row is applied rather than re-examined',
+        );
+        expect(
+          result.appliedEntryIds,
+          contains(id),
+          reason: 'S-17504 and receipted',
+        );
+      },
+    );
+
+    test(
+      'S-17511 a group the phone deleted is never resurrected by its old id',
+      () async {
+        final repository = await _repository();
+        const sessionId = 's-17511';
+        // The group numbered 2 was deleted, so the effort holds group 1 alone.
+        // An existence check would accept the echo — number 2 is not in the
+        // session — and write the deleted set back; the grammar refuses it
+        // whatever the session holds (D-17505).
+        final echoed = echoOf(sessionId, number: 2);
+        await phoneRow(repository, sessionId, numbers: const [1]);
+        await stageRow(
+          repository,
+          sessionId,
+          _set(echoed, loggedAt: iso(now - 1680000)),
+        );
+
+        final result = await WatchSessionImporter(
+          repository: repository,
+        ).apply(sessionId, phoneOwnsSession: true);
+
+        expect(
+          EntryRows.setGroups(
+            await repository.getEffortObservations(effortOf(sessionId)),
+          ),
+          hasLength(1),
+          reason: 'S-17511 the deleted group does not come back (D-17505)',
+        );
+        expect(
+          (await repository.getWatchInboxEntry(echoed))?.appliedAtMs,
+          isNotNull,
+          reason: 'S-17511 the row is applied',
+        );
+        expect(
+          result.appliedEntryIds,
+          contains(echoed),
+          reason: 'S-17511 and receipted',
+        );
+      },
+    );
   });
 }
