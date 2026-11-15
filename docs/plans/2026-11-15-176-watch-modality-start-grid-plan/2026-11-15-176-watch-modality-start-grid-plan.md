@@ -83,7 +83,7 @@ The Diagnostics button is being hidden by plan 177: it stays where it is here.
   so filtering would need a protocol/catalog change, which is out of scope. No
   key validation is added: the grid offers only the four contract keys, all
   `byModality` keys.
-- **D-17605 (the cell's look, one rule for every size).** The grid is a
+- **D-17605 (the cell's look, one rule for every size).** *Amended 2026-11-15 by the owner after seeing it on a wrist: the cells are squares (aspect ratio 1), not 44 pt strips, and use the plain button style so no second default fill shows a double edge; the routines scroll below.* Original text: The grid is a
   `LazyVGrid` of **two flexible columns**, 4 pt column and row spacing (the
   surface's own `surfaceInset`, `WatchStartView.swift:96`), each cell a
   Button of **fixed height 44** with a one-line `.footnote` semibold label

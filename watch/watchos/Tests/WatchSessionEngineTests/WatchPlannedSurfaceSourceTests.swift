@@ -249,7 +249,9 @@ final class WatchPlannedSurfaceSourceTests: XCTestCase {
         XCTAssertTrue(grid.contains("WatchModalityStart.cells"), "S-17603 the cells are the contract's table, in its order")
         XCTAssertTrue(grid.contains("LazyVGrid("), "S-17603 four cells, two abreast")
         XCTAssertTrue(occurrences(of: "GridItem(.flexible()", in: grid) == 2, "S-17603 in two flexible columns")
-        XCTAssertTrue(grid.contains("static let cellHeight = 44.0"), "S-17603 the fixed height D-17605 decides")
+        XCTAssertTrue(grid.contains("static let cellAspectRatio = 1.0"), "S-17603 square cells (owner call 2026-11-15 over D-17605's 44 pt strips)")
+        XCTAssertTrue(grid.contains(".buttonStyle(.plain)"), "S-17603 the cell owns its look: no second default fill, no double edge")
+        XCTAssertTrue(occurrences(of: "RoundedRectangle(cornerRadius:", in: grid) == 1, "S-17603 one corner radius, applied once")
         XCTAssertTrue(
             grid.contains("WatchAccent.worn(hex: cell.hex)"),
             "S-17603 the colour is the phone's, read through the accent machinery"

@@ -343,10 +343,16 @@ struct WatchModalityStartGridView: View {
     /// The same wrist-scale gap the surface uses, in both directions.
     static let surfaceInset = 4.0
 
-    /// One cell's height. Fixed rather than derived: the four labels are one line
-    /// each at every text size the wrist's own settings offer, and a column that
-    /// grew with the words would push the routines off the screen.
-    static let cellHeight = 44.0
+    /// A cell is a square: its height is its width, so the grid is as tall as the
+    /// wrist is wide and the routines beneath it scroll into view (owner call,
+    /// 2026-11-15, after seeing the 44-point strips on a wrist). The four labels
+    /// are one line each and shrink a little rather than wrap.
+    static let cellAspectRatio = 1.0
+
+    /// The one corner radius, applied once. The button's own style draws a second,
+    /// darker rounded fill over a coloured background and leaves a double edge,
+    /// so the cell uses the plain style and owns its whole look.
+    static let cellCornerRadius = 12.0
 
     private let onPick: (WatchModalityStart.Cell) -> Void
 
@@ -365,14 +371,19 @@ struct WatchModalityStartGridView: View {
             ForEach(WatchModalityStart.cells, id: \.key) { cell in
                 let accent = WatchAccent.worn(hex: cell.hex)
 
-                Button(cell.label) { onPick(cell) }
-                    .font(.footnote.weight(.semibold))
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, minHeight: Self.cellHeight)
-                    .background(accent.color)
-                    .foregroundStyle(accent.labelColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 8.0))
-                    .accessibilityLabel(WatchModalityStart.startSentence(for: cell.label))
+                Button { onPick(cell) } label: {
+                    Text(cell.label)
+                        .font(.footnote.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(accent.labelColor)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(accent.color)
+                        .aspectRatio(Self.cellAspectRatio, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: Self.cellCornerRadius))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(WatchModalityStart.startSentence(for: cell.label))
             }
         }
     }
