@@ -197,6 +197,12 @@ Future<void> _seedS1503(WorkoutRepository repo) async {
     entryCount: 1,
     secondsPerEntry: 1200,
   );
+  await _seedLiftingEffort(
+    repo,
+    sessionId: 's1503',
+    exerciseId: 'ex-lift-s1503',
+    entryCount: 1,
+  );
   await _seedRatedBaseline(repo, DateTime(2026, 5, 12));
 }
 

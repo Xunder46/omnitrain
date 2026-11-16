@@ -19,3 +19,7 @@ Source: items 1, 3 and 10 of the Stats pre-launch review (memory `stats-prelaunc
 ## Owner decisions still open (none blocks 157a)
 
 The Finish dialog's exercise count and a warning for a typed-but-unlogged set (157a Open items).
+
+## Group B (review item 2) — plan 179
+
+`docs/plans/2026-11-15-179-stats-mix-no-sets-plan/`: a session with timed work and no set shares its whole length across the timed modalities instead of giving the unmeasured minutes to Resistance (owner chose this 2026-11-15). Seeded and lint-clean, not built; waits for the owner's build go-ahead.

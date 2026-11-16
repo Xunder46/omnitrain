@@ -131,7 +131,9 @@ every session, rolling ones included.
   isometric 3.0, sports 6.0. A session with one of the four modality ids uses
   its whole duration at that section's MET; Free Training, an unknown modality
   id or a rolling session uses the per-section time split the Mix view already
-  computes (`StatsProgressService.sessionTimeBySectionFor`). Verified by
+  computes (`StatsProgressService.sessionTimeBySectionFor`). A Free Training
+  session with timed work and no set shares its whole length across the timed
+  sections (plan 179). Verified by
   `test/active_energy_service_test.dart` (groups `Mock —
   ActiveEnergyService.settle` and `Hive — ActiveEnergyService.settle`:
   `S-13401 resistance 3600 s at 80 kg stores 200.0`,

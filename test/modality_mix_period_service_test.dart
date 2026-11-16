@@ -126,6 +126,17 @@ Future<void> _seedWork(
         hasExtraWeight: false,
       );
   }
+  if (kind != 'set') {
+    await seedExercise(repo, id: 'exs-$id', name: 'Lift');
+    await seedSetEffort(
+      repo,
+      segmentId: 'seg-$id',
+      effortId: 'efs-$id',
+      exerciseId: 'exs-$id',
+      entryCount: 1,
+      hasExtraWeight: false,
+    );
+  }
 }
 
 /// F-MIX: a mixed history — rated sessions across the last twelve weeks carrying

@@ -665,13 +665,8 @@ class StatsProgressService {
     for (final session in history.sessions) {
       if (session.endedAtMs == null) continue;
       final byExercise = <String, List<_ExerciseLog>>{};
-      var hasSet = false;
       for (final segment in history.segmentsOf(session.id)) {
         for (final effort in history.effortsOf(segment.id)) {
-          if (_sectionForKind(effort.effortKind) ==
-              ExerciseSection.resistance) {
-            hasSet = true;
-          }
           final exerciseId = effort.exerciseId;
           if (exerciseId == null) continue;
           exerciseIds.add(exerciseId);
@@ -687,7 +682,7 @@ class StatsProgressService {
         }
       }
       logsBySession[session.id] = byExercise;
-      hasSetEffort[session.id] = hasSet;
+      hasSetEffort[session.id] = _hasSetEffort(history, session);
     }
 
     final repsAxis = await _repsAxisExercises(exerciseIds);
@@ -922,6 +917,7 @@ class StatsProgressService {
       isRolling: session.isRolling,
       measuredSecs: measured,
       dominantSection: dominant,
+      hasSets: _hasSetEffort(history, session),
     );
     return _SessionSplit(
       timeBySection: timeBySection,
@@ -983,6 +979,19 @@ class StatsProgressService {
       }
     }
     return measured;
+  }
+
+  /// Whether [session] holds any `set` effort (plan 179): only a session with
+  /// sets gives its unmeasured minutes to Resistance.
+  bool _hasSetEffort(_HistoryIndex history, TrainingSession session) {
+    for (final segment in history.segmentsOf(session.id)) {
+      for (final effort in history.effortsOf(segment.id)) {
+        if (_sectionForKind(effort.effortKind) == ExerciseSection.resistance) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /// The section [session]'s efforts most often belong to, ties resolving in

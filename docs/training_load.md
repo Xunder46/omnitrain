@@ -63,9 +63,13 @@ The split takes a per-modality map of **measured active time** in seconds; it
 never derives that map itself and never reads a stored instance. A caller that
 produces the sums is the only place that touches the stored instances.
 
-- A non-rolling session's Resistance time is the remainder: its own duration
-  minus the measured sums, never below zero. Its duration is the same figure
-  the all-time totals use.
+- A non-rolling session that holds a set effort gets its Resistance time as the
+  remainder: its own duration minus the measured sums, never below zero. Its
+  duration is the same figure the all-time totals use.
+- A session with no set effort and some measured time shares its whole duration
+  across the measured modalities in proportion to their measured time (plan
+  179): nothing in it is lifting, so Resistance takes none of it, and its load
+  still counts the full duration. A session with no measured time is unchanged.
 - When the measured sums exceed the duration, the whole session's time goes to
   its **dominant** modality instead — the modality with the most efforts of
   that modality's kind. A session with no effort that maps to a modality
@@ -81,7 +85,9 @@ session is unrated. The split is never rounded per session.
 Verified by `test/training_load_test.dart` (`sessionTimeByModality (D-904–D-906)`
 — `S-1503`, `S-1504`, `S-1505`, `S-1506 A`, `S-1507`, `S-1508`, `S-1509 A`,
 `S-1515`, `S-1516`, and the cases for a non-negative remainder and a session
-with no mapping effort — and `sessionLoadByModality (D-907)`).
+with no mapping effort — and `sessionLoadByModality (D-907)`), by
+`test/mix_no_sets_pure_test.dart` (`S-20001`..`S-20006`) and by
+`test/mix_no_sets_service_test.dart` (`S-20007`..`S-20011`).
 
 ---
 

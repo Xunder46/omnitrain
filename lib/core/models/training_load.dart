@@ -197,11 +197,17 @@ List<DateTime> ratedWeekBlockStarts(DateTime endDay) {
 /// whole session goes to [dominantSection] instead (D-905), and a session with
 /// no dominant section contributes nothing. A rolling session has no duration
 /// to use: its time is the measured sums only, so its sets add no time (D-906).
+///
+/// A session with no set effort ([hasSets] false) and some measured time shares
+/// its whole duration across the measured modalities in proportion to their
+/// measured time (plan 179): nothing in it is lifting, so Resistance takes none
+/// of it. A session with no measured time is unchanged.
 Map<ExerciseSection, double> sessionTimeByModality({
   required int durationSecs,
   required bool isRolling,
   required Map<ExerciseSection, double> measuredSecs,
   required ExerciseSection? dominantSection,
+  required bool hasSets,
 }) {
   final measured = <ExerciseSection, double>{
     for (final entry in measuredSecs.entries)
@@ -214,6 +220,13 @@ Map<ExerciseSection, double> sessionTimeByModality({
   if (totalMeasured > durationSecs) {
     if (dominantSection == null) return const {};
     return {dominantSection: durationSecs.toDouble()};
+  }
+
+  if (!hasSets && totalMeasured > 0) {
+    return {
+      for (final entry in measured.entries)
+        entry.key: entry.value * durationSecs / totalMeasured,
+    };
   }
 
   final remainder = durationSecs - totalMeasured;

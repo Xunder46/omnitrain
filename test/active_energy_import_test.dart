@@ -166,6 +166,9 @@ void main() {
         await seedExercise(repo, id: 'ex-run', name: 'Easy Run', capabilities: [
           'time',
         ]);
+        await seedExercise(repo, id: 'ex-bench', name: 'Bench', capabilities: [
+          'load',
+        ]);
         final inbox = WatchSessionInbox(
           repository: repo,
           onSessionHistoryChanged: _service(repo).settle,
@@ -174,6 +177,7 @@ void main() {
         await inbox.receive(
           _observationsUp('w-energy-2', [
             _wristTimed('t-run-1', 'sx-run'),
+            _wristSet('t-set-1', 'sx-bench'),
             _wristEnd('w-energy-2', modality: null),
           ], messageId: 'm-1'),
         );

@@ -285,6 +285,7 @@ Future<void> _seedFMix(WorkoutRepository repo) async {
     rating: 4,
   );
   await _seedIsometricEffort(repo, sessionId: 'fmix-p3', seconds: 300);
+  await _seedSetEffort(repo, sessionId: 'fmix-p3', weightFactor: 100.0);
 
   // The baseline blocks before `day(27)`: one rated session in each of the
   // first five blocks, so `ratedWeeks` clears the gate. Isometric work
@@ -296,6 +297,7 @@ Future<void> _seedFMix(WorkoutRepository repo) async {
     rating: 4,
   );
   await _seedIsometricEffort(repo, sessionId: 'fmix-b0', seconds: 1200);
+  await _seedSetEffort(repo, sessionId: 'fmix-b0', weightFactor: 100.0);
   await _seedRatedSession(
     repo,
     sessionId: 'fmix-b1',
@@ -303,6 +305,7 @@ Future<void> _seedFMix(WorkoutRepository repo) async {
     rating: 4,
   );
   await _seedIsometricEffort(repo, sessionId: 'fmix-b1', seconds: 1200);
+  await _seedSetEffort(repo, sessionId: 'fmix-b1', weightFactor: 100.0);
   await _seedRatedSession(
     repo,
     sessionId: 'fmix-b2',
@@ -310,6 +313,7 @@ Future<void> _seedFMix(WorkoutRepository repo) async {
     rating: 4,
   );
   await _seedIsometricEffort(repo, sessionId: 'fmix-b2', seconds: 1200);
+  await _seedSetEffort(repo, sessionId: 'fmix-b2', weightFactor: 100.0);
   await _seedRatedSession(
     repo,
     sessionId: 'fmix-b3',
@@ -317,6 +321,7 @@ Future<void> _seedFMix(WorkoutRepository repo) async {
     rating: 4,
   );
   await _seedIsometricEffort(repo, sessionId: 'fmix-b3', seconds: 1200);
+  await _seedSetEffort(repo, sessionId: 'fmix-b3', weightFactor: 100.0);
   await _seedRatedSession(
     repo,
     sessionId: 'fmix-b4',
@@ -324,6 +329,7 @@ Future<void> _seedFMix(WorkoutRepository repo) async {
     rating: 4,
   );
   await _seedIsometricEffort(repo, sessionId: 'fmix-b4', seconds: 1200);
+  await _seedSetEffort(repo, sessionId: 'fmix-b4', weightFactor: 100.0);
 
   await _seedPeriod(repo, name: 'Test Block', daysAgo: 3);
   await _clearConsumedFoods(repo);

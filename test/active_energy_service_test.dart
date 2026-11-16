@@ -256,6 +256,12 @@ void main() {
           seconds: 600,
           atMs: fixtureStart - 1000000,
         );
+        await _seedSetEffort(
+          repo,
+          sessionId: 's-04',
+          effortId: 'ef-04-set',
+          atMs: fixtureStart - 3000000,
+        );
 
         final row = (await _settle(repo, 's-04'))!;
 
@@ -289,6 +295,12 @@ void main() {
           kind: 'drill',
           seconds: 600,
           atMs: fixtureStart - 1000000,
+        );
+        await _seedSetEffort(
+          repo,
+          sessionId: 's-14',
+          effortId: 'ef-14-set',
+          atMs: fixtureStart - 3000000,
         );
 
         final row = (await _settle(repo, 's-14'))!;
