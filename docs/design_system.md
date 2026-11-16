@@ -617,7 +617,12 @@ plain, says what failed and what to do, and never carries exception text. When
 the load of a screen's data fails, the screen says so and offers a retry
 instead of reading as empty — this holds for Stats, Records & Trends and
 Exercise Progress. The PR celebration toast is the one exception: it keeps its
-own celebration look.
+own celebration look. A message with an action stays until it is dismissed or
+replaced and ignores its duration unless the caller passes `persist: false`
+(Flutter's default for a `SnackBar` with an action); the Stats dismissal's `Undo`
+message passes it, so it goes away after 6 seconds. Verified by
+`test/omni_message_test.dart` (group `S-21396 an action message and persist`)
+and `test/stats_signal_undo_screen_test.dart` (`S-21394`).
 
 Verified by `test/ui_standards_contract_test.dart` (group `S-2702 one message
 look` · "no file outside the two that own a look builds a message bar"; group

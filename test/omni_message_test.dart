@@ -118,6 +118,49 @@ Future<void> _pumpAndTapAwaited(
 SnackBar _snackBar(WidgetTester tester) =>
     tester.widget<SnackBar>(find.byType(SnackBar));
 
+/// S-21396's helper, shaped like `_pumpAndTap` but raising a message with an
+/// action and a 6 s duration, passing [persist] through to `show`.
+Future<void> _pumpAndTapPersist(
+  WidgetTester tester, {
+  required ThemeData theme,
+  required bool? persist,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: theme,
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => Center(
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonBorderRadius,
+                  ),
+                ),
+              ),
+              onPressed: () {
+                OmniMessage.show(
+                  context,
+                  _message,
+                  action: SnackBarAction(label: 'Undo', onPressed: () {}),
+                  duration: const Duration(seconds: 6),
+                  persist: persist,
+                );
+              },
+              child: const Text('show'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  await tester.tap(find.text('show'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
 Text _messageText(WidgetTester tester) => tester.widget<Text>(
   find.descendant(of: find.byType(SnackBar), matching: find.text(_message)),
 );
@@ -228,5 +271,38 @@ void main() {
     final snackBar = _snackBar(tester);
     expect(snackBar.action?.label, 'Undo');
     expect(snackBar.duration, const Duration(seconds: 2));
+  });
+
+  group('S-21396 an action message and persist', () {
+    testWidgets('with persist: false the action message expires after its '
+        'duration', (tester) async {
+      await _pumpAndTapPersist(
+        tester,
+        theme: ThemeData.light(),
+        persist: false,
+      );
+      expect(find.text(_message), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 7));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_message), findsNothing);
+    });
+
+    testWidgets('without persist the action message stays past its duration', (
+      tester,
+    ) async {
+      await _pumpAndTapPersist(
+        tester,
+        theme: ThemeData.light(),
+        persist: null,
+      );
+      expect(find.text(_message), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 7));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_message), findsOneWidget);
+    });
   });
 }

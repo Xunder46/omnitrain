@@ -23,14 +23,18 @@ class OmniMessage {
 
   /// Shows [text] as an informational message.
   ///
-  /// [action] and [duration] pass straight to the `SnackBar`; leaving both
-  /// unset keeps Flutter's own defaults, so a message behaves exactly as it
-  /// did before the shared look existed.
+  /// [action], [duration] and [persist] pass straight to the `SnackBar`;
+  /// leaving them unset keeps Flutter's own defaults, so a message behaves
+  /// exactly as it did before the shared look existed. [persist] passes
+  /// straight to the `SnackBar`; null keeps Flutter's own default, under
+  /// which a message with an [action] stays until it is dismissed or
+  /// replaced and ignores [duration] (plan 213).
   static void show(
     BuildContext context,
     String text, {
     SnackBarAction? action,
     Duration? duration,
+    bool? persist,
   }) {
     showOn(
       ScaffoldMessenger.of(context),
@@ -38,6 +42,7 @@ class OmniMessage {
       text,
       action: action,
       duration: duration,
+      persist: persist,
     );
   }
 
@@ -60,6 +65,7 @@ class OmniMessage {
     String text, {
     SnackBarAction? action,
     Duration? duration,
+    bool? persist,
   }) {
     _present(
       messenger,
@@ -68,6 +74,7 @@ class OmniMessage {
       isError: false,
       action: action,
       duration: duration,
+      persist: persist,
     );
   }
 
@@ -88,12 +95,14 @@ class OmniMessage {
     required bool isError,
     SnackBarAction? action,
     Duration? duration,
+    bool? persist,
   }) {
     final colorScheme = theme.colorScheme;
 
     messenger.showSnackBar(
       SnackBar(
         duration: duration ?? _defaultDuration,
+        persist: persist,
         backgroundColor: colorScheme.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),

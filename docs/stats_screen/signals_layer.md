@@ -85,6 +85,16 @@ the tap: the screen resolves the held candidates against the new store with
 both repositories, `test/signals_service_test.dart` (`S-1712 Mock and Hive
 parity`).
 
+**Undo.** A dismissal also shows a small bottom message, `Signal hidden for 14 days.`
+(the number is `kSignalDismissalDays`), with an `Undo` action for 6 seconds. Undo
+returns the card in the same frame and takes that signal's entry out of the store
+(`signalDismissalsWithout`, which keeps every other dismissal); dismissing a second
+card replaces the message, so Undo always belongs to the newest dismissal, and Undo
+still works after the user has left Stats while the message is showing. The message
+is built with `persist: false`, because a message with an action otherwise stays
+until it is dismissed. Verified by `test/stats_signal_undo_screen_test.dart`
+(`S-21391` to `S-21395`).
+
 **The dismissal window.** A dismissal hides its signal for
 `kSignalDismissalDays` **local calendar days**, with the dismissal day counted
 as day 1; the signal is eligible again the day after the window. Verified by

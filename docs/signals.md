@@ -212,6 +212,12 @@ once`) and, for the store write on both repositories,
 `test/signals_service_test.dart` (`persistDismissals writes a map that reads
 back value-for-value`).
 
+`signalDismissalsWithout` is the pure undo rule: the store without one id, every other
+dismissal kept, the current map untouched. The screen resolves its held candidates
+against it in the same frame and chains the write behind the dismissal's own, so the
+last tap wins. Verified by `test/stats_signal_undo_service_test.dart` (`S-21390`) and
+`test/stats_signal_undo_screen_test.dart` (`S-21392`, `S-21395`).
+
 ## The dismissal window
 
 `kSignalDismissalDays` hides a dismissed signal for a span of **local calendar

@@ -209,9 +209,9 @@ bar, unchanged.
 
 | Static method | Purpose |
 |---|---|
-| `show(context, text, {action, duration})` | Informational message. `action` and `duration` pass straight to the `SnackBar`; leaving both unset keeps Flutter's own defaults. |
+| `show(context, text, {action, duration, persist})` | Informational message. `action`, `duration` and `persist` pass straight to the `SnackBar`; leaving all unset keeps Flutter's own defaults (under which a message with an action stays until it is dismissed or replaced and ignores `duration`; `persist: false` makes it expire). |
 | `error(context, text)` | Failed action: the same look with a leading `Icons.error_outline` in `colorScheme.error`. |
-| `showOn(messenger, theme, text, {action, duration})` | `show` on a `ScaffoldMessengerState` and `ThemeData` captured **before** an `await`, for tap handlers that persist first and must not touch the `context` again afterwards. |
+| `showOn(messenger, theme, text, {action, duration, persist})` | `show` on a `ScaffoldMessengerState` and `ThemeData` captured **before** an `await`, for tap handlers that persist first and must not touch the `context` again afterwards. |
 | `errorOn(messenger, theme, text)` | `error`'s counterpart to `showOn`. |
 
 The copy is the caller's — `Could not … Try again.` — never an exception's

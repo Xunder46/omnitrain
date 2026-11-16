@@ -161,6 +161,17 @@ Map<String, int> signalDismissalsWith(
   return next;
 }
 
+/// The store after taking [id]'s dismissal back (plan 213): a NEW map holding
+/// every entry of [current] but [id]. Every other dismissal is kept as it is;
+/// [current] is never mutated.
+Map<String, int> signalDismissalsWithout(
+  Map<String, int> current,
+  String id,
+) => <String, int>{
+  for (final entry in current.entries)
+    if (entry.key != id) entry.key: entry.value,
+};
+
 /// Reads the dismissal store out of its stored JSON (D-1009).
 ///
 /// A missing value, an unparseable value, a non-object value and a non-integer

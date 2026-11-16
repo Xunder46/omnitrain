@@ -15,6 +15,7 @@ import '../../core/navigation/omni_navigator.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/common/omni_empty_state.dart';
+import '../../widgets/feedback/omni_message.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../nutrition/nutrition_trend_screen.dart';
@@ -277,6 +278,52 @@ class _StatsScreenState extends State<StatsScreen> {
     final store = next;
     _signalsWriteTail = _signalsWriteTail.then(
       (_) => _persistSignalDismissals(service, store),
+    );
+
+    // A mis-tap hides a card for two weeks, so the dismissal says so and can be
+    // taken back (plan 213). A second dismissal replaces the first message, so
+    // Undo always belongs to the newest one.
+    ScaffoldMessenger.of(context).clearSnackBars();
+    OmniMessage.show(
+      context,
+      'Signal hidden for $kSignalDismissalDays days.',
+      duration: const Duration(seconds: 6),
+      persist: false,
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () => _undoDismissal(id),
+      ),
+    );
+  }
+
+  /// Takes [id]'s dismissal back: the card returns in the same frame and the
+  /// store loses that entry only (plan 213, D-3, D-4).
+  ///
+  /// The message that carries Undo belongs to the app's messenger and can
+  /// outlive this screen, so the write is chained whether or not the screen is
+  /// still mounted; only the view update needs it to be.
+  void _undoDismissal(String id) {
+    final service = _signalsService;
+    if (service == null) return;
+
+    final next = signalDismissalsWithout(_signalsDismissedAtMs, id);
+    if (mounted) {
+      final now = DateTime.now();
+      setState(() {
+        _signalsDismissedAtMs = next;
+        _signalsData = resolveSignals(
+          candidates: _signalsCandidates,
+          dismissedAtMs: next,
+          now: now,
+          gateMet: signalsGateMet(_mixLayer),
+        );
+      });
+    } else {
+      _signalsDismissedAtMs = next;
+    }
+
+    _signalsWriteTail = _signalsWriteTail.then(
+      (_) => _persistSignalDismissals(service, next),
     );
   }
 

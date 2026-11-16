@@ -40,3 +40,10 @@ Owner decisions 2026-11-15: pace change reads better/worse (faster = green up); 
 |---|---|---|
 | 212 | `docs/plans/2026-11-16-212-stats-one-failure-keeps-the-screen-plan/`: one failing signal or Fuel read no longer fails the whole Stats load; totals, Instruments and Mix stay core. | committed |
 | 213 | Stats reloads silently when new data arrives while it is open (deferred item 2 of the 2026-11-04 input sweep). | dropped for good by the owner 2026-11-16 ("we don't need to reload stats while open ever"); never plan it again |
+
+## Group E (review items 5, 7, 9)
+
+| Plan | What | Status |
+|---|---|---|
+| 214 | `docs/plans/2026-11-16-214-stats-says-when-effort-rating-is-off-plan/`: the locked Signals line, the hint under a card and the Mix note say when Effort Rating is the reason (item 7, first half). | committed da111335 |
+| 213 | `docs/plans/2026-11-16-213-stats-dismissed-signal-can-be-brought-back-plan/`: a dismissed signal shows `Signal hidden for 14 days.` with Undo (item 9, dismiss undo). | committed |
