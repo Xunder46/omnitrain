@@ -96,6 +96,11 @@ public struct WatchStartView: View {
     /// screen; this surface carries its own value rather than scaling one down.
     private static let surfaceInset = 4.0
 
+    /// The extra gap that sets the modality grid apart from the list under it, and
+    /// the list from the Nutrition button under it (added to the stack's own
+    /// spacing), so the three groups read as three.
+    private static let sectionGap = 6.0
+
     /// The home surface's way into the foods list, which is reachable with no
     /// workout running.
     public static let nutritionLabel = "Nutrition"
@@ -161,6 +166,7 @@ public struct WatchStartView: View {
                 WatchModalityStartGridView { cell in
                     startModality(cell.key)
                 }
+                .padding(.bottom, Self.sectionGap)
 
                 // Plan 129, D-8964/D-8965: first among the routines, in the quiet
                 // bordered style so it never competes with them.
@@ -198,6 +204,7 @@ public struct WatchStartView: View {
                 if let onOpenNutrition {
                     Button(Self.nutritionLabel, action: onOpenNutrition)
                         .buttonStyle(.bordered)
+                        .padding(.top, Self.sectionGap)
                 }
 
                 // The start buttons end here; Sync below is housekeeping, set apart.

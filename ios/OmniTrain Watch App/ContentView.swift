@@ -564,11 +564,6 @@ struct ContentView: View {
                 .task { await host.askHealthAccess() }
             }
         }
-        // D-3704: the accent rides the preferences the root already observes, so
-        // a Sync that changes the theme re-runs this body and the environment
-        // value with it. Read here, at render, like `restPingSeconds`.
-        // With no usable phone accent the wrist wears the phone's default theme (plan 56, D-1).
-        .environment(\.watchAccent, WatchAccent.worn(hex: host.preferences.accentColorHex))
         // D-3114: one sheet, on the root, so the rest↔logging switch and a rest
         // ending underneath it both leave it alone.
         .menuSheet(host, menu: menuState, isPresented: $showingMenu)
@@ -611,6 +606,18 @@ struct ContentView: View {
         .onChange(of: host.rating.isPromptOwed) { _, owed in
             if owed { showingMenu = false }
         }
+        // D-3704: the accent rides the preferences the root already observes, so
+        // a Sync that changes the theme re-runs this body and the environment
+        // value with it. Read here, at render, like `restPingSeconds`.
+        // With no usable phone accent the wrist wears the phone's default theme (plan 56, D-1).
+        // It is the LAST modifier on purpose: a sheet reads the environment of the
+        // view it is attached to, so the session menu, the food sheet and the
+        // diagnostics sheet above only wear the user's theme when this wraps them.
+        .environment(\.watchAccent, WatchAccent.worn(hex: host.preferences.accentColorHex))
+        // The same theme for every control that is not a prominent button (a
+        // spinner, a link, a toggle): the asset's AccentColor is the default
+        // theme, so without this they wore the default theme, not the user's.
+        .tint(WatchAccent.worn(hex: host.preferences.accentColorHex).color)
     }
 
     /// D-24's first surface: the owed question, alone. The view carries no other

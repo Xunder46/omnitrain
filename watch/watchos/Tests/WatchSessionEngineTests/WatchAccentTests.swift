@@ -232,6 +232,41 @@ final class WatchAccentTests: XCTestCase {
         }
     }
 
+    // MARK: - S-8605 the accent wraps the root's sheets
+
+    /// A sheet reads the environment of the view it is attached to, so the session
+    /// menu, the food sheet and the diagnostics sheet wear the user's theme only
+    /// when the accent and the tint are applied AFTER them in the root's chain.
+    func testS8605TheAccentAndTheTintWrapTheRootSheets() throws {
+        let contentView = try String(
+            contentsOf: Fixtures.repositoryRoot
+                .appendingPathComponent("ios/OmniTrain Watch App/ContentView.swift"),
+            encoding: .utf8
+        )
+        let code = contentView
+            .components(separatedBy: "\n")
+            .filter { line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                return !trimmed.isEmpty && !trimmed.hasPrefix("//")
+            }
+        func lastIndex(containing text: String) -> Int? {
+            code.lastIndex { $0.contains(text) }
+        }
+        let environment = try XCTUnwrap(
+            lastIndex(containing: ".environment(\\.watchAccent, WatchAccent.worn(hex: host.preferences.accentColorHex))"),
+            "S-8605 the root sets the accent"
+        )
+        let tint = try XCTUnwrap(
+            lastIndex(containing: ".tint(WatchAccent.worn(hex: host.preferences.accentColorHex).color)"),
+            "S-8605 the root tints every other control with the same theme"
+        )
+        let menuSheet = try XCTUnwrap(lastIndex(containing: ".menuSheet("), "S-8605 the root hosts the menu sheet")
+        let lastSheet = try XCTUnwrap(lastIndex(containing: ".sheet(isPresented:"), "S-8605 the root hosts its sheets")
+        XCTAssertGreaterThan(environment, menuSheet, "S-8605 the accent wraps the session menu sheet")
+        XCTAssertGreaterThan(environment, lastSheet, "S-8605 the accent wraps the food and diagnostics sheets")
+        XCTAssertGreaterThan(tint, lastSheet, "S-8605 the tint wraps the root's sheets too")
+    }
+
     // MARK: - S-8604 the wiring reads worn, and the asset carries the color
 
     func testS8604ContentViewWearsWornAndTheAssetCarriesTheColor() throws {

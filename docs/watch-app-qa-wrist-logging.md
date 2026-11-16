@@ -714,3 +714,20 @@ frame (plan 87b, open question d;
     and by the launch pin
     `WatchStoreGrowthTests.testS15601TheLaunchRestoreAsksForThePrunes`
     (the retire precedes `engine.restore()`, the readings prune follows it).
+53. **The Start screen's three groups, and the theme on every sheet — (owner).**
+    (a) On the Start screen a small extra gap sits between the four modality
+    buttons and the list under them (the planned button and the routines), and
+    the same gap between that list and the **Nutrition** button, so the three
+    groups read as three. (b) Pick a theme other than the default on the
+    phone (Settings, theme), sync the watch, then open every screen that is a
+    sheet: start a workout and tap the list button (the session menu: the
+    current exercise's row, the End Session button and the exercise list),
+    open **Nutrition**, and open **Diagnostics** if it is shown. Their
+    prominent buttons, spinners and highlights wear the theme you chose, not
+    the default cyan; before this change those three sheets wore the default
+    theme because they sat outside the place the theme was applied. Held
+    off-device by `WatchAccentTests.testS8605TheAccentAndTheTintWrapTheRootSheets`
+    (the accent and the tint come after the root's sheets in
+    `ContentView.swift`) in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchAccentTests.swift`; the
+    gap itself is a layout and is checked by eye.
