@@ -108,6 +108,18 @@ Verified on both clients by
 with `watch/contract/watch_start_paths_contract.json` (`routineSession.expectedSlots`)
 holding the two to the same answer.
 
+The wrist builds its own slots the same way when a modality is on:
+a slot the watch creates under a modality declares that modality's kind —
+Cardio `timed`, Resistance `set`, Isometric `drill`, Sports `round`
+(`WatchEffortKind.forModality`) — whether it is the modality tile's pick,
+**Add Exercise**, or a pick over a workout that was already running. A Free
+workout (no modality) declares nothing and still resolves from capabilities,
+and a routine's own slots keep the kinds the routine declared. Verified by
+`WatchModalityKindTests.testS20604AnExerciseAddedToAModalitySessionDeclaresTheModalitysKind`
+and `…testS20608ARoutinesOwnSlotKeepsItsKindAndAnAddedOneTakesTheFocus` in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchModalityKindTests.swift`,
+with the phone pin `test/watch_wrist_declared_kind_test.dart` (S-20606).
+
 ---
 
 ## Technical Architecture

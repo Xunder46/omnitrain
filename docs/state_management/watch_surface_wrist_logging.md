@@ -12,7 +12,10 @@ their logged counts to jump to, then Add Exercise (an A to Z list of the phone's
 whole exercise list; a pick is appended to the end of the ladder, the session
 does not move, the ladder change reaches the phone like any wrist-added
 exercise), then End Session, which asks "Finish Workout?" first (Cancel /
-Finish, the phone's own words), and last Discard Session (plan 171);
+Finish, the phone's own words) —
+Discard Session in red, End Session in the theme colour
+(`WatchMenuTests.testS20106TheMenuRowsWearTheirColours`) — and
+last Discard Session (plan 171);
 `WatchMenuTests.testS3401TheMenuCopyIsTheOwnersWords`,
 `…testS3611TheAddListSortsCaseInsensitivelyByName`,
 `…testS3612AddExerciseAppendsAtTheEndAndKeepsThePosition`,
@@ -37,7 +40,11 @@ the logged entries kept, and the phone told the terminal lifecycle frame it
 already applies. The first ending is final: a discard after a finish, or after
 another discard, appends nothing. An End on a session holding no effort — a rest,
 a water tap and a food entry are not efforts — is a discard and asks that
-question instead, so nothing empty is saved to Health. Verified by
+question instead, so nothing empty is saved to Health;
+an End while an effort clock runs logs that effort first,
+then ends the session as completed
+(`WatchMenuEndRunningEffortTests.testS20107EndWithARunningEffortLogsItThenFinishes`).
+Verified by
 `WatchMenuDiscardTests.testS17102DiscardAbandonsAtTheWristsInstantAndTellsThePhone`,
 `…testS17101TheDiscardRowIsTheMenusLastRow`, `…testS17103DiscardIsReachableMidSet`,
 `…testS17104DiscardDuringARestStopsTheRest`,
@@ -51,6 +58,18 @@ question instead, so nothing empty is saved to Health. Verified by
 `…testS17109TheEmptyEndRaisesTheDiscardAlert`,
 `…testTheShellPassesTheDiscardClosure` and
 `WatchAccessibilitySourceTests.testS17112TheDiscardRowAndItsConfirmationSpeak`.
+
+**A modality pick over a started workout.** Since plan 201,
+a modality button pressed over a started workout adds its exercise to it:
+with a session already running
+(the phone started, or one the wrist holds), tapping a modality cell and picking
+an exercise appends that exercise to the held session and opens the logger on
+it, and the held session keeps its own modality; with no held session, or one
+already ended, the pick starts its own workout as before. Verified by
+`WatchModalityStartTests.testS20112AModalityPickOverAHeldEmptySessionAddsTheExercise`,
+`…testS20113AModalityPickOverAnEndedSessionCreatesANewOne`,
+`…testS20114TheHeldSessionKeepsItsOwnModality`,
+`…testS17605ASecondPickReturnsTheHeldSessionAndAddsThePick`.
 
 **One Crown turns the armed row.** The logging surface holds one Digital Crown
 binding for the whole view, not one per row: `WatchLoggingModel.armedMetricKey`
@@ -158,7 +177,14 @@ across pause, resume, stop and the store round trip —
 rule is the earlier start wins, for the work kinds only: an incoming running or
 paused timer of the same kind and the same slot with a later `startedAt` than
 the held, not-stopped timer is ignored, a stopped row always applies, a timer
-for another slot is stored beside, and a rest keeps last-write
+for another slot is stored beside, and a rest with a later start supersedes the
+wrist's own; since plan 202
+an interval the wrist already ran is never restarted by a later frame naming
+the same interval, and a rest the wrist already holds is not adopted again
+(`WatchTimerReadoptionTests.testS20201AStoppedHoldIsNotRestartedByALaterFrameNamingTheSameInterval`,
+`…testS20202ASnapshotNamingTheStoppedHoldDoesNotReopenIt`,
+`…testS20205ARestAdoptedTwiceKeepsOneRowAndTheSamePingMemory`,
+`…testS20209ARestTheWristEndedIsNotReopenedByASnapshot`)
 (`WatchLoggingTimersTests.testS6005AnEarlierPhoneStartReplacesTheWristsRunningTimer`,
 `…testS6005ALaterPhoneStartLeavesTheWristsTimerAlone`,
 `…testS6005AStoppedPhoneRowWithALaterStartStillStopsTheTimer`,
@@ -177,7 +203,8 @@ paused, that names another slot the live session holds moves the wrist to that
 exercise through the engine's own select path, one `exercise_advanced` frame
 (`WatchTimedWorkTests.testS6004APhoneTimerForAHeldSlotMovesTheWristToIt`;
 `WatchFollowPhoneEffortTests.swift` S-8401, S-8403, S-8412); a rest, a stopped
-or cleared timer, a slot the session does not hold, the current slot, a session
+or cleared timer, an interval the wrist already stopped (plan 202), a slot the
+session does not hold, the current slot, a session
 that is no longer active and a row the earlier-start rule dropped move nothing
 and emit nothing (the same file's S-8402 cases, S-8411, S-8413). Several
 candidates in one frame jump once, to the earliest start (S-8415). The jump
@@ -229,7 +256,17 @@ exercise with nothing logged yet; a "Next set: …" or "Next exercise: …" line
 above the Next button names the next set ("Next set: Set 3 of 3" with a plan,
 "Next set: Set 4" without), the next period ("Next set: Period 2"), the next
 unfinished exercise ("Next exercise: Barbell Back Squat · Set 1 of 2") or
-"Nothing planned next". The line's word is the rule, not decoration: "Next set: "
+"Nothing planned next"; since plan 201
+only a one-exercise ladder says "Nothing planned next" and
+once every exercise is done, Next goes on to the following exercise in turn,
+the last one being followed by the first: the line
+above Next reads "Next exercise: <that exercise>" by name alone, Next opens its
+logger where extra sets can be logged, and Next keeps cycling. An undone
+exercise still wins over the cycle. Verified by
+`WatchRestLabelsTests` (`testS20101AfterTheLastExerciseNextGoesBackToTheFirst`,
+`…testS20104AnUndoneExerciseWinsOverTheCycle`) and
+`WatchRestNextHoldTests.testS20105TheListStartsOverAfterTheLastExerciseAndKeepsCycling`.
+The line's word is the rule, not decoration: "Next set: "
 while Next stays on the exercise it is on, "Next exercise: " only when the line
 names the exercise Next moves to (plan 149 D-14907). Verified by
 `WatchRestLabelsTests.testS7601APlannedSetCountsTheLoggedSets`,
@@ -250,17 +287,19 @@ names the exercise Next moves to (plan 149 D-14907). Verified by
 `…testS14945NothingLeftAndNoExerciseKeepTheirWords`). Since plan 79 the next
 line also carries the announced exercise's slot id (`WatchRestLabels.nextSlotId`,
 set only when the line names another exercise, nil for "Next set: Set n",
-"Next set: Period n" and "Nothing planned next"), and the rest screen's Next
+"Next set: Period n" and a one-exercise "Nothing planned next"), and the rest
+screen's Next
 button reads it before it ends the rest and then jumps through the menu
 (`advance: { await menuState.jump(to: $0) }` in `ContentView.swift`): when the
 line names an exercise, Next opens that exercise's logger; with sets
 remaining, no plan, a period, or nothing planned it returns to the same
 exercise as before; a refused jump leaves the rest ended and the same exercise
-shown. An extra set on a finished exercise: swipe back to it. Verified by
+shown. An extra set on a finished exercise: Next on the last one goes on to the first,
+and Next keeps going on in turn, or swipe back to it. Verified by
 `WatchRestLabelsTests` (`testS9101TheAnnouncedExerciseCarriesItsSlotId`,
 `…testS9102ASetCountCarriesNoSlotId`,
 `…testS9103ASetCountWithoutAPlanCarriesNoSlotId`,
-`…testS9104NothingPlannedCarriesNoSlotId`,
+`…testS9104TheWholeLadderDoneCyclesToTheFollowingExercise`,
 `…testS9105APeriodCarriesNoSlotId`,
 `…testS9106ATimedEffortAnnouncesTheExerciseAndTheWrapHolds`,
 `…testS9107ASlotWithoutItsOwnIdAnnouncesTheCatalogSlotId`) and

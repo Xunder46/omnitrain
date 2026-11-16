@@ -33,7 +33,7 @@ and `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift` +
 | Starting and stopping both together | `WatchSessionSensors` |
 | Starting and stopping the sensors with the session | `WatchSensorCoordinator` |
 | The real sensor source on the wrist | `HealthKitSensorFeed` (`HealthKitWorkoutStore.sensorSource`) |
-| Whether a session records GPS | `WatchGpsPolicy`, reading the modality's capability profile and the current exercise's capabilities |
+| Whether a session records GPS | `WatchGpsPolicy`, reading the current exercise's capabilities |
 | Following the exercise the user is on | `WatchSensorRecorder.sessionChanged`, called by `WatchSensorCoordinator.apply` |
 | Modality → platform workout type; a session with no modality takes the majority of its exercises' capabilities | `WatchActivityTypes` (`forModality`, `forSession`) |
 | What is computed from the readings before they may go | `WatchSensorSummaries`, pure functions over stored rows, called by `WatchLoggingState.log` for an entry and by `WatchSessionEngine` for a `session_end` |
@@ -101,9 +101,9 @@ The wrist now feeds fixes: the host builds the store over a
 (`WatchSensorSourceSourceTests.testS3313TheHostBuildsTheSourceAndTheAdapterOnce`,
 `…testS3310TheRawSourceAsksWhenInUseAndNeverAlways`), and the feed hands its
 two location members straight to that adapter
-(`…testS3311TheFeedDelegatesItsLocationToTheAdapter`). The first time a session reaches distance work — a cardio or sports
-modality, or the exercise the user is on carrying the `distance` capability —
-the wrist asks for Location while in use — after the
+(`…testS3311TheFeedDelegatesItsLocationToTheAdapter`). The first time the user
+is on an exercise that carries the `distance` capability — whatever the
+session's modality — the wrist asks for Location while in use — after the
 Health question, which the Start screen asks the first time it shows (a
 relaunch straight into a live session shows no Start screen, so Health still
 asks at the first workout open there;
@@ -112,7 +112,7 @@ with the sentence the watch target's
 `INFOPLIST_KEY_NSLocationWhenInUseUsageDescription` carries
 (`…testS3314TheWatchTargetAsksForLocationInOneSentenceAndNeverAlways`) — and
 the HealthKit workout of such a session is registered as outdoor
-(`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
+(`WatchGpsExerciseOnlyTests.testS20502AWalkUnderCardioIsOutdoor`,
 `WatchSensorSourceSourceTests.testS3312TheStoreTakesTheAdapterAndRegistersOutdoors`).
 The workout is registered once (D-4803 of plan 40): a session with a modality
 registers at its start, and a session with no modality — every Free workout and
@@ -213,15 +213,21 @@ and sends no distance
 (`WatchDistanceTrackerTests.testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn`,
 `WatchSensorSourceSourceTests.testS3315LocationOffAnswersUnavailableBeforeAnyStatusIsRead`,
 `WatchSensorRecordingTests.testS006HardwareThatIsNotThereIsNotAFailure`);
-lifts and holds never ask and never use location
-(`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
-`WatchGpsByExerciseTests.testS4801ALiftNeverStartsGpsAndNeverAsks`); free
+lifts never ask and never use location
+(`WatchGpsByExerciseTests.testS4801ALiftNeverStartsGpsAndNeverAsks`), and
+neither does an exercise whose capabilities carry no `distance` — a Boxing
+round, a match — which opens no location feed
+(`WatchGpsExerciseOnlyTests.testS20501BoxingUnderSportsIsIndoor`,
+`…testS20505ASportsExerciseWithoutDistanceIsIndoor`); free
 training and Focus-less routine starts ask and use location only once the user
 is on an exercise that carries the `distance` capability
 (`WatchGpsByExerciseTests.testS4800AWalkInAFreeWorkoutStartsGps`,
-`…testS4802GpsStartsWhenTheUserReachesTheWalk`); a routine whose Focus resolves
-to a distance modality (Cardio, Sports) turns GPS on at its start, before any
-exercise is on
+`…testS4802GpsStartsWhenTheUserReachesTheWalk`); no modality turns GPS on by
+itself: the exercise the user is on decides, so a routine whose Focus is
+Cardio or Sports asks only once one of its exercises carries `distance`
+(`WatchGpsExerciseOnlyTests.testS20501BoxingUnderSportsIsIndoor`,
+`WatchGpsByExerciseTests.testS4806ADistanceModalityAloneStartsNoGps`); the
+Focus still names the Health type and the round word
 (`testS12560RoutineFocusCarriesTheTableToTheSession` in
 `watch/watchos/Tests/WatchSessionEngineTests/WatchRoutineFocusTests.swift`).
 No route or map is stored on the wrist's own log; the only route is the one
@@ -487,13 +493,16 @@ saves its workout to Health; an abandoned, gone or replaced one discards it
 (`WatchPlatformWorkoutStore.end(saving:)`, plan 89 D-1, D-2). Verified by watchOS
 `WatchWorkoutCoordinatorTests` (S-1500...S-1505, S-1507, S-1508, S-1510) and
 `WatchFitnessFollowsSessionTests` (S-89-1).
-- **GPS activation derives from the modality's capability profile and the current
-exercise's capabilities, never from a name.** A modality added later is handled
-without touching the policy, and one that merely sounds like distance work does
-not wake the radio; an exercise decides the same way, by its `capabilities`
-list, not by what it is called. Verified by
-`test/watch_sensor_recording_test.dart` (`S-008`) and by watchOS
-`WatchSensorRecordingTests.testS008TheGpsDecisionFollowsTheCapabilityProfile`.
+- **GPS activation derives from the current exercise's capabilities, never from
+the modality and never from a name.** No modality turns GPS on by itself: the
+exercise the user is on decides, one that merely sounds like distance work does
+not wake the radio, and an exercise decides by its `capabilities` list, not by
+what it is called. Verified by
+`test/watch_sensor_recording_test.dart` (group `S-008 the GPS decision reads
+the exercise's capabilities, not names or the modality`, test `S-20509 a
+cardio session on an exercise without distance requests no location
+permission; on a run it does`) and by watchOS
+`WatchGpsExerciseOnlyTests.testS20501BoxingUnderSportsIsIndoor`.
 - **GPS is a latch for the session.** Once the feed starts it runs until the
 session stops: moving back to an exercise without distance neither stops it nor
 resets the cumulative total, and however often the sensors refresh, a granted
@@ -612,6 +621,42 @@ same whatever other workouts stored
 (`…testS15606AThousandTicksVisitTheCurrentSessionsRowsOnly`,
 `…testS15606ThePaceWindowIsCachedUntilANewGpsRowArrives`,
 `…testS15606ThePerSessionViewsMatchABruteForceFilter`).
+- **Old, fully-synced workouts leave the store at launch.** At each launch,
+the watch retires every settled workout beyond the newest 20 at launch
+(`WatchSessionEngine.settledSessionsKept`): a workout is settled when its
+newest session row is completed or abandoned and the phone has receipted
+every entry of it — and, for a workout the wrist
+created, its end is acknowledged; an unsynced workout is kept for as long as
+it is unsynced, whatever its age, and the 14-day rule of the readings prune is
+not used here
+(`WatchSettledSessionPruneTests.testS20702AnUnsyncedWorkoutIsKeptWhateverItsAge`,
+`…testS20703AWristWorkoutWhoseEndIsUnacknowledgedIsKept`,
+`…testS20703BAWristWorkoutWithNoEndRowAtAllIsKept`,
+`…testS20714AnyUnconfirmedOwedKindHoldsAWorkout`). An unfinished workout and
+the session the watch is on are never retired, whatever their age
+(`…testS20704AnUnfinishedOldSessionIsNeverRetired`,
+`…testS20704BAnOldActiveSessionWithNothingUnsyncedIsStillKept`); the newest
+`WatchSessionEngine.settledSessionsKept` (20) settled workouts stay whole and
+the order is by sequence, not the clock
+(`…testS20701TheOldestSettledWorkoutsLeaveAndTheNewestTwentyStayWhole`,
+`…testS20711AnEngineOverFortySettledWorkoutsKeepsTwentyAfterRelaunch`). A
+retired workout leaves its session rows, entries, timers, confirmation rows
+that name only its dropped entries, rating prompts (a rating question still
+owed for it lapses with it), and its readings, inline and side file, while
+water and food taps (they have their own cutoff) and every non-workout record
+stay (`…testS20716InlineReadingsOfARetiredWorkoutLeaveAndItsSideFileToo`,
+`…testS20712AConfirmationThatNamesNothingIsNotRetired`,
+`…testS20713AConfirmationThatAlsoNamesAKeptTapStaysWhole`). A launch with
+nothing to retire writes nothing, and a retire that cannot be written drops
+nothing (`…testS20706ANothingToRetirePruneWritesNothing`,
+`…testS20706BANothingToRetirePruneKeepsATornTailAndTheMarker`,
+`…testS20708APruneThatCannotBeWrittenDropsNothing`); the call precedes
+`engine.restore()` at launch and the readings prune follows it
+(`WatchStoreGrowthTests.testS15601TheLaunchRestoreAsksForThePrunes`), the
+in-memory twin retires the same way
+(`…testS20701BTheInMemoryStoreRetiresTheSameWay`), and the allowed store
+operations name it on purpose
+(`WatchSessionEngineTests.testS004NoMutatingOperationExistsAnywhereInTheModule`).
 - **A launch parses the small rows only.** `readLaunch()` answers everything
 except the raw readings of a terminal session, and those readings live in that
 session's own side file: the store moves them there when the workout ends and at

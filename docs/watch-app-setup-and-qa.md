@@ -647,8 +647,8 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     (`test/distance_source_import_test.dart`, S-876, S-877). Compare with a
     known distance and note the error — the tracker's gates are tuning values,
     so the number is yours to judge. Start a lift: no Location question
-    (`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
-    `WatchGpsByExerciseTests.testS4801ALiftNeverStartsGpsAndNeverAsks`).
+    (`WatchGpsByExerciseTests.testS4801ALiftNeverStartsGpsAndNeverAsks`,
+    `WatchGpsExerciseOnlyTests.testS20505ASportsExerciseWithoutDistanceIsIndoor`).
     Refuse Location once (Settings → Privacy, or a reinstall) and check that
     logging still works and the wrist does not ask again for the rest of that
     session: a denied or unavailable answer skips the location subscription

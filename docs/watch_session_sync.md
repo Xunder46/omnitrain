@@ -54,7 +54,15 @@ carry no `sx-` prefix, so it stays the free-session guard;
 `test/watch_routine_adoption_test.dart`,
 `S-3640 the snapshot adopts as the routine the wrist started`,
 `S-3641 the adopted effort holds the template's planned sets`,
-`S-3644a no template covers the ladder: a free session as today`).
+`S-3644a no template covers the ladder: a free session as today`). When the
+wrist's snapshot names a modality (plans 203/204),
+an adopted wrist workout takes the wrist's own modality first, then the routine's Focus;
+a snapshot with no `modality` key adopts as today
+(`test/watch_session_wrist_modality_test.dart`,
+`S-20301 a wrist snapshot naming cardio_endurance adopts as Cardio`,
+`S-20304 the wrist's own modality wins over the routine's Focus and the routine
+still links`, `S-20302 a snapshot with no modality adopts as Free Training
+(today's behaviour)`).
 
 A wrist run the phone never adopted (phone away) is linked the same way when
 it is imported: `WatchSessionImporter` creates the session as the routine its

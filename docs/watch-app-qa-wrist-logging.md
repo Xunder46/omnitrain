@@ -466,9 +466,10 @@ frame (plan 87b, open question d;
     `watch/watchos/Tests/WatchSessionEngineTests/WatchRoutineFocusTests.swift`;
     `test/watch_routine_focus_start_test.dart`, group `S-12561 the focus
     stamps the started session`). (b) A routine with no Focus: still Other in
-    Health and Free Training on the calendar; a routine of only squats with a
-    Cardio Focus makes the watch ask for location, say "Intervals" and register
-    Running in Health — accepted, the Focus table wins over the exercises
+    Health and Free Training on the calendar; a Cardio Focus of squats asks for
+    no location, says "Intervals" and registers Running in Health — the Focus
+    names the Health type and the round word; GPS follows the exercise, and the
+    squats carry no distance
     (`testS12572RoutinesDownWithoutTheFieldKeepsTodaySBehaviour` and
     `testS12571CardioFocusOverStrengthExercisesStaysRunning` in
     `WatchRoutineFocusTests.swift`; `test/watch_routine_focus_start_test.dart`,
@@ -492,7 +493,7 @@ frame (plan 87b, open question d;
     leave the watch on it, then start the same routine on the phone: the
     watch swaps to the routine's exercises; after finishing, Health shows
     Flexibility. (c) Start the Sports tile on the phone: the watch says
-    "Periods" and asks for location only if you never answered; Health shows
+    "Periods" and asks for no location (no Sports exercise carries distance); Health shows
     Other. Cardio tile: "Intervals", Running. (d) A routine without a Focus
     started on the phone: the watch behaves as before (Health from the
     exercises). (e) Start a routine on the watch and let the phone adopt it:
@@ -557,7 +558,7 @@ frame (plan 87b, open question d;
     `…testS17605ThePickCreatesOneSessionWithTheModalityAndTheExercise`,
     `…testS17605TheSessionCarriesTheExercisesNamedHealthKind`,
     `…testS17605EveryCellCreatesItsOwnModalityWithTheSameExercise`,
-    `…testS17605ASecondPickReturnsTheHeldSessionAndEmitsNothing`,
+    `…testS17605ASecondPickReturnsTheHeldSessionAndAddsThePick`,
     `…testS17607AWalkThePhoneNamedIsAWalkEvenUnderCardio`,
     `…testS17607AnUnnamedExerciseTakesItsCellsType`,
     `…testS17608TheStartModePickerOffersTheWholeListTheFreeWorkoutOffered`,
@@ -570,3 +571,146 @@ frame (plan 87b, open question d;
     `…testS17605TheStartModePickersPickIsWhatCreatesTheSession`,
     `…testS17606ThePickerOpensInTheStartModeAndADismissDropsIt`,
     `…testS17612TheFreeWorkoutButtonAndItsHelperAreGone`.
+
+46. **The list restarts after the last set — (owner, plan 201).** Start a
+    routine with two or three planned exercises on the watch and log every
+    planned set of every exercise. On the rest screen after the very last set
+    the line above Next reads "Next exercise: <the following exercise>" instead
+    of "Nothing planned next"; tap Next: that exercise's logger opens, an extra
+    set can be logged there (its caption reads as its own last number, e.g.
+    "Set 4 of 3") and Next keeps going on to the following exercise, the last
+    one being followed by the first. A one-exercise workout still says
+    "Nothing planned next". Held off-device by `WatchRestLabelsTests`
+    (`testS9104TheWholeLadderDoneCyclesToTheFollowingExercise`,
+    `…testS20101AfterTheLastExerciseNextGoesBackToTheFirst`,
+    `…testS20103AOneExerciseLadderNeverAnnouncesAMove`,
+    `…testS20104AnUndoneExerciseWinsOverTheCycle`,
+    `…testS7603cAnExerciseWithItsPlanExactlyLoggedIsSkipped`) and
+    `WatchRestNextHoldTests.testS20105TheListStartsOverAfterTheLastExerciseAndKeepsCycling`.
+47. **End Session keeps a running effort and the buttons wear their colours — (owner, plan 201).** (a) Open the
+    session menu: **End Session** is a filled button in the watch's theme
+    colour and **Discard Session** a filled red button. (b) Start a Cardio
+    exercise with a clock, start the clock, never press Log, open the menu and
+    tap **End Session**: it asks "Finish Workout?", not "Discard session?";
+    Finish logs the running effort as one entry, ends the session as completed
+    and the phone shows it. (c) **End Session** on a session with nothing
+    logged and no clock running still asks "Discard session?". (d) With a
+    workout already started from the phone and no exercise on it, tap
+    **Cardio** on the watch and pick an exercise: it is added to the running
+    workout and the logger opens on it. Held off-device by `WatchMenuTests`
+    (`testS20106TheMenuRowsWearTheirColours`,
+    `…testS20111TheEndRowRaisesTheFinishQuestionWhenThereIsWorkToSave`),
+    `WatchMenuEndRunningEffortTests`
+    (`testS20107EndWithARunningEffortLogsItThenFinishes`,
+    `…testS20108ASetExerciseWithNothingLoggedStillDiscards`,
+    `…testS20109AnotherExercisesPhoneClockIsNotThisExercisesRunningEffort`,
+    `…testS20110ATimedExerciseWhoseClockWasNeverStartedStillDiscards`) and
+    `WatchModalityStartTests`
+    (`testS20112AModalityPickOverAHeldEmptySessionAddsTheExercise`,
+    `…testS20113AModalityPickOverAnEndedSessionCreatesANewOne`,
+    `…testS20114TheHeldSessionKeepsItsOwnModality`,
+    `…testS17605ASecondPickReturnsTheHeldSessionAndAddsThePick`).
+48. **No ghost hold and no extra rest ping when phone and watch share a workout — (owner, plan 202).** Run an
+    isometric routine with the phone app in the foreground, logging some holds
+    on the watch and some on the phone, alternating. Rest pings arrive once per
+    interval with no extra taps, and after Next no old hold clock is left
+    running for minutes with nothing logged; the session editor lists exactly
+    the holds that were logged. Not proven on a device (the cause was read from
+    the code): this check is how it is confirmed. Held off-device by
+    `WatchTimerReadoptionTests`
+    (`testS20201AStoppedHoldIsNotRestartedByALaterFrameNamingTheSameInterval`,
+    `…testS20202ASnapshotNamingTheStoppedHoldDoesNotReopenIt`,
+    `…testS20203ARealSecondIntervalAfterAStopIsAdopted`,
+    `…testS20204AStaleHoldForAnotherExerciseDoesNotMoveTheWrist`,
+    `…testS20205ARestAdoptedTwiceKeepsOneRowAndTheSamePingMemory`,
+    `…testS20209ARestTheWristEndedIsNotReopenedByASnapshot`,
+    `…testS20210ALaterPhoneRestStillSupersedesTheWristsRest`,
+    `…testS20211TheToleranceIsOneSecond`,
+    `…testS20212AResumeOfTheSameRestIsStillAdopted`,
+    `…testS20213AStoppedHoldOfAnotherExerciseDoesNotBlockANewInterval`,
+    `…testS20214ARestThatDiffersOnlyByItsAccumulatedPauseIsAdopted`,
+    `…testS20215ARestStopFrameStopsAnIdenticalRunningRest`,
+    `…testS20216APauseOfARunningHoldIsAdopted`,
+    `…testS20206AStopFrameStillStopsTheHold`).
+49. **A Cardio workout from the watch shows as Cardio on the phone — (owner, plans 203 and 204).** On the
+    watch tap **Cardio**, pick an exercise and log something, then open the
+    phone: Home's live session, the session summary and the calendar entry say
+    Cardio, not Free Training; the same for **Resistance**, **Sports** and
+    **Isometric**. A routine started from the watch keeps its routine title and
+    its Focus; a workout started on the phone as Free Training stays Free
+    Training. Held off-device by the phone tests in
+    `test/watch_session_wrist_modality_test.dart`
+    (`S-20301 a wrist snapshot naming cardio_endurance adopts as Cardio`,
+    `S-20302 a snapshot with no modality adopts as Free Training (today's
+    behaviour)`,
+    `S-20303 an unknown, empty or non-string modality is ignored`,
+    `S-20304 the wrist's own modality wins over the routine's Focus and the
+    routine still links`,
+    `S-20305 a session the phone already holds is not rewritten`,
+    `S-20307 source guard: only a snapshot's modality is read`), the watch
+    tests `WatchSnapshotWristModalityTests`
+    (`testS20401ASessionWithAModalityNamesItInItsSnapshot`,
+    `…testS20402AFreeSessionNamesNoModality`,
+    `…testS20403TheOtherKeysAndTheSchemaAreUnchanged`,
+    `…testS20404TheWristEchoesTheModalityItWasToldAndKeepsIt`,
+    `…testS20406TheModalitySurvivesARelaunch`) and the twin
+    `test/watch_snapshot_wrist_modality_send_test.dart` (group `S-20405 the
+    twin names its session's modality in its snapshot`).
+50. **GPS follows the exercise — (owner, plan 205).** The modality alone no
+    longer turns GPS on: the exercise the user is on decides. On the watch,
+    start **Sports** and pick Boxing: the watch asks for no location and
+    Apple Health records the workout as indoor; the same for any Sports
+    exercise (none carries `distance`). Start **Cardio** and pick a walk: the
+    watch asks for location and Health records the workout as outdoor. A
+    stationary bike under Cardio still asks and records outdoor (accepted: it
+    carries `distance`, until a later per-exercise indoor marker). A routine
+    with a Cardio Focus whose exercises are strength lifts asks for no
+    location and still registers as Running. Held off-device by
+    `WatchGpsExerciseOnlyTests`
+    (`testS20501BoxingUnderSportsIsIndoor`,
+    `…testS20502AWalkUnderCardioIsOutdoor`,
+    `…testS20503AStationaryBikeUnderCardioStaysGpsUntilAnIndoorFlagExists`,
+    `…testS20504ACardioFocusRoutineOfSquatsAsksForNoGps`,
+    `…testS20505ASportsExerciseWithoutDistanceIsIndoor`,
+    `…testS20507CardioOnJumpRopeThenTheRunStartsLocationLate`) in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchGpsExerciseOnlyTests.swift`
+    and by `test/watch_sensor_recording_test.dart` (S-20509).
+51. **The watch logs by the modality — (owner, plan 206).** In a workout the
+    watch started from a modality, the screen follows the modality, not the
+    exercise's capabilities: tap **Cardio** and pick an exercise that can be
+    sets or timed — it opens the timed screen (Start, then Log);
+    **Resistance** opens the sets screen; **Isometric** opens the hold
+    screen; **Sports** opens periods. **Add Exercise** inside that same
+    workout does the same for the exercise it adds. A Free workout (no
+    modality) keeps the guess from the exercise's capabilities, and a
+    routine's own slots keep the kinds the routine declared. A workout that
+    was already running before the update keeps its old screens. Held
+    off-device by `WatchModalityKindTests`
+    (`testS20601ACardioPickWithSetsAndTimeDeclaresTimed`,
+    `…testS20602EveryModalityDeclaresItsOwnKind`,
+    `…testS20603AFreeSessionSlotDeclaresNothing`,
+    `…testS20604AnExerciseAddedToAModalitySessionDeclaresTheModalitysKind`,
+    `…testS20605TheRestLabelsAndTheScreenReadTheSameDeclaredKind`,
+    `…testS20608ARoutinesOwnSlotKeepsItsKindAndAnAddedOneTakesTheFocus`) in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchModalityKindTests.swift`
+    and by the phone's `test/watch_wrist_declared_kind_test.dart` (S-20606).
+52. **Old workouts leave the watch's store — (owner, plan 207).** Nothing on
+    screen changes, so the check is that the watch stays fast and keeps what
+    it must: after more than 20 workouts have synced to the phone, relaunch
+    the watch app — it opens as quickly as with 5 workouts, and the current
+    or last workout, the routines, the exercise list, the food list, the
+    water count and the personal bests are all still there; a workout done
+    while the phone was away (not yet synced) is still on the watch and
+    reaches the phone at the next sync; nothing the phone already has is
+    lost. Held off-device by `WatchSettledSessionPruneTests`
+    (`testS20701TheOldestSettledWorkoutsLeaveAndTheNewestTwentyStayWhole`,
+    `…testS20702AnUnsyncedWorkoutIsKeptWhateverItsAge`,
+    `…testS20703AWristWorkoutWhoseEndIsUnacknowledgedIsKept`,
+    `…testS20704AnUnfinishedOldSessionIsNeverRetired`,
+    `…testS20706ANothingToRetirePruneWritesNothing`,
+    `…testS20711AnEngineOverFortySettledWorkoutsKeepsTwentyAfterRelaunch`,
+    `…testS20716InlineReadingsOfARetiredWorkoutLeaveAndItsSideFileToo`) in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchSettledSessionPruneTests.swift`
+    and by the launch pin
+    `WatchStoreGrowthTests.testS15601TheLaunchRestoreAsksForThePrunes`
+    (the retire precedes `engine.restore()`, the readings prune follows it).

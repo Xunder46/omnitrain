@@ -243,7 +243,8 @@ no frame to the phone, and the list the picker offers is the one the free
 workout's picker offered. The pick is what creates the session — one creation
 carrying the tapped modality and the picked exercise as its only slot, the shape
 a routine's start uses — so the phone hears a single session that already holds
-the exercise, and the slot keeps the exercise's own capabilities and Health kind,
+the exercise, and the slot declares the modality's effort kind and keeps the
+exercise's own capabilities and Health kind,
 which is what types the workout: the kind the phone named where it named one, the
 modality's own otherwise. Verified by
 `WatchModalityStartTests.testS17604ATapRemembersItsModalityAndCreatesNothing`,
@@ -251,7 +252,7 @@ modality's own otherwise. Verified by
 `…testS17605ThePickCreatesOneSessionWithTheModalityAndTheExercise`,
 `…testS17605TheSessionCarriesTheExercisesNamedHealthKind`,
 `…testS17605EveryCellCreatesItsOwnModalityWithTheSameExercise`,
-`…testS17605ASecondPickReturnsTheHeldSessionAndEmitsNothing`,
+`…testS17605ASecondPickReturnsTheHeldSessionAndAddsThePick`,
 `…testS17607AWalkThePhoneNamedIsAWalkEvenUnderCardio`,
 `…testS17607AnUnnamedExerciseTakesItsCellsType`,
 `…testS17608TheStartModePickerOffersTheWholeListTheFreeWorkoutOffered`, and, for
@@ -265,6 +266,18 @@ the view `swift test` cannot compile,
 `…testS17612TheFreeWorkoutButtonAndItsHelperAreGone`,
 `…testS17612ThePathsStillOfferTheFreeWorkout` and
 `…testS17613TheEmptyRoutinesSentenceIsUnchanged`.
+
+**The slot the pick creates declares the modality's effort kind.** Cardio
+declares `timed`, Resistance `set`, Isometric `drill` and Sports `round`
+(`WatchEffortKind.forModality`), so the logging screen and the rest labels
+follow the modality instead of the exercise's capabilities — and a Free
+workout, with no modality, declares nothing and still resolves from
+capabilities. Verified by `WatchModalityKindTests`
+(`testS20601ACardioPickWithSetsAndTimeDeclaresTimed`,
+`…testS20602EveryModalityDeclaresItsOwnKind`,
+`…testS20603AFreeSessionSlotDeclaresNothing`,
+`…testS20605TheRestLabelsAndTheScreenReadTheSameDeclaredKind`) in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchModalityKindTests.swift`.
 
 **Today's planned workout is the first control below the grid.** The wrist's
 today plan is the Planned button, above the "No routines yet" line and the

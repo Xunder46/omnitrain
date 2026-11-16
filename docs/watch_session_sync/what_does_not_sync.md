@@ -234,9 +234,11 @@ remains out is listed below.
   (`WatchSessionEngineTests.testS124ADeletionSurvivesAWristRelaunch`,
   `…testS124TheLensRidesOnTheRowsWrittenAfterIt`, and
   `WatchFileStoreTests.testS124TheLensSurvivesAStoreReopen` in
-  `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift`). By
-  design the wrist's record file is never trimmed — the lens is the only thing a
-  deletion changes.
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift`). A
+  deletion never trims the wrist's record file — the lens is the only thing a
+  deletion changes; only a workout that is over and fully synced, beyond the
+  newest 20, leaves the file at launch (plan 207,
+  `WatchSettledSessionPruneTests`).
 - **Sensor readings stay on the wrist; only their summaries travel.** The watch
   app records heart rate, steps, active energy and (for work with a distance)
   GPS into its own store through the workout session
