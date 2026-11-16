@@ -94,7 +94,9 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
       final service = StatsProgressService(widget.workoutState.repository);
       final totals = await service.computeTotals();
       final progressData = await service.computeProgressData();
-      final summaries = await service.computeExerciseMetrics();
+      final summaries = await service.computeExerciseMetrics(
+        bestSingleSession: true,
+      );
       // Whole food history, not a recent window: this is the way back to
       // nutrition once the Stats screen's Fuel row has aged out of view.
       final nutritionTrend = await service.computeNutritionTrend(days: null);

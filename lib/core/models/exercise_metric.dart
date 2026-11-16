@@ -91,7 +91,10 @@ class ExerciseMetricSummary {
   final ExerciseSection section;
 
   /// The best value over the range, never null: an exercise with no usable data
-  /// reports a zero on the metric its section uses.
+  /// reports a zero on the metric its section uses. For a cardio exercise with
+  /// no distance and for a rounds exercise the all-time screens read it as the
+  /// best one session, the Instruments rows as the window's total
+  /// (`computeExerciseMetrics`'s `bestSingleSession`).
   final NativeValue best;
 
   /// One point per training day, oldest first, each in whatever metric that day

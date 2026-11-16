@@ -106,13 +106,24 @@ Each section reads its exercises by one number, the exercise's **native value**:
 | Section | Metric | Second figure |
 |---------|--------|---------------|
 | Resistance | Estimated one-rep max, or the rep count for a reps-axis exercise | — |
-| Cardio | Pace, or total duration when no distance qualifies | — |
+| Cardio | Pace, or the longest single session's duration when no distance qualifies (these screens; a Stats window row keeps its total) | — |
 | Isometric | Longest hold | Total hold time |
-| Sports | Rounds completed | Total round minutes |
+| Sports | Rounds completed in the best session (these screens; a Stats window row keeps its total) | That session's round minutes |
 
 A sports entry counts rounds by the rule `StatsProgressService` applies rather
 than by the stored `completed` flag; the rule itself is stated in
 [Services and Utils](state_management/services_and_utils.md).
+
+The Cardio duration and the Sports round count are a best, not a running total:
+a cardio exercise with no distance anywhere in its history reads as its longest
+single session, and a rounds exercise as the session with the most rounds (its
+round minutes are that session's). A session is one completed session, not a
+calendar day, so two sessions on one day give the larger, and the trend line,
+which shows a day's own total, can peak above the Best on such a day. A cardio
+exercise with a distance keeps its fastest pace. Both screens ask the service for
+this (`computeExerciseMetrics(bestSingleSession: true)`); the Instruments rows keep
+the window's labelled totals, because that row is a window readout rather than a
+record.
 
 A resistance exercise is reps-axis when any set anywhere in its history carries
 reps with no load, so the axis is a property of the exercise's history rather than
@@ -125,8 +136,10 @@ An exercise with no usable data reports a zero on the metric its section uses
 instead of being dropped, so no entry can appear without a value.
 
 Verified by `test/exercise_metric_service_test.dart` (`S-904`, `S-906`, `S-907`,
-`S-908`) and `test/records_and_trends_screen_test.dart` (`S-915` for the rendered
-label).
+`S-908`), `test/records_and_trends_screen_test.dart` (`S-915` for the rendered
+label), `test/stats_best_single_session_test.dart` (`S-21201` to `S-21204`,
+`S-21207` to `S-21209`) and `test/stats_best_single_session_screen_test.dart`
+(`S-21205`, `S-21206`).
 
 ---
 

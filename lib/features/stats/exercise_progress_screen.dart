@@ -65,7 +65,9 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
     });
     try {
       final service = StatsProgressService(widget.workoutState.repository);
-      final summaries = await service.computeExerciseMetrics();
+      final summaries = await service.computeExerciseMetrics(
+        bestSingleSession: true,
+      );
       ExerciseMetricSummary? summary;
       for (final candidate in summaries) {
         if (candidate.exerciseId == widget.exerciseId) {

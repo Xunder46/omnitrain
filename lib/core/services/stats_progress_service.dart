@@ -1080,9 +1080,16 @@ class StatsProgressService {
   /// inside the range; the native value is the best the section's own rule
   /// yields over the range. Both are computed here once, so Records & Trends,
   /// Exercise Progress and the Instruments rows read the same answer.
+  ///
+  /// With [bestSingleSession] an exercise whose value is a running total — a
+  /// cardio duration with no distance anywhere, or a round count — reads as
+  /// its best one session instead (plan 211). Records & Trends and Exercise
+  /// Progress pass it; the Instruments rows do not, so a window row keeps its
+  /// labelled total.
   Future<List<ExerciseMetricSummary>> computeExerciseMetrics({
     int? fromMs,
     int? toMs,
+    bool bestSingleSession = false,
   }) async {
     final history = await _loadHistory();
 
@@ -1123,9 +1130,12 @@ class StatsProgressService {
       if (section == null) continue;
       final isRepsAxis = repsAxis.contains(entry.key);
 
-      final best =
+      var best =
           await _nativeValueFor(logs, section, isRepsAxis) ??
           _zeroValueFor(section, isRepsAxis);
+      if (bestSingleSession) {
+        best = await _bestSingleSessionValue(logs, section, isRepsAxis, best);
+      }
 
       final logsByDay = <int, List<_ExerciseLog>>{};
       for (final log in logs) {
@@ -1578,6 +1588,48 @@ class StatsProgressService {
       case ExerciseSection.sports:
         return _sportsValue(logs);
     }
+  }
+
+  /// The best one session's value for an exercise whose all-history [total] is
+  /// a running total: a cardio `duration` (no distance anywhere in its history)
+  /// or a `rounds` count (plan 211). Every other reading, and the zero
+  /// fallback, is returned as it was.
+  ///
+  /// A session is the same `session.id`, not a calendar day; each session is
+  /// read by the section's own rule over that session's logs of the exercise,
+  /// so a round count's second figure is that session's round minutes. Sessions
+  /// are walked oldest first, and only a strictly larger value wins, so a tie
+  /// keeps the earlier session.
+  Future<NativeValue> _bestSingleSessionValue(
+    List<_ExerciseLog> logs,
+    ExerciseSection section,
+    bool isRepsAxis,
+    NativeValue total,
+  ) async {
+    if (total.metric != NativeMetric.duration &&
+        total.metric != NativeMetric.rounds) {
+      return total;
+    }
+    final bySession = <String, List<_ExerciseLog>>{};
+    for (final log in logs) {
+      (bySession[log.session.id] ??= <_ExerciseLog>[]).add(log);
+    }
+    final sessions = bySession.values.toList()
+      ..sort((a, b) {
+        final byStart = a.first.session.startedAtMs.compareTo(
+          b.first.session.startedAtMs,
+        );
+        return byStart != 0
+            ? byStart
+            : a.first.session.id.compareTo(b.first.session.id);
+      });
+    NativeValue? winner;
+    for (final sessionLogs in sessions) {
+      final value = await _nativeValueFor(sessionLogs, section, isRepsAxis);
+      if (value == null || value.metric != total.metric) continue;
+      if (winner == null || value.value > winner.value) winner = value;
+    }
+    return winner == null || winner.value <= 0 ? total : winner;
   }
 
   /// The zero an exercise with no usable data reports, on the metric its
