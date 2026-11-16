@@ -339,6 +339,8 @@ final class WatchSessionEngineTests: XCTestCase {
         // `readLaunch` is `readAll` narrowed to the readings a launch needs, and
         // `archiveSensorSamples` moves a terminal session's readings to their own
         // file without dropping one — the drop is still the settle gate's.
+        // Plan 207 adds the seventh prune on purpose: `pruneSettledSessions`
+        // retires settled, fully synced workouts beyond the newest 20 at launch.
         let allowed: Set<String> = [
             "append",
             "readAll",
@@ -350,6 +352,7 @@ final class WatchSessionEngineTests: XCTestCase {
             "pruneBests",
             "pruneWater",
             "pruneWaterTaps",
+            "pruneSettledSessions",
         ]
         let verbs = "update|delete|remove|replace|edit|overwrite|write|clear"
             + "|purge|wipe|reset|drop|truncate|erase|forget|modify|mutate|destroy|set"

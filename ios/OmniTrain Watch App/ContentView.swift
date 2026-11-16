@@ -364,6 +364,10 @@ final class WatchAppHost: ObservableObject {
     func restore() async {
         // A stranded workout must end before a restored session can open one.
         await recoverStrandedWorkout()
+        // Plan 207: a workout that is over and fully synced, beyond the newest
+        // 20, leaves the store before the engine reads it, so a launch no longer
+        // decodes every workout the install ever recorded.
+        await engine.pruneSettledSessions()
         await engine.restore()
         // The launch prune (D-15601): a session the phone has taken in full gives
         // up its raw readings. Nothing else in a launch drops them, so without

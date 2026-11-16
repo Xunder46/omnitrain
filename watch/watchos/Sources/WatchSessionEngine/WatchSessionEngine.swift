@@ -2030,6 +2030,10 @@ public final class WatchSessionEngine: ObservableObject {
         return .send(envelope)
     }
 
+    /// The newest settled workouts the watch keeps; older ones are retired at
+    /// launch (plan 207).
+    public static let settledSessionsKept = 20
+
     /// How long an ended session the phone has not taken keeps its raw readings
     /// (D-15602). Long enough for a phone that was left in a locker, off, or out
     /// of range to come back; short enough that a watch whose phone never comes
@@ -2094,6 +2098,15 @@ public final class WatchSessionEngine: ObservableObject {
         let dropped = Set(pruned)
         storedSensorSamples.prune { dropped.contains($0.recordId) }
         return pruned
+    }
+
+    /// Retires every settled workout beyond the newest `settledSessionsKept`
+    /// (plan 207). Meant to run at launch BEFORE `restore()`, so the engine
+    /// never holds rows the store no longer has; the store decides from its own
+    /// rows and writes nothing when there is nothing to retire.
+    @discardableResult
+    public func pruneSettledSessions() async -> [String] {
+        await store.pruneSettledSessions(keepingNewest: Self.settledSessionsKept)
     }
 
     /// The current version of each session the store holds, by session id — the

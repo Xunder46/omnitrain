@@ -135,6 +135,10 @@ public final class FileWatchSessionStore: WatchSessionStore {
         locked { pruneWaterTapsLocked(cutoff) }
     }
 
+    public func pruneSettledSessions(keepingNewest: Int) async -> [String] {
+        locked { pruneSettledSessionsLocked(keepingNewest) }
+    }
+
     // MARK: - The store's operations
 
     private func appendLocked(_ record: StoredWatchRecord) -> StoredWatchRecord {
@@ -551,6 +555,31 @@ public final class FileWatchSessionStore: WatchSessionStore {
         guard compact(survivors) else { return [] }
         adopt(survivors)
         return dropped
+    }
+
+    private func pruneSettledSessionsLocked(_ keepingNewest: Int) -> [String] {
+        let loaded = loadRows()
+        guard !unsupported else { return [] }
+
+        let retiring = retiredSessionIds(in: loaded, keepingNewest: keepingNewest)
+        let dropped = retiredRecordIds(in: loaded, retiring: retiring)
+        let drop = Set(dropped)
+        let survivors = loaded.filter { row in !drop.contains(row.recordId) }
+
+        // A prune that finds nothing is not a write (D-3821): the file keeps
+        // every byte it had, marker and torn tail included.
+        guard !dropped.isEmpty else { return [] }
+        guard compact(survivors) else { return [] }
+        adopt(survivors)
+
+        // A retired session's side file holds nothing the store still owns: the
+        // same removal `pruneSensorSamplesLocked` makes (D-17302).
+        for sessionId in retiring {
+            guard let url = sampleSideFiles[sessionId] else { continue }
+            try? FileManager.default.removeItem(at: url)
+            sampleSideFiles[sessionId] = nil
+        }
+        return Array(dropped)
     }
 
     /// Runs `body` under the lock. Synchronous by construction, so no lock is

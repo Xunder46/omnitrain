@@ -225,6 +225,17 @@ public protocol WatchSessionStore {
     /// `loggedAt` cannot be read, every other kind of row and the confirmation
     /// rows themselves stay. A prune that drops nothing writes nothing.
     func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String]
+
+    /// Drops every settled, fully synced session beyond the newest
+    /// `keepingNewest`, returning the record ids that were dropped.
+    ///
+    /// The gate is the rows, never the clock (plan 207): a session retires when
+    /// its newest row is terminal, every entry the phone must receipt is
+    /// acknowledged, and a wrist-created session's end is acknowledged too — an
+    /// unsynced workout is kept for as long as it is unsynced. A prune that
+    /// finds nothing writes nothing; a prune that cannot be written drops
+    /// nothing.
+    func pruneSettledSessions(keepingNewest: Int) async -> [String]
 }
 
 /// The stores that stand behind `WatchSessionStore` without owning its new
@@ -236,6 +247,10 @@ public extension WatchSessionStore {
     }
 
     func archiveSensorSamples(_ sessionId: String) async -> [String] {
+        []
+    }
+
+    func pruneSettledSessions(keepingNewest: Int) async -> [String] {
         []
     }
 }
@@ -261,6 +276,143 @@ func settledSensorSessionIds(in rows: [StoredWatchRecord]) -> Set<String> {
             }
             .map(\.sessionId)
     )
+}
+
+/// The source value a wrist-created session's rows carry — the engine's
+/// `wristSource`, private there, named again beside the retire gate that reads
+/// it.
+private let wristCreatedSource = "watch"
+
+/// The session ids the launch retire drops (plan 207): settled sessions whose
+/// every owed observation is synced, beyond the newest `keepingNewest`.
+///
+/// A session is settled when its newest session row is `completed` or
+/// `abandoned` — the rule `settledSensorSessionIds` reads. On top of that every
+/// observation row of it whose kind is one of `set, timed, round, hold, rest,
+/// sessionEnd, effortRating` must be synced: its row carries a receipt, or some
+/// confirmation row names it. A session the wrist created (its creation row —
+/// the lowest-sequence session row — has `source == wristCreatedSource`, the
+/// engine's `wristSource`) is held one step longer: its `session_end`
+/// (`WatchSessionCapture.sessionEndId`) must exist and be synced too.
+///
+/// Never retired: a session still active, a settled one with any unsynced
+/// entry or an unacknowledged wrist end (an unsynced workout is kept for as
+/// long as it is unsynced — the readings prune's 14-day rule is not used), and
+/// the newest `keepingNewest` settled ones. Survivors are ordered newest first
+/// by the highest session-row `sequence`.
+func retiredSessionIds(in rows: [StoredWatchRecord], keepingNewest: Int) -> Set<String> {
+    var newest: [String: WatchSessionRecord] = [:]
+    var creation: [String: WatchSessionRecord] = [:]
+    for row in rows {
+        guard case .session(let value) = row else { continue }
+        let id = value.sessionId
+        if let existing = newest[id], existing.sequence >= value.sequence {
+            continue
+        }
+        newest[id] = value
+    }
+    for row in rows {
+        guard case .session(let value) = row else { continue }
+        let id = value.sessionId
+        if let existing = creation[id], existing.sequence <= value.sequence {
+            continue
+        }
+        creation[id] = value
+    }
+
+    let observations = rows.compactMap { row -> WatchObservationRecord? in
+        guard case .observation(let value) = row else { return nil }
+        return value
+    }
+    let confirmations = rows.compactMap { row -> WatchConfirmationRecord? in
+        guard case .confirmation(let value) = row else { return nil }
+        return value
+    }
+    let syncedIds = Set(
+        applyConfirmations(observations, confirmations)
+            .filter { $0.confirmedAt != nil }
+            .map(\.recordId)
+    )
+
+    // The kinds the phone must receipt before a session may retire; water and
+    // food taps have their own cutoff and are not owed here (plan 96 D-43).
+    let receiptKinds: Set<String> = [
+        WatchObservationKind.set,
+        WatchObservationKind.timed,
+        WatchObservationKind.round,
+        WatchObservationKind.hold,
+        WatchObservationKind.rest,
+        WatchObservationKind.sessionEnd,
+        WatchObservationKind.effortRating,
+    ]
+    var owedBySession: [String: [WatchObservationRecord]] = [:]
+    for observation in observations where receiptKinds.contains(observation.kind) {
+        owedBySession[observation.sessionId, default: []].append(observation)
+    }
+
+    var candidates: [(id: String, sequence: Int)] = []
+    for (sessionId, session) in newest {
+        guard session.status == WatchSessionStatus.completed
+            || session.status == WatchSessionStatus.abandoned
+        else { continue }
+        let owed = owedBySession[sessionId] ?? []
+        guard owed.allSatisfy({ syncedIds.contains($0.recordId) }) else { continue }
+        if let created = creation[sessionId], created.source == wristCreatedSource {
+            let endId = WatchSessionCapture.sessionEndId(sessionId)
+            guard let end = observations.first(where: { $0.recordId == endId }),
+                  syncedIds.contains(end.recordId)
+            else { continue }
+        }
+        candidates.append((sessionId, session.sequence))
+    }
+
+    let ordered = candidates.sorted { $0.sequence > $1.sequence }
+    return Set(ordered.dropFirst(keepingNewest).map(\.id))
+}
+
+/// The record ids a retire drops for `retiring` sessions (plan 207): every
+/// `session`, `timer`, `ratingPrompt` and inline `sensorSample` row of them,
+/// every `observation` row of them except `waterGlass` and
+/// `nutritionQuickLog` — those have their own cutoff and the water and food
+/// counts read them (plan 96 D-43) — and every `confirmation` row whose
+/// `observationIds` are all among the dropped observations. A confirmation
+/// that also names a kept observation stays whole. Nothing else is touched.
+func retiredRecordIds(
+    in rows: [StoredWatchRecord],
+    retiring sessions: Set<String>
+) -> Set<String> {
+    guard !sessions.isEmpty else { return [] }
+
+    var retired: Set<String> = []
+    var droppedObservations: Set<String> = []
+    for row in rows {
+        let id = row.sessionId
+        switch row {
+        case .session where sessions.contains(id),
+             .timer where sessions.contains(id),
+             .ratingPrompt where sessions.contains(id),
+             .sensorSample where sessions.contains(id):
+            retired.insert(row.recordId)
+        case .observation(let value):
+            guard sessions.contains(value.sessionId),
+                  value.kind != WatchObservationKind.waterGlass,
+                  value.kind != WatchObservationKind.nutritionQuickLog
+            else { continue }
+            retired.insert(value.recordId)
+            droppedObservations.insert(value.recordId)
+        default:
+            continue
+        }
+    }
+
+    for row in rows {
+        guard case .confirmation(let value) = row else { continue }
+        guard !value.observationIds.isEmpty,
+              value.observationIds.allSatisfy({ droppedObservations.contains($0) })
+        else { continue }
+        retired.insert(value.recordId)
+    }
+    return retired
 }
 
 /// `rows`' sample rows that stay in the launch set: every reading except those
@@ -564,5 +716,19 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             return false
         }
         return dropped
+    }
+
+    public func pruneSettledSessions(keepingNewest: Int) async -> [String] {
+        locked { pruneSettledSessionsLocked(keepingNewest) }
+    }
+
+    private func pruneSettledSessionsLocked(_ keepingNewest: Int) -> [String] {
+        let retiring = retiredSessionIds(in: rows, keepingNewest: keepingNewest)
+        guard !retiring.isEmpty else { return [] }
+
+        let dropped = retiredRecordIds(in: rows, retiring: retiring)
+        let drop = Set(dropped)
+        rows.removeAll { row in drop.contains(row.recordId) }
+        return Array(dropped)
     }
 }

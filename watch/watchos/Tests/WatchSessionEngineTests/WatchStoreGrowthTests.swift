@@ -296,6 +296,18 @@ final class WatchStoreGrowthTests: XCTestCase {
             settled.lowerBound > restored.upperBound,
             "the prune runs after the engine restored — a prune before it sees nothing"
         )
+        // Plan 207: the retire of settled, fully synced workouts beyond the
+        // newest 20 runs before the engine reads the store, so the engine never
+        // holds rows the store no longer has.
+        let retired = try XCTUnwrap(
+            body.range(of: "await engine.pruneSettledSessions()"),
+            "restore() retires settled workouts beyond the newest 20 (plan 207)"
+        )
+        XCTAssertTrue(
+            retired.upperBound < restored.lowerBound,
+            "the retire runs before the engine reads the store (plan 207): after it "
+                + "the engine would hold rows the store no longer has"
+        )
         // Plan 96 D-43: `pruneConfirmed()` would drop water taps the water count
         // still reads, so it has no production caller. The settled prune is the
         // one the launch needs.
