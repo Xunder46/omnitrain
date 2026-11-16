@@ -219,34 +219,35 @@ final class WatchModalityStartTests: XCTestCase {
         }
     }
 
-    func testS17605ASecondPickReturnsTheHeldSessionAndEmitsNothing() async throws {
+    // Plan 201, D-20105: a held ACTIVE session takes a pick as one more
+    // exercise instead of ignoring it. A session that already holds exercises
+    // never shows the Start surface, so this is the paths-level rule a menu
+    // pick reaches; the row still answers (one session at a time, D-171) and
+    // the held modality stays (D-12591).
+    func testS17605ASecondPickReturnsTheHeldSessionAndAddsThePick() async throws {
         let harness = try await WatchModalityStartFixture.wrist()
         let plank = try WatchModalityStartFixture.exercise("ex-plank", of: harness)
         let squat = try WatchModalityStartFixture.exercise("ex-goblet-squat", of: harness)
         let held = await harness.paths.startModalityWorkout("cardio_endurance", with: plank)
-        let framesBefore = harness.emitted
-        let rowsBefore = await sessionRows(harness)
 
         let second = await harness.paths.startModalityWorkout("sports", with: squat)
 
         XCTAssertEqual(
-            second.recordId,
-            held.recordId,
+            second.sessionId,
+            held.sessionId,
             "S-17605 one session at a time: the held row answers, whatever starts it (D-171)"
         )
         XCTAssertEqual(
             second.modality,
             "cardio_endurance",
-            "S-17605 and the held session keeps the modality it started with"
+            "S-17605 and the held session keeps the modality it started with (D-12591)"
         )
-        XCTAssertEqual(second.exercises.count, 1, "S-17605 the refused pick adds no slot")
         XCTAssertEqual(
-            harness.emitted.map { $0["type"] as? String },
-            framesBefore.map { $0["type"] as? String },
-            "S-17605 a refused start emits nothing"
+            second.exercises.compactMap { $0["exerciseId"] as? String },
+            ["ex-plank", "ex-goblet-squat"],
+            "S-20105 the pick becomes one more exercise of the held session"
         )
-        let rowsAfter = await sessionRows(harness)
-        XCTAssertEqual(rowsAfter.count, rowsBefore.count, "S-17605 and appends no row")
+        XCTAssertEqual(second.currentExerciseIndex, 1, "S-20105 the session moves to the pick")
     }
 
     // MARK: - S-17607 the pick's session carries the modality into Health's type
@@ -339,5 +340,76 @@ final class WatchModalityStartTests: XCTestCase {
         XCTAssertFalse(cancelled, "S-17606 a session holding an exercise is never given up")
         XCTAssertEqual(harness.engine.session?.status, WatchSessionStatus.active)
         XCTAssertEqual(harness.engine.session?.sessionId, session.sessionId)
+    }
+
+    // MARK: - S-20112..S-20114 a modality pick over a held session (plan 201, D-20105)
+
+    /// A held ACTIVE session with no exercises and no modality: the session the
+    /// engine creates empty, waiting for its first pick.
+    private func heldEmptySession() async throws -> (WatchStartHarness, WatchSessionRecord) {
+        let harness = try await WatchModalityStartFixture.wrist()
+        let held = await harness.engine.createSession(modality: nil, exercises: [])
+        return (harness, held)
+    }
+
+    func testS20112AModalityPickOverAHeldEmptySessionAddsTheExercise() async throws {
+        let (harness, held) = try await heldEmptySession()
+        let plank = try WatchModalityStartFixture.exercise("ex-plank", of: harness)
+        harness.paths.beginModalityStart("cardio_endurance")
+
+        let row = await harness.paths.startModalityWorkout("cardio_endurance", with: plank)
+
+        XCTAssertEqual(
+            row.sessionId,
+            held.sessionId,
+            "S-20112 the held session receives the pick instead of a new one starting"
+        )
+        XCTAssertEqual(
+            row.exercises.count,
+            1,
+            "S-20112 the pick becomes the session's one exercise"
+        )
+        XCTAssertEqual(row.currentExerciseIndex, 0, "S-20112 the session is on the pick")
+        XCTAssertNil(harness.paths.pendingModalityStart, "S-20112 the pick ends the start mode")
+        XCTAssertEqual(
+            harness.engine.session?.sessionId,
+            held.sessionId,
+            "S-20112 the engine still holds the one session"
+        )
+    }
+
+    func testS20113AModalityPickOverAnEndedSessionCreatesANewOne() async throws {
+        let (harness, held) = try await heldEmptySession()
+        _ = await harness.engine.finishSession()
+        let plank = try WatchModalityStartFixture.exercise("ex-plank", of: harness)
+        harness.paths.beginModalityStart("cardio_endurance")
+
+        let row = await harness.paths.startModalityWorkout("cardio_endurance", with: plank)
+
+        XCTAssertNotEqual(
+            row.recordId,
+            held.recordId,
+            "S-20113 an ended session holds no slot, so the pick starts a new one"
+        )
+        XCTAssertEqual(
+            row.modality,
+            "cardio_endurance",
+            "S-20113 the S-17605 creation path runs unchanged"
+        )
+        XCTAssertEqual(row.exercises.count, 1, "S-20113 one session, holding the one exercise")
+    }
+
+    func testS20114TheHeldSessionKeepsItsOwnModality() async throws {
+        let (harness, held) = try await heldEmptySession()
+        XCTAssertNil(held.modality, "S-20114 the held session carries no modality")
+        let plank = try WatchModalityStartFixture.exercise("ex-plank", of: harness)
+        harness.paths.beginModalityStart("cardio_endurance")
+
+        _ = await harness.paths.startModalityWorkout("cardio_endurance", with: plank)
+
+        XCTAssertNil(
+            harness.engine.session?.modality,
+            "S-20114 the held session's modality stays nil after the pick (D-12591)"
+        )
     }
 }

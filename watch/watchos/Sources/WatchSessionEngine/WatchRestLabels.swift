@@ -218,5 +218,16 @@ public func deriveRestLabels(
             nextSlotId: slots[index].slotId
         )
     }
+    // Plan 201, D-20101: every exercise is done, so the list starts over. Next
+    // goes on to the following exercise in turn (the last is followed by the
+    // first), done or not; a one-exercise ladder has nowhere to go.
+    if slots.count > 1 {
+        let following = slots[(here + 1) % slots.count]
+        return WatchRestLabels(
+            now: now,
+            next: "\(movePrefix)\(following.name)",
+            nextSlotId: following.slotId
+        )
+    }
     return WatchRestLabels(now: now, next: WatchRestLabelCopy.nothingNext)
 }

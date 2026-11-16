@@ -200,13 +200,13 @@ public struct WatchMenuView: View {
     /// they are actually about to make.
     private var finishRow: some View {
         Button(Self.finishLabel) {
-            if state.hasLoggedEfforts {
+            if state.hasWorkToSave {
                 confirmingFinish = true
             } else {
                 confirmingDiscard = true
             }
         }
-        .buttonStyle(.bordered)
+        .watchProminent()
         .alert(WatchMenuCopy.confirmTitle, isPresented: $confirmingFinish) {
             Button(WatchMenuCopy.confirmCancel, role: .cancel) {}
             Button(WatchMenuCopy.confirmFinish) {
@@ -231,7 +231,8 @@ public struct WatchMenuView: View {
         Button(WatchMenuCopy.discardLabel) {
             confirmingDiscard = true
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
         .alert(WatchMenuCopy.discardConfirmTitle, isPresented: $confirmingDiscard) {
             Button(WatchMenuCopy.discardConfirmCancel, role: .cancel) {}
             Button(WatchMenuCopy.discardConfirmDiscard, role: .destructive) {

@@ -203,9 +203,9 @@ final class WatchRestNextHoldTests: XCTestCase {
         await state.leaveRest { await harness.menu.jump(to: $0) }
         try await expectHold(harness, state, on: "D")
 
-        // Everything is logged once: nothing is left to announce.
-        XCTAssertNil(state.restLabels.nextSlotId)
-        XCTAssertEqual(state.restLabels.next, WatchRestLabelCopy.nothingNext)
+        // Everything is logged once: the list starts over (plan 201, D-20101).
+        XCTAssertEqual(state.restLabels.nextSlotId, "A")
+        XCTAssertEqual(state.restLabels.next, "Next exercise: Plank")
         for id in ["A", "B", "C", "D"] {
             XCTAssertEqual(loggedCount(harness, id), 1, "\(id) holds exactly its own entry")
         }
@@ -235,6 +235,37 @@ final class WatchRestNextHoldTests: XCTestCase {
         // After C: D is done, so the search wraps to A (B is done too).
         XCTAssertEqual(state.restLabels.nextSlotId, "A")
         XCTAssertEqual(state.restLabels.next, "Next exercise: Plank")
+    }
+
+    func testS20105TheListStartsOverAfterTheLastExerciseAndKeepsCycling() async throws {
+        let (harness, state) = await holdLadder()
+
+        try await expectHold(harness, state, on: "A")
+        await harness.menu.jump(to: "B")
+        await state.endRest()
+        try await expectHold(harness, state, on: "B")
+        await harness.menu.jump(to: "C")
+        await state.endRest()
+        try await expectHold(harness, state, on: "C")
+        await harness.menu.jump(to: "D")
+        await state.endRest()
+        try await expectHold(harness, state, on: "D")
+
+        // The last exercise is followed by the first (plan 201, D-20101).
+        XCTAssertEqual(state.restLabels.nextSlotId, "A")
+        await state.leaveRest { await harness.menu.jump(to: $0) }
+        XCTAssertEqual(currentSlotId(harness), "A", "S-20105 the session moves back to the top")
+
+        try await expectHold(harness, state, on: "A")
+        XCTAssertEqual(loggedCount(harness, "A"), 2, "S-20105 the second hold lands on A")
+        XCTAssertEqual(loggedCount(harness, "B"), 1, "S-20105 B holds exactly its own entry")
+        XCTAssertEqual(loggedCount(harness, "C"), 1, "S-20105 C holds exactly its own entry")
+        XCTAssertEqual(loggedCount(harness, "D"), 1, "S-20105 D holds exactly its own entry")
+        XCTAssertEqual(
+            state.restLabels.nextSlotId,
+            "B",
+            "S-20105 the cycle goes on from A"
+        )
     }
 
     // MARK: - Plan 149 PR 2: a planned amount on the wrist

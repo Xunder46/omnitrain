@@ -617,10 +617,11 @@ struct ContentView: View {
 
     /// The session menu's one construction site (`menuState`), read by both the
     /// pager and the menu sheet (D-3114). Every access constructs a plain
-    /// wrapper over the same engine, paths and rating, so the instances are
+    /// wrapper over the same engine, paths, rating and the logging state End
+    /// logs a running effort through (plan 201), so the instances are
     /// equivalent: the pager pages the ladder through it, and the sheet hosts it.
     private var menuState: WatchMenuState {
-        WatchMenuState(engine: host.engine, paths: host.paths, rating: host.rating)
+        WatchMenuState(engine: host.engine, paths: host.paths, rating: host.rating, logging: host.logging)
     }
 
     /// D-24's second surface: logging, with the session menu one tap away behind

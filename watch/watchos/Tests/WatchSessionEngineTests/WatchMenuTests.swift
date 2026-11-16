@@ -1634,8 +1634,8 @@ final class WatchMenuDiscardTests: XCTestCase {
 
     // MARK: - S-17101 the row sits at the bottom of the menu
 
-    /// D-17101: the Discard row is the menu's last row, below End Session,
-    /// `.bordered` like the menu's other rows and never disabled (D-17103).
+    /// D-17101: the Discard row is the menu's last row, below End Session, the
+    /// one filled red row, and never disabled (D-17103).
     func testS17101TheDiscardRowIsTheMenusLastRow() throws {
         let lines = sourceLines(try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift"))
         let finish = try XCTUnwrap(usageLine(of: "finishRow", in: lines), "S-17101 the menu has its End Session row")
@@ -1645,8 +1645,16 @@ final class WatchMenuDiscardTests: XCTestCase {
 
         let body = try XCTUnwrap(propertyBlock("discardRow", in: lines), "S-17101 the row is the menu's own builder")
         XCTAssertTrue(
+            body.contains { $0.trimmingCharacters(in: .whitespaces) == ".buttonStyle(.borderedProminent)" },
+            "S-17101 the Discard row is the one filled red row"
+        )
+        XCTAssertTrue(
+            body.contains { $0.trimmingCharacters(in: .whitespaces) == ".tint(.red)" },
+            "S-17101 the Discard row is the one filled red row"
+        )
+        XCTAssertFalse(
             body.contains { $0.trimmingCharacters(in: .whitespaces) == ".buttonStyle(.bordered)" },
-            "S-17101 the row wears the menu's bordered style"
+            "S-17101 the Discard row is the one filled red row"
         )
         XCTAssertFalse(body.contains { $0.contains(".disabled") }, "D-17103 the row is never disabled")
         XCTAssertTrue(
@@ -1903,8 +1911,8 @@ final class WatchMenuDiscardTests: XCTestCase {
         )
 
         let rule = try XCTUnwrap(
-            body.firstIndex { $0.contains("state.hasLoggedEfforts") },
-            "S-17109 End reads the emptiness rule"
+            body.firstIndex { $0.contains("state.hasWorkToSave") },
+            "S-17109 End reads the save rule"
         )
         let finish = try XCTUnwrap(
             body.firstIndex { $0.trimmingCharacters(in: .whitespaces) == "confirmingFinish = true" },
@@ -1982,5 +1990,76 @@ final class WatchMenuDiscardTests: XCTestCase {
         let closure = String(call[discard.lowerBound...])
         XCTAssertTrue(closure.contains("isPresented.wrappedValue = false"), "which closes the sheet")
         XCTAssertTrue(closure.contains("host.noteSurfaceChange()"), "and tells the host the surface changed")
+    }
+
+    // MARK: - Plan 201: the rows wear their colours, End reads the save rule
+
+    /// Plan: `docs/plans/2026-11-15-201-watch-flow-fixes-plan/2026-11-15-201-watch-flow-fixes-plan.md`,
+    /// D-20103: the End row wears the accent fill, the Discard row is the one
+    /// filled red row, and no other row's style changed.
+    func testS20106TheMenuRowsWearTheirColours() throws {
+        let source = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift")
+        let lines = sourceLines(source)
+
+        let finish = try XCTUnwrap(propertyBlock("finishRow", in: lines), "S-20106 the menu view has a finishRow")
+        XCTAssertTrue(
+            finish.contains { $0.trimmingCharacters(in: .whitespaces) == ".watchProminent()" },
+            "S-20106 the End row wears the accent fill"
+        )
+        XCTAssertFalse(
+            finish.contains { $0.trimmingCharacters(in: .whitespaces) == ".buttonStyle(.bordered)" },
+            "S-20106 the End row is not the plain row"
+        )
+
+        let discard = try XCTUnwrap(propertyBlock("discardRow", in: lines), "S-20106 the menu view has a discardRow")
+        XCTAssertTrue(
+            discard.contains { $0.trimmingCharacters(in: .whitespaces) == ".buttonStyle(.borderedProminent)" },
+            "S-20106 the Discard row is the filled row"
+        )
+        XCTAssertTrue(
+            discard.contains { $0.trimmingCharacters(in: .whitespaces) == ".tint(.red)" },
+            "S-20106 the Discard row is red"
+        )
+        XCTAssertFalse(
+            discard.contains { $0.trimmingCharacters(in: .whitespaces) == ".buttonStyle(.bordered)" },
+            "S-20106 the Discard row is not the plain row"
+        )
+        XCTAssertEqual(
+            occurrences(of: ".tint(.red)", in: source),
+            1,
+            "S-20106 the Discard row is the one red row in the menu"
+        )
+    }
+
+    /// D-20104's view half: End reads `hasWorkToSave` — a running effort is
+    /// work to save — and raises the Finish question first, the Discard question
+    /// in its else branch.
+    func testS20111TheEndRowRaisesTheFinishQuestionWhenThereIsWorkToSave() throws {
+        let body = try XCTUnwrap(
+            propertyBlock(
+                "finishRow",
+                in: sourceLines(try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift"))
+            ),
+            "S-20111 the menu view has a finishRow"
+        )
+
+        let rule = try XCTUnwrap(
+            body.firstIndex { $0.trimmingCharacters(in: .whitespaces) == "if state.hasWorkToSave {" },
+            "S-20111 End reads the save rule"
+        )
+        let finish = try XCTUnwrap(
+            body.firstIndex { $0.trimmingCharacters(in: .whitespaces) == "confirmingFinish = true" },
+            "S-20111 the Finish question is raised"
+        )
+        let discard = try XCTUnwrap(
+            body.firstIndex { $0.trimmingCharacters(in: .whitespaces) == "confirmingDiscard = true" },
+            "S-20111 the discard question is raised"
+        )
+        XCTAssertGreaterThan(finish, rule, "S-20111 an End with work to save asks Finish")
+        XCTAssertGreaterThan(discard, finish, "S-20111 and an empty one asks Discard instead")
+        XCTAssertFalse(
+            body.contains { $0.contains("hasLoggedEfforts") },
+            "S-20111 End no longer reads hasLoggedEfforts"
+        )
     }
 }

@@ -785,12 +785,19 @@ public final class WatchSessionStartPaths {
     ///
     /// A start while a live session is held is refused by the engine's
     /// one-session rule and the held row is what comes back (D-171).
+    /// A held active session takes the exercise and keeps its own modality (plan 201).
     @discardableResult
     public func startModalityWorkout(
         _ modality: String,
         with exercise: WatchCatalogExercise
     ) async -> WatchSessionRecord {
         pendingModalityStart = nil
+        // Plan 201, D-20105: a workout the wrist already holds takes the pick as
+        // one more exercise, as Add Exercise does, instead of refusing the start
+        // and dropping it. The held session's modality stays as it is (D-12591).
+        if engine.session?.status == WatchSessionStatus.active {
+            return await addExerciseToSession(exercise)
+        }
         return await engine.createSession(
             modality: modality,
             exercises: [

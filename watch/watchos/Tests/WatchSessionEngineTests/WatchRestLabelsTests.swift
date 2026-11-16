@@ -235,6 +235,18 @@ final class WatchRestLabelsTests: XCTestCase {
     // MARK: - S-7603c a plan exactly logged is skipped
 
     func testS7603cAnExerciseWithItsPlanExactlyLoggedIsSkipped() {
+        // A's plan is logged exactly, so A is done and is not named while
+        // another exercise is still undone.
+        let skipping = deriveRestLabels(
+            sessionExercises: [slot("a1", "A", planned: 2), slot("b1", "B", planned: 3), slot("c1", "C", planned: 1)],
+            entries: entries("a1", 2) + entries("b1", 1) + entries("c1", 1),
+            currentIndex: 2,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(skipping.nextSlotId, "b1", "S-7603c A's plan is logged exactly, so it is done and not named")
+
+        // Both plans logged: the list starts over (plan 201, D-20101).
         let ladder = [slot("a1", "A", planned: 2), slot("b1", "B", planned: 3)]
         let labels = deriveRestLabels(
             sessionExercises: ladder,
@@ -244,11 +256,8 @@ final class WatchRestLabelsTests: XCTestCase {
             nextRound: nil
         )
         XCTAssertEqual(labels.now, "B · Set 3 done")
-        XCTAssertEqual(
-            labels.next,
-            WatchRestLabelCopy.nothingNext,
-            "S-7603c A's plan is logged exactly, so it is done and not named"
-        )
+        XCTAssertEqual(labels.nextSlotId, "a1", "S-7603c everything done: Next goes on to the following exercise")
+        XCTAssertEqual(labels.next, WatchRestLabelCopy.nextExercisePrefix + "A")
     }
 
     // MARK: - S-7611 only set entries count as sets
@@ -792,9 +801,9 @@ final class WatchRestLabelsTests: XCTestCase {
         XCTAssertNil(labels.nextSlotId, "S-9103 a planless count names no exercise")
     }
 
-    // MARK: - S-9104 nothing planned carries no slot id
+    // MARK: - S-9104 and S-20101..S-20104 the whole ladder done cycles on
 
-    func testS9104NothingPlannedCarriesNoSlotId() {
+    func testS9104TheWholeLadderDoneCyclesToTheFollowingExercise() {
         let labels = deriveRestLabels(
             sessionExercises: restLadder(),
             entries: entries("A", 2) + entries("B", 3) + entries("C", 1),
@@ -802,8 +811,84 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.set,
             nextRound: nil
         )
-        XCTAssertEqual(labels.next, WatchRestLabelCopy.nothingNext, "S-9104 the whole ladder is done")
-        XCTAssertNil(labels.nextSlotId, "S-9104 and nothing is announced")
+        XCTAssertEqual(
+            labels.nextSlotId,
+            "B",
+            "S-9104 the whole ladder is done: Next goes to the following exercise"
+        )
+        XCTAssertEqual(
+            labels.next,
+            WatchRestLabelCopy.nextExercisePrefix + "Bench",
+            "S-9104 the line names the following exercise by its name alone"
+        )
+    }
+
+    func testS20101AfterTheLastExerciseNextGoesBackToTheFirst() {
+        // Plan scenario S-20101: A planned 2, B planned 3, C planned 1, all
+        // logged; the current exercise is C, the last.
+        let ladder = [
+            slot("A", "Squat", planned: 2),
+            slot("B", "Bench", planned: 3),
+            slot("C", "Row", planned: 1),
+        ]
+        let labels = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: entries("A", 2) + entries("B", 3) + entries("C", 1),
+            currentIndex: 2,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            labels.nextSlotId,
+            "A",
+            "S-20101 the last exercise is followed by the first"
+        )
+        XCTAssertEqual(
+            labels.next,
+            WatchRestLabelCopy.nextExercisePrefix + "Squat",
+            "S-20101 the line names the first exercise by its name alone"
+        )
+    }
+
+    func testS20103AOneExerciseLadderNeverAnnouncesAMove() {
+        let labels = deriveRestLabels(
+            sessionExercises: [slot("b1", "Bench", planned: 3)],
+            entries: entries("b1", 3),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertNil(
+            labels.nextSlotId,
+            "S-20103 a one-exercise ladder has nowhere to go, so Next moves nothing"
+        )
+        XCTAssertEqual(
+            labels.next,
+            WatchRestLabelCopy.nothingNext,
+            "S-20103 it keeps the nothing-planned words"
+        )
+    }
+
+    func testS20104AnUndoneExerciseWinsOverTheCycle() {
+        // A planned 2 logged, B planned 3 with only 2 logged, C planned 1
+        // logged; the current exercise is C, the last.
+        let ladder = [
+            slot("A", "Squat", planned: 2),
+            slot("B", "Bench", planned: 3),
+            slot("C", "Row", planned: 1),
+        ]
+        let labels = deriveRestLabels(
+            sessionExercises: ladder,
+            entries: entries("A", 2) + entries("B", 2) + entries("C", 1),
+            currentIndex: 2,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            labels.nextSlotId,
+            "B",
+            "S-20104 B is short of its plan, so the undone search wins over the circle"
+        )
     }
 
     // MARK: - S-9105 a period carries no slot id

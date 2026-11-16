@@ -192,10 +192,15 @@ public final class WatchMenuState {
     /// The rating state Finish ends through.
     public let rating: WatchEffortRatingState
 
-    public init(engine: WatchSessionEngine, paths: WatchSessionStartPaths, rating: WatchEffortRatingState) {
+    /// The logging state End reads and logs through (plan 201, D-20104), or nil
+    /// where a menu is built without one.
+    private let logging: WatchLoggingState?
+
+    public init(engine: WatchSessionEngine, paths: WatchSessionStartPaths, rating: WatchEffortRatingState, logging: WatchLoggingState? = nil) {
         self.engine = engine
         self.paths = paths
         self.rating = rating
+        self.logging = logging
     }
 
     /// The ladder as rows right now.
@@ -252,7 +257,14 @@ public final class WatchMenuState {
     /// A session with nothing logged is a discard instead (D-17105): there is
     /// nothing to save and nothing to rate, which is also what the phone's own
     /// empty finish does. The menu asks the discard's question for it.
+    /// With an effort clock running it logs that effort first (plan 201).
     public func finish() async {
+        // Plan 201, D-20104: a clock still running is the user's effort, so End
+        // logs it the way Log would, then finishes. A log the wrist refuses
+        // leaves nothing logged, and that is still a discard (D-17105).
+        if hasRunningEffort, let logging {
+            _ = try? await logging.log()
+        }
         guard hasLoggedEfforts else {
             await discard()
             return
@@ -268,6 +280,19 @@ public final class WatchMenuState {
     /// Read on every access, like `rows`.
     public var hasLoggedEfforts: Bool {
         engine.entries.contains { WatchObservationKind.efforts.contains($0.kind) }
+    }
+
+    /// Whether an effort clock is running on the exercise on screen with nothing
+    /// logged for it yet (plan 201, D-20104): the logging state's own work clock,
+    /// which already hides another exercise's phone clock.
+    public var hasRunningEffort: Bool {
+        logging?.workTimer != nil
+    }
+
+    /// Whether End has something to save: an effort already logged, or one
+    /// running that End will log (plan 201, D-20104).
+    public var hasWorkToSave: Bool {
+        hasLoggedEfforts || hasRunningEffort
     }
 
     /// Throws the session away, through the engine's own abandonment: the
