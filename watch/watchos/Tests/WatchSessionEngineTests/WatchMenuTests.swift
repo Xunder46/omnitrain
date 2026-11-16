@@ -1020,6 +1020,46 @@ final class WatchMenuTests: XCTestCase {
         )
     }
 
+    /// The same gap sits on both sides of the menu's separator and around the start
+    /// screen's Sync separator (10 pt on top of the stack's own spacing), so the
+    /// groups read the same everywhere. A source scan, like S-3104A above.
+    func testS3104BTheSameGapSitsAroundEverySeparator() throws {
+        let menu = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift")
+        let start = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchStartView.swift")
+        XCTAssertTrue(menu.contains("private static let sectionGap = 10.0"), "S-3104B the menu's gap is 10 pt")
+        XCTAssertTrue(start.contains("private static let sectionGap = 10.0"), "S-3104B the start screen's gap is the same 10 pt")
+
+        let menuLines = sourceLines(menu)
+        let divider = try XCTUnwrap(usageLine(of: "Divider()", in: menuLines), "S-3104B the menu has its separator")
+        XCTAssertEqual(
+            nextLine(after: divider, in: menuLines),
+            ".padding(.top, Self.sectionGap)",
+            "S-3104B the gap above the menu's separator"
+        )
+        let add = try XCTUnwrap(usageLine(of: "addExerciseRow", in: menuLines), "S-3104B Add Exercise follows")
+        XCTAssertEqual(
+            nextLine(after: add, in: menuLines),
+            ".padding(.top, Self.sectionGap)",
+            "S-3104B the gap below the menu's separator"
+        )
+
+        let startLines = sourceLines(start)
+        let syncDivider = try XCTUnwrap(usageLine(of: "Divider()", in: startLines), "S-3104B the start screen has its Sync separator")
+        XCTAssertEqual(
+            nextLine(after: syncDivider, in: startLines),
+            ".padding(.vertical, Self.sectionGap)",
+            "S-3104B the gap on both sides of the Sync separator"
+        )
+        XCTAssertTrue(
+            startLines.contains { $0.trimmingCharacters(in: .whitespaces) == ".padding(.bottom, Self.sectionGap)" },
+            "S-3104B the gap under the modality grid"
+        )
+        XCTAssertTrue(
+            startLines.contains { $0.trimmingCharacters(in: .whitespaces) == ".padding(.top, Self.sectionGap)" },
+            "S-3104B the gap above the Nutrition button"
+        )
+    }
+
     /// The rest screen carries the same list button the logging surface does, and
     /// the menu is built once and hosted where a rest ending cannot tear it down
     /// (D-3102, D-3114). A source scan: the app target has no test target, so the

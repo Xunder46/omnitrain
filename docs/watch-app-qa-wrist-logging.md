@@ -715,10 +715,12 @@ frame (plan 87b, open question d;
     `WatchStoreGrowthTests.testS15601TheLaunchRestoreAsksForThePrunes`
     (the retire precedes `engine.restore()`, the readings prune follows it).
 53. **The Start screen's three groups, and the theme on every sheet — (owner).**
-    (a) On the Start screen a small extra gap sits between the four modality
-    buttons and the list under them (the planned button and the routines), and
-    the same gap between that list and the **Nutrition** button, so the three
-    groups read as three. (b) Pick a theme other than the default on the
+    (a) On the Start screen one gap (10 pt on top of the normal row spacing)
+    sits between the four modality buttons and the list under them (the
+    planned button and the routines), between that list and the **Nutrition**
+    button, and above and below the separator line over **Sync**; the session
+    menu's separator line has the same gap above it as it already had below
+    it, so every separator reads the same. (b) Pick a theme other than the default on the
     phone (Settings, theme), sync the watch, then open every screen that is a
     sheet: start a workout and tap the list button (the session menu: the
     current exercise's row, the End Session button and the exercise list),

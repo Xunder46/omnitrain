@@ -96,10 +96,12 @@ public struct WatchStartView: View {
     /// screen; this surface carries its own value rather than scaling one down.
     private static let surfaceInset = 4.0
 
-    /// The extra gap that sets the modality grid apart from the list under it, and
-    /// the list from the Nutrition button under it (added to the stack's own
-    /// spacing), so the three groups read as three.
-    private static let sectionGap = 6.0
+    /// The extra gap that sets the modality grid apart from the list under it, the
+    /// list from the Nutrition button under it, and the Sync separator from what
+    /// is above and below it (added to the stack's own spacing), so the groups
+    /// read as groups. The session menu uses the same value around its own
+    /// separator.
+    private static let sectionGap = 10.0
 
     /// The home surface's way into the foods list, which is reachable with no
     /// workout running.
@@ -210,6 +212,7 @@ public struct WatchStartView: View {
                 // The start buttons end here; Sync below is housekeeping, set apart.
                 if onRequestSync != nil, phoneStatus.offersSync {
                     Divider()
+                        .padding(.vertical, Self.sectionGap)
                 }
 
                 if let onRequestSync, phoneStatus.offersSync {

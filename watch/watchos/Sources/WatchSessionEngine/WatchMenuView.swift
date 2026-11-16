@@ -56,6 +56,11 @@ public struct WatchMenuView: View {
     /// Wrist-scale inset, as the other wrist surfaces use.
     private static let surfaceInset = 4.0
 
+    /// The gap that sets a group of buttons apart from the separator line: the
+    /// same value above and below it here, and on the start screen (the Sync
+    /// separator and the groups above it).
+    private static let sectionGap = 10.0
+
     /// Set by the action row and read by its alert: the confirmation is the
     /// view's own, and `state.finish()` runs only on the alert's Finish
     /// (D-3402).
@@ -113,9 +118,10 @@ public struct WatchMenuView: View {
                     .id(addedCount)
 
                     Divider()
+                        .padding(.top, Self.sectionGap)
 
                     addExerciseRow
-                        .padding(.top, 10)
+                        .padding(.top, Self.sectionGap)
 
                     finishRow
 
