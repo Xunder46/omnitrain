@@ -89,7 +89,7 @@ class InstrumentRowTile extends StatelessWidget {
             ),
             InstrumentSparkline(
               key: Key('instrument_sparkline_${summary.exerciseId}'),
-              points: summary.points,
+              points: summary.trendPoints,
               themeColors: themeColors,
             ),
             const SizedBox(width: 12),
@@ -107,7 +107,9 @@ class InstrumentRowTile extends StatelessWidget {
                   label: delta == null
                       ? null
                       : formatNativeChange(best.metric, delta, settingsState),
-                  delta: delta,
+                  delta: delta == null
+                      ? null
+                      : nativeChangeGain(best.metric, delta),
                   themeColors: themeColors,
                   theme: theme,
                 ),
@@ -122,11 +124,14 @@ class InstrumentRowTile extends StatelessWidget {
 
 /// The row's change readout. Reads `new` when there is no comparable previous
 /// value; a change of exactly zero is formatted by `formatNativeChange` as the
-/// dash. Otherwise it carries the direction of the raw numeric change, so a
-/// slower pace reads `↑` like any other increase.
+/// dash. The [delta] it carries is a gain (positive reads in the primary
+/// colour, negative in the error colour, zero or null muted), so for a pace a
+/// faster run is the positive case (plan 209).
 class InstrumentChangeChip extends StatelessWidget {
   /// The formatted change, or null when there is nothing comparable.
   final String? label;
+
+  /// The change as a gain: positive is an improvement (see [nativeChangeGain]).
   final double? delta;
   final OmniThemeColors themeColors;
   final ThemeData theme;

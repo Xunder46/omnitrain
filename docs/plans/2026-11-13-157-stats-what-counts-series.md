@@ -23,3 +23,13 @@ The Finish dialog's exercise count and a warning for a typed-but-unlogged set (1
 ## Group B (review item 2) — plan 179
 
 `docs/plans/2026-11-15-179-stats-mix-no-sets-plan/`: a session with timed work and no set shares its whole length across the timed modalities instead of giving the unmeasured minutes to Resistance (owner chose this 2026-11-15). Seeded and lint-clean, not built; waits for the owner's build go-ahead.
+
+## Group C (review items 4 and 6) — plans 209, 210, 211
+
+Owner decisions 2026-11-15: pace change reads better/worse (faster = green up); Recent PRs covers every lift (5 newest); "use my defaults" for the rest (Records & Trends best = best single session for cardio without distance and for rounds; a cardio trend line plots one measure only). Split by the scope budget into three small PRs, planned one at a time:
+
+| Plan | Review item | What | Status |
+|---|---|---|---|
+| 209 | 4 and 6 (trend half) | `docs/plans/2026-11-15-209-stats-pace-reads-honestly-plan/`: pace change reads `↑ 0:10 /km` green when faster; an Instruments row's trend line plots only days in the row's own metric. | seeded, not built |
+| 210 | 6 (PR half) | Recent PRs from every lift in history, 5 newest; the three trend charts stay on the three most-trained lifts. Load cost to measure first (one Stats load is ~235 ms on 417 sessions). | not planned |
+| 211 | 6 (Best half) | Records & Trends shows the best single session for a cardio exercise with no distance and for rounds, not a running total; the Instruments window rows keep their labelled totals. | not planned |

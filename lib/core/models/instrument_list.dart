@@ -16,7 +16,7 @@ import 'exercise_metric.dart';
 class InstrumentRow {
   /// The exercise's window value, its per-day series and its session count.
   /// [ExerciseMetricSummary.best] is the figure the row shows and
-  /// [ExerciseMetricSummary.points] is its sparkline.
+  /// [ExerciseMetricSummary.trendPoints] is its sparkline.
   final ExerciseMetricSummary summary;
 
   /// The same exercise's value over the immediately preceding range of the

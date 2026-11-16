@@ -136,7 +136,7 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
       _buildBestCard(context, themeColors, summary),
     ];
 
-    if (summary.points.isNotEmpty) {
+    if (summary.trendPoints.isNotEmpty) {
       children.add(const SizedBox(height: 24));
       children.add(const OmniCardHeader(title: 'TREND'));
       children.add(
@@ -210,7 +210,7 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
     ExerciseMetricSummary summary,
   ) {
     final metric = summary.best.metric;
-    final points = summary.points;
+    final points = summary.trendPoints;
     final dates = points
         .map((p) => DateTime.fromMillisecondsSinceEpoch(p.dayMs))
         .toList(growable: false);

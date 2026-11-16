@@ -82,14 +82,56 @@ void main() {
 
     test('a pace reads per the preferred distance unit', () async {
       final km = await settingsWith();
-      expect(formatNativeChange(NativeMetric.pace, 30, km), '↑ +0:30 /km');
+      expect(formatNativeChange(NativeMetric.pace, 30, km), '↓ 0:30 /km');
 
       final miles = await settingsWith(distanceUnit: 'miles');
       expect(
         formatNativeChange(NativeMetric.pace, 30, miles),
-        '↑ +0:48 /mi',
+        '↓ 0:48 /mi',
         reason: 'the same conversion formatNativeMetric uses, not a second one',
       );
+    });
+
+    test('S-21001 a pace change reads better or worse, unsigned', () async {
+      final km = await settingsWith();
+      expect(formatNativeChange(NativeMetric.pace, -30, km), '↑ 0:30 /km');
+      expect(formatNativeChange(NativeMetric.pace, 30, km), '↓ 0:30 /km');
+      expect(formatNativeChange(NativeMetric.pace, 0, km), '—');
+
+      final miles = await settingsWith(distanceUnit: 'miles');
+      expect(formatNativeChange(NativeMetric.pace, -30, miles), '↑ 0:48 /mi');
+    });
+
+    test('S-21002 every other metric keeps arrow and raw sign', () async {
+      final settings = await settingsWith();
+      expect(formatNativeChange(NativeMetric.reps, 3, settings), '↑ +3 reps');
+      expect(formatNativeChange(NativeMetric.reps, -3, settings), '↓ -3 reps');
+      expect(
+        formatNativeChange(NativeMetric.estimatedOneRepMax, 5, settings),
+        '↑ +5 kg',
+      );
+      expect(formatNativeChange(NativeMetric.hold, 15, settings), '↑ +0:15');
+      expect(
+        formatNativeChange(NativeMetric.duration, -90, settings),
+        '↓ -1:30',
+      );
+      expect(
+        formatNativeChange(NativeMetric.rounds, 2, settings),
+        '↑ +2 rounds',
+      );
+      expect(
+        formatNativeChange(NativeMetric.roundMinutes, -3, settings),
+        '↓ -3 min',
+      );
+    });
+  });
+
+  group('nativeChangeGain', () {
+    test('S-21003 pace inverts, every other metric is raw', () {
+      expect(nativeChangeGain(NativeMetric.pace, -30), 30.0);
+      expect(nativeChangeGain(NativeMetric.pace, 30), -30.0);
+      expect(nativeChangeGain(NativeMetric.reps, 3), 3.0);
+      expect(nativeChangeGain(NativeMetric.duration, -90), -90.0);
     });
   });
 

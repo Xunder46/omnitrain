@@ -447,9 +447,11 @@ The change a row shows is rendered by
 `formatNativeChange(metric, delta, settings)` in
 `lib/features/stats/widgets/native_value_format.dart`: an arrow and the signed
 magnitude, or `'—'` when the delta is zero. The sign is the raw numeric sign of
-the delta, with no per-metric inversion, and the magnitude is formatted by the
-same per-metric rule as `formatNativeMetric`, so a change and the figure above it
-read in one unit. `nativeSecondaryLabel` in the same file is the single source of
+the delta for every metric but pace; for pace the arrow says better (`↑`, a
+smaller seconds-per-kilometre) or worse (`↓`) and the magnitude carries no sign,
+through `nativeChangeGain(metric, delta)` in the same file, which the chip also
+reads for its colour. The magnitude is formatted by the same per-metric rule as
+`formatNativeMetric`, so a change and the figure above it read in one unit. `nativeSecondaryLabel` in the same file is the single source of
 a secondary figure's name, so it cannot read two ways.
 
 Verified by `test/instrument_list_service_test.dart` (S-1005, S-1007, S-1008,

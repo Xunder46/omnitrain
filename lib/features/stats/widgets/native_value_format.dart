@@ -112,20 +112,30 @@ String? nativePrimaryLabel(NativeMetric metric) {
 /// value, as a user reads it: an arrow and the signed magnitude, or an em dash
 /// when there is nothing to compare.
 ///
-/// The sign is the raw numeric sign of [delta] — no per-metric exception, so a
-/// slower pace (a larger seconds-per-kilometre) reads `↑`. The magnitude is
-/// formatted by [formatNativeMetric]'s own per-metric rule, so a change and the
-/// figure above it read in one unit.
+/// For every metric but pace the arrow and the sign follow the raw change of
+/// [delta]; for pace the arrow says better (`↑`, a smaller
+/// seconds-per-kilometre) or worse (`↓`) and the magnitude carries no sign
+/// (plan 209). The magnitude is formatted by [formatNativeMetric]'s own
+/// per-metric rule, so a change and the figure above it read in one unit.
 String formatNativeChange(
   NativeMetric metric,
   double delta,
   SettingsState settings,
 ) {
   if (delta == 0) return '—';
-  final arrow = delta > 0 ? '↑' : '↓';
+  final arrow = nativeChangeGain(metric, delta) > 0 ? '↑' : '↓';
+  if (metric == NativeMetric.pace) {
+    return '$arrow ${formatNativeMetric(metric, delta.abs(), settings)}';
+  }
   final sign = delta > 0 ? '+' : '-';
   return '$arrow $sign${formatNativeMetric(metric, delta.abs(), settings)}';
 }
+
+/// The change as a gain: positive when the exercise improved. Pace is stored as
+/// seconds per kilometre, so a smaller figure is better (plan 209); every other
+/// metric improves when it grows.
+double nativeChangeGain(NativeMetric metric, double delta) =>
+    metric == NativeMetric.pace ? -delta : delta;
 
 /// The number [metric] plots: [value] converted the same way
 /// [formatNativeMetric] converts it, so a chart's axis and the figure above it

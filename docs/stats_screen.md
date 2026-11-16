@@ -329,8 +329,12 @@ keep their own wording. Verified by `test/instrument_list_screen_test.dart`
 The change readout compares the window's value with the previous window of the
 same length. With nothing comparable it reads `new` rather than a number, and
 a change of exactly zero reads the dash. Its arrow follows the direction of the
-raw numeric change — so a
-*slower* pace reads as an increase, because pace is stored as time per distance.
+raw numeric change, except for pace: for pace the arrow and colour say better or
+worse — a faster run reads a green `↑ 0:10 /km`, a slower one a red `↓ 0:10 /km`,
+with no sign — because pace is stored as time per distance and a smaller figure
+is the improvement. Verified by `test/instrument_change_format_test.dart`
+(`S-21001` to `S-21003`) and `test/stats_pace_reads_honestly_test.dart`
+(`S-21004`, `S-21005`).
 A value the service derived from an estimated distance carries the `est.` mark.
 Verified by `test/stats_instruments_horizon_screen_test.dart` (group `S-17305
 a row with nothing to compare against reads new` › `the three rows read new,
@@ -341,7 +345,13 @@ reads new when there is nothing to compare`).
 A section past the row cap offers to show the rest; the cap is per section, so a
 busy kind of work never hides a quiet one. Verified by the same file (`S-1016`).
 The trend line is drawn only when the exercise has at least two points in the
-window and takes no space otherwise, verified by the same file (`S-1017`). A row
+window and takes no space otherwise, verified by the same file (`S-1017`). A
+row's trend line plots only the days that read in the row's own metric, so a
+cardio row that reads pace never draws a day with no distance as a point on the
+same line, and the chart on that exercise's Exercise Progress screen plots the
+same single-metric series (`ExerciseMetricSummary.trendPoints`). The day list and
+the order of rows still count every training day (`S-21006` to `S-21009` in
+`test/stats_pace_reads_honestly_test.dart`). A row
 whose window produced nothing readable still appears, with no trend line at all —
 verified by `test/instrument_list_service_test.dart` (`S-1018`).
 
