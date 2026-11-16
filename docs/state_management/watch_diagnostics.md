@@ -82,7 +82,10 @@ committed configuration defines `OMNITRAIN_DIAGNOSTICS`. On the phone the gate i
 it builds `MyApp`: a release build passes null and Settings shows no row. The owner can bring either
 entry back in a release build — `--dart-define=OMNITRAIN_DIAGNOSTICS=true` on the phone,
 `OMNITRAIN_DIAGNOSTICS` in the watch app target's Active Compilation Conditions (Release) or
-`OMNITRAIN_DIAGNOSTICS=1` in the scheme's run action on the watch. Verified by
+`OMNITRAIN_DIAGNOSTICS=1` in the scheme's run action on the watch. Until the first release both gates
+carry a pre-release switch that keeps the entry in release builds too — `kHideDiagnosticsInRelease` on
+the phone and `DiagnosticsEntryPoint.hidesInRelease` on the watch, both `false` — and setting both to
+`true` restores the shipping rule above. Verified by
 `WatchDiagnosticsSourceTests.testS17704TheEntryPointIsGatedThroughTheAppTargetGate`,
 `testS17705TheWatchBuildConfigurationsCarryTheRightConditions`,
 `testS17707HidingTheEntryNeverStopsTheRecording`, `test/diagnostics_entry_test.dart` (S-17701,

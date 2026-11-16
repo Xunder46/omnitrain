@@ -16,11 +16,15 @@ import Foundation
 /// Active Compilation Conditions (a rebuild, and the only path on TestFlight) or
 /// by setting `OMNITRAIN_DIAGNOSTICS=1` in the scheme's run action (no rebuild).
 enum DiagnosticsEntryPoint {
+    /// Pre-release switch: while the app is not released, a Release build keeps
+    /// the button too. Set to `true` before shipping to hide it in Release again.
+    static let hidesInRelease = false
+
     static var isVisible: Bool {
         #if DEBUG || PROFILE || OMNITRAIN_DIAGNOSTICS
         return true
         #else
-        return ProcessInfo.processInfo.environment["OMNITRAIN_DIAGNOSTICS"] == "1"
+        return !hidesInRelease || ProcessInfo.processInfo.environment["OMNITRAIN_DIAGNOSTICS"] == "1"
         #endif
     }
 }

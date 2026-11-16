@@ -57,6 +57,21 @@ void main() {
     );
   });
 
+  // Pre-release switch: with the hide flag off, a release build shows it too.
+  test('the pre-release switch keeps the entry point in a release build', () {
+    expect(
+      diagnosticsEntryVisibleFor(
+        debugBuild: false,
+        profileBuild: false,
+        override: false,
+        hideInRelease: false,
+      ),
+      isTrue,
+    );
+    expect(kHideDiagnosticsInRelease, isFalse, reason: 'not released yet');
+    expect(kDiagnosticsEntryVisible, isTrue);
+  });
+
   // S-17706: a const environment read cannot be flipped at runtime, so the one
   // spelling the owner passes on the command line is pinned as text. Whitespace
   // is collapsed first, so a formatter reflow cannot soften the assertion.
