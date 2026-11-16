@@ -19,7 +19,6 @@
 library;
 
 import '../../core/constants/capability.dart';
-import '../../core/constants/modality_config.dart';
 import '../session/watch_records.dart';
 
 /// The activity type one modality registers as, in each platform's own
@@ -333,30 +332,17 @@ WatchActivityType? _forNamedHealthKinds(List<Map<String, Object?>> exercises) {
   return _majority(named);
 }
 
-/// Whether a session's modality calls for GPS.
+/// Whether the session's current exercise calls for GPS.
 ///
-/// The answer is read from the modality's capability profile and never from its
-/// name: a lift and a run are told apart by what they can measure, so a modality
+/// The answer is read from the exercise's capabilities and never from a name:
+/// a lift and a run are told apart by what they can measure, so an exercise
 /// added tomorrow is handled without touching this file, and one that merely
-/// *sounds* like distance work does not wake the radio (S-008).
+/// *sounds* like distance work does not wake the radio (S-008; plan 205).
 abstract final class WatchGpsPolicy {
   static const String distanceCapability = ExerciseCapability.distance;
 
-  /// True when [modality] can cover distance — as a capability it carries, not
-  /// as one it rules out. Free training has no profile, so it never records GPS:
-  /// the user picks the exercise after the session starts, too late to decide,
-  /// and the distance row stays theirs to fill.
-  static bool isRequired(String? modality) {
-    final config = ModalityConfig.forModality(modality);
-    if (config == null) return false;
-
-    return config.primaryCapabilities.contains(distanceCapability) ||
-        config.secondaryCapabilities.contains(distanceCapability);
-  }
-
   /// True when an exercise's capabilities include distance — the exercise, not
-  /// its name. The wrist decides GPS by the exercise the user is on as well as
-  /// by the session's modality (the Swift client's `WatchGpsPolicy.coversDistance`).
+  /// its name (the Swift client's `WatchGpsPolicy.coversDistance`).
   static bool coversDistance(Iterable<String> capabilities) =>
       capabilities.contains(distanceCapability);
 }

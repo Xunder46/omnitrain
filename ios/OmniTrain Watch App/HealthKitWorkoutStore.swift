@@ -129,7 +129,8 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     // MARK: - WatchPlatformWorkoutStore
 
     /// Registers the session's workout, and tells HealthKit whether it is an
-    /// outdoor one: a modality that measures distance registers as `.outdoor`,
+    /// outdoor one: a session whose exercise carries distance registers as
+    /// `.outdoor` (plan 205: the exercise decides, never the modality alone),
     /// every other one as before (D-2304).
     func begin(_ activityType: String, outdoors: Bool) async {
         lastBeginFailed = false

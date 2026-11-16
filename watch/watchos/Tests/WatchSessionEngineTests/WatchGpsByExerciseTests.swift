@@ -15,7 +15,7 @@
 //    S-4803 the latch across the exercises                      → `testS4803...`
 //    S-4804 refused once is not asked again                     → `testS4804...`
 //    S-4805 idempotent across refreshes                         → `testS4805...`
-//    S-4806 a distance modality still starts GPS                → `testS4806...`
+//    S-4806 a distance modality alone starts no GPS            → `testS4806...`
 //    S-4807 the workout is registered outdoors by the first exercise → `testS4807...`
 //    S-4808 a late start still logs the right metres            → `testS4808...`
 //    S-4809 the contract cases (Swift)                          → `testS4809...`
@@ -459,9 +459,9 @@ final class WatchGpsByExerciseTests: XCTestCase {
         XCTAssertTrue(recorder.isMeasuringDistance)
     }
 
-    // MARK: - S-4806 a distance modality still starts GPS with no exercise
+    // MARK: - S-4806 a distance modality alone starts no GPS
 
-    func testS4806ADistanceModalityStartsWithNoExerciseAtAll() async {
+    func testS4806ADistanceModalityAloneStartsNoGps() async {
         let engine = await harness.runningEngine()
         let live = await engine.createSession(modality: "cardio_endurance")
         let recorder = makeRecorder(engine)
@@ -470,10 +470,10 @@ final class WatchGpsByExerciseTests: XCTestCase {
 
         XCTAssertEqual(
             source.locationSubscriptions,
-            1,
-            "the old modality rule is intact (S-4806)"
+            0,
+            "a modality alone no longer starts GPS (plan 205)"
         )
-        XCTAssertTrue(recorder.isMeasuringDistance)
+        XCTAssertFalse(recorder.isMeasuringDistance)
     }
 
     // MARK: - S-4808 a late start still logs the right metres

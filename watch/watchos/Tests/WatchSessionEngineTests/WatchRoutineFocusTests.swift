@@ -183,11 +183,13 @@ final class WatchRoutineFocusTests: XCTestCase {
     // MARK: - S-12560 the Focus table
 
     func testS12560RoutineFocusCarriesTheTableToTheSession() async throws {
+        // Plan 205: GPS follows the exercise, and `twoEfforts` carries no
+        // distance, so no row asks for it by modality alone any more.
         let rows: [(focus: String, health: String, gps: Bool, word: String)] = [
             ("isometric_stretching", "flexibility", false, "Rounds"),
             ("resistance_lifting", "traditionalStrengthTraining", false, "Rounds"),
-            ("cardio_endurance", "running", true, "Intervals"),
-            ("sports", "other", true, "Periods"),
+            ("cardio_endurance", "running", false, "Intervals"),
+            ("sports", "other", false, "Periods"),
             ("conditioning_mixed", "crossTraining", false, "Rounds"),
         ]
 
@@ -396,7 +398,10 @@ final class WatchRoutineFocusTests: XCTestCase {
             WatchActivityTypes.forSession(session)?.watchOs, "running",
             "documented consequence: a cardio-focus routine of squats registers as Running"
         )
-        XCTAssertEqual(WatchGpsPolicy.isRequired(session), true, "documented consequence: GPS asked")
+        XCTAssertEqual(
+            WatchGpsPolicy.isRequired(session), false,
+            "plan 205: a Cardio Focus no longer asks for GPS by itself; the squats carry no distance"
+        )
         XCTAssertEqual(harness.surface.roundsLabel, "Intervals", "documented consequence: the round word")
     }
 

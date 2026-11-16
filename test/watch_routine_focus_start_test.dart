@@ -326,10 +326,10 @@ _focusRows = [
   (
     focus: 'cardio_endurance',
     health: 'running',
-    gps: true,
+    gps: false,
     rounds: 'Intervals',
   ),
-  (focus: 'sports', health: 'other', gps: true, rounds: 'Periods'),
+  (focus: 'sports', health: 'other', gps: false, rounds: 'Periods'),
   (
     focus: 'conditioning_mixed',
     health: 'crossTraining',
@@ -386,9 +386,13 @@ void main() {
         reason: 'S-12561 $rowLabel: Health kind',
       );
       expect(
-        WatchGpsPolicy.isRequired(session.modality),
+        WatchGpsPolicy.coversDistance(
+          (session.currentExercise?['capabilities'] as List?)?.cast<String>() ??
+              const <String>[],
+        ),
         gps,
-        reason: 'S-12561 $rowLabel: GPS',
+        reason: 'S-12561 $rowLabel: GPS, by the exercise, not the focus '
+            '(plan 205)',
       );
       expect(
         ModalityDisplay.getRoundsLabel(session.modality),
@@ -551,7 +555,15 @@ void main() {
         WatchActivityTypes.forModality(session.modality).watchOs,
         'running',
       );
-      expect(WatchGpsPolicy.isRequired(session.modality), isTrue);
+      expect(
+        WatchGpsPolicy.coversDistance(
+          (session.currentExercise?['capabilities'] as List?)?.cast<String>() ??
+              const <String>[],
+        ),
+        isFalse,
+        reason:
+            'S-12571 a Cardio Focus no longer turns GPS on by itself (plan 205)',
+      );
       expect(ModalityDisplay.getRoundsLabel(session.modality), 'Intervals');
     });
   });

@@ -427,10 +427,18 @@ final class WatchSensorCoordinatorTests: XCTestCase {
     func testS3104RefusedProbesAreAskedOnceAndLoggingIsUnaffected() async throws {
         let harness = Harness()
         let source = CountingSource()
+        // Plan 205: GPS follows the exercise, so the fixture's exercise carries
+        // distance for the location probe to be asked at all; `reps` precedes
+        // `distance` in the kind's precedence, so the logger stays a set.
         let (engine, session) = await activeSession(
             harness,
             modality: "cardio_endurance",
-            exercises: [exercise("sx-bench")]
+            exercises: [[
+                "sessionExerciseId": "sx-bench",
+                "exerciseId": "ex-sx-bench",
+                "name": "sx-bench",
+                "capabilities": ["reps", "sets", "load", "distance"],
+            ]]
         )
         let (coordinator, recorder) = makeCoordinator(engine, harness, source)
 

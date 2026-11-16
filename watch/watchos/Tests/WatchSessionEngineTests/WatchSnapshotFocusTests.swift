@@ -82,11 +82,13 @@ private func focusSnapshot(
     ]
 }
 
+// Plan 205: GPS follows the exercise; the fixture's strength exercises carry
+// no distance, so no Focus opens the workout outdoors.
 private let focusTable: [(key: String, health: String, gps: Bool, word: String)] = [
     ("isometric_stretching", "flexibility", false, "Rounds"),
     ("resistance_lifting", "traditionalStrengthTraining", false, "Rounds"),
-    ("cardio_endurance", "running", true, "Intervals"),
-    ("sports", "other", true, "Periods"),
+    ("cardio_endurance", "running", false, "Intervals"),
+    ("sports", "other", false, "Periods"),
     ("conditioning_mixed", "crossTraining", false, "Rounds"),
 ]
 
@@ -348,11 +350,11 @@ final class WatchSnapshotFocusTests: XCTestCase {
         try await assertFollowsTheTable(focusTable[1])
     }
 
-    func testS12593ACardioFocusOpensRunningOutdoorsIntervals() async throws {
+    func testS12593ACardioFocusOpensRunningIndoorsIntervals() async throws {
         try await assertFollowsTheTable(focusTable[2])
     }
 
-    func testS12593ASportsFocusOpensOtherOutdoorsPeriods() async throws {
+    func testS12593ASportsFocusOpensOtherIndoorsPeriods() async throws {
         try await assertFollowsTheTable(focusTable[3])
     }
 

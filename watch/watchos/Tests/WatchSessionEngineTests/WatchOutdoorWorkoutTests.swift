@@ -52,14 +52,14 @@ final class LegacyShapePlatformStore: WatchPlatformWorkoutStore {
 
 final class WatchOutdoorWorkoutTests: XCTestCase {
 
-    // MARK: - S-3300 outdoors follows the capability profile
+    // MARK: - S-3300 outdoors never follows the modality alone
 
-    func testS3300OutdoorsFollowsTheCapabilityProfile() async {
-        // A distance-capable modality is outdoor work; a modality without the
-        // distance capability — and every unmapped one — is not.
+    func testS3300OutdoorsNeverFollowsTheModalityAlone() async {
+        // A modality alone is never outdoor work (plan 205): the exercise
+        // decides. The Health type is unchanged.
         let cases: [(modality: String?, activityType: String, outdoors: Bool)] = [
-            ("cardio_endurance", "running", true),
-            ("sports", "other", true),
+            ("cardio_endurance", "running", false),
+            ("sports", "other", false),
             ("resistance_lifting", "traditionalStrengthTraining", false),
             ("isometric_stretching", "flexibility", false),
             (nil, "other", false),

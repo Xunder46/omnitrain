@@ -417,7 +417,10 @@ final class WatchEffortDistanceTests: XCTestCase {
                 "sessionExerciseId": "sx-plank",
                 "exerciseId": "ex-plank",
                 "name": "Plank",
-                "capabilities": ["hold", "time"],
+                // Plan 205: GPS follows the exercise, so the fixture's exercise
+                // carries distance for the wrist to be measuring at all; a hold
+                // still logs no distance.
+                "capabilities": ["hold", "time", "distance"],
             ]]
         )
         let recorder = await measuring(engine, live)

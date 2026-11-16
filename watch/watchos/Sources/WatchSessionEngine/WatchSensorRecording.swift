@@ -172,9 +172,10 @@ public final class WatchSensorRecorder {
     /// Starts listening to whatever `session` calls for.
     ///
     /// Heart rate is recorded for every session that has a sensor to record it
-    /// with, and so are steps. Location is recorded only where the modality, or
-    /// the exercise the user is on, can cover distance, so a lift does not drain
-    /// the battery warming up a radio it will never use (S-001, S-002, S-4800).
+    /// with, and so are steps. Location is recorded only when the exercise
+    /// the user is on carries distance (plan 205: never the modality alone), so a
+    /// lift does not drain the battery warming up a radio it will never use
+    /// (S-001, S-002, S-4800).
     public func start(_ session: WatchSessionRecord) async {
         await startHeartRate()
         await startSteps()

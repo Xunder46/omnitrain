@@ -253,47 +253,14 @@ public enum WatchActivityTypes {
     }
 }
 
-/// Whether a session's modality calls for GPS.
+/// Whether the exercise a session is on calls for GPS.
 ///
-/// The answer is read from the modality's capability profile and never from its
-/// name: a lift and a run are told apart by what they can measure, so a modality
-/// added tomorrow is handled without touching this file, and one that merely
-/// *sounds* like distance work does not wake the radio (S-008).
-///
-/// The profile mirrors `ModalityConfig`, the phone's own owner of it, and the
-/// suite checks it against the shared contract — so a change on either client
-/// fails on both.
+/// The answer is read from the exercise's capability list and never from its
+/// name: a lift and a run are told apart by what they can measure, so an
+/// exercise added tomorrow is handled without touching this file, and one that
+/// merely *sounds* like distance work does not wake the radio (S-008).
 public enum WatchGpsPolicy {
     public static let distanceCapability = "distance"
-
-    /// Primary plus secondary capabilities, per modality — the ones the modality
-    /// *offers*. A capability it rules out (anti-capability) is absent here,
-    /// which is the whole point.
-    public static let capabilitiesByModality: [String: [String]] = [
-        "cardio_endurance": ["time", "distance", "rounds"],
-        "resistance_lifting": ["reps", "sets", "load", "time"],
-        "isometric_stretching": ["hold", "time", "sets"],
-        "sports": ["time", "rounds", "distance"],
-        // The older modalities the catalog no longer offers: no distance, so no
-        // GPS, and a generic workout type if one is ever replayed.
-        "strength_resistance": ["reps", "sets", "load"],
-        "skill_technique": ["time", "rounds"],
-        "conditioning_mixed": ["time", "rounds", "load"],
-        "mobility_flexibility": ["hold", "time"],
-        "recovery_rehab": ["hold", "time"],
-        "competition_match": ["time", "rounds"],
-    ]
-
-    /// True when `modality` can cover distance — as a capability it carries, not
-    /// as one it rules out. A modality alone never decides for free training: the
-    /// user picks the exercise after the session starts, so the exercise decides
-    /// instead, through `isRequired(_ session:)` (D-4800).
-    public static func isRequired(_ modality: String?) -> Bool {
-        guard let modality, let capabilities = capabilitiesByModality[modality] else {
-            return false
-        }
-        return capabilities.contains(distanceCapability)
-    }
 
     /// True when an exercise's capabilities include distance — the exercise, not
     /// the name.
@@ -301,11 +268,12 @@ public enum WatchGpsPolicy {
         capabilities.contains(distanceCapability)
     }
 
-    /// True when the session's modality covers distance, or the exercise the user
-    /// is on does.
+    /// True when the exercise the session is on carries distance. The modality
+    /// never decides on its own (plan 205): Boxing, jump rope and every Sports
+    /// exercise stay indoor; a run, a walk, a ride, a stationary bike and a
+    /// treadmill (all carry `distance`) are the work GPS is for.
     public static func isRequired(_ session: WatchSessionRecord) -> Bool {
-        if isRequired(session.modality) { return true }
-        return coversDistance((session.currentExercise?["capabilities"] as? [String]) ?? [])
+        coversDistance((session.currentExercise?["capabilities"] as? [String]) ?? [])
     }
 }
 

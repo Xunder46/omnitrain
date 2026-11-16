@@ -518,53 +518,19 @@ class WatchSensorRecordingTests: XCTestCase {
         XCTAssertEqual(WatchActivityTypes.generic.wear, generic["wear"])
     }
 
-    // MARK: - S-008 the GPS decision reads capabilities, not names
+    // MARK: - S-008 the GPS decision reads the exercise's capabilities
 
-    func testS008TheGpsDecisionFollowsTheCapabilityProfile() throws {
+    func testS20508TheContractNamesNoModalityForGps() throws {
         let contract = try Fixtures.sensorContract()
-        let profiles = try XCTUnwrap(
-            contract["modalityCapabilities"] as? [[String: Any]]
+        XCTAssertNil(
+            contract["gpsModalities"],
+            "S-20508 the modality list is gone (plan 205)"
         )
-        let capability = try XCTUnwrap(contract["gpsCapability"] as? String)
-        XCTAssertFalse(profiles.isEmpty)
-
-        for profile in profiles {
-            let modality = profile["modality"] as? String
-            let capabilities = (profile["capabilities"] as? [String]) ?? []
-            XCTAssertEqual(
-                WatchGpsPolicy.isRequired(modality),
-                capabilities.contains(capability),
-                "\(modality ?? "free training") diverged from its capability profile"
-            )
-        }
-    }
-
-    func testS008AModalityThatNamesDistanceButCannotCoverItStaysOff() throws {
-        // The isometric profile names distance only to rule it out, so the
-        // decision has to read what the modality can do.
-        let contract = try Fixtures.sensorContract()
-        let profiles = try XCTUnwrap(contract["modalityCapabilities"] as? [[String: Any]])
-        let isometric = try XCTUnwrap(
-            profiles.first { $0["modality"] as? String == "isometric_stretching" }
+        XCTAssertNil(
+            contract["modalityCapabilities"],
+            "S-20508 the modality profiles are gone (plan 205)"
         )
-        XCTAssertTrue((isometric["capabilities"] as? [String] ?? []).isEmpty == false)
-        XCTAssertFalse((isometric["capabilities"] as? [String] ?? []).contains("distance"))
-
-        XCTAssertFalse(WatchGpsPolicy.isRequired("isometric_stretching"))
-        XCTAssertFalse(WatchGpsPolicy.isRequired("resistance_lifting"))
-    }
-
-    func testS008TheContractsExpectationListIsTheDerivedAnswer() throws {
-        let contract = try Fixtures.sensorContract()
-        let expected = Set(try XCTUnwrap(contract["gpsModalities"] as? [String]))
-        let profiles = try XCTUnwrap(contract["modalityCapabilities"] as? [[String: Any]])
-        let derived = Set(
-            profiles
-                .compactMap { $0["modality"] as? String }
-                .filter { WatchGpsPolicy.isRequired($0) }
-        )
-
-        XCTAssertEqual(derived, expected)
+        XCTAssertEqual(contract["gpsCapability"] as? String, "distance")
     }
 
     // MARK: - Sensor storage

@@ -8,8 +8,8 @@
 //   S-12592  the five Focus keys stamp themselves on the snapshot that creates
 //            the row; every other value and the absent key stamp nothing
 //                                                        → `S-12592 ...`
-//   S-12593  the stamped key resolves to the Focus table's Health type and
-//            GPS flag                                    → `S-12593 ...`
+//   S-12593  the stamped key resolves to the Focus table's Health type
+//                                                        → `S-12593 ...`
 //   S-12594b a snapshot naming another session is refused whole while a Free
 //            workout with an exercise is held (D-78)     → `S-12594b ...`
 //   S-12595  first hearing only: never override, never null → `S-12595a..e ...`
@@ -40,15 +40,16 @@ import 'helpers/sync_protocol_harness.dart'
     show TestClock, isoUtc, loadProtocolValidator, readProtocolJson;
 
 /// The Focus table: the five keys the phone can send, each with the Health
-/// type and GPS flag the wrist resolves it to — the same values the Swift twin
-/// reads out of `WatchActivityTypes.byModality` and `WatchGpsPolicy`
-/// (`watch/contract/`, 125b's table).
-const Map<String, ({String healthType, bool gps})> _focusTable = {
-  'isometric_stretching': (healthType: 'flexibility', gps: false),
-  'resistance_lifting': (healthType: 'traditionalStrengthTraining', gps: false),
-  'cardio_endurance': (healthType: 'running', gps: true),
-  'sports': (healthType: 'other', gps: true),
-  'conditioning_mixed': (healthType: 'crossTraining', gps: false),
+/// type the wrist resolves it to — the same values the Swift twin reads out of
+/// `WatchActivityTypes.byModality` (`watch/contract/`, 125b's table). GPS is
+/// the exercise's decision since plan 205, so the table no longer carries a
+/// GPS flag.
+const Map<String, ({String healthType})> _focusTable = {
+  'isometric_stretching': (healthType: 'flexibility'),
+  'resistance_lifting': (healthType: 'traditionalStrengthTraining'),
+  'cardio_endurance': (healthType: 'running'),
+  'sports': (healthType: 'other'),
+  'conditioning_mixed': (healthType: 'crossTraining'),
 };
 
 /// The keys `byModality` still names that the phone's own catalog no longer
@@ -358,7 +359,7 @@ void main() {
   group('S-12593 the stamped Focus resolves to the table', () {
     _focusTable.forEach((key, focus) {
       test(
-        'S-12593 $key reads as ${focus.healthType} with GPS ${focus.gps}',
+        'S-12593 $key reads as ${focus.healthType}',
         () async {
           final harness = _Harness();
           final watch = await harness.launch();
@@ -374,11 +375,6 @@ void main() {
             WatchActivityTypes.forModality(modality).watchOs,
             focus.healthType,
             reason: 'the Health type the wrist would open the workout as',
-          );
-          expect(
-            WatchGpsPolicy.isRequired(modality),
-            focus.gps,
-            reason: 'the GPS flag the wrist would decide location by',
           );
         },
         timeout: const Timeout(Duration(seconds: 60)),

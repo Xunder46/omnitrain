@@ -25,7 +25,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/capability.dart';
 import 'package:omnitrain/core/constants/modality.dart';
-import 'package:omnitrain/core/constants/modality_config.dart';
 import 'package:omnitrain/core/utils/unit_formatter.dart';
 import 'package:omnitrain/watch/logging/watch_logging_screen.dart';
 import 'package:omnitrain/watch/logging/watch_logging_state.dart';
@@ -72,6 +71,7 @@ class _FakeSensorSource implements WatchSensorSource {
 
   int heartRateSubscriptions = 0;
   int locationSubscriptions = 0;
+  int locationPermissionRequests = 0;
 
   final _beats = StreamController<double>.broadcast();
   final _fixes = StreamController<WatchLocationFix>.broadcast();
@@ -80,7 +80,10 @@ class _FakeSensorSource implements WatchSensorSource {
   Future<WatchSensorPermission> heartRatePermission() async => heartRateGrant;
 
   @override
-  Future<WatchSensorPermission> locationPermission() async => locationGrant;
+  Future<WatchSensorPermission> locationPermission() async {
+    locationPermissionRequests++;
+    return locationGrant;
+  }
 
   @override
   Stream<double> heartRate() {
@@ -272,7 +275,13 @@ void main() {
       'S-002 stopping settles the session distance at the measured total',
       () async {
         final sensors = await sensorsFor();
-        final session = await sessionFor(Modality.cardioEndurance);
+        final session = await sessionFor(
+          Modality.cardioEndurance,
+          slot: _slot('sx-run', [
+            ExerciseCapability.time,
+            ExerciseCapability.distance,
+          ]),
+        );
 
         await sensors.start(session);
         await source.fix(400);
@@ -492,7 +501,13 @@ void main() {
       () async {
         source.locationGrant = WatchSensorPermission.denied;
         final sensors = await sensorsFor();
-        final session = await sessionFor(Modality.cardioEndurance);
+        final session = await sessionFor(
+          Modality.cardioEndurance,
+          slot: _slot('sx-run', [
+            ExerciseCapability.time,
+            ExerciseCapability.distance,
+          ]),
+        );
 
         await sensors.start(session);
 
@@ -509,7 +524,13 @@ void main() {
       source.heartRateGrant = WatchSensorPermission.unavailable;
       source.locationGrant = WatchSensorPermission.unavailable;
       final sensors = await sensorsFor();
-      final session = await sessionFor(Modality.cardioEndurance);
+      final session = await sessionFor(
+        Modality.cardioEndurance,
+        slot: _slot('sx-run', [
+          ExerciseCapability.time,
+          ExerciseCapability.distance,
+        ]),
+      );
 
       await sensors.start(session);
       await sensors.stop();
@@ -578,73 +599,8 @@ void main() {
     });
   });
 
-  group('S-008 the GPS decision reads capabilities, not names', () {
-    test('S-008 the decision follows the capability profile', () {
-      for (final entry in ModalityConfig.configs.entries) {
-        final config = entry.value;
-        final carriesDistance = [
-          ...config.primaryCapabilities,
-          ...config.secondaryCapabilities,
-        ].contains(ExerciseCapability.distance);
-
-        expect(
-          WatchGpsPolicy.isRequired(entry.key),
-          carriesDistance,
-          reason: '${entry.key} diverged from its capability profile',
-        );
-      }
-    });
-
-    test(
-      'S-008 a modality that names distance but cannot cover it stays off',
-      () {
-        // Both carry the word in their profile, in the anti-capability list: the
-        // decision has to read what the modality *can* do.
-        expect(
-          ModalityConfig.forModality(
-            Modality.isometricStretching,
-          )!.antiCapabilities,
-          contains(ExerciseCapability.distance),
-        );
-        expect(
-          WatchGpsPolicy.isRequired(Modality.isometricStretching),
-          isFalse,
-        );
-        expect(WatchGpsPolicy.isRequired(Modality.resistanceLifting), isFalse);
-      },
-    );
-
-    test('S-008 the contract\'s expectation list is the derived answer', () {
-      final expected = (_contract()['gpsModalities']! as List).cast<String>();
-      final derived = [
-        for (final modality in ModalityConfig.configs.keys)
-          if (WatchGpsPolicy.isRequired(modality)) modality!,
-      ];
-
-      expect(derived, unorderedEquals(expected));
-    });
-    test('S-008 the contract carries the capability profile Swift reads', () {
-      final profiles = (_contract()['modalityCapabilities']! as List).map(
-        (entry) => (entry as Map).cast<String, Object?>(),
-      );
-      final byModality = {
-        for (final profile in profiles)
-          profile['modality'] as String?: (profile['capabilities']! as List)
-              .cast<String>(),
-      };
-
-      for (final entry in ModalityConfig.configs.entries) {
-        final config = entry.value;
-        expect(
-          byModality[entry.key]?.toSet(),
-          {...config.primaryCapabilities, ...config.secondaryCapabilities},
-          reason:
-              'the shared capability profile for ${entry.key} no longer '
-              'matches ModalityConfig, so the two clients would decide GPS '
-              'differently',
-        );
-      }
-    });
+  group('S-008 the GPS decision reads the exercise\'s capabilities, not names '
+      'or the modality', () {
     test('S-4810 the exercise rule answers the contract\'s cases', () {
       final cases = (_contract()['exerciseGpsCases']! as List)
           .map((entry) => (entry as Map).cast<String, Object?>())
@@ -660,6 +616,60 @@ void main() {
           reason: 'the shared case $entry diverged from the Dart rule',
         );
       }
+    });
+
+    test('S-20509 a cardio session on an exercise without distance requests '
+        'no location permission; on a run it does', () async {
+      final sensors = await sensorsFor();
+      await sensors.start(
+        await sessionFor(
+          Modality.cardioEndurance,
+          slot: _slot('sx-jump-rope', [ExerciseCapability.time]),
+        ),
+      );
+
+      expect(source.locationPermissionRequests, 0);
+      expect(sensors.recorder.isMeasuringDistance, isFalse);
+      expect(source.locationSubscriptions, 0);
+
+      await sensors.stop();
+      await engine.finishSession();
+
+      final run = await sensorsFor();
+      await run.start(
+        await sessionFor(
+          Modality.cardioEndurance,
+          slot: _slot('sx-run', [
+            ExerciseCapability.time,
+            ExerciseCapability.distance,
+          ]),
+        ),
+      );
+
+      expect(source.locationPermissionRequests, 1);
+      expect(run.recorder.isMeasuringDistance, isTrue);
+      expect(source.locationSubscriptions, 1);
+
+      await run.stop();
+      await engine.finishSession();
+
+      final sports = await sensorsFor();
+      await sports.start(
+        await sessionFor(
+          Modality.sports,
+          slot: _slot('sx-rounds', [
+            ExerciseCapability.time,
+            ExerciseCapability.rounds,
+          ]),
+        ),
+      );
+
+      expect(
+        source.locationPermissionRequests,
+        1,
+        reason: 'the sports case asks no more than the run already did',
+      );
+      expect(sports.recorder.isMeasuringDistance, isFalse);
     });
   });
 

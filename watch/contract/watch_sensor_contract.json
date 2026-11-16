@@ -9,7 +9,6 @@
     "energy": "cumulativeKilocalories"
   },
   "gpsCapability": "distance",
-  "gpsModalities": ["cardio_endurance", "sports"],
   "paceMinDistanceMeters": 50,
   "exerciseGpsCases": [
     { "capabilities": ["time", "distance"], "gps": true },
@@ -19,22 +18,6 @@
     { "capabilities": ["time", "rounds"], "gps": false },
     { "capabilities": ["hold", "time"], "gps": false },
     { "capabilities": [], "gps": false }
-  ],
-  "modalityCapabilities": [
-    {
-      "modality": "cardio_endurance",
-      "capabilities": ["time", "distance", "rounds"]
-    },
-    {
-      "modality": "resistance_lifting",
-      "capabilities": ["reps", "sets", "load", "time"]
-    },
-    {
-      "modality": "isometric_stretching",
-      "capabilities": ["hold", "time", "sets"]
-    },
-    { "modality": "sports", "capabilities": ["time", "rounds", "distance"] },
-    { "modality": null, "capabilities": [] }
   ],
   "genericActivityType": {
     "watchos": "other",

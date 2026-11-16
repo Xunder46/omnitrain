@@ -66,6 +66,14 @@ final class WatchGpsDistanceTileTests: XCTestCase {
         await engine.createSession(modality: modality, exercises: [slot])
     }
 
+    private func session(
+        _ engine: WatchSessionEngine,
+        modality: String = "cardio_endurance",
+        slots: [[String: Any]]
+    ) async -> WatchSessionRecord {
+        await engine.createSession(modality: modality, exercises: slots)
+    }
+
     private func measuring(
         _ engine: WatchSessionEngine,
         _ session: WatchSessionRecord
@@ -311,13 +319,20 @@ final class WatchGpsDistanceTileTests: XCTestCase {
 
     func testS16008AnExerciseWithoutDistanceNeverShowsTheTile() async throws {
         let engine = await harness.runningEngine()
-        let live = await session(engine, slot: [
-            "sessionExerciseId": "sx-row",
-            "exerciseId": "ex-row",
-            "name": "Row",
-            "capabilities": ["time"],
+        // Plan 205: GPS follows the exercise, so the feed starts on the Run
+        // first; the user then reaches the Row, whose timed work has no
+        // distance to show a tile for, even while the feed stays on.
+        let live = await session(engine, slots: [
+            WatchGpsDistanceTileTests.run,
+            [
+                "sessionExerciseId": "sx-row",
+                "exerciseId": "ex-row",
+                "name": "Row",
+                "capabilities": ["time"],
+            ],
         ])
         let recorder = await measuring(engine, live)
+        _ = await engine.selectExercise(slotId: "sx-row")
         let state = surface(engine, recorder)
         XCTAssertEqual(state.fields.map(\.metricKey), [], "before Start")
 
