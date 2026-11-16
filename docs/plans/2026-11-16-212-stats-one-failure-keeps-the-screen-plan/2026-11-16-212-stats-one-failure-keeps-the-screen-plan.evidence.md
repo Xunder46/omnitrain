@@ -22,5 +22,5 @@ Full suite (lead, 900 s cap): `+7764 ~4: All tests passed!`, 0 failures. `flutte
 
 - A swallowed signal or Fuel failure leaves no trace (no diagnostics event).
 - Totals, Instruments and Mix remain all-or-nothing; `loadDismissals` is unguarded.
-- Plan 213 (Stats reloads when new data arrives while it is open) not planned.
+- Reloading Stats while open: dropped by the owner for good.
 - (owner) Nothing to see on a healthy history; the guard shows only on malformed data.

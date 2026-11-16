@@ -1,6 +1,6 @@
 # Plan 212 — One failing signal or food read no longer blanks the Stats screen
 
-Series: Stats pre-launch review group D (item 8, first half, of memory `stats-prelaunch-review-2026-11-12`; index `docs/plans/2026-11-13-157-stats-what-counts-series.md`). The second half of item 8 (Stats does not refresh while open) is plan 213, planned separately. Phone only (`lib/core`, `lib/features/stats`), two builder runs, then docs. Status: BUILT, reviewed (APPROVE WITH FIXES, fixed), uncommitted.
+Series: Stats pre-launch review group D (item 8, first half, of memory `stats-prelaunch-review-2026-11-12`; index `docs/plans/2026-11-13-157-stats-what-counts-series.md`). The second half of item 8 (Stats does not refresh while open) was dropped by the owner for good (2026-11-16). Phone only (`lib/core`, `lib/features/stats`), two builder runs, then docs. Status: BUILT, reviewed (APPROVE WITH FIXES, fixed), uncommitted.
 
 ## Goal and acceptance
 
@@ -75,7 +75,7 @@ Stale-term sweep (`grep -rIniE "one load read|Could not load your stats|failing 
 1. A swallowed signal or Fuel failure leaves no trace (D-3). A later plan can wire the Diagnostics log into Stats.
 2. `SignalsService.loadDismissals` still reads the preference store unguarded, so a store that cannot be read still fails the whole load (review minor; pre-existing).
 3. Totals, Instruments and Mix remain all-or-nothing: if only one of them cannot be read, the screen still fails whole.
-4. Plan 213: Stats does not reload while open when new data (a watch session, a food log, a weigh-in) arrives.
+4. Stats does not reload while open; the owner dropped that for good (2026-11-16), so it is not a gap.
 
 ## Predicted files
 

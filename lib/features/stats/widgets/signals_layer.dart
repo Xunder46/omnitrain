@@ -54,6 +54,9 @@ class SignalsLockedSection extends StatelessWidget {
   final int ratedWeeks;
   final OmniThemeColors themeColors;
 
+  /// True while Effort Rating is off in Settings: the line says so (plan 214).
+  final bool ratingOff;
+
   /// What the sleeping signals wait for (D-17605); empty by default.
   final List<String> waiting;
 
@@ -61,6 +64,7 @@ class SignalsLockedSection extends StatelessWidget {
     super.key,
     required this.ratedWeeks,
     required this.themeColors,
+    this.ratingOff = false,
     this.waiting = const [],
   });
 
@@ -75,7 +79,7 @@ class SignalsLockedSection extends StatelessWidget {
       children: [
         const OmniCardHeader(title: 'SIGNALS'),
         Text(
-          signalsLockedLine(ratedWeeks),
+          signalsLockedLine(ratedWeeks, ratingOff: ratingOff),
           key: const Key('signals_locked_line'),
           style: theme.textTheme.bodyMedium?.copyWith(
             color: themeColors.textSecondary,
@@ -99,6 +103,9 @@ class SignalsLayerSection extends StatelessWidget {
   /// (D-17504). Null once the gate is met.
   final int? lockedRatedWeeks;
 
+  /// True while Effort Rating is off in Settings: the line says so (plan 214).
+  final bool ratingOff;
+
   /// What the sleeping signals wait for (D-17605); empty by default.
   final List<String> waiting;
 
@@ -108,6 +115,7 @@ class SignalsLayerSection extends StatelessWidget {
     required this.themeColors,
     required this.onDismiss,
     this.lockedRatedWeeks,
+    this.ratingOff = false,
     this.waiting = const [],
   });
 
@@ -138,7 +146,7 @@ class SignalsLayerSection extends StatelessWidget {
           if (lockedRatedWeeks != null) ...[
             const SizedBox(height: _kCardGap),
             Text(
-              signalsMoreLine(lockedRatedWeeks!),
+              signalsMoreLine(lockedRatedWeeks!, ratingOff: ratingOff),
               key: const Key('signals_locked_hint'),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: themeColors.textSecondary,

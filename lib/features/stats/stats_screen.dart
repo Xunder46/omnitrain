@@ -358,6 +358,8 @@ class _StatsScreenState extends State<StatsScreen> {
                                 layer: _mixLayer!,
                                 window: window,
                                 themeColors: themeColors,
+                                ratingOff:
+                                    !widget.settingsState.showFeelingSurvey,
                               ),
                               const SizedBox(height: 24),
                             ],
@@ -369,6 +371,8 @@ class _StatsScreenState extends State<StatsScreen> {
                                 themeColors: themeColors,
                                 onDismiss: _dismissSignal,
                                 waiting: _signalsWaiting,
+                                ratingOff:
+                                    !widget.settingsState.showFeelingSurvey,
                                 lockedRatedWeeks: signalsGateMet(_mixLayer)
                                     ? null
                                     : (_mixLayer?.ratedWeeks ?? 0),
@@ -379,6 +383,8 @@ class _StatsScreenState extends State<StatsScreen> {
                               SignalsLockedSection(
                                 ratedWeeks: _mixLayer!.ratedWeeks,
                                 themeColors: themeColors,
+                                ratingOff:
+                                    !widget.settingsState.showFeelingSurvey,
                                 waiting: _signalsWaiting,
                               ),
                               const SizedBox(height: 24),

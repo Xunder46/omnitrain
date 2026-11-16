@@ -66,6 +66,15 @@ the locked line`) and, for the count's rule,
 `test/stats_rated_weeks_service_test.dart` (`S-17106 ratedWeekBlockStarts
 tiles the 12 weeks at local midnight`).
 
+While Effort Rating is off in Settings and the gate is unmet, the locked line
+and the line under a card name the setting as the reason instead of the wait
+(`signalsLockedLine` and `signalsMoreLine` take `ratingOff`; the Stats screen
+passes it). The count stays, and the lines return to the waiting wording the
+moment the switch is turned on, with no reload. Verified by
+`test/stats_effort_rating_off_copy_test.dart` (`S-21401`) and
+`test/stats_effort_rating_off_screen_test.dart` (`S-21402`, `S-21403`, and
+`S-21405` for the no-reload flip).
+
 ## Selection and the card cap
 
 One load yields at most `kSignalMaxCards` cards; `resolveSignals` is the single

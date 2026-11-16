@@ -31,11 +31,15 @@ class MixLayerSection extends StatelessWidget {
   final StatsWindow window;
   final OmniThemeColors themeColors;
 
+  /// True while Effort Rating is off in Settings: the line says so (plan 214).
+  final bool ratingOff;
+
   const MixLayerSection({
     super.key,
     required this.layer,
     required this.window,
     required this.themeColors,
+    this.ratingOff = false,
   });
 
   // Geometry. Local to the layer: no other surface draws a mix bar, so these
@@ -190,9 +194,13 @@ class MixLayerSection extends StatelessWidget {
                 const SizedBox(height: _tightGap),
                 Text(
                   layer.ratedWeeks < kTrainingLoadMinRatedWeeks
-                      ? 'Showing time for now. Effort appears once '
-                            '$kTrainingLoadMinRatedWeeks weeks are rated '
-                            '($_ratedWeeks of $kTrainingLoadMinRatedWeeks so far).'
+                      ? (ratingOff
+                            ? 'Showing time for now. Effort Rating is off in '
+                                  'Settings ($_ratedWeeks of '
+                                  '$kTrainingLoadMinRatedWeeks weeks rated).'
+                            : 'Showing time for now. Effort appears once '
+                                  '$kTrainingLoadMinRatedWeeks weeks are rated '
+                                  '($_ratedWeeks of $kTrainingLoadMinRatedWeeks so far).')
                       : 'Showing time for now. Effort needs most of the last '
                             '4 weeks rated.',
                   key: const Key('mix_baseline_note'),

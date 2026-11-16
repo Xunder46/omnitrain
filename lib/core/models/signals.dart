@@ -87,21 +87,34 @@ bool signalsGateMet(MixLayerData? mix) =>
 /// One sentence in the layer's own slot: how many rated weeks the user has, and
 /// how many the gate needs. The count is clamped to the gate, so a payload
 /// below zero or above it reads as the boundary it is, and the number in the
-/// copy is always [kTrainingLoadMinRatedWeeks] — never a literal.
-String signalsLockedLine(int ratedWeeks) =>
-    'Unlocks after $kTrainingLoadMinRatedWeeks weeks of rating your workouts — '
-    '${ratedWeeks.clamp(0, kTrainingLoadMinRatedWeeks)} of '
-    '$kTrainingLoadMinRatedWeeks so far.';
+/// copy is always [kTrainingLoadMinRatedWeeks] — never a literal. With
+/// [ratingOff] the line names the Effort Rating setting as the reason instead
+/// of the wait (plan 214).
+String signalsLockedLine(int ratedWeeks, {bool ratingOff = false}) {
+  final count = ratedWeeks.clamp(0, kTrainingLoadMinRatedWeeks);
+  if (ratingOff) {
+    return 'Effort Rating is off in Settings, so signals that need it stay '
+        'locked — $count of $kTrainingLoadMinRatedWeeks weeks rated so far.';
+  }
+  return 'Unlocks after $kTrainingLoadMinRatedWeeks weeks of rating your '
+      'workouts — $count of $kTrainingLoadMinRatedWeeks so far.';
+}
 
 /// The line under the cards while the gate is unmet but a signal that needs no
 /// ratings is speaking (D-17504, D-17508).
 ///
 /// The count is clamped like [signalsLockedLine], and the number in the copy is
-/// always [kTrainingLoadMinRatedWeeks].
-String signalsMoreLine(int ratedWeeks) =>
-    'More signals unlock after $kTrainingLoadMinRatedWeeks weeks of rating '
-    'your workouts — ${ratedWeeks.clamp(0, kTrainingLoadMinRatedWeeks)} of '
-    '$kTrainingLoadMinRatedWeeks so far.';
+/// always [kTrainingLoadMinRatedWeeks]. With [ratingOff] the line names the
+/// Effort Rating setting as the reason instead of the wait (plan 214).
+String signalsMoreLine(int ratedWeeks, {bool ratingOff = false}) {
+  final count = ratedWeeks.clamp(0, kTrainingLoadMinRatedWeeks);
+  if (ratingOff) {
+    return 'Effort Rating is off in Settings, so more signals stay locked — '
+        '$count of $kTrainingLoadMinRatedWeeks weeks rated so far.';
+  }
+  return 'More signals unlock after $kTrainingLoadMinRatedWeeks weeks of rating '
+      'your workouts — $count of $kTrainingLoadMinRatedWeeks so far.';
+}
 
 /// Whether the signal dismissed at [dismissedAtMs] is still hidden at [now]
 /// (D-1011, D-1012).

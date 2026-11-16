@@ -202,7 +202,11 @@ included — are rated, a note reads `Showing time for now. Effort appears once
 4 weeks are rated (N of 4 so far).`. With 4 or more rated weeks the strip can
 still show time, when more than a quarter of the window's time is unrated; the
 note then reads `Showing time for now. Effort needs most of the last 4 weeks rated.`
-Under the load measure no note renders. Verified by
+When Effort Rating is off in Settings and fewer than 4 of the last 12 weeks are rated,
+the first note reads `Showing time for now. Effort Rating is off in Settings (N of 4 weeks rated).`
+and returns to the waiting wording as soon as the switch is turned on, without a
+reload; the second wording is unchanged (`test/stats_effort_rating_off_screen_test.dart`,
+`S-21404`, `S-21405`). Under the load measure no note renders. Verified by
 `test/mix_layer_screen_test.dart` (`S-3204 the baseline note says what happens
 and when`, `S-3204 the twin: no rated week at all`, `S-3204 the load measure
 explains nothing`, and group `S-18601 the baseline note when effort is hidden

@@ -39,4 +39,4 @@ Owner decisions 2026-11-15: pace change reads better/worse (faster = green up); 
 | Plan | What | Status |
 |---|---|---|
 | 212 | `docs/plans/2026-11-16-212-stats-one-failure-keeps-the-screen-plan/`: one failing signal or Fuel read no longer fails the whole Stats load; totals, Instruments and Mix stay core. | committed |
-| 213 | Stats reloads silently when new data arrives while it is open (deferred item 2 of the 2026-11-04 input sweep). | not planned |
+| 213 | Stats reloads silently when new data arrives while it is open (deferred item 2 of the 2026-11-04 input sweep). | dropped for good by the owner 2026-11-16 ("we don't need to reload stats while open ever"); never plan it again |

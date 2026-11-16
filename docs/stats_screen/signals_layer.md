@@ -30,6 +30,15 @@ evaluates only the signals that need no rated weeks`) and
 (group `S-17107 current weeks count` › `two rated weeks drive the locked line
 and the Mix note`).
 
+**Effort Rating off.** While the user has switched Effort Rating off in Settings
+and the gate is unmet, both lines above name the setting instead of the wait: the
+locked line reads `Effort Rating is off in Settings, so signals that need it stay
+locked — N of 4 weeks rated so far.` and the line under the cards reads `Effort
+Rating is off in Settings, so more signals stay locked — N of 4 weeks rated so
+far.` The widgets stay presentation-only: they take a `ratingOff` flag from the
+screen. Verified by `test/stats_effort_rating_off_screen_test.dart` (`S-21402`,
+`S-21403`).
+
 **The cards.** A load shows at most `kSignalMaxCards` cards: one caution above
 one positive when both kinds qualify, otherwise the top cards of the surviving
 kind. A card is a neutral surface carrying its kind's label and icon, the
