@@ -1107,6 +1107,27 @@ public final class WatchSessionEngine: ObservableObject {
         let startedAt = (try? parseUtcIso(timer["startedAt"])) ?? recordedAt
         let stoppedAt = try? parseOptionalUtcIso(timer["stoppedAt"])
 
+        // Plan 202, D-20202/D-20203: an interval the wrist already holds is never
+        // stored again by a later frame. A work interval the wrist stopped stays
+        // stopped (a phone that still names it as running is stale); a rest the
+        // wrist stopped, or an exact repeat of one it holds, is not reopened or
+        // re-adopted under a new row id (a new id restarts the rest ping's memory).
+        // A stop (`stoppedAt` set), a later start, another slot, a pause and a
+        // resume all fall through to the rules below.
+        let pausedAt = try? parseOptionalUtcIso(timer["pausedAt"])
+        let accumulatedPauseMs = (timer["accumulatedPauseMs"] as? NSNumber)?.intValue ?? 0
+        if stoppedAt == nil,
+           ranInterval(
+               kind: kind,
+               sessionId: sessionId,
+               slotId: slotId,
+               startedAt: startedAt,
+               pausedAt: pausedAt,
+               accumulatedPauseMs: accumulatedPauseMs
+           ) {
+            return TimerAdoption()
+        }
+
         // D-4: the owner's rule, the earlier start wins — for the work kinds
         // only. A rest is exempt (D-4's second half): the phone's newer rest
         // still supersedes the wrist's own, because a rest has no owner slot to
@@ -1149,6 +1170,35 @@ public final class WatchSessionEngine: ObservableObject {
                 sessionId: sessionId
             )
         )
+    }
+
+    /// Whether the wrist already holds the interval an incoming running timer
+    /// names (plan 202): the same session and kind, a start within a second, and
+    /// for a work kind the same slot. A work interval counts once the wrist has
+    /// stopped it. A rest counts once stopped, or when the incoming row repeats
+    /// a held one exactly (same `pausedAt` and `accumulatedPauseMs`), so a phone
+    /// pause or resume of the same rest still applies.
+    private func ranInterval(
+        kind: String,
+        sessionId: String,
+        slotId: String?,
+        startedAt: Date,
+        pausedAt: Date?,
+        accumulatedPauseMs: Int
+    ) -> Bool {
+        let isRest = kind == WatchTimerKind.rest
+        return timerLog.snapshot().contains { held in
+            guard held.sessionId == sessionId,
+                  held.kind == kind,
+                  abs(held.startedAt.timeIntervalSince(startedAt)) < 1.0
+            else { return false }
+            if held.state == WatchTimerState.stopped {
+                return isRest || held.sessionExerciseId == slotId
+            }
+            return isRest
+                && held.pausedAt == pausedAt
+                && held.accumulatedPauseMs == accumulatedPauseMs
+        }
     }
 
     /// The slot a freshly stored timer asks the wrist to move to (D-2), or nil
