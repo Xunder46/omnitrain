@@ -614,10 +614,6 @@ struct ContentView: View {
         // view it is attached to, so the session menu, the food sheet and the
         // diagnostics sheet above only wear the user's theme when this wraps them.
         .environment(\.watchAccent, WatchAccent.worn(hex: host.preferences.accentColorHex))
-        // The same theme for every control that is not a prominent button (a
-        // spinner, a link, a toggle): the asset's AccentColor is the default
-        // theme, so without this they wore the default theme, not the user's.
-        .tint(WatchAccent.worn(hex: host.preferences.accentColorHex).color)
     }
 
     /// D-24's first surface: the owed question, alone. The view carries no other

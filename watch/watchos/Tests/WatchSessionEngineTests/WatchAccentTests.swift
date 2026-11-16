@@ -236,8 +236,8 @@ final class WatchAccentTests: XCTestCase {
 
     /// A sheet reads the environment of the view it is attached to, so the session
     /// menu, the food sheet and the diagnostics sheet wear the user's theme only
-    /// when the accent and the tint are applied AFTER them in the root's chain.
-    func testS8605TheAccentAndTheTintWrapTheRootSheets() throws {
+    /// when the accent is applied AFTER them in the root's chain.
+    func testS8605TheAccentWrapsTheRootSheetsAndTheRootSetsNoTint() throws {
         let contentView = try String(
             contentsOf: Fixtures.repositoryRoot
                 .appendingPathComponent("ios/OmniTrain Watch App/ContentView.swift"),
@@ -256,15 +256,16 @@ final class WatchAccentTests: XCTestCase {
             lastIndex(containing: ".environment(\\.watchAccent, WatchAccent.worn(hex: host.preferences.accentColorHex))"),
             "S-8605 the root sets the accent"
         )
-        let tint = try XCTUnwrap(
-            lastIndex(containing: ".tint(WatchAccent.worn(hex: host.preferences.accentColorHex).color)"),
-            "S-8605 the root tints every other control with the same theme"
-        )
         let menuSheet = try XCTUnwrap(lastIndex(containing: ".menuSheet("), "S-8605 the root hosts the menu sheet")
         let lastSheet = try XCTUnwrap(lastIndex(containing: ".sheet(isPresented:"), "S-8605 the root hosts its sheets")
         XCTAssertGreaterThan(environment, menuSheet, "S-8605 the accent wraps the session menu sheet")
         XCTAssertGreaterThan(environment, lastSheet, "S-8605 the accent wraps the food and diagnostics sheets")
-        XCTAssertGreaterThan(tint, lastSheet, "S-8605 the tint wraps the root's sheets too")
+        // Never a root-wide `.tint`: it turned the toolbar's menu and close buttons
+        // into filled accent circles with the glyph lost (device, 2026-11-15).
+        XCTAssertFalse(
+            code.contains { $0.contains(".tint(") },
+            "S-8605 the root sets no tint: the toolbar buttons stay neutral"
+        )
     }
 
     // MARK: - S-8604 the wiring reads worn, and the asset carries the color

@@ -723,11 +723,12 @@ frame (plan 87b, open question d;
     sheet: start a workout and tap the list button (the session menu: the
     current exercise's row, the End Session button and the exercise list),
     open **Nutrition**, and open **Diagnostics** if it is shown. Their
-    prominent buttons, spinners and highlights wear the theme you chose, not
-    the default cyan; before this change those three sheets wore the default
+    prominent buttons wear the theme you chose, not the default cyan, and the
+    toolbar's menu and close buttons stay neutral grey (a root-wide tint made
+    them filled circles); before this change those three sheets wore the default
     theme because they sat outside the place the theme was applied. Held
-    off-device by `WatchAccentTests.testS8605TheAccentAndTheTintWrapTheRootSheets`
-    (the accent and the tint come after the root's sheets in
-    `ContentView.swift`) in
+    off-device by `WatchAccentTests.testS8605TheAccentWrapsTheRootSheetsAndTheRootSetsNoTint`
+    (the accent comes after the root's sheets in `ContentView.swift`, and the
+    root sets no tint) in
     `watch/watchos/Tests/WatchSessionEngineTests/WatchAccentTests.swift`; the
     gap itself is a layout and is checked by eye.
