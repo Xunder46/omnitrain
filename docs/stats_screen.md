@@ -187,7 +187,7 @@ unlock Signals` › `the load measure shows and the Signals layer renders`).
 
 **The usual bar.** When the measure is load, a second bar shows the usual mix
 the 12 baseline blocks before the window establish: the first bar is labelled
-`In this window` and the second `Your usual`, and neither label renders when
+`Recent` and the second `Your usual`, and neither label renders when
 there is no usual bar. The load measure can show while those baseline blocks
 hold no rated work — the rated weeks are counted up to today, not before the
 window — and the usual bar then simply does not draw. Verified by the same

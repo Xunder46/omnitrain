@@ -133,7 +133,8 @@ on the reps axis. Verified by `test/progression_samples_service_test.dart`
   the contract the docs describe`) and
   `test/progression_rate_signal_screen_test.dart` (`S-1801`).
 - **Copy.** `progressionRateCopy` builds the card's observation from the two
-  whole-number percentages and its suggestion, and `ProgressionRate.fromCounts` is
+  whole-number percentages and its suggestion. The observation reads `In the last 4 weeks, N% of your lifting sessions matched or beat your previous one for that lift, up from M% before.`
+  (`test/progression_rate_test.dart`, `S-21502`), and `ProgressionRate.fromCounts` is
   the only place those percentages are derived, so the copy and the qualification
   test cannot disagree. Verified by `test/progression_rate_test.dart` (`D-1109`)
   and `test/progression_rate_signal_screen_test.dart` (`S-1801`).

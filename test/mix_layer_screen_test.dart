@@ -2420,13 +2420,13 @@ void main() {
       group('S-3202 the two bars are labelled', () {
         setUp(() => _seedLoadReady(repo));
 
-        testWidgets('In this window sits above the bar and Your usual below it',
+        testWidgets('S-21501 Recent sits above the bar and Your usual below it',
             (tester) async {
           await pumpStats(tester);
 
           expect(
             _textOf(tester, const Key('mix_window_bar_label')),
-            'In this window',
+            'Recent',
           );
           expect(_textOf(tester, const Key('mix_usual_label')), 'Your usual');
           expect(

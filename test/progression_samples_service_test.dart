@@ -399,7 +399,7 @@ void main() {
         expect(rate.recentPercent, 82);
         expect(
           progressionRateCopy(rate).observation,
-          contains('over the last 4 weeks'),
+          contains('In the last 4 weeks, 82% of your lifting sessions'),
         );
       });
 

@@ -38,7 +38,8 @@ const Size _kTallViewport = Size(400, 2400);
 
 /// The observation and the suggestion the plan pins (D-1109), verbatim.
 const String _kFprObservation =
-    'Resistance progression rate is 80% over the last 4 weeks, up from 65%.';
+    'In the last 4 weeks, 80% of your lifting sessions matched or beat your '
+    'previous one for that lift, up from 65% before.';
 const String _kFprSuggestion = 'The current approach is working.';
 
 // ─── F-PR ───────────────────────────────────────────────────────────────────

@@ -248,7 +248,7 @@ class MixLayerSection extends StatelessWidget {
   /// The first bar's label, drawn only when a second bar sits under it and the
   /// two need telling apart (D-3202).
   Widget _buildWindowBarLabel(ThemeData theme) => Text(
-    'In this window',
+    'Recent',
     key: const Key('mix_window_bar_label'),
     style: theme.textTheme.labelSmall?.copyWith(color: themeColors.textMuted),
   );

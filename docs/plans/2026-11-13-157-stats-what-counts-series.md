@@ -47,3 +47,4 @@ Owner decisions 2026-11-15: pace change reads better/worse (faster = green up); 
 |---|---|---|
 | 214 | `docs/plans/2026-11-16-214-stats-says-when-effort-rating-is-off-plan/`: the locked Signals line, the hint under a card and the Mix note say when Effort Rating is the reason (item 7, first half). | committed da111335 |
 | 213 | `docs/plans/2026-11-16-213-stats-dismissed-signal-can-be-brought-back-plan/`: a dismissed signal shows `Signal hidden for 14 days.` with Undo (item 9, dismiss undo). | committed |
+| 215 | `docs/plans/2026-11-16-215-stats-plain-words-for-two-labels-plan/`: the Mix legend says `Recent`, the Progression card says what its percentage is (item 9, jargon half). | committed |
