@@ -132,10 +132,12 @@ class NutritionTrendPoint {
 /// Top-level container returned by [StatsProgressService].
 class StatsProgressData {
   /// Up to [StatsProgressService.kTopLiftCount] lifts, sorted by training
-  /// frequency. This is the set the PR scan covers, not a display list.
+  /// frequency. Only these lifts carry trend data; the record scan behind
+  /// [recentPRs] covers every lift with a logged set.
   final List<LiftProgress> topLifts;
 
   /// Most-recent personal records across all tracked lifts (newest first).
+  /// At most [StatsProgressService.kRecentPRCount], one per exercise.
   final List<StatsPR> recentPRs;
 
   /// The "current window" that decided which lifts were eligible for

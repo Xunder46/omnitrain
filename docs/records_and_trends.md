@@ -19,11 +19,15 @@ Both screens read one `StatsProgressService.computeExerciseMetrics()` result and
 format values through the same shared formatters, so a best shown in the index and
 the same best shown on the detail page cannot disagree. The service only reads: an
 all-time best describes what is already stored, creates no PR event and writes
-nothing. The PR list Records & Trends renders is the service's own `recentPRs`.
+nothing. The PR list Records & Trends renders is the service's own `recentPRs`:
+the five newest records, one per exercise, over every exercise with a logged set
+— the scan is not limited to the lifts trained in the recent window, so a record
+on a lift trained long ago can still appear.
 
 Verified by `test/records_and_trends_screen_test.dart` (`S-913` for the totals and
-the PR list, `S-914` for the shared best) and
-`test/exercise_metric_service_test.dart`.
+the PR list, `S-914` for the shared best),
+`test/exercise_metric_service_test.dart` and
+`test/stats_recent_prs_every_lift_test.dart` (`S-21101` to `S-21108`).
 
 The Streak figure is the live streak and reads 0 d once it has lapsed. Verified
 by `test/calendar_streak_screen_test.dart` (group `S-17408 the Records and

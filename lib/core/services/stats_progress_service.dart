@@ -164,9 +164,9 @@ class StatsProgressService {
     return [for (final ms in startsMs) DateTime.fromMillisecondsSinceEpoch(ms)];
   }
 
-  /// The cap on the lifts whose full history the PR scan walks. Not a
-  /// display list: the Stats screen shows the resulting PRs, not the
-  /// lifts themselves.
+  /// The cap on the lifts that get a trend entry in
+  /// [StatsProgressData.topLifts]. Not a display list: the record scan
+  /// behind `recentPRs` covers every lift with a logged set (plan 210).
   static const int kTopLiftCount = 3;
 
   /// Maximum number of recent PRs to return in [StatsProgressData.recentPRs].
@@ -221,8 +221,9 @@ class StatsProgressService {
 
   /// Compute the Stats screen's lift progress and personal records.
   ///
-  /// Returns the lifts the PR scan covers ([StatsProgressData.topLifts]),
-  /// the most-recent PRs and the window that selected the lifts.
+  /// Returns the window's trend lifts ([StatsProgressData.topLifts]), the
+  /// most-recent PRs (the scan covers every lift with a logged set, plan 210)
+  /// and the window that selected the trend lifts.
   /// Complexity: O(sessions × segments × efforts). Acceptable for any
   /// foreseeable on-device history without caching in v1.
   Future<StatsProgressData> computeProgressData() async {
@@ -309,25 +310,35 @@ class StatsProgressService {
       kTopLiftCount,
       nameCache,
     );
-    // Trends and PRs are FULL-HISTORY for the selected exercises
+    final topLiftSet = topLiftIds.toSet();
+    final scanIds = <String>[
+      ...topLiftIds,
+      ...await _liftIdsInHistory(completed, exclude: topLiftSet),
+    ];
+    // Trends and PRs are FULL-HISTORY for the scanned exercises
     // — the window only decided who appears. Walk the unfiltered
-    // `completed` list once and aggregate per-selected-exercise
-    // day maps.
+    // `completed` list once and aggregate per-scanned-exercise
+    // day maps. The record scan covers every lift with a logged
+    // set (plan 210); the window and `kTopLiftCount` only decide
+    // which lifts get a trend entry in `topLifts`.
     final fullSetsByExercise = await _buildFullSetsForExercises(
       completed,
-      topLiftIds,
+      scanIds,
     );
     final fullRepsByExercise = await _buildFullRepsForExercises(
       completed,
-      topLiftIds,
+      scanIds,
     );
-    final repsAxis = await _repsAxisExercises(topLiftIds.toSet());
+    final repsAxis = await _repsAxisExercises(scanIds.toSet());
     // Build LiftProgress + collect PRs.
     final topLifts = <LiftProgress>[];
     final allPRs = <StatsPR>[];
 
-    for (final exerciseId in topLiftIds) {
-      final name = nameCache[exerciseId] ?? exerciseId;
+    for (final exerciseId in scanIds) {
+      final name =
+          nameCache[exerciseId] ??
+          (await _exerciseById(exerciseId))?.name ??
+          exerciseId;
       final setDayMap = fullSetsByExercise[exerciseId] ?? const {};
       final repsDayMap = fullRepsByExercise[exerciseId] ?? const {};
 
@@ -384,14 +395,16 @@ class StatsProgressService {
         }
       }
 
-      topLifts.add(
-        LiftProgress(
-          exerciseName: name,
-          e1RmTrend: e1RmTrend,
-          volumeTrend: volumeTrend,
-          repsTrend: repsTrend,
-        ),
-      );
+      if (topLiftSet.contains(exerciseId)) {
+        topLifts.add(
+          LiftProgress(
+            exerciseName: name,
+            e1RmTrend: e1RmTrend,
+            volumeTrend: volumeTrend,
+            repsTrend: repsTrend,
+          ),
+        );
+      }
 
       // ── PR detection: weight axis (only on weight-axis exercises) ──
       double bestSoFar = 0;
@@ -2602,6 +2615,30 @@ class StatsProgressService {
   ) {
     return session.startedAtMs >= fromMs.millisecondsSinceEpoch &&
         session.startedAtMs <= toMs.millisecondsSinceEpoch;
+  }
+
+  /// Ids of every exercise with a `set` effort in [completed] that is not in
+  /// [exclude], sorted (plan 210): the lifts the record scan covers beyond the
+  /// window's top lifts.
+  Future<List<String>> _liftIdsInHistory(
+    List<TrainingSession> completed, {
+    required Set<String> exclude,
+  }) async {
+    final history = await _loadHistory();
+    final ids = <String>{};
+    for (final session in completed) {
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          final id = effort.exerciseId;
+          if (effort.effortKind == 'set' &&
+              id != null &&
+              !exclude.contains(id)) {
+            ids.add(id);
+          }
+        }
+      }
+    }
+    return ids.toList()..sort();
   }
 
   /// Builds a per-selected-exercise full-history set trend map.
