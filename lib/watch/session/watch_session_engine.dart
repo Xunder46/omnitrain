@@ -271,6 +271,9 @@ class WatchSessionEngine {
   /// Entries travel as [entries], so a correction the phone sent is not echoed
   /// back as the original, and timers travel as wall-clock state: the phone
   /// derives remaining time from its own clock (PROTOCOL.md, "Timer state").
+  ///
+  /// The payload names the session's modality when the row holds one, as the
+  /// phone's own snapshot does (plan 204).
   Map<String, Object?>? sessionSnapshot({String? messageId}) {
     final session = _session;
     if (session == null) return null;
@@ -287,6 +290,8 @@ class WatchSessionEngine {
         'revision': session.revision,
         'status': session.status,
         'currentExerciseIndex': session.currentExerciseIndex,
+        if (session.modality != null && session.modality!.isNotEmpty)
+          'modality': session.modality,
         'exercises': session.exercises,
         'entries': [for (final entry in entries) entry.payload],
         'timers': _timersJson(),

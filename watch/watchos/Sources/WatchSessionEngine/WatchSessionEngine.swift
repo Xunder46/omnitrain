@@ -322,6 +322,22 @@ public final class WatchSessionEngine: ObservableObject {
     public func sessionSnapshot(messageId: String? = nil) -> [String: Any]? {
         guard let session = state.record() else { return nil }
 
+        var payload: [String: Any] = [
+            "sessionId": session.sessionId,
+            "revision": session.revision,
+            "status": session.status,
+            "currentExerciseIndex": session.currentExerciseIndex,
+            "exercises": session.exercises,
+            "entries": entries.map(\.payload),
+            "timers": timersJson(),
+        ]
+        // Plan 204, D-20401: the session's modality travels when the row holds
+        // one (never null, never empty), so the phone adopts a Cardio workout
+        // as Cardio. The phone's own value is stamped on first hearing only
+        // (D-12591) and is echoed back unchanged.
+        if let modality = session.modality, !modality.isEmpty {
+            payload["modality"] = modality
+        }
         let envelope: [String: Any] = [
             "protocolVersion": SyncProtocolValidator.protocolVersion,
             "messageId": messageId ?? self.messageId(for: "snapshot-\(session.recordId)"),
@@ -329,15 +345,7 @@ public final class WatchSessionEngine: ObservableObject {
             "type": "session_snapshot",
             "origin": "watch",
             "sentAt": utcIso(clock()),
-            "payload": [
-                "sessionId": session.sessionId,
-                "revision": session.revision,
-                "status": session.status,
-                "currentExerciseIndex": session.currentExerciseIndex,
-                "exercises": session.exercises,
-                "entries": entries.map(\.payload),
-                "timers": timersJson(),
-            ] as [String: Any],
+            "payload": payload,
         ]
         try? requireConformant(envelope)
         return envelope
