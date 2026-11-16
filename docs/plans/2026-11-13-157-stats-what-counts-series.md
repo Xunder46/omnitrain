@@ -32,4 +32,11 @@ Owner decisions 2026-11-15: pace change reads better/worse (faster = green up); 
 |---|---|---|---|
 | 209 | 4 and 6 (trend half) | `docs/plans/2026-11-15-209-stats-pace-reads-honestly-plan/`: pace change reads `↑ 0:10 /km` green when faster; an Instruments row's trend line plots only days in the row's own metric. | committed 9ce80fd5 |
 | 210 | 6 (PR half) | Recent PRs from every lift in history, 5 newest; the three trend charts stay on the three most-trained lifts. Load cost to measure first (one Stats load is ~235 ms on 417 sessions). | committed ac1c9b33 (plan `docs/plans/2026-11-16-210-stats-recent-prs-every-lift-plan/`) |
-| 211 | 6 (Best half) | Records & Trends shows the best single session for a cardio exercise with no distance and for rounds, not a running total; the Instruments window rows keep their labelled totals. | built, verified, uncommitted (plan `docs/plans/2026-11-16-211-stats-best-is-one-session-plan/`) |
+| 211 | 6 (Best half) | Records & Trends shows the best single session for a cardio exercise with no distance and for rounds, not a running total; the Instruments window rows keep their labelled totals. | committed (plan `docs/plans/2026-11-16-211-stats-best-is-one-session-plan/`) |
+
+## Group D (review item 8) — plans 212, 213
+
+| Plan | What | Status |
+|---|---|---|
+| 212 | `docs/plans/2026-11-16-212-stats-one-failure-keeps-the-screen-plan/`: one failing signal or Fuel read no longer fails the whole Stats load; totals, Instruments and Mix stay core. | committed |
+| 213 | Stats reloads silently when new data arrives while it is open (deferred item 2 of the 2026-11-04 input sweep). | not planned |

@@ -240,37 +240,20 @@ class _GatedSignal implements Signal {
   Future<String?> waitingFor(SignalContext context) async => null;
 }
 
-/// S-18207: a signal whose first evaluation throws, so the first load fails;
-/// later evaluations return a card.
-class _FlakySignal implements Signal {
-  @override
-  final String id = 'f-1';
-
-  @override
-  final SignalKind kind = SignalKind.positive;
-
-  @override
-  final int priority = 10;
-
-  @override
-  final bool needsRatedWeeks = false;
-
+/// S-18207: a Mock repository whose first `getAllSessions` call after the
+/// store's migration throws, so the first load fails through a core read;
+/// later calls behave normally. The throw is [armed] only once
+/// `initialize` has run: the Mock repository's own migration step reads
+/// `getAllSessions` during initialization, and that read must stay healthy.
+class _FirstLoadFailsRepository extends MockWorkoutRepository {
+  bool armed = false;
   int calls = 0;
 
   @override
-  Future<SignalCard?> evaluate(SignalContext context) async {
-    if (calls++ == 0) throw StateError('the first load fails');
-    return SignalCard(
-      id: id,
-      kind: kind,
-      priority: priority,
-      title: 'Flaky',
-      observation: 'recovered on ${context.startOfWeek}',
-    );
+  Future<List<TrainingSession>> getAllSessions() async {
+    if (armed && calls++ == 0) throw StateError('the store cannot be read');
+    return super.getAllSessions();
   }
-
-  @override
-  Future<String?> waitingFor(SignalContext context) async => null;
 }
 
 /// S-18206: a Mock repository whose write of the dismissal store waits on a
@@ -1108,26 +1091,73 @@ void main() {
             },
           );
 
-          testWidgets(
-            'S-18207 a reload that succeeds replaces the failure view',
-            (tester) async {
-              final flaky = _FlakySignal();
-              await pumpStats(tester, signals: [flaky]);
+        });
 
-              expect(find.text('Could not load your stats.'), findsOneWidget);
-              expect(flaky.calls, 1);
+        // S-18207 keeps its own repository because the first load must fail
+        // through a core read: a signal that throws no longer fails the load
+        // (plan 212), so a throwing signal cannot stage the failure view
+        // anymore.
+        group('S-18207 a reload that succeeds replaces the failure view', () {
+          late _FirstLoadFailsRepository firstFails;
+          late WorkoutState firstFailsWorkout;
+          late SettingsState firstFailsSettings;
 
-              await tester.runAsync(
-                () => settingsState.setStartOfWeek('sunday'),
-              );
-              await settleStore(tester);
-              await tester.pumpAndSettle();
+          setUp(() async {
+            firstFails = _FirstLoadFailsRepository();
+            await firstFails.initialize();
+            // The same fixture the S-182 group seeds, so the healthy reload
+            // has content to show.
+            await _seedGateMet(firstFails);
+            firstFails.armed = true;
+            firstFailsWorkout = WorkoutState(firstFails);
+            firstFailsSettings = SettingsState(
+              firstFails,
+              fakePreferencesService(),
+            );
+            await firstFailsSettings.initialize();
+          });
 
-              expect(flaky.calls, 2);
-              expect(find.text('Could not load your stats.'), findsNothing);
-              expect(find.text('recovered on sunday'), findsOneWidget);
-            },
-          );
+          testWidgets('S-18207 a reload that succeeds replaces the failure view',
+              (tester) async {
+            final stub = _StubSignal(
+              id: 'r-1',
+              kind: SignalKind.positive,
+              priority: 10,
+              observation: 'recovered on sunday',
+            );
+            // The body of pumpStats, against this group's own repository: the
+            // enclosing group's states belong to the harness repository.
+            await tester.binding.setSurfaceSize(_kTallViewport);
+            addTearDown(() => tester.binding.setSurfaceSize(null));
+            await tester.pumpWidget(
+              MediaQuery(
+                data: MediaQueryData(textScaler: TextScaler.linear(1.0)),
+                child: MaterialApp(
+                  home: StatsScreen(
+                    workoutState: firstFailsWorkout,
+                    settingsState: firstFailsSettings,
+                    signals: [stub],
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+
+            expect(find.text('Could not load your stats.'), findsOneWidget);
+            expect(firstFails.calls, 1);
+
+            await tester.runAsync(
+              () => firstFailsSettings.setStartOfWeek('sunday'),
+            );
+            await settleStore(tester);
+            await tester.pumpAndSettle();
+
+            // The first `getAllSessions` threw; the reload's did not.
+            expect(firstFails.calls, greaterThanOrEqualTo(2));
+            expect(find.text('Could not load your stats.'), findsNothing);
+            expect(stub.seenOnEvaluate, 'sunday');
+            expect(find.text('recovered on sunday'), findsOneWidget);
+          });
         });
 
         group('S-18206 a card dismissed just before the flip stays dismissed',

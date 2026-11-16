@@ -270,7 +270,8 @@ lib/`).
 **File**: `lib/features/stats/widgets/load_failure_view.dart`
 
 The centred "could not load" surface the Stats-area screens render when their
-one load read throws. It is deliberately **not** an empty state: the screen
+core load read throws (for Stats, the totals, the Instruments list or the Mix
+layer; its optional signals and Fuel row are left out instead). It is deliberately **not** an empty state: the screen
 says the load failed and offers the retry, instead of reading as "no data".
 
 | Prop | Type | Description |

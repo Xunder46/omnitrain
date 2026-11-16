@@ -30,6 +30,9 @@ class SignalsService {
   /// evaluated (D-17502); once it is met every registered signal is evaluated
   /// once. The cards of currently dismissed signals are dropped (D-1011).
   ///
+  /// A signal that throws is skipped, like one that abstains: one unreadable
+  /// signal never costs the others or the Stats screen (plan 212).
+  ///
   /// [dismissedAtMs] lets a caller that already read the store pass that map
   /// in, so one load reads the store once; when it is omitted the store is
   /// read here, which is what the service-level tests and `dismiss` rely on.
@@ -53,7 +56,14 @@ class SignalsService {
     final cards = <SignalCard>[];
     for (final signal in _signals) {
       if (signal.needsRatedWeeks && !gateMet) continue;
-      final card = await signal.evaluate(context);
+      final SignalCard? card;
+      try {
+        card = await signal.evaluate(context);
+      } catch (_) {
+        // A signal whose data cannot be read is left out; the others still
+        // speak, and the screen still loads (plan 212).
+        continue;
+      }
       if (card == null) continue;
       final dismissedAt = dismissed[card.id];
       if (dismissedAt != null &&

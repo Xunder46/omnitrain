@@ -141,8 +141,15 @@ class _StatsScreenState extends State<StatsScreen> {
       final totals = await service.computeTotals();
 
       // The Fuel row's own window, resolved in the same load as everything
-      // else so the row never computes during a build.
-      final fuelSummary = await service.computeFuelSummary();
+      // else so the row never computes during a build. The row is optional: a
+      // food read that fails leaves it out rather than failing the whole
+      // screen (plan 212).
+      FuelSummary? fuelSummary;
+      try {
+        fuelSummary = await service.computeFuelSummary();
+      } catch (_) {
+        fuelSummary = null;
+      }
 
       // One load reads one "now": the Mix layer and the signals are evaluated
       // against the same instant, so a card can never disagree with the layer

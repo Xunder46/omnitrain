@@ -600,12 +600,19 @@ signals that need no rated weeks`).
 `StatsProgressService` is a pure-Dart service — it depends on the
 `WorkoutRepository` interface only, not on any concrete implementation.
 
-When that one load read throws, the body is `LoadFailureView` — the failure
+When a core read throws (the totals, the Instruments list or the Mix layer), the body is `LoadFailureView` — the failure
 line `Could not load your stats.` and a full-width `Try again` button that
 re-runs `_loadData()` — instead of the empty state, so a failed load never
 reads as "no data". Verified by `test/stats_load_failure_test.dart` (group
 `S-2704: a failed load is not an empty state`: `Stats: the failure text and
 Try again replace the empty state`).
+
+Each signal and the Fuel row are optional, so one unreadable piece of data does
+not blank the screen: a signal that throws is left out of the list while the
+others still speak, and a Fuel read that throws leaves the Fuel row out. Nothing
+on screen says a card or the row is missing, and nothing is logged. The Weight
+block already behaved this way (its service returns nothing on a failed read).
+Verified by `test/stats_one_failure_screen_test.dart` (`S-21303`, `S-21304`).
 
 ---
 

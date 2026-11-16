@@ -266,6 +266,11 @@ registered signal once; a signal is never asked to walk history itself. Verified
 by `test/signals_service_test.dart` (`S-1709 a dismissed id is filtered out of
 the evaluated candidates`, which counts the evaluations).
 
+A signal that throws is left out of the candidates, like one that abstains: the
+others still speak and the Stats screen still loads (plan 212). The waiting
+lines already worked this way. Verified by
+`test/stats_one_failure_service_test.dart` (`S-21301`, `S-21302`).
+
 ---
 
 ## Related Documentation
