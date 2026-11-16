@@ -76,6 +76,20 @@ public enum WatchEffortKind {
         default: return set
         }
     }
+
+    /// The kind a session's modality logs as — the phone's own table
+    /// (`ModalityConfig.effortKind`): nil for no modality or a key the table does
+    /// not name, so such a slot resolves from its capabilities as before
+    /// (plan 206, D-20601).
+    public static func forModality(_ modality: String?) -> String? {
+        switch modality {
+        case "cardio_endurance": return timed
+        case "resistance_lifting": return set
+        case "isometric_stretching": return drill
+        case "sports": return round
+        default: return nil
+        }
+    }
 }
 
 /// One adjustable value on a logging surface. `value` is canonical — the unit

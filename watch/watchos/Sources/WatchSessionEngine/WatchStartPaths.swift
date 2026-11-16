@@ -796,13 +796,14 @@ public final class WatchSessionStartPaths {
         // one more exercise, as Add Exercise does, instead of refusing the start
         // and dropping it. The held session's modality stays as it is (D-12591).
         if engine.session?.status == WatchSessionStatus.active {
-            return await addExerciseToSession(exercise)
+            return await addExerciseToSession(exercise, effortKind: WatchEffortKind.forModality(modality))
         }
         return await engine.createSession(
             modality: modality,
             exercises: [
                 exercise.toSlot(
-                    sessionExerciseId: exercise.slotId(token: sessionToken(from: newId()))
+                    sessionExerciseId: exercise.slotId(token: sessionToken(from: newId())),
+                    effortKind: WatchEffortKind.forModality(modality)
                 )
             ]
         )
@@ -830,10 +831,14 @@ public final class WatchSessionStartPaths {
     @discardableResult
     public func addExerciseToSession(
         _ exercise: WatchCatalogExercise,
-        atIndex: Int? = nil
+        atIndex: Int? = nil,
+        effortKind: String? = nil
     ) async -> WatchSessionRecord {
         await engine.insertExercise(
-            exercise.toSlot(sessionExerciseId: availableSlotId(for: exercise)),
+            exercise.toSlot(
+                sessionExerciseId: availableSlotId(for: exercise),
+                effortKind: effortKind ?? WatchEffortKind.forModality(engine.session?.modality)
+            ),
             atIndex: atIndex,
             moveTo: true
         )
@@ -895,7 +900,10 @@ public final class WatchSessionStartPaths {
     @discardableResult
     public func addExerciseToEnd(_ exercise: WatchCatalogExercise) async -> WatchSessionRecord {
         await engine.insertExercise(
-            exercise.toSlot(sessionExerciseId: availableSlotId(for: exercise)),
+            exercise.toSlot(
+                sessionExerciseId: availableSlotId(for: exercise),
+                effortKind: WatchEffortKind.forModality(engine.session?.modality)
+            ),
             atIndex: nil,
             moveTo: false
         )
