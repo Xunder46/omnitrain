@@ -218,6 +218,12 @@
       "note": "A cardio session's snapshot names `modality: \"cardio_endurance\"` with one distance exercise and no entries yet: the key is optional and the session's own (plan 125d)."
     },
     {
+      "path": "valid/session_snapshot_modality_from_wrist.json",
+      "type": "session_snapshot",
+      "scenario": "S-20306",
+      "note": "A wrist-origin snapshot names `modality: \"sports\"`, the key its own session row holds: the same optional key, sent by the wrist (plan 203/204)."
+    },
+    {
       "path": "valid/routines_down_focus_modality.json",
       "type": "routines_down",
       "scenario": "S-12510",

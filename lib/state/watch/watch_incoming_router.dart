@@ -148,7 +148,10 @@ class WatchIncomingRouter {
         // would reload the session the phone just ended (D-182, S-190).
         await _mirror.reportLifecycleFor(named, fate);
       } else {
-        final adopted = await _adoption?.consider(_mirror.state);
+        final adopted = await _adoption?.consider(
+          _mirror.state,
+          wristModality: _wristModality(envelope),
+        );
         // G1: the snapshot named a session whose row is already history, so
         // nothing was adopted and nothing was reloaded. The wrist is still
         // looking at a session this phone has finished, and the only thing that
@@ -234,6 +237,17 @@ class WatchIncomingRouter {
       answeredReset: answeredReset,
       water: water?.outcome ?? WatchWaterLogOutcome.ignored,
     );
+  }
+
+  /// The modality key the wrist names on a `session_snapshot` (plan 203), or null
+  /// for anything else: another message type, a missing key, an empty string, a
+  /// value that is not a string.
+  static String? _wristModality(Map<String, Object?> envelope) {
+    if (envelope['type'] != 'session_snapshot') return null;
+    final payload = envelope['payload'];
+    if (payload is! Map) return null;
+    final value = payload['modality'];
+    return value is String && value.isNotEmpty ? value : null;
   }
 
   /// Re-offers the end [sessionId] is still owed (plan 128 D-2a, D-3): once per

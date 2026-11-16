@@ -745,7 +745,13 @@ class WatchSessionAdoptionBridge {
   ///
   /// [converged] is `LiveSessionMirrorState.state` — the reconciler's own output
   /// for the session the wrist is running.
-  Future<WatchSessionAdoption> consider(Map<String, Object?> converged) async {
+  ///
+  /// The wrist's own modality, when it names a known one, wins over the
+  /// routine's Focus (plan 203).
+  Future<WatchSessionAdoption> consider(
+    Map<String, Object?> converged, {
+    String? wristModality,
+  }) async {
     final target = _workoutState;
     if (target == null) return WatchSessionAdoption.unbound;
 
@@ -816,7 +822,7 @@ class WatchSessionAdoptionBridge {
         await _isEffortless(sessionId);
     try {
       if (existing == null) {
-        await _adopt(sessionId, converged);
+        await _adopt(sessionId, converged, wristModality: wristModality);
       } else if (placeholder) {
         // Read before anything is written, the way `_adopt` does (D-1, I-2).
         final routine = await _routineFor(_slots(converged));
@@ -1190,9 +1196,20 @@ class WatchSessionAdoptionBridge {
     await _workoutState!.updateSessionFeeling(sessionId, rating);
   }
 
+  /// The key itself when the phone can render it (a [ModalityConfig] exists for
+  /// it), else null: a newer wrist cannot plant a modality this app does not know.
+  static String? _knownModality(String? key) {
+    if (key == null || key.isEmpty) return null;
+    return ModalityConfig.forModality(key) == null ? null : key;
+  }
+
   /// Writes the adopted session: its row and its one segment, under the
   /// protocol's ids (D-3); the ladder itself goes through [_writeLadder].
-  Future<void> _adopt(String sessionId, Map<String, Object?> converged) async {
+  Future<void> _adopt(
+    String sessionId,
+    Map<String, Object?> converged, {
+    String? wristModality,
+  }) async {
     final atMs = _clock().millisecondsSinceEpoch;
     final slots = _slots(converged);
     // D-1: the wrist's slot ids are the phone's own template effort ids, so the
@@ -1218,7 +1235,10 @@ class WatchSessionAdoptionBridge {
         // Plan 122 D-12201(c): like a phone-started routine, the adopted
         // session carries the routine's Focus as a snapshot (null when no
         // routine matched or the routine has no Focus).
-        modality: routine?.template.focusModality,
+        // Plan 203 D-20302: the wrist's own key wins, as the importer's
+        // end.modality does (S-12516).
+        modality:
+            _knownModality(wristModality) ?? routine?.template.focusModality,
       ),
     );
 
