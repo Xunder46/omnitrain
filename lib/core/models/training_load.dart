@@ -201,13 +201,16 @@ List<DateTime> ratedWeekBlockStarts(DateTime endDay) {
 /// A session with no set effort ([hasSets] false) and some measured time shares
 /// its whole duration across the measured modalities in proportion to their
 /// measured time (plan 179): nothing in it is lifting, so Resistance takes none
-/// of it. A session with no measured time is unchanged.
+/// of it. A session that holds efforts but no set with a row and no measured
+/// time contributes nothing (plan 224); a session with no effort at all keeps
+/// the remainder rule.
 Map<ExerciseSection, double> sessionTimeByModality({
   required int durationSecs,
   required bool isRolling,
   required Map<ExerciseSection, double> measuredSecs,
   required ExerciseSection? dominantSection,
   required bool hasSets,
+  bool hasEfforts = false,
 }) {
   final measured = <ExerciseSection, double>{
     for (final entry in measuredSecs.entries)
@@ -228,6 +231,10 @@ Map<ExerciseSection, double> sessionTimeByModality({
         entry.key: entry.value * durationSecs / totalMeasured,
     };
   }
+
+  // A session that holds efforts but nothing done adds no time (plan 224); a
+  // session with no effort at all keeps the remainder rule.
+  if (!hasSets && hasEfforts) return const {};
 
   final remainder = durationSecs - totalMeasured;
   return {

@@ -931,6 +931,7 @@ class StatsProgressService {
       measuredSecs: measured,
       dominantSection: dominant,
       hasSets: _hasSetEffort(history, session),
+      hasEfforts: _hasAnyEffort(history, session),
     );
     return _SessionSplit(
       timeBySection: timeBySection,
@@ -994,15 +995,26 @@ class StatsProgressService {
     return measured;
   }
 
-  /// Whether [session] holds any `set` effort (plan 179): only a session with
-  /// sets gives its unmeasured minutes to Resistance.
+  /// Whether [session] holds any `set` effort (plans 179, 224): only a session
+  /// with a set effort that holds at least one stored row gives its unmeasured
+  /// minutes to Resistance.
   bool _hasSetEffort(_HistoryIndex history, TrainingSession session) {
     for (final segment in history.segmentsOf(session.id)) {
       for (final effort in history.effortsOf(segment.id)) {
-        if (_sectionForKind(effort.effortKind) == ExerciseSection.resistance) {
+        if (_sectionForKind(effort.effortKind) == ExerciseSection.resistance &&
+            history.observationsOf(effort.id).isNotEmpty) {
           return true;
         }
       }
+    }
+    return false;
+  }
+
+  /// Whether [session] holds any effort at all (plan 224): a session with no
+  /// effort keeps the remainder rule instead of adding nothing.
+  bool _hasAnyEffort(_HistoryIndex history, TrainingSession session) {
+    for (final segment in history.segmentsOf(session.id)) {
+      if (history.effortsOf(segment.id).isNotEmpty) return true;
     }
     return false;
   }
