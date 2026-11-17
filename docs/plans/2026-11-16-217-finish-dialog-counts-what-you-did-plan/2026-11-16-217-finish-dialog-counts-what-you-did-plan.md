@@ -76,7 +76,7 @@ Stale-term sweep (`grep -rIniE "You have completed|Finish confirmation|finish di
 2. The count is read from the caches, so a wrist-logged set whose rest has not reached them yet is counted a moment late (the drop itself re-reads the store).
 3. (owner) A device check: a routine session with three lifts, log one set of one lift, tap Finish Workout; the dialog says `1 exercise`, the summary shows one.
 
-4. (review minor, not fixed) `createNewSession` does not clear the previous session's efforts; the Finish count (like the drop and the screen) could read a finished-but-not-cleared session's exercises if a routine session starts without `clearSession()` after the wrist's own end (`my_routines_screen.dart:196`). Existing exposure; needs its own look.
+4. (review minor, not fixed) `createNewSession` does not clear the previous session's efforts; the Finish count (like the drop and the screen) could read a finished-but-not-cleared session's exercises if a routine session starts without `clearSession()` after the wrist's own end (`my_routines_screen.dart:196`). Existing exposure; needs its own look. CORRECTED 2026-11-16 by a probe: the routine start flow calls `loadSessionData()` right after `createNewSession`, which reloads the caches, so no previous session's exercises appear (checked for an ended and for a live previous session). The unfixed part of the worry is nothing: an older in-progress session left in the store is deleted by the next `checkForInProgressSession`.
 5. (review minor, not fixed) A kind other than `set`/`round` is read as timed; no writer produces any other (`interval`, `amrap`, `note` exist only as block types).
 
 ## Predicted files

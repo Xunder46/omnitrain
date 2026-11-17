@@ -615,6 +615,16 @@ void main() {
         final sessionId = harness.workoutState.currentSession!.id;
         await _pushSessionRoute(tester, harness);
 
+        // Plan 220: Finish with nothing logged now asks "Discard Workout?" —
+        // log one set through the state so this stays a real finish.
+        final effortId =
+            harness.workoutState.getExercisesWithEntries().first['id']
+                as String;
+        await harness.workoutState.updateEntryValue(effortId, 0, 'reps', 5);
+        await harness.workoutState.updateEntryValue(effortId, 0, 'weight', 50.0);
+        await harness.workoutState.recordRestStart(effortId, 1);
+        await tester.pump();
+
         await tester.tap(find.text('Finish Workout'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));

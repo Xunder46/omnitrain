@@ -938,7 +938,10 @@ void main() {
           );
           _expectNoBareUppercaseKind(tester, 'Stats');
 
-          await tester.tap(find.byTooltip('Records & Trends'));
+          final link = find.byKey(const Key('stats_records_link'));
+          await tester.ensureVisible(link);
+          await tester.pumpAndSettle();
+          await tester.tap(link);
           await tester.pumpAndSettle();
 
           expect(
@@ -959,15 +962,17 @@ void main() {
       setUp(seedEveryBlock);
 
       testWidgets(
-        'F-A: ALL TIME, NUTRITION, RECENT PRS only when the list renders, '
+        'F-A: ALL TIME, RECENT PRS only when the list renders, NUTRITION, '
         'then the kinds uppercased; no title-case kind text',
         (tester) async {
           await pumpRecords(tester);
 
-          final expected = <String>['ALL TIME', 'NUTRITION'];
+          // Plan 222: the Nutrition entry sits below the Recent PRs list.
+          final expected = <String>['ALL TIME'];
           if (tester.widgetList(find.byType(RecentPRList)).isNotEmpty) {
             expected.add('RECENT PRS');
           }
+          expected.add('NUTRITION');
           for (final section in ExerciseSection.values) {
             expected.add(section.label.toUpperCase());
           }

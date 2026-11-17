@@ -61,7 +61,7 @@ void main() {
     'S-2703: with showPrimerHelp omitted the Stats primer feature is off',
     () {
       testWidgets(
-        'no help action, no empty-state button and the chart action still renders',
+        'no help action, no empty-state button and the records row still renders',
         (tester) async {
           await tester.binding.setSurfaceSize(const Size(400, 900));
           addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -73,7 +73,7 @@ void main() {
           expect(find.byType(StatsPrimerSheet), findsNothing);
           expect(find.byKey(const Key('stats_primer_empty_cta')), findsNothing);
           expect(find.text('How Stats works'), findsNothing);
-          expect(find.byTooltip('Records & Trends'), findsOneWidget);
+          expect(find.byKey(const Key('stats_records_link')), findsOneWidget);
         },
       );
     },
@@ -232,8 +232,8 @@ void main() {
     );
   });
 
-  group('S-2708: the "?" and the chart icon coexist', () {
-    testWidgets('the chart icon stays the only way into Records & Trends', (
+  group('S-2708: the "?" and the Records & Trends row coexist', () {
+    testWidgets('the row stays the only way into Records & Trends', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(400, 900));
@@ -243,10 +243,13 @@ void main() {
       await _pumpStats(tester, repo, showPrimerHelp: true);
 
       expect(find.byKey(const Key('stats_primer_help')), findsOneWidget);
-      expect(find.byTooltip('Records & Trends'), findsOneWidget);
       expect(find.byTooltip('About Stats'), findsOneWidget);
+      final link = find.byKey(const Key('stats_records_link'));
+      expect(link, findsOneWidget);
 
-      await tester.tap(find.byTooltip('Records & Trends'));
+      await tester.ensureVisible(link);
+      await tester.pumpAndSettle();
+      await tester.tap(link);
       await tester.pumpAndSettle();
 
       expect(find.byType(RecordsAndTrendsScreen), findsOneWidget);

@@ -167,7 +167,6 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
     final children = <Widget>[
       const OmniCardHeader(title: 'ALL TIME'),
       _buildAggregateCard(context, themeColors),
-      ..._nutritionEntry(context, themeColors),
     ];
 
     if (_recentPRs.isNotEmpty) {
@@ -176,6 +175,9 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
         RecentPRList(prs: _recentPRs, settingsState: widget.settingsState),
       );
     }
+
+    // Plan 222: the Nutrition entry sits below the Recent PRs (owner request).
+    children.addAll(_nutritionEntry(context, themeColors));
 
     children.add(const SizedBox(height: 24));
     children.add(

@@ -5,7 +5,7 @@
 `StatsScreen` is a read-only analytics screen: the work the last four weeks
 contain, and how eating is going. It is reached from the
 maintenance sheet on the home screen and carries no filters; its controls are
-the header icon that opens [Records & Trends](records_and_trends.md) and the
+the row at the end of the list that opens [Records & Trends](records_and_trends.md) and the
 Instruments rows, each an entry point to Exercise Progress.
 
 The screen takes one optional `bool showPrimerHelp` (default `false`) that turns
@@ -26,23 +26,24 @@ Stats screen holds no StatsPrimerState`).
 HomeScreen
   └── Maintenance sheet (swipe up or tap hint)
         └── Stats → StatsScreen
-              └── header chart icon → RecordsAndTrendsScreen
+              └── Records & Trends row → RecordsAndTrendsScreen
 ```
 
-The chart icon in the screen's header is the only way into
+The Records & Trends row at the end of the list (`RecordsLinkRow`, key `stats_records_link`: the title, a muted line and a chevron) is the only way into
 [Records & Trends](records_and_trends.md): this file is the only place in `lib/`
-that constructs `RecordsAndTrendsScreen`. Verified by
-`test/records_and_trends_screen_test.dart` (the single-entry-point case).
+that constructs `RecordsAndTrendsScreen`. The row ends the populated list and the
+first-use "No sessions yet" state alike, and is absent while the screen loads or
+shows the load-failure message; the header carries no chart icon (plan 219).
+Verified by `test/records_and_trends_screen_test.dart` (the single-entry-point
+case) and `test/stats_records_link_test.dart`.
 
-When `showPrimerHelp` is true the header carries a second action, the "?"
-(tooltip `About Stats`), placed before the chart icon so the chart icon stays
-rightmost. It opens the [primer sheet](#primer-sheet) and never marks the seen
+When `showPrimerHelp` is true the header carries one action, the "?"
+(tooltip `About Stats`). It opens the [primer sheet](#primer-sheet) and never marks the seen
 flag: the screen holds no `StatsPrimerState`, so it has no reference through
 which it could mark it. Verified by `test/stats_primer_contract_test.dart` (`the
-Stats screen holds no StatsPrimerState`); the coexistence of the two header
-actions is verified by `test/stats_primer_screen_test.dart` (`S-2708: the "?"
-and the chart icon coexist` › `the chart icon stays the only way into Records &
-Trends`).
+Stats screen holds no StatsPrimerState`); the "?" and the row coexist, verified by
+`test/stats_primer_screen_test.dart` (`S-2708: the "?" and the Records & Trends
+row coexist` › `the row stays the only way into Records & Trends`).
 
 ---
 
@@ -69,7 +70,7 @@ the copy.
 
 `StatsPrimerSheet` (`lib/features/stats/widgets/stats_primer_sheet.dart`) is a
 presentation-only sheet: three labelled blocks — what the page shows, the
-Signals cards, and the chart icon — over one `Got it` CTA. It imports no state
+Signals cards, and Records & Trends — over one `Got it` CTA. It imports no state
 class and reads no repository; the host owns the seen flag. The sheet scrolls
 when it is taller than the screen, so it stays usable at large text scale on a
 short phone. Verified by `test/stats_primer_screen_test.dart` (`S-2719: the
@@ -339,6 +340,8 @@ read `new`. It talks about exercises, not about training in general, because the
 earlier period can hold training of other exercises (or the same exercise on another
 measure) and still leave every row without a comparison. Verified by `test/stats_no_comparison_note_test.dart` (`S-21601`, `S-21602`,
 `S-21603`).
+
+An exercise that was added to a workout and never done has no readable value on any day, so it gets no Instruments row and no Records & Trends entry (plan 221, `test/stats_skips_exercises_with_no_work_test.dart`).
 
 The change readout compares the window's value with the previous window of the
 same length. With nothing comparable it reads `new` rather than a number, and
@@ -683,7 +686,7 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 
 - [Calendar & Periods](calendar_periods.md) — the calendar-day arithmetic the window and the Fuel row use
 - [Stats Screen — Signals Layer](stats_screen/signals_layer.md) — the Signals layer in full, split out of this page
-- [Records & Trends](records_and_trends.md) — the per-exercise screens the header icon opens
+- [Records & Trends](records_and_trends.md) — the per-exercise screens the Stats row opens
 - [Widget Catalog](widget_catalog.md) — the note on the Stats screen's primer sheet
 - [State Management & Services](state_management.md)
 - [Navigation & Screens](navigation_and_screens.md)

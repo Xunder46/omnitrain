@@ -177,6 +177,10 @@ class WorkoutState extends ChangeNotifier {
 
   /// Plan 217: exercises the user did, for the Finish confirmation.
   int completedExerciseCount() => _sessionCore.completedExerciseCount();
+
+  /// Plan 220: Finish would store a workout with nothing done in it.
+  Future<bool> finishWouldSaveNothing() =>
+      _sessionCore.finishWouldSaveNothing();
   SessionSummary computeSessionSummary() =>
       _sessionCore.computeSessionSummary();
   List<SessionTemplateExercise> buildTemplateDraftExercises() =>

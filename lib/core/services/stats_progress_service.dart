@@ -1152,8 +1152,17 @@ class StatsProgressService {
           isRepsAxis,
         );
         if (value == null) continue;
+        // The section helpers report "nothing to read" as their zero fallback,
+        // never null, so a zero day read is a day with no readable value (plan
+        // 221): work the user never did contributes no point.
+        if (value.value <= 0) continue;
         points.add(ExerciseMetricPoint(dayMs: dayMs, value: value));
       }
+
+      // Plan 221: an exercise with no readable value on any day (added to a
+      // workout and never done) has nothing to show: no Instruments row, no
+      // Records & Trends entry, no trend.
+      if (points.isEmpty) continue;
 
       var lastTrainedMs = 0;
       final sessionIds = <String>{};
@@ -1260,9 +1269,9 @@ class StatsProgressService {
   /// A section's rank is the number of distinct days in the window on which an
   /// effort of that kind was logged, so the list leads with the biggest block
   /// of work rather than with a fixed order. A section appears only when it has
-  /// a row, and a row appears for every exercise the window yields — including
-  /// one whose value is the zero fallback, which shows the zero figure and no
-  /// sparkline. Rows sort by training days, then name, then id.
+  /// a row, and a row appears for every exercise the window yields; an exercise
+  /// with no readable value on any day yields none (plan 221). Rows sort by
+  /// training days, then name, then id.
   ///
   /// Each row also carries the same exercise's value over the immediately
   /// preceding range of the same calendar length, when the two are comparable,
@@ -1310,19 +1319,7 @@ class StatsProgressService {
       final sensors = await _sensorFiguresFor(summary, fromMs, toMs);
       (bySection[summary.section] ??= <InstrumentRow>[]).add(
         InstrumentRow(
-          // A value nothing was readable for is the zero fallback: the row
-          // still appears, but it has no series to draw.
-          summary: summary.best.value <= 0
-              ? ExerciseMetricSummary(
-                  exerciseId: summary.exerciseId,
-                  name: summary.name,
-                  section: summary.section,
-                  best: summary.best,
-                  points: const <ExerciseMetricPoint>[],
-                  lastTrainedMs: summary.lastTrainedMs,
-                  sessionCount: summary.sessionCount,
-                )
-              : summary,
+          summary: summary,
           previousValue: comparable ? previousSummary.best : null,
           cadenceStepsPerMin: sensors.cadenceStepsPerMin,
           averageHeartRateBpm: sensors.averageHeartRateBpm,

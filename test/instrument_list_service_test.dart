@@ -910,7 +910,8 @@ void main() {
       });
 
       test(
-        'S-1010 row ordering, duplicate names and a zero-valued row',
+        'S-1010 row ordering, duplicate names; an exercise with nothing done '
+        'has no row',
         () async {
           await seedExercise(repo, id: 'ex-3', name: 'Bench Press');
           await seedExercise(repo, id: 'ex-dup-a', name: 'Custom Press');
@@ -963,15 +964,11 @@ void main() {
 
           expect(
             [for (final row in resistance.rows) row.summary.exerciseId],
-            ['ex-3', 'ex-dup-a', 'ex-dup-b', 'ex-2', 'ex-1', 'ex-0'],
+            ['ex-3', 'ex-dup-a', 'ex-dup-b', 'ex-2', 'ex-1'],
           );
-
-          final zero = rowOf(resistance, 'ex-0');
-          expect(zero.summary.best.value, 0);
           expect(
-            zero.summary.points,
+            resistance.rows.where((r) => r.summary.exerciseId == 'ex-0'),
             isEmpty,
-            reason: 'a row with no readable value has no sparkline',
           );
         },
       );

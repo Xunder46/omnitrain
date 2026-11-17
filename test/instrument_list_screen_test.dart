@@ -1016,7 +1016,7 @@ void main() {
         setUp(() async {
           await seedExercise(repo, id: 'ex-spark3', name: 'Three Days');
           await seedExercise(repo, id: 'ex-spark1', name: 'One Day');
-          await seedExercise(repo, id: 'ex-zero', name: 'No Reading');
+          await seedExercise(repo, id: 'ex-single', name: 'Lone Day');
 
           for (var daysAgo = 1; daysAgo <= 3; daysAgo++) {
             await _seedSetSessionOnDay(
@@ -1036,16 +1036,13 @@ void main() {
             weightKg: 100,
             reps: 5,
           );
-          await seedSession(repo, sessionId: 's-zero', daysAgo: 5);
-          await seedSetEffort(
+          await _seedSetSession(
             repo,
-            segmentId: 'seg-s-zero',
-            effortId: 'eff-s-zero',
-            exerciseId: 'ex-zero',
-            entryCount: 1,
-            hasExtraWeight: false,
-            weightFactor: 0.0,
-            repsBase: 0,
+            sessionId: 's-single',
+            daysAgo: 5,
+            exerciseId: 'ex-single',
+            weightKg: 90,
+            reps: 6,
           );
           await readModel();
         });
@@ -1056,7 +1053,7 @@ void main() {
 
           expect(_rowOf(sections, 'ex-spark3').summary.points, hasLength(3));
           expect(_rowOf(sections, 'ex-spark1').summary.points, hasLength(1));
-          expect(_rowOf(sections, 'ex-zero').summary.points, isEmpty);
+          expect(_rowOf(sections, 'ex-single').summary.points, hasLength(1));
 
           // (a) three training days → drawn.
           final spark3 = find.byKey(
@@ -1065,8 +1062,7 @@ void main() {
           expect(spark3, findsOneWidget);
           expect(tester.getSize(spark3), _kSparklineSize);
 
-          // (b) one point and (c) no readable points → no box, no placeholder,
-          // no reserved space.
+          // (b) one point → no box, no placeholder, no reserved space.
           expect(
             tester.getSize(
               find.byKey(const Key('instrument_sparkline_ex-spark1')),
@@ -1075,21 +1071,9 @@ void main() {
           );
           expect(
             tester.getSize(
-              find.byKey(const Key('instrument_sparkline_ex-zero')),
+              find.byKey(const Key('instrument_sparkline_ex-single')),
             ),
             Size.zero,
-          );
-
-          // The zero-valued row still appears, with the service's zero figure.
-          expect(_rowTexts('ex-zero').first, 'No Reading');
-          expect(
-            _rowTexts('ex-zero'),
-            contains(
-              formatNativeValue(
-                _rowOf(sections, 'ex-zero').summary.best,
-                settingsState,
-              ),
-            ),
           );
         });
       });

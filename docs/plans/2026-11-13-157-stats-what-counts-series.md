@@ -51,3 +51,7 @@ Owner decisions 2026-11-15: pace change reads better/worse (faster = green up); 
 | 216 | `docs/plans/2026-11-16-216-stats-first-month-says-nothing-to-compare-plan/`: a first-month Instruments list says `Nothing to compare yet` while every row reads `new` (item 7, thin first month). | committed |
 | 217 | `docs/plans/2026-11-16-217-finish-dialog-counts-what-you-did-plan/`: the Finish dialog counts only the exercises the user did (157a Open item 1). | committed |
 | 218 | `docs/plans/2026-11-16-218-wrist-linked-workouts-drop-planned-sets-plan/`: workouts the watch took part in drop their planned sets at the end too (plan 157d), never deleting an exercise. | committed |
+| 219 | `docs/plans/2026-11-16-219-stats-visible-records-link-plan/`: Records & Trends is a labelled row at the end of Stats; the header chart icon is gone (item 9, findability). | committed |
+| 220 | `docs/plans/2026-11-17-220-finish-with-nothing-logged-discards-plan/`: Finish with nothing logged asks `Discard Workout?` and discards (second review item 1). | committed |
+| 221 | `docs/plans/2026-11-17-221-stats-skips-exercises-with-no-work-plan/`: an exercise added and never done leaves Stats (second review items 2 and 3). | committed |
+| 222 | `docs/plans/2026-11-17-222-nutrition-entry-below-recent-prs-plan/`: the Nutrition entry on Records & Trends sits below Recent PRs (owner request). | committed |

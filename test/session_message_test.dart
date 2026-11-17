@@ -95,7 +95,12 @@ void main() {
     final deps = await _buildDeps(modality: 'cardio_endurance');
     final repo = await _freshRepo();
     final exercises = await repo.getExercises();
-    await deps.workoutState.addExerciseToSession(exercises.first);
+    // Plan 220: Finish with nothing logged now asks "Discard Workout?" —
+    // start the timed entry through the state so this stays a failed finish.
+    final effortId = await deps.workoutState.addExerciseToSession(
+      exercises.first,
+    );
+    await deps.workoutState.startTimedEntry(effortId, 0);
 
     await tester.pumpWidget(
       _buildSessionScreen(deps, rest: _ThrowingRestService()),

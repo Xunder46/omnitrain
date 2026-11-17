@@ -115,6 +115,8 @@ class _TempRepo {
         '--exclude',
         '.venv',
         '--exclude',
+        '.work',
+        '--exclude',
         '.claude',
         '--exclude',
         '.idea',

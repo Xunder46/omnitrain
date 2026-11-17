@@ -619,7 +619,7 @@ void main() {
       );
 
       test(
-        'S-21208 an unfinished entry alone reads the zero fallback',
+        'S-21208 an unfinished entry alone leaves the exercise out (plan 221)',
         () async {
           await seedExercise(repo, id: 'ex-walk', name: 'Walk');
           await seedSession(
@@ -648,10 +648,12 @@ void main() {
             repo,
           ).computeExerciseMetrics(bestSingleSession: true);
 
-          final walk = summaryOf(metrics, 'ex-walk');
-          expect(walk.best.metric, NativeMetric.duration);
-          expect(walk.best.value, 0);
-          expect(walk.exerciseId, 'ex-walk');
+          // Plan 221: an exercise with no readable value on any day never
+          // reaches the summaries, so the zero fallback is gone too.
+          expect(
+            metrics.where((m) => m.exerciseId == 'ex-walk'),
+            isEmpty,
+          );
         },
       );
 

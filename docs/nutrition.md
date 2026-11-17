@@ -47,7 +47,7 @@ HomeScreen
                                         └── library action ─→ AddFoodScreen
 StatsScreen
   ├── Fuel row ────────────────────→ NutritionTrendScreen
-  └── header chart icon → RecordsAndTrendsScreen
+  └── Records & Trends row → RecordsAndTrendsScreen
         └── Nutrition entry ───────→ NutritionTrendScreen
 ```
 

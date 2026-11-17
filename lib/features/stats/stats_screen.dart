@@ -24,6 +24,7 @@ import 'widgets/fuel_section.dart';
 import 'widgets/instrument_list.dart';
 import 'widgets/load_failure_view.dart';
 import 'widgets/mix_layer.dart';
+import 'widgets/records_link_row.dart';
 import 'widgets/signals_layer.dart';
 import 'widgets/stats_primer_sheet.dart';
 import 'widgets/weight_trend_row.dart';
@@ -369,22 +370,6 @@ class _StatsScreenState extends State<StatsScreen> {
                     onPressed: _reopenPrimer,
                   ),
                 ),
-              Semantics(
-                label: 'Records & Trends',
-                button: true,
-                child: IconButton(
-                  icon: const Icon(Icons.show_chart),
-                  color: OmniTheme.colors.textDominant,
-                  tooltip: 'Records & Trends',
-                  onPressed: () => OmniNavigator.push(
-                    context,
-                    (_) => RecordsAndTrendsScreen(
-                      workoutState: widget.workoutState,
-                      settingsState: widget.settingsState,
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
           body: SafeArea(
@@ -397,9 +382,18 @@ class _StatsScreenState extends State<StatsScreen> {
                   )
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-                    children: _totalSessions == 0
-                        ? [_buildEmptyState(context, themeColors)]
-                        : [
+                    // The Records & Trends row closes both branches (plan 219,
+                    // D-2). The populated branch already ends with exactly
+                    // one 24 gap (Instruments' own, or the Fuel/Weight
+                    // closer), so the gap is added only to the empty branch:
+                    // one 24 above the row, never two.
+                    children: [
+                      ...(_totalSessions == 0
+                          ? [
+                              _buildEmptyState(context, themeColors),
+                              const SizedBox(height: 24),
+                            ]
+                          : [
                             if (_mixLayer != null && window != null) ...[
                               MixLayerSection(
                                 layer: _mixLayer!,
@@ -469,13 +463,33 @@ class _StatsScreenState extends State<StatsScreen> {
                                 themeColors: themeColors,
                               ),
                             ],
-                          ],
+                            // The Fuel and Weight rows end without a gap of
+                            // their own; every other block already closes with
+                            // one (the sections' own 24 closers; S-21902/S-21903 pin the row's position).
+                            if (_fuelSummary != null || _weightTrend != null)
+                              const SizedBox(height: 24),
+                          ]),
+                      RecordsLinkRow(
+                        themeColors: themeColors,
+                        onTap: _openRecords,
+                      ),
+                    ],
                   ),
           ),
         );
       },
     );
   }
+
+  /// The one way into Records & Trends: the list's closing row
+  /// (plan 219, D-2).
+  void _openRecords() => OmniNavigator.push(
+    context,
+    (_) => RecordsAndTrendsScreen(
+      workoutState: widget.workoutState,
+      settingsState: widget.settingsState,
+    ),
+  );
 
   /// Reopen the one-shot primer sheet at any time. The seen state is NOT
   /// mutated — the screen holds no primer state and hosts the sheet with a

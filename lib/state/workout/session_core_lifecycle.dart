@@ -208,6 +208,20 @@ extension SessionCoreLifecycleMethods on SessionCore {
     return count;
   }
 
+  /// Plan 220: whether Finish would save a workout with nothing done in it:
+  /// no exercise counts ([completedExerciseCount] is 0), the wrist does not run
+  /// the session and no wrist row is staged for it (the same two checks
+  /// `endSession` makes). A workout the watch took part in is never discarded
+  /// this way: its caches may not hold the wrist's sets yet.
+  Future<bool> finishWouldSaveNothing() async {
+    final session = _currentSession;
+    if (session == null) return false;
+    if (completedExerciseCount() != 0) return false;
+    if (_wristRunsSession?.call(session.id) ?? false) return false;
+    final staged = await _repository.getWatchInboxEntriesForSession(session.id);
+    return !staged.any((row) => row.origin == WatchInboxEntry.originWatch);
+  }
+
   /// Resets the session start timestamp to now.
   ///
   /// Called once when the first exercise is added to a live session so that

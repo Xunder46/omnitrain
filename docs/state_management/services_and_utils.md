@@ -355,7 +355,7 @@ time, and the streak is deliberately not computed here because
 `test/screen_widget_test.dart`.
 
 `computeExerciseMetrics({fromMs, toMs})` returns one summary per exercise
-trained inside the range, carrying the section it sits in and the value that
+trained inside the range that holds a readable value on at least one day (an exercise added and never done has none and is left out, plan 221), carrying the section it sits in and the value that
 section is read by; null bounds mean all history. Two of its rules are the ones
 `computeProgressData` and `SessionSummaryBuilder` already own, and it exists so
 they cannot drift:

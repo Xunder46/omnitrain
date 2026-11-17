@@ -18,6 +18,30 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
       return;
     }
 
+    final nothingLogged = await widget.workoutState.finishWouldSaveNothing();
+    if (!mounted) return;
+    if (nothingLogged) {
+      final discard = await ConfirmationDialog.showTwoChoice(
+        context: context,
+        title: 'Discard Workout?',
+        body: Text(
+          "Nothing was logged, so this workout won't be saved.",
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        dismissLabel: 'Cancel',
+        confirmLabel: 'Discard',
+        dismissKey: const Key('session-finish-nothing-cancel'),
+        confirmKey: const Key('session-finish-nothing-confirm'),
+        isDestructive: true,
+      );
+      if (discard && mounted) {
+        _leaving = true;
+        await widget.workoutState.discardCurrentSession();
+        if (mounted) Navigator.of(context).pop();
+      }
+      return;
+    }
+
     final completed = widget.workoutState.completedExerciseCount();
 
     final confirmed = await ConfirmationDialog.showTwoChoice(

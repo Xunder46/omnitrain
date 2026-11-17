@@ -318,7 +318,7 @@ void main() {
         });
       });
 
-      // ─── S-913: the Stats header icon opens Records & Trends ──────────────
+      // ─── S-913: the Stats row opens Records & Trends ──────────────────────
 
       group('S-913', () {
         setUp(() async {
@@ -406,7 +406,8 @@ void main() {
           );
         });
 
-        testWidgets('the header icon opens Records & Trends', (tester) async {
+        testWidgets('the Records & Trends row opens Records & Trends',
+            (tester) async {
           await pump(
             tester,
             StatsScreen(
@@ -416,7 +417,8 @@ void main() {
           );
 
           // The entry point exists and carries a label.
-          expect(find.byTooltip('Records & Trends'), findsOneWidget);
+          final link = find.byKey(const Key('stats_records_link'));
+          expect(link, findsOneWidget);
           expect(
             find.byWidgetPredicate(
               (w) => w is Semantics && w.properties.label == 'Records & Trends',
@@ -429,7 +431,9 @@ void main() {
 
           // Tapping through lands on Records & Trends, which now carries the
           // all-time figures the Stats screen no longer shows.
-          await tester.tap(find.byTooltip('Records & Trends'));
+          await tester.ensureVisible(link);
+          await tester.pumpAndSettle();
+          await tester.tap(link);
           await tester.pumpAndSettle();
 
           expect(find.text('Records & Trends'), findsOneWidget);
@@ -710,7 +714,7 @@ void main() {
     });
   }
 
-  // The header chart icon is the only entry point into Records & Trends. A
+  // The Stats row is the only entry point into Records & Trends. A
   // static source scan, so it runs once rather than once per repository harness.
   test('StatsScreen is the only file in lib/ that constructs '
       'RecordsAndTrendsScreen', () {

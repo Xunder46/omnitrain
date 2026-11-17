@@ -49,14 +49,14 @@ empty state`).
 
 ```
 StatsScreen
-  ├── header chart icon → RecordsAndTrendsScreen
+  ├── Records & Trends row → RecordsAndTrendsScreen
   │     ├── Nutrition entry → NutritionTrendScreen
   │     └── entry → ExerciseProgressScreen
   └── Instruments row → ExerciseProgressScreen
 ```
 
 `StatsScreen` is the only file in `lib/` that constructs
-`RecordsAndTrendsScreen`, so the header chart icon is the only entry point into
+`RecordsAndTrendsScreen`, so the Stats row is the only entry point into
 Records & Trends. Exercise Progress has two entry points — an entry in Records &
 Trends and a row of the Stats screen's Instruments list — and nothing else in
 `lib/` pushes it. The detail screen is named exactly `Exercise Progress`.
@@ -65,8 +65,8 @@ Verified by `test/records_and_trends_screen_test.dart` (the single-entry-point
 case, the Exercise Progress entry-point guard, and `S-913`) and by
 `test/instrument_list_screen_test.dart` (`S-1014`).
 
-Records & Trends also carries a **Nutrition** entry, directly under the All-time
-card, that opens the full-history nutrition trend. It appears whenever any food
+Records & Trends also carries a **Nutrition** entry, directly under the Recent PRs
+list when it renders (otherwise under the All-time card), that opens the full-history nutrition trend. It appears whenever any food
 has ever been logged and is absent when none has. It exists because the Stats
 screen's Fuel row hides once food has not been logged for a while, which would
 otherwise leave old history unreachable. Verified by
@@ -192,7 +192,7 @@ itself is pinned, not just the copy.
 
 ## Related Documentation
 
-- [Stats Screen](stats_screen.md) — the screen the chart icon sits in
+- [Stats Screen](stats_screen.md) — the screen the Records & Trends row sits in
 - [Modality Tracking](modality_tracking.md) — effort kinds, capabilities and what they imply
 - [Navigation & Screens](navigation_and_screens.md)
 - [Data Models](data_models.md)

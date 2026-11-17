@@ -20,6 +20,8 @@ A set the user never logged is not stored at Finish, so it is never in this summ
 
 The Finish confirmation before it counts only the exercises the user did (a lift with a logged set, or a started timed, drill or round exercise), not every exercise in the session (plan 217, `test/finish_completed_exercise_count_screen_test.dart` `S-21704`).
 
+Finish on a workout with nothing done in it (no logged set, no started timed, drill or round exercise) and no watch involvement asks `Discard Workout?` (`Nothing was logged, so this workout won't be saved.`) instead of saving an empty workout; Discard deletes it like the empty-workout case, Cancel keeps it open. `WorkoutState.finishWouldSaveNothing` decides, and answers false for a workout the wrist runs or has a staged row for (plan 220, `test/finish_nothing_logged_discards_test.dart`, `test/finish_nothing_logged_discards_screen_test.dart`).
+
 ### Effort Rating Capture
 
 The **session effort rating** is how hard the whole session was: 1 is the easiest, 5 the hardest. It is stored in `TrainingSession.sessionFeeling` — the field name is historical; it is not a feeling score. Ratings recorded before the redefinition (when the prompt asked how the session felt) are read as effort ratings on the same scale with no conversion: an owner decision (Stats redesign D-5, `docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md`).

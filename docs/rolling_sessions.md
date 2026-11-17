@@ -39,7 +39,7 @@ Blocks are displayed in `WorkoutSessionScreen` sorted by `orderIndex`. This give
 |---------|-----------------|-----------------|
 | Session duration counter | Visible in header | **Hidden** (`isRolling` suppresses it) |
 | Segment blocks | Present if session has multiple segments | Present; named by time |
-| Finish / Done flow | Empty sessions discard immediately and return to HomeScreen; non-empty sessions end with elapsed time recorded | Empty sessions discard immediately and return to HomeScreen; non-empty sessions end the rolling session and set `endedAtMs` on explicit finish |
+| Finish / Done flow | Empty sessions discard immediately and return to HomeScreen; non-empty sessions end with elapsed time recorded (one with nothing logged asks `Discard Workout?` first, plan 220) | Empty sessions discard immediately and return to HomeScreen; non-empty sessions end the rolling session and set `endedAtMs` on explicit finish |
 
 The duration suppression is handled inline in the session screens: the summary's Duration/Rest Time row is guarded by `if (!isRolling)` in `lib/features/session/session_summary_screen.dart`, and `WorkoutSessionScreen`'s list view dispatches to a rolling-specific list when `workoutState.isRollingSession` is true (`lib/features/session/workout_session_list_view.dart`).
 
