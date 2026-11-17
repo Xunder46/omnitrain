@@ -120,7 +120,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
         for (var position = groups.length - 1; position >= 0; position--) {
           final group = groups[position];
           final skipped = group.rowFor(MetricIds.reps)?.valueBool ?? false;
-          if (marked.contains(position + 1) || skipped) continue;
+          if (_setIsLogged(marked, position) || skipped) continue;
 
           final doomed = {for (final row in group.rows) row.id};
           for (final id in doomed) {
@@ -140,6 +140,53 @@ extension SessionCoreLifecycleMethods on SessionCore {
         }
       }
     }
+  }
+
+  /// Plan 157a D-2 / plan 217: a set at [position] is logged exactly when an
+  /// `EntryRest` sits at position + 1 ([marked] holds the rests' entry
+  /// indexes). The drop and [completedExerciseCount] share this one rule.
+  bool _setIsLogged(Set<int> marked, int position) =>
+      marked.contains(position + 1);
+
+  /// Plan 217: how many of the session's exercises the user did, for the
+  /// Finish confirmation. A `set` exercise counts when at least one of its
+  /// sets is logged (a skip-marked set alone does not count); a `timed`,
+  /// `drill` or `round` exercise counts when any of its instances has been
+  /// started. Reads the in-memory caches, like the screen does.
+  int completedExerciseCount() {
+    var count = 0;
+    for (final effortList in _efforts.values) {
+      for (final effort in effortList) {
+        if (effort.effortKind == 'set') {
+          final groups = EntryRows.setGroups(
+            _observations[effort.id] ?? const <EffortObservation>[],
+          );
+          final marked = {
+            for (final rest in _timerManager.getEntryRests(effort.id))
+              rest.entryIndex,
+          };
+          for (var position = 0; position < groups.length; position++) {
+            if (_setIsLogged(marked, position)) {
+              count++;
+              break;
+            }
+          }
+        } else if (effort.effortKind == 'round') {
+          if (_timerManager
+              .getRoundsForEffort(effort.id)
+              .any((round) => round.state != RoundState.notStarted)) {
+            count++;
+          }
+        } else {
+          if (_timerManager
+              .getTimedInstancesForEffort(effort.id)
+              .any((timed) => timed.state != TimedState.notStarted)) {
+            count++;
+          }
+        }
+      }
+    }
+    return count;
   }
 
   /// Resets the session start timestamp to now.

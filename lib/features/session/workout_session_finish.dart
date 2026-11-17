@@ -18,6 +18,8 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
       return;
     }
 
+    final completed = widget.workoutState.completedExerciseCount();
+
     final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
       title: 'Finish Workout?',
@@ -36,7 +38,7 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '• ${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}',
+                  '• $completed exercise${completed != 1 ? 's' : ''}',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 8),

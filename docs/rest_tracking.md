@@ -125,6 +125,8 @@ rule itself by `test/entry_rows_test.dart` (group `S-4508 restsAfterDelete`).
 
 Finish keeps only the sets a rest marks logged: for the phone's own Finish of a session the watch had no part in, `SessionCore.endSession` deletes every `set` entry with no rest at its position + 1 (a skip-marked set stays), re-keys the rests exactly as a delete does, and removes a `set` exercise left with no entry. A session the watch had a part in keeps its planned sets, because the wrist's own sets can still arrive after the end (plan 157a, `test/finish_drops_unlogged_sets_test.dart`).
 
+The same "logged" rule counts the exercises the user did for the Finish confirmation: `SessionCore.completedExerciseCount` (through `WorkoutState`) counts a `set` exercise once one of its sets is logged (a skip-marked set alone does not count) and a `timed`, `drill` or `round` exercise once any instance has been started, reading the in-memory caches (plan 217, `test/finish_completed_exercise_count_test.dart`).
+
 ### Hive Implementation
 
 - Box name: `'entry_rests'`

@@ -18,6 +18,8 @@ A post-workout summary reports the finished session to its `onSessionSaved` hook
 
 A set the user never logged is not stored at Finish of a session the watch had no part in, so it is never in this summary's sets, volume or bests, and a set exercise left with no logged set is removed at Finish (an exercise that never held a set stays, with zero sets; plan 157a, `test/finish_drops_unlogged_sets_test.dart` `S-15708`, `test/finish_drops_unlogged_sets_screen_test.dart` `S-15709`).
 
+The Finish confirmation before it counts only the exercises the user did (a lift with a logged set, or a started timed, drill or round exercise), not every exercise in the session (plan 217, `test/finish_completed_exercise_count_screen_test.dart` `S-21704`).
+
 ### Effort Rating Capture
 
 The **session effort rating** is how hard the whole session was: 1 is the easiest, 5 the hardest. It is stored in `TrainingSession.sessionFeeling` — the field name is historical; it is not a feeling score. Ratings recorded before the redefinition (when the prompt asked how the session felt) are read as effort ratings on the same scale with no conversion: an owner decision (Stats redesign D-5, `docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md`).

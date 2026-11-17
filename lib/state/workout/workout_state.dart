@@ -167,6 +167,9 @@ class WorkoutState extends ChangeNotifier {
   List<SessionBlock> getSessionBlocks() => _sessionCore.getSessionBlocks();
   List<Map<String, dynamic>> getExercisesWithEntries() =>
       _sessionCore.getExercisesWithEntries();
+
+  /// Plan 217: exercises the user did, for the Finish confirmation.
+  int completedExerciseCount() => _sessionCore.completedExerciseCount();
   SessionSummary computeSessionSummary() =>
       _sessionCore.computeSessionSummary();
   List<SessionTemplateExercise> buildTemplateDraftExercises() =>
