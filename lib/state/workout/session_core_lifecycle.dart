@@ -20,10 +20,11 @@ extension SessionCoreLifecycleMethods on SessionCore {
     try {
       // D-10: Finish always finishes. A failing drop leaves the placeholders
       // where they are and never turns the end into an error.
-      // D-11: a session the watch had a part in keeps its planned sets: the
-      // wrist's own sets can still be on their way and would have no exercise
-      // to land in. The wrist's own end, a session the wrist runs, and a
-      // session with a staged wrist row all count as the watch's part.
+      // D-11 (plan 218): a session the watch had a part in drops its planned
+      // sets too, but keeps every exercise: a late wrist set for a removed
+      // exercise would be lost. The wrist's own end, a session the wrist
+      // runs, and a session with a staged wrist row all count as the watch's
+      // part.
       try {
         final wristHadAHand =
             !writeToHealth ||
@@ -31,7 +32,20 @@ extension SessionCoreLifecycleMethods on SessionCore {
             (await _repository.getWatchInboxEntriesForSession(
               _currentSession!.id,
             )).any((row) => row.origin == WatchInboxEntry.originWatch);
-        if (!wristHadAHand) await _dropUnloggedSets();
+        if (!wristHadAHand) {
+          await _dropUnloggedSets();
+        } else {
+          // Plan 218: a workout the watch took part in drops its planned sets
+          // too, but keeps every exercise (a late wrist set for a removed
+          // exercise would be lost) and waits for the import passes already
+          // queued (a wrist set's row is written before its rest).
+          final queue = _afterPendingWristImports;
+          if (queue == null) {
+            await _dropUnloggedSets(keepEfforts: true);
+          } else {
+            await queue(() => _dropUnloggedSets(keepEfforts: true));
+          }
+        }
       } catch (_) {}
       await _timerManager.persistActiveRounds();
       await _timerManager.persistActiveTimedEntries();
@@ -94,8 +108,13 @@ extension SessionCoreLifecycleMethods on SessionCore {
   /// move. A set exercise left with no entry is removed. Quiet: no listener is
   /// told here, `endSession` notifies once.
   ///
-  /// Not run for a session the watch had a part in (D-11); see endSession.
-  Future<void> _dropUnloggedSets() async {
+  /// [keepEfforts] (plan 218) leaves an exercise with no set in place: for a
+  /// workout the watch took part in, so a late wrist set still has an exercise
+  /// to land in.
+  ///
+  /// A session the watch had a part in keeps its exercises (plan 218); see
+  /// endSession.
+  Future<void> _dropUnloggedSets({bool keepEfforts = false}) async {
     for (final effortList in _efforts.values) {
       for (final effort in List<SegmentEffort>.of(effortList)) {
         if (effort.effortKind != 'set') continue;
@@ -132,7 +151,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
           dropped++;
         }
 
-        if (dropped > 0 && kept == 0) {
+        if (!keepEfforts && dropped > 0 && kept == 0) {
           await _repository.deleteEffort(effort.id);
           _observations.remove(effort.id);
           _timerManager.removeEffort(effort.id);

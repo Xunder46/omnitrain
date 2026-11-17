@@ -83,6 +83,7 @@ class WatchSyncGraph {
     required this.timerPush,
     required this.timerAdoption,
     required this.liveEnergy,
+    required this.afterPendingImports,
     this.link,
   });
 
@@ -119,6 +120,11 @@ class WatchSyncGraph {
   /// The wrist's running active-energy total, as its last `energy_live` frame
   /// said (plan 135 D-13521); the session screen's Calories chip prefers it.
   final WatchLiveEnergy liveEnergy;
+
+  /// Where the phone's own end of a workout the watch took part in waits for
+  /// the import passes already queued (plan 218 D-3): the inbox's chain.
+  final Future<void> Function(Future<void> Function() action)
+  afterPendingImports;
 
   /// The status state Settings shows: where the watch stands and when the
   /// phone last heard from it (plan 47c D-3). Null when the transport cannot
@@ -486,6 +492,7 @@ Future<WatchSyncGraph?> createWatchSync({
     timerPush: timerPush,
     timerAdoption: timerAdoption,
     liveEnergy: liveEnergy,
+    afterPendingImports: inbox.afterPendingImports,
     link: link,
   );
 }

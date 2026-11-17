@@ -445,6 +445,7 @@ class WatchSessionImporter {
         freshCorrections,
         effortRows,
         fillPlanned: true,
+        fillPlannedSets: existing.endedAtMs == null,
       );
       if (pass.writes != wasChanged) changedEffortIds.add(slot);
     }
@@ -1019,6 +1020,11 @@ class _Pass {
   /// instead of appending after the last row, and its arrival opens the rest at
   /// that spot + 1 (D-6). A history import passes nothing: it places after the
   /// last row exactly as it always did.
+  ///
+  /// [fillPlannedSets] false (an ended workout, plan 218): a set the wrist
+  /// logged appends instead of filling a set the phone reads as unlogged,
+  /// because nothing in an ended workout is a planned set (the end dropped
+  /// them) and a rest-less row is one the user typed.
   Future<void> _placeAroundUserRows(
     _Key key,
     String effortId,
@@ -1027,6 +1033,7 @@ class _Pass {
     Map<String, Set<String>> freshCorrections,
     _EffortRows rows, {
     bool fillPlanned = false,
+    bool fillPlannedSets = true,
   }) async {
     final placed = {for (final entry in before) entry.entryId};
     final live = {for (final entry in now) entry.entryId};
@@ -1081,7 +1088,12 @@ class _Pass {
     for (final entry in now) {
       if (placed.contains(entry.entryId)) continue;
       final unfinished = rows.unfinishedPlaceOf(entry);
-      final fills = fillPlanned && entry.wireKind == WatchInboxEntry.kindSet;
+      // A set whose fill the ended workout forbids still opens its own rest
+      // (S-21804): only the fill TARGET selection is gated on
+      // [fillPlannedSets], never the rest the arrival starts (D-6).
+      final opensRest =
+          fillPlanned && entry.wireKind == WatchInboxEntry.kindSet;
+      final fills = fillPlannedSets && opensRest;
       final isInterval =
           entry.wireKind == WatchInboxEntry.kindTimed ||
           entry.wireKind == WatchInboxEntry.kindHold ||
@@ -1145,7 +1157,7 @@ class _Pass {
       );
       // The set's arrival starts a rest after it (D-6), where no rest sits
       // already — the phone's own, or one an earlier pass opened.
-      if (fills && !rested.contains(position + 1)) {
+      if (opensRest && !rested.contains(position + 1)) {
         // One rest runs at a time (A4): a rest the phone left open at an
         // earlier spot ends where this set landed, exactly as its own
         // `recordRestStart` closes the open rest it finds. Without this the

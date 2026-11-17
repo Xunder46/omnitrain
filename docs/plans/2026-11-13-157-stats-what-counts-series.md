@@ -50,3 +50,4 @@ Owner decisions 2026-11-15: pace change reads better/worse (faster = green up); 
 | 215 | `docs/plans/2026-11-16-215-stats-plain-words-for-two-labels-plan/`: the Mix legend says `Recent`, the Progression card says what its percentage is (item 9, jargon half). | committed |
 | 216 | `docs/plans/2026-11-16-216-stats-first-month-says-nothing-to-compare-plan/`: a first-month Instruments list says `Nothing to compare yet` while every row reads `new` (item 7, thin first month). | committed |
 | 217 | `docs/plans/2026-11-16-217-finish-dialog-counts-what-you-did-plan/`: the Finish dialog counts only the exercises the user did (157a Open item 1). | committed |
+| 218 | `docs/plans/2026-11-16-218-wrist-linked-workouts-drop-planned-sets-plan/`: workouts the watch took part in drop their planned sets at the end too (plan 157d), never deleting an exercise. | committed |

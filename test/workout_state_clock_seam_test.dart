@@ -28,7 +28,9 @@ void main() {
       );
       final effortId = await state.addExerciseToSession(exercise);
       await state.addEntry(effortId);
-      await state.recordRestStart(effortId, 0);
+      // A rest at position + 1 marks set 0 logged; the wrist's own end (below)
+      // drops every set no rest marks, so the effort must hold a logged one.
+      await state.recordRestStart(effortId, 1);
       await state.endSession(writeToHealth: false);
 
       final session = (await repo.getSession(sessionId))!;

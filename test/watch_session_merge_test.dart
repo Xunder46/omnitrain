@@ -938,17 +938,16 @@ void _mergeTests({
 
   test('S-14 the phone finished first', () async {
     final phone = await _phone(repository);
-    await phone.router.receive(_snapshot());
 
     // The phone ended its own session at T2, and the wrist kept logging.
-    final session = (await repository.getSession('s-w1'))!;
-    await repository.updateSession(
-      TrainingSession.fromMap({
-        ...session.toMap(),
-        'ended_at_ms': _msOf(_t2),
-        'updated_at_ms': _msOf(_t2),
-      }),
-    );
+    // plan 218: the end is the app's own, which drops the planned set; a late
+    // wrist set appends in an ended workout.
+    //
+    // The adopted session starts at the phone's clock, so the fixture adopts
+    // it before T2 — otherwise the D-153 clamp would move the end past T2.
+    phone.clock.now = DateTime.parse(_t1);
+    await phone.router.receive(_snapshot());
+    await phone.state.endSession(writeToHealth: false, atMs: _msOf(_t2));
 
     await phone.router.receive(
       observationsUp('s-w1', [

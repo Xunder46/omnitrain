@@ -62,6 +62,12 @@ class WorkoutState extends ChangeNotifier {
     WatchLateEntryRecovery? watchLateEntryRecovery,
     DateTime Function()? clock,
     bool Function(String sessionId)? wristRunsSession,
+
+    /// Plan 218: runs the finish's drop of a watch-linked workout behind the
+    /// inbox's queued import passes. Null in tests and builds without a
+    /// watch: the drop then runs directly.
+    Future<void> Function(Future<void> Function() action)?
+    afterPendingWristImports,
     ScreenAwakePort? screenAwake,
     ActiveEnergyService? activeEnergy,
     ValueListenable<({String sessionId, double kcal, DateTime at})?>?
@@ -92,6 +98,7 @@ class WorkoutState extends ChangeNotifier {
       healthSync: healthSync,
       lateEntryRecovery: watchLateEntryRecovery,
       wristRunsSession: wristRunsSession,
+      afterPendingWristImports: afterPendingWristImports,
       activeEnergy: activeEnergy,
       clock: clock,
     );

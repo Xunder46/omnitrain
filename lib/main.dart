@@ -415,6 +415,9 @@ Future<Widget> runStartup({
     // Plan 89c1 D-2: a session the wrist is running gets its Fitness workout
     // from the watch, so the phone's own end does not write a second one.
     wristRunsSession: watchSync?.mirror.wristRunsSession,
+    // Plan 218: the phone's end of a wrist-linked workout drops its planned
+    // sets behind the inbox's queued import passes.
+    afterPendingWristImports: watchSync?.afterPendingImports,
     activeEnergy: activeEnergy,
     // Plan 135 (D-13522): the wrist's running energy total fills the open
     // session screen's Calories chip while the wrist reports it.

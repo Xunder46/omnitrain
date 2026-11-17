@@ -76,6 +76,12 @@ class SessionCore {
   /// without a watch; the phone's end then writes as it always has.
   final bool Function(String sessionId)? _wristRunsSession;
 
+  /// Plan 218: runs the finish's drop of a watch-linked workout behind the
+  /// inbox's queued import passes. Null in tests and builds without a
+  /// watch: the drop then runs directly.
+  final Future<void> Function(Future<void> Function() action)?
+  _afterPendingWristImports;
+
   /// Optional store of a finished session's active-energy estimate (plan 134
   /// D-13407/D-13408). Null in tests and in builds that do not store energy;
   /// the lifecycle then ends a session exactly as it did before.
@@ -117,6 +123,12 @@ class SessionCore {
     HealthSyncService? healthSync,
     WatchLateEntryRecovery? lateEntryRecovery,
     bool Function(String sessionId)? wristRunsSession,
+
+    /// Plan 218: runs the finish's drop of a watch-linked workout behind the
+    /// inbox's queued import passes. Null in tests and builds without a
+    /// watch: the drop then runs directly.
+    Future<void> Function(Future<void> Function() action)?
+    afterPendingWristImports,
     ActiveEnergyService? activeEnergy,
     DateTime Function()? clock,
   }) : _notify = notify,
@@ -128,6 +140,7 @@ class SessionCore {
        _healthSync = healthSync,
        _lateEntryRecovery = lateEntryRecovery,
        _wristRunsSession = wristRunsSession,
+       _afterPendingWristImports = afterPendingWristImports,
        _activeEnergy = activeEnergy {
     _blockManager = SessionBlockManager(
       _repository,

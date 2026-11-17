@@ -225,8 +225,8 @@ void main() {
         expect(sets[1]['weight'], 40.0);
       });
 
-      test('S-15706 the wrist\'s own end keeps the planned sets and stores '
-          'that instant', () async {
+      test('S-15706 the wrist\'s own end drops the planned sets and stores '
+          'that instant (plan 218)', () async {
         await openLiveSession();
         effortId = await seedAndAdd('ex-squat', 'Barbell Back Squat');
         await state.addEntry(effortId);
@@ -238,15 +238,21 @@ void main() {
         await state.endSession(writeToHealth: false, atMs: atMs);
 
         final sets = await storedSets();
-        expect(sets, hasLength(3), reason: 'the wrist sets still on their way');
-        expect(sets.first['reps'], 3);
-        expect(sets.first['weight'], 100.0);
+        expect(sets, hasLength(1), reason: 'the planned sets go (plan 218)');
+        expect(sets.single['reps'], 3);
+        expect(sets.single['weight'], 100.0);
         expect(await repoRestIndexes(), [1]);
+        expect(stateRestIndexes(), [1]);
+        expect(
+          (await repo.getSegmentEfforts(segmentId())).map((e) => e.id),
+          contains(effortId),
+          reason: 'the exercise stays for a late wrist set (plan 218)',
+        );
         expect(state.currentSession!.endedAtMs, atMs);
       });
 
-      test('S-15712 a session with a staged wrist row keeps its planned sets',
-          () async {
+      test('S-15712 a session with a staged wrist row drops its planned sets '
+          'but keeps the exercise', () async {
         await openLiveSession();
         effortId = await seedAndAdd('ex-squat', 'Barbell Back Squat');
         await state.addEntry(effortId);
@@ -272,7 +278,20 @@ void main() {
 
         await state.endSession();
 
-        expect(await storedSets(), hasLength(3), reason: 'D-11');
+        final sets = await storedSets();
+        expect(
+          sets,
+          hasLength(1),
+          reason: 'the two placeholders go, set 0 and its rest stay (plan 218)',
+        );
+        expect(sets.single['reps'], 3);
+        expect(sets.single['weight'], 100.0);
+        expect(await repoRestIndexes(), [1]);
+        expect(
+          (await repo.getSegmentEfforts(segmentId())).map((e) => e.id),
+          contains(effortId),
+          reason: 'the exercise stays for the wrist set still on its way',
+        );
       });
 
       test('S-15712b a staged phone annotation alone does not stop the drop',
@@ -299,7 +318,8 @@ void main() {
         expect(await storedSets(), hasLength(1));
       });
 
-      test('S-15713 a session the wrist runs keeps its planned sets', () async {
+      test('S-15713 a session the wrist runs drops its planned sets and keeps '
+          'an exercise with only placeholders (plan 218 S-21802)', () async {
         state = WorkoutState(repo, wristRunsSession: (_) => true);
         await state.createNewSession();
         effortId = await seedAndAdd('ex-squat', 'Barbell Back Squat');
@@ -307,10 +327,30 @@ void main() {
         await state.addEntry(effortId);
         await fillSet(0, reps: 3, weight: 100.0);
         await logSet(0);
+        final benchId = await seedAndAdd('ex-bench', 'Bench Press');
+        await state.addEntry(benchId);
+        await state.addEntry(benchId);
 
         await state.endSession();
 
-        expect(await storedSets(), hasLength(3), reason: 'D-11');
+        final sets = await storedSets();
+        expect(
+          sets,
+          hasLength(1),
+          reason: 'the squat placeholders go, set 0 and its rest stay',
+        );
+        expect(sets.single['reps'], 3);
+        expect(sets.single['weight'], 100.0);
+        expect(
+          await repo.getEffortObservations(benchId),
+          isEmpty,
+          reason: 'the bench held only placeholders and they go (S-21802)',
+        );
+        expect(
+          (await repo.getSegmentEfforts(segmentId())).map((e) => e.id),
+          containsAll([effortId, benchId]),
+          reason: 'every exercise stays (plan 218 keepEfforts)',
+        );
       });
 
       test('S-15707 Finish leaves timed and round efforts with their entries '

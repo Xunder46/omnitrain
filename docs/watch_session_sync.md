@@ -566,8 +566,12 @@ in place, resending the structure as a snapshot and no new started lifecycle
   the phone reads as unlogged — no rest at its position + 1, which differs from
   the row's number once the phone has deleted a middle set — replacing that
   row's values and stamping them with the wrist's `loggedAt`, so the row count
-  does not change; when every row is logged it appends after the last row, and
-  a history import always appends after the last row
+  does not change; when every row is logged it appends after the last row,
+  a held session that has already ENDED appends too (its end dropped the
+  planned sets, and a row with no rest there is one the user typed; plan 218,
+  `S-14 the phone finished first` in `test/watch_session_merge_test.dart`,
+  `S-21806` in `test/wrist_linked_end_late_sets_test.dart`), and a history
+  import always appends after the last row
   (`test/watch_session_import_test.dart`,
   `A-51 a late wrist set is placed after the user’s own set`; and, for the live
   merge, `test/watch_session_merge_test.dart`,

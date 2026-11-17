@@ -463,6 +463,16 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     return result;
   }
 
+  /// Plan 218: runs [action] after every import pass already queued and
+  /// before any later one, so it never reads a wrist set whose row is written
+  /// and whose rest is not yet. A failure of [action] reaches the caller; the
+  /// chain keeps moving.
+  Future<void> afterPendingImports(Future<void> Function() action) {
+    final result = _settleChain.then((_) => action());
+    _settleChain = result.then((_) {}, onError: (_, _) {});
+    return result;
+  }
+
   /// Hands the session a pass just rated to the health sync (plan 90 D-4),
   /// not waiting on it: the sync retries for minutes and never throws.
   Future<void> _sendRatingToHealth(String sessionId) async {
