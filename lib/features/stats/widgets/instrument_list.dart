@@ -81,9 +81,27 @@ class _InstrumentListState extends State<InstrumentList> {
     );
   }
 
+  /// The one line under the caption while no row has an earlier period to
+  /// compare against: every change chip reads `new`, and this says why and when
+  /// that changes (plan 216, D-1).
+  Text _noComparisonNote(BuildContext context) {
+    return Text(
+      'Nothing to compare yet. Change shows once an exercise was also '
+      'trained in the ${_span(widget.window.dayCount)} before.',
+      key: const Key('instrument_no_comparison_note'),
+      style: Theme.of(
+        context,
+      ).textTheme.labelSmall?.copyWith(color: widget.themeColors.textMuted),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final children = <Widget>[];
+
+    final hasComparison = widget.sections.any(
+      (section) => section.rows.any((row) => row.previousValue != null),
+    );
 
     for (var i = 0; i < widget.sections.length; i++) {
       final section = widget.sections[i];
@@ -94,7 +112,13 @@ class _InstrumentListState extends State<InstrumentList> {
 
       children.add(OmniCardHeader(title: section.section.label.toUpperCase()));
 
-      if (i == 0) children.add(_caption(context));
+      if (i == 0) {
+        children.add(_caption(context));
+        if (!hasComparison &&
+            widget.sections.any((section) => section.rows.isNotEmpty)) {
+          children.add(_noComparisonNote(context));
+        }
+      }
 
       for (final row in rows) {
         children.add(

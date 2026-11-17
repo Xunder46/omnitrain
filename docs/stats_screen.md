@@ -330,6 +330,16 @@ keep their own wording. Verified by `test/instrument_list_screen_test.dart`
 (`S-4012`, `S-4019`) and `test/instrument_change_format_test.dart`
 (`nativePrimaryLabel`).
 
+While no row on the list has an earlier period to compare against (every change
+chip reads `new`, as in a user's first month), one more muted line sits right under
+the caption: `Nothing to compare yet. Change shows once an exercise was also trained
+in the 4 weeks before.` (the span is the window's, formatted like the caption's). It
+is gone as soon as any row has a previous value; the rows with nothing earlier still
+read `new`. It talks about exercises, not about training in general, because the
+earlier period can hold training of other exercises (or the same exercise on another
+measure) and still leave every row without a comparison. Verified by `test/stats_no_comparison_note_test.dart` (`S-21601`, `S-21602`,
+`S-21603`).
+
 The change readout compares the window's value with the previous window of the
 same length. With nothing comparable it reads `new` rather than a number, and
 a change of exactly zero reads the dash. Its arrow follows the direction of the
