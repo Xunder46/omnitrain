@@ -1,6 +1,6 @@
 # Plan 228 — A watch-linked workout with nothing logged is discarded too
 
-Series: Stats pre-launch review, owner rule 2026-11-17: "anything not logged is ignored". Plan 220 made Finish on a nothing-logged workout ask `Discard Workout?` and discard, but left out any workout the watch took part in. Phone only (`lib/state/workout`), one builder run, then docs. Status: BUILT, mutation-checked (12 mutants killed; four activity kinds needed an extra test), docs applied; full suite pending.
+Series: Stats pre-launch review, owner rule 2026-11-17: "anything not logged is ignored". Plan 220 made Finish on a nothing-logged workout ask `Discard Workout?` and discard, but left out any workout the watch took part in. Phone only (`lib/state/workout`), one builder run, then docs. Status: COMMITTED 40794f42 (built, mutation-checked (12 mutants killed; four activity kinds needed an extra test), docs applied; full suite green).
 
 ## Goal and acceptance
 

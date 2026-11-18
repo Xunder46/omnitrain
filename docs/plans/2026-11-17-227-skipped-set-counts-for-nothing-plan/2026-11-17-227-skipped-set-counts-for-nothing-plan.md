@@ -1,6 +1,6 @@
 # Plan 227 — A skipped set counts for nothing
 
-Series: Stats pre-launch review, owner rule 2026-11-17: "anything logged is logged and stays, anything not logged is ignored". A set marked skipped was not done. Phone only (`lib/core/services`, `lib/state/workout`), one builder run, then docs. Status: BUILT, mutation-checked (4 of 4 killed), docs applied; full suite pending.
+Series: Stats pre-launch review, owner rule 2026-11-17: "anything logged is logged and stays, anything not logged is ignored". A set marked skipped was not done. Phone only (`lib/core/services`, `lib/state/workout`), one builder run, then docs. Status: COMMITTED f4c6a3ce (built, mutation-checked (4 of 4 killed), docs applied; full suite green).
 
 ## Goal and acceptance
 
