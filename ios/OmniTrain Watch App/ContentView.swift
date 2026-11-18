@@ -573,6 +573,7 @@ struct ContentView: View {
             NavigationStack {
                 WatchNutritionView(model: host.nutritionModel, water: host.waterModel)
             }
+            .solidSheetBackground()
         }
         // Plan 142: the start screen's way into the diagnostics. Its own sheet,
         // on the root, so a session ending underneath it does not close it.
@@ -580,6 +581,7 @@ struct ContentView: View {
             NavigationStack {
                 WatchDiagnosticsView(log: host.diagnostics, onSend: { url in host.sendDiagnostics(url) })
             }
+            .solidSheetBackground()
         }
         .task {
             await host.restore()

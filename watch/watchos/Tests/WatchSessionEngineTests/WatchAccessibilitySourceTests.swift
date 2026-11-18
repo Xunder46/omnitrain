@@ -236,9 +236,11 @@ final class WatchAccessibilitySourceTests: XCTestCase {
 
     // MARK: - S-17112: the Discard row and its confirmation speak
 
-    /// Plan 171 D-17104: the row's label is the owner's own text and the
-    /// confirmation's two buttons are read from their words and their roles —
-    /// no invented `.accessibilityLabel`, and the row's element is the one
+    /// Plan 171 D-17104 and plan 223 D-22309: the row's label is the owner's own
+    /// text, and the question it raises — the menu's own screen, not a system
+    /// alert — reads its title as a header and its message as its own text, the
+    /// two buttons read from their words and their roles. No invented
+    /// `.accessibilityLabel` in the file, and the row's element is the one
     /// S-15304 already pins.
     func testS17112TheDiscardRowAndItsConfirmationSpeak() throws {
         let source = try engineSource("WatchMenuView.swift")
@@ -251,19 +253,44 @@ final class WatchAccessibilitySourceTests: XCTestCase {
             row.contains("Button(WatchMenuCopy.discardLabel)"),
             "S-17112 the row is read as its own label"
         )
+        XCTAssertFalse(
+            source.contains(".accessibilityLabel"),
+            "S-17112 no line in the file invents a label of its own"
+        )
+
+        let question = try XCTUnwrap(
+            propertyBody(named: "discardQuestion", in: source),
+            "S-17112 the menu view has a discardQuestion property"
+        )
         XCTAssertTrue(
-            row.contains("Button(WatchMenuCopy.discardConfirmCancel, role: .cancel) {}"),
+            question.contains("Button(WatchMenuCopy.discardConfirmCancel, role: .cancel) {"),
             "S-17112 Cancel reads the owner's word and cancels"
         )
         XCTAssertTrue(
-            row.contains("Button(WatchMenuCopy.discardConfirmDiscard, role: .destructive) {"),
+            question.contains("Button(WatchMenuCopy.discardConfirmDiscard, role: .destructive) {"),
             "S-17112 Discard reads its word and is announced as destructive"
         )
         XCTAssertTrue(
-            row.contains("Text(WatchMenuCopy.discardConfirmBody)"),
-            "S-17112 the alert's message is read as its own text"
+            question.contains("message: WatchMenuCopy.discardConfirmBody"),
+            "S-17112 the question's message is the owner's own body"
         )
-        XCTAssertFalse(row.contains(".accessibilityLabel"), "S-17112 the row invents no label of its own")
+
+        let layout = try XCTUnwrap(
+            functionBody(of: "struct WatchMenuConfirmationView", in: source),
+            "S-17112 the question wears one shared confirmation layout"
+        )
+        XCTAssertTrue(
+            layout.contains("Text(title)"),
+            "S-17112 the question's title is read as its own text"
+        )
+        XCTAssertTrue(
+            layout.contains(".accessibilityAddTraits(.isHeader)"),
+            "S-17112 the question's title is announced as a header"
+        )
+        XCTAssertTrue(
+            layout.contains("Text(message)"),
+            "S-17112 the question's message is read as its own text"
+        )
     }
 
     // MARK: - The ratchet: the accessibility coverage cannot shrink

@@ -186,8 +186,8 @@ final class WatchTimerCueTests: XCTestCase {
         )
         XCTAssertEqual(
             cancelLine,
-            "Button(WatchMenuCopy.confirmCancel, role: .cancel) {}",
-            "the Cancel line is the empty action, untouched"
+            "Button(WatchMenuCopy.confirmCancel, role: .cancel) {",
+            "the Cancel line is the Finish question's own, untouched"
         )
         XCTAssertFalse(cancelLine.contains("playFinished"), "Cancel plays no tap")
     }

@@ -990,6 +990,145 @@ final class WatchMenuTests: XCTestCase {
         )
     }
 
+    // MARK: - S-22307, S-22308 one shape per row, titleless containers (plan 223)
+
+    /// The list's rows are each their button's one shape: the platter is cleared
+    /// right after the row's frame in both row builders, the styles stay, and the
+    /// file keeps its single plain list (D-22311). A source scan, like S-3106A.
+    func testS22307EachListRowIsOneShape() throws {
+        let source = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchExerciseListView.swift")
+        let lines = sourceLines(source)
+
+        for (marker, keeps) in [
+            ("private func rows(of", ".buttonStyle(.bordered)"),
+            ("private func leadingButton(", ".watchProminent()"),
+        ] {
+            let row = try XCTUnwrap(
+                block(from: marker, in: lines),
+                "S-22307 the row builder is in the file"
+            )
+            let rowLines = row.map { $0.trimmingCharacters(in: .whitespaces) }
+            let frame = try XCTUnwrap(
+                rowLines.firstIndex { $0 == ".frame(maxWidth: .infinity, alignment: .leading)" },
+                "S-22307 the row fills the list's width"
+            )
+            XCTAssertEqual(
+                rowLines[frame + 1],
+                ".listRowBackground(Color.clear)",
+                "S-22307 the list draws no platter behind the row"
+            )
+            XCTAssertEqual(
+                occurrences(of: ".listRowBackground(Color.clear)", in: row.joined(separator: "\n")),
+                1,
+                "S-22307 the row clears the platter once"
+            )
+            XCTAssertTrue(
+                row.joined(separator: "\n").contains(keeps),
+                "S-22307 the row keeps its own button style"
+            )
+        }
+
+        XCTAssertEqual(occurrences(of: ".listStyle(.plain)", in: source), 1, "S-22307 the list stays plain")
+    }
+
+    /// Both entry points sit in a container that keeps their rows clear of the
+    /// sheet's close button and the clock: the picker sheet wraps its list in a
+    /// titleless stack, and the Add list stays a push inside the menu's own stack
+    /// (D-22311, D-3608). A source scan, like S-3106A.
+    func testS22308ThePickerSitsInATitlelessStack() throws {
+        let start = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchStartView.swift")
+        let pickerStruct = try XCTUnwrap(
+            block(from: "public struct WatchExercisePickerView: View", in: sourceLines(start)),
+            "S-22308 the exercise picker is in the file"
+        )
+        let pickerBody = try XCTUnwrap(
+            block(from: "public var body: some View {", in: pickerStruct),
+            "S-22308 the picker's body is in the view"
+        )
+
+        let bodyLines = pickerBody
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        XCTAssertEqual(bodyLines[1], "NavigationStack {", "S-22308 the picker's body opens with a stack")
+        XCTAssertEqual(bodyLines[2], "WatchExerciseGroupList(", "S-22308 and still renders the shared list")
+        XCTAssertFalse(
+            pickerBody.contains { $0.contains(".navigationTitle(") },
+            "S-22308 the picker adds no title of its own"
+        )
+
+        let stackOpen = try XCTUnwrap(bodyLines.firstIndex { $0 == "NavigationStack {" })
+        var depth = 0
+        var stackClose: Int?
+        for (offset, line) in bodyLines[stackOpen...].enumerated() {
+            depth += line.filter { $0 == "{" }.count
+            depth -= line.filter { $0 == "}" }.count
+            if depth == 0, offset > 0 { stackClose = stackOpen + offset; break }
+        }
+        let backdrop = try XCTUnwrap(
+            bodyLines.firstIndex { $0 == ".solidSheetBackground()" },
+            "S-22308 the sheet content keeps its solid backdrop"
+        )
+        let close = try XCTUnwrap(stackClose, "S-22308 the stack closes inside the body")
+        XCTAssertGreaterThan(backdrop, close, "S-22308 the backdrop sits on the stack, outside its braces")
+
+        let menu = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift")
+        let menuLines = sourceLines(menu)
+        let addList = try XCTUnwrap(
+            block(from: "private struct WatchAddExerciseList: View", in: menuLines),
+            "S-22308 the Add list is in the file"
+        )
+        XCTAssertTrue(
+            addList.contains { $0.contains("WatchExerciseGroupList(") },
+            "S-22308 the Add list still renders the shared list"
+        )
+        XCTAssertFalse(
+            addList.contains { $0.contains("NavigationStack") },
+            "S-22308 the Add list brings no stack of its own (D-3608)"
+        )
+        let menuBlock = try XCTUnwrap(propertyBlock("menu", in: menuLines), "S-22308 the menu is in the file")
+        let addRow = try XCTUnwrap(
+            propertyBlock("addExerciseRow", in: menuLines),
+            "S-22308 the Add row is in the file"
+        )
+        XCTAssertTrue(
+            addRow.contains { $0.contains("NavigationLink {") },
+            "S-22308 the Add row is a push, not a new container"
+        )
+        XCTAssertTrue(
+            menuBlock.contains { $0.trimmingCharacters(in: .whitespaces) == "addExerciseRow" },
+            "S-22308 the menu reaches the Add list through its own row"
+        )
+    }
+
+    /// The two endings stand the section gap apart, Discard last (D-22313). A
+    /// source scan, like S-3104B above.
+    func testS22310TheEndingsStandASectionGapApart() throws {
+        let menu = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift")
+        let menuBlock = try XCTUnwrap(
+            propertyBlock("menu", in: sourceLines(menu)),
+            "S-22310 the menu is in the file"
+        )
+
+        let lines = menuBlock
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let stack = try XCTUnwrap(
+            lines.firstIndex { $0 == "VStack(spacing: Self.sectionGap) {" },
+            "S-22310 the endings share one gap-holding stack"
+        )
+        let finish = try XCTUnwrap(lines.firstIndex { $0 == "finishRow" }, "S-22310 the menu carries End Session")
+        let discard = try XCTUnwrap(lines.firstIndex { $0 == "discardRow" }, "S-22310 the menu carries Discard Session")
+        XCTAssertEqual(finish, stack + 1, "S-22310 End Session is the stack's first row")
+        XCTAssertEqual(discard, finish + 1, "S-22310 Discard follows End Session with no line between")
+        XCTAssertEqual(lines[discard + 1], "}", "S-22310 and nothing follows it in the stack (S-17101)")
+
+        let rowUsages = lines.enumerated().compactMap { index, line -> Int? in
+            (line == "finishRow" || line == "discardRow" || line == "addExerciseRow" || line == "rowButton(row)")
+                ? index : nil
+        }
+        XCTAssertEqual(rowUsages.last, discard, "S-22310 Discard is the menu's last row usage")
+    }
+
     // MARK: - S-3101…S-3104, S-3111 the rest screen's menu (plan 31 Phase 1)
 
     /// The extra gap belongs to the horizontal line: it sits between the divider
@@ -1026,7 +1165,7 @@ final class WatchMenuTests: XCTestCase {
     func testS3104BTheSameGapSitsAroundEverySeparator() throws {
         let menu = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift")
         let start = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchStartView.swift")
-        XCTAssertTrue(menu.contains("private static let sectionGap = 10.0"), "S-3104B the menu's gap is 10 pt")
+        XCTAssertTrue(menu.contains("fileprivate static let sectionGap = 10.0"), "S-3104B the menu's gap is 10 pt")
         XCTAssertTrue(start.contains("private static let sectionGap = 10.0"), "S-3104B the start screen's gap is the same 10 pt")
 
         let menuLines = sourceLines(menu)
@@ -1586,6 +1725,29 @@ private func propertyBlock(_ name: String, in lines: [String]) -> [String]? {
     return nil
 }
 
+/// The lines from the first line containing `marker` through the brace that
+/// closes the block it opens, or nil when the file carries no such marker. A
+/// marker whose line opens no brace walks to the first line that does, so a
+/// multi-line signature is read whole.
+private func block(from marker: String, in lines: [String]) -> [String]? {
+    guard var start = lines.firstIndex(where: { $0.contains(marker) }) else {
+        return nil
+    }
+    while !lines[start].contains("{") {
+        start += 1
+        guard start < lines.count else { return nil }
+    }
+
+    var depth = 0
+    var block: [String] = []
+    for line in lines[start...] {
+        block.append(line)
+        depth += line.filter { $0 == "{" }.count - line.filter { $0 == "}" }.count
+        if depth == 0, block.count > 1 { return block }
+    }
+    return nil
+}
+
 // MARK: - S-17101 to S-17112 Discard Session (plan 171)
 
 /// Plan: `docs/plans/2026-11-14-171-watch-discard-workout-plan/2026-11-14-171-watch-discard-workout-plan.md`,
@@ -1630,46 +1792,56 @@ final class WatchMenuDiscardTests: XCTestCase {
         XCTAssertEqual(payload["at"] as? String, utcIso(harness.clock.call()), "S-17102 stamped with the discard's own instant")
     }
 
-    /// The view's half of S-17102: `state.discard()` is reached from the alert's
-    /// destructive Discard alone, Cancel runs nothing, and no haptic plays
-    /// (D-17104).
-    func testS17102TheViewDiscardsOnlyFromTheAlertsDiscardButton() throws {
+    /// The view's half of S-17102: `state.discard()` is reached from the
+    /// question's destructive Discard alone, Cancel runs nothing, and no haptic
+    /// plays (D-17104). The question is the menu's own screen
+    /// (plan 223, D-22309), not a system alert.
+    func testS17102TheViewDiscardsOnlyFromTheQuestionsDiscardButton() throws {
         let source = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift")
-        let body = try XCTUnwrap(
-            propertyBlock("discardRow", in: sourceLines(source)),
-            "S-17102 the menu view has a discardRow"
+        let question = try XCTUnwrap(
+            propertyBlock("discardQuestion", in: sourceLines(source)),
+            "S-17102 the menu view has a discardQuestion"
         )
 
         XCTAssertEqual(occurrences(of: "state.discard()", in: source), 1, "S-17102 the model's discard is reached from one place")
         let confirm = try XCTUnwrap(
-            body.firstIndex {
+            question.firstIndex {
                 $0.trimmingCharacters(in: .whitespaces)
                     == "Button(WatchMenuCopy.discardConfirmDiscard, role: .destructive) {"
             },
-            "S-17102 the alert carries a destructive Discard"
+            "S-17102 the question carries a destructive Discard"
+        )
+        let cancel = try XCTUnwrap(
+            question.firstIndex {
+                $0.trimmingCharacters(in: .whitespaces)
+                    == "Button(WatchMenuCopy.discardConfirmCancel, role: .cancel) {"
+            },
+            "S-17102 the question carries a Cancel"
         )
         let call = try XCTUnwrap(
-            body.firstIndex { $0.contains("await state.discard()") },
-            "S-17102 the alert's Discard runs the model's discard"
+            question.firstIndex { $0.contains("await state.discard()") },
+            "S-17102 the question's Discard runs the model's discard"
         )
         XCTAssertGreaterThan(call, confirm, "S-17102 and only that button does")
-        XCTAssertTrue(
-            body.contains { $0.trimmingCharacters(in: .whitespaces) == "Button(WatchMenuCopy.discardConfirmCancel, role: .cancel) {}" },
+        XCTAssertLessThan(call, cancel, "S-17102 the Discard runs before Cancel is reached")
+        XCTAssertEqual(
+            question[cancel + 1].trimmingCharacters(in: .whitespaces),
+            "confirmingDiscard = false",
             "S-17102 Cancel is a no-op"
         )
         XCTAssertTrue(
-            body.contains { $0.contains(".alert(WatchMenuCopy.discardConfirmTitle") },
+            question.contains { $0.trimmingCharacters(in: .whitespaces) == "title: WatchMenuCopy.discardConfirmTitle," },
             "S-17102 the question is the discard's own"
         )
         XCTAssertTrue(
-            body.contains { $0.trimmingCharacters(in: .whitespaces) == "Text(WatchMenuCopy.discardConfirmBody)" },
+            question.contains { $0.trimmingCharacters(in: .whitespaces) == "message: WatchMenuCopy.discardConfirmBody" },
             "S-17102 and the message is its body"
         )
         XCTAssertTrue(
-            body.contains { $0.trimmingCharacters(in: .whitespaces) == "onDiscard()" },
+            question.contains { $0.trimmingCharacters(in: .whitespaces) == "onDiscard()" },
             "S-17102 the shell is handed the surface back after the discard"
         )
-        XCTAssertFalse(body.contains { $0.contains("haptics") }, "D-17104 confirming a discard plays nothing")
+        XCTAssertFalse(question.contains { $0.contains("haptics") }, "D-17104 confirming a discard plays nothing")
     }
 
     // MARK: - S-17101 the row sits at the bottom of the menu
@@ -1697,9 +1869,13 @@ final class WatchMenuDiscardTests: XCTestCase {
             "S-17101 the Discard row is the one filled red row"
         )
         XCTAssertFalse(body.contains { $0.contains(".disabled") }, "D-17103 the row is never disabled")
+        let question = try XCTUnwrap(
+            propertyBlock("discardQuestion", in: lines),
+            "S-17101 the row raises the menu's own question"
+        )
         XCTAssertTrue(
-            body.contains { $0.contains("role: .destructive") },
-            "S-17101 its confirmation's Discard is destructive"
+            question.contains { $0.contains("role: .destructive") },
+            "S-17101 its question's Discard is destructive"
         )
     }
 

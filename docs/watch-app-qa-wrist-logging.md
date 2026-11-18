@@ -61,9 +61,10 @@ hardware yet.
    (`…testS1402ASlotWithNoNumberKeepsTheWristsPreset`). **End Session** still ends
    the session
    (`…testS1311FinishLeavesTheWorkClockRunningAndTakesTheReadout`).
-7. **End Session asks first — (owner).** On the menu tap **End Session**: the
-   prompt reads **Finish Workout?** with the phone's own words — "This action
-   will save and close the workout session." — and **Cancel** / **Finish**
+7. **End Session asks first — (owner).** On the menu tap **End Session**:
+   a solid screen reads **Finish Workout?** with the phone's own words — "This
+   action will save and close the workout session." — then **Finish** / **Cancel**,
+   and nothing of the menu shows through behind it
    (`WatchMenuTests.testS3401TheMenuCopyIsTheOwnersWords`). Tap **Cancel**: the
    menu is still there and the session is still running. Tap **End Session**,
    then **Finish** in the prompt: the session ends and the effort-rating question
@@ -510,11 +511,11 @@ frame (plan 87b, open question d;
 44. **Discard a session from the wrist — (owner, plan 171).** (a) Start a Free
     workout on the wrist, log one set, tap the list button: **Discard Session**
     is the last row, below **End Session**. (b) Tap it: the prompt says
-    "Discard session?" with **Cancel** and a red **Discard**; Cancel changes
-    nothing and feels nothing. (c) Tap Discard Session and then Discard: the
-    menu closes to the Start surface, nothing for this session appears in
-    Fitness, and the phone's open session row is gone with its sets. (d) The
-    same while a timed effort's clock runs: the row is not dimmed and the
+    "Discard session?" with a red **Discard** and **Cancel** on a solid screen;
+    Cancel changes nothing and feels nothing. (c) Tap Discard Session and then
+    Discard: the menu closes to the Start surface, nothing for this session
+    appears in Fitness, and the phone's open session row is gone with its sets.
+    (d) The same while a timed effort's clock runs: the row is not dimmed and the
     discard goes through. (e) The same during a rest: the rest screen and its
     ping stop, and the phone's discarded session carries the rest that ran.
     (f) Discard a session with nothing logged, then start one and tap **End
@@ -530,7 +531,7 @@ frame (plan 87b, open question d;
     `…testS17109AnEmptyEndBehavesAsADiscard`,
     `…testS17110DiscardKeepsTheLoggedEntriesAndShowsNoSummary`,
     `…testS17111DiscardLeavesWaterAndFoodUntouched`,
-    `…testS17102TheViewDiscardsOnlyFromTheAlertsDiscardButton`,
+    `…testS17102TheViewDiscardsOnlyFromTheQuestionsDiscardButton`,
     `…testS17109TheEmptyEndRaisesTheDiscardAlert` and
     `…testTheShellPassesTheDiscardClosure`) and
     `WatchAccessibilitySourceTests.testS17112TheDiscardRowAndItsConfirmationSpeak`.
@@ -538,7 +539,8 @@ frame (plan 87b, open question d;
 45. **The modality grid starts the workout, in one tap and one pick — (owner,
     plan 176).** On the Start screen the grid is the first control: **Cardio**,
     **Resistance**, **Sports**, **Isometric**, two abreast, in the phone's four
-    colours, 44 pt tall, and all four fit a 40 mm watch without a scroll. With
+    colours, each 1.4 times as wide as it is tall, its label inset from both edges, and all four fit a 40 mm watch
+    without a scroll. With
     VoiceOver on each cell reads "Start Cardio workout" and so on. (a) Tap
     **Cardio**, then close the picker without picking: no workout runs on the
     wrist, the Start screen returns, and the phone's Home shows no live watch

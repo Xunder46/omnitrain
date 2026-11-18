@@ -11,10 +11,12 @@ current exercise — its own effort kind (a set, a timed hold, a round or a dril
 their logged counts to jump to, then Add Exercise (an A to Z list of the phone's
 whole exercise list; a pick is appended to the end of the ladder, the session
 does not move, the ladder change reaches the phone like any wrist-added
-exercise), then End Session, which asks "Finish Workout?" first (Cancel /
-Finish, the phone's own words) —
-Discard Session in red, End Session in the theme colour
-(`WatchMenuTests.testS20106TheMenuRowsWearTheirColours`) — and
+exercise), then End Session — it asks "Finish Workout?" first on a solid screen
+of its own in place of the menu (Finish, then Cancel, the phone's own words;
+`WatchSheetSoliditySourceTests.testS22302NoMenuQuestionIsASystemAlert`) —
+Discard Session in red, End Session in the theme colour, a section gap apart
+(`WatchMenuTests.testS22310TheEndingsStandASectionGapApart`,
+`WatchMenuTests.testS20106TheMenuRowsWearTheirColours`) — and
 last Discard Session (plan 171);
 `WatchMenuTests.testS3401TheMenuCopyIsTheOwnersWords`,
 `…testS3611TheAddListSortsCaseInsensitivelyByName`,
@@ -32,8 +34,9 @@ while an effort runs (`WatchMenuTests.testS1307TheMenuDoesNotJumpWhileAWorkClock
 
 **Discard Session throws the workout away.** The menu's last row, below End
 Session and never disabled — the session running a work clock, or one the user
-cannot finish, is exactly the one that needs a way out — asks "Discard session?"
-first (Cancel / Discard, the Discard one destructive) and then ends the session
+cannot finish, is exactly the one that needs a way out —
+asks, on a solid screen, "Discard session?" first (Discard, the destructive one, then Cancel) and then
+ends the session
 through the engine's own `abandonSession()`, at the wrist's instant: `abandoned`,
 its rest stopped with the rest-ended observation emitted, no rating prompt owed,
 the logged entries kept, and the phone told the terminal lifecycle frame it
@@ -54,7 +57,7 @@ Verified by
 `…testS17109AnEmptyEndBehavesAsADiscard`,
 `…testS17110DiscardKeepsTheLoggedEntriesAndShowsNoSummary`,
 `…testS17111DiscardLeavesWaterAndFoodUntouched`,
-`…testS17102TheViewDiscardsOnlyFromTheAlertsDiscardButton`,
+`…testS17102TheViewDiscardsOnlyFromTheQuestionsDiscardButton`,
 `…testS17109TheEmptyEndRaisesTheDiscardAlert`,
 `…testTheShellPassesTheDiscardClosure` and
 `WatchAccessibilitySourceTests.testS17112TheDiscardRowAndItsConfirmationSpeak`.
@@ -352,7 +355,7 @@ to a `WatchHapticCue`, `WristHaptics.play` switches on it), and confirming
 Finish in the menu plays one `.success` tap before `finish()`, Cancel none
 (`WatchTimerCueTests.swift` S-15105, S-15106, S-15107). A discard plays nothing,
 neither the row nor the confirmation
-(`WatchMenuDiscardTests.testS17102TheViewDiscardsOnlyFromTheAlertsDiscardButton`).
+(`WatchMenuDiscardTests.testS17102TheViewDiscardsOnlyFromTheQuestionsDiscardButton`).
 The Wear OS twin keeps
 one tap.
 

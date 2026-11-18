@@ -54,21 +54,22 @@ public struct WatchMenuView: View {
     public static let lockCaptionText = "An effort is running"
 
     /// Wrist-scale inset, as the other wrist surfaces use.
-    private static let surfaceInset = 4.0
+    fileprivate static let surfaceInset = 4.0
 
     /// The gap that sets a group of buttons apart from the separator line: the
     /// same value above and below it here, and on the start screen (the Sync
     /// separator and the groups above it).
-    private static let sectionGap = 10.0
+    fileprivate static let sectionGap = 10.0
 
-    /// Set by the action row and read by its alert: the confirmation is the
-    /// view's own, and `state.finish()` runs only on the alert's Finish
-    /// (D-3402).
+    /// Set by the action row and read by the menu's body, which shows the
+    /// Finish question in place of the menu (D-22309): `state.finish()` runs
+    /// only on the question's Finish (D-3402).
     @State private var confirmingFinish = false
 
-    /// Set by the Discard row and by an End on an empty session, and read by the
-    /// same confirmation: a discard is the one ending that cannot be undone, so
-    /// it asks first (D-17104).
+    /// Set by the Discard row and by an End on an empty session, and read by
+    /// the menu's body, which shows the Discard question in place of the menu
+    /// (D-22309): a discard is the one ending that cannot be undone, so it
+    /// asks first (D-17104).
     @State private var confirmingDiscard = false
 
     /// How many exercises this menu has added. The rows come from a plain class
@@ -94,7 +95,25 @@ public struct WatchMenuView: View {
         self.onDiscard = onDiscard
     }
 
+    /// The menu, or the question one of its endings asked, on the sheet's own
+    /// solid screen (plan 223, D-22309): the question replaces the menu inside
+    /// the menu sheet, so the shell's closes on a session end or an owed rating
+    /// take it down with the sheet, and nothing behind it shows through.
     public var body: some View {
+        Group {
+            if confirmingFinish {
+                finishQuestion
+            } else if confirmingDiscard {
+                discardQuestion
+            } else {
+                menu
+            }
+        }
+        .solidSheetBackground()
+    }
+
+    /// The rows, Add Exercise, End Session and Discard Session.
+    private var menu: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Self.surfaceInset) {
@@ -123,9 +142,12 @@ public struct WatchMenuView: View {
                     addExerciseRow
                         .padding(.top, Self.sectionGap)
 
-                    finishRow
-
-                    discardRow
+                    // Plan 223, D-22313: the two endings stand a section gap
+                    // apart, Discard last.
+                    VStack(spacing: Self.sectionGap) {
+                        finishRow
+                        discardRow
+                    }
                 }
                 .padding(Self.surfaceInset)
             }
@@ -198,8 +220,9 @@ public struct WatchMenuView: View {
 
     /// End Session ends the session through the rating state, so the owed prompt
     /// and the finish stay one implementation, and then hands the surface back.
-    /// Tapping it only raises the confirmation: Cancel changes nothing, and the
-    /// rating state's `end()` runs on the alert's Finish alone (D-3402).
+    /// Tapping it only raises the question (`finishQuestion`): Cancel changes
+    /// nothing, and the rating state's `end()` runs on the question's Finish
+    /// alone (D-3402).
     ///
     /// A session with nothing logged raises the discard's question instead
     /// (D-17105): an empty End is a discard, so the user confirms the ending
@@ -213,23 +236,12 @@ public struct WatchMenuView: View {
             }
         }
         .watchProminent()
-        .alert(WatchMenuCopy.confirmTitle, isPresented: $confirmingFinish) {
-            Button(WatchMenuCopy.confirmCancel, role: .cancel) {}
-            Button(WatchMenuCopy.confirmFinish) {
-                Task {
-                    haptics.playFinished()
-                    await state.finish()
-                    onFinish()
-                }
-            }
-        } message: {
-            Text(WatchMenuCopy.confirmBody)
-        }
     }
 
-    /// Discard Session throws the session away: the confirmation's words are
-    /// the phone's own, the destructive button runs the model's discard, and
-    /// nothing plays — a discard is not a completion (D-17104).
+    /// Discard Session throws the session away: the question it raises
+    /// (`discardQuestion`) speaks the phone's own words, its destructive button
+    /// runs the model's discard, and nothing plays — a discard is not a
+    /// completion (D-17104).
     ///
     /// Never disabled, unlike the rows: a session the user cannot finish is
     /// exactly the one they need a way out of (D-17103).
@@ -239,16 +251,79 @@ public struct WatchMenuView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(.red)
-        .alert(WatchMenuCopy.discardConfirmTitle, isPresented: $confirmingDiscard) {
-            Button(WatchMenuCopy.discardConfirmCancel, role: .cancel) {}
+    }
+
+    /// The Finish question (D-3402, D-22309): the phone's own words, Finish in
+    /// the theme colour and never destructive, then Cancel, which only puts the
+    /// menu back.
+    private var finishQuestion: some View {
+        WatchMenuConfirmationView(
+            title: WatchMenuCopy.confirmTitle,
+            message: WatchMenuCopy.confirmBody
+        ) {
+            Button(WatchMenuCopy.confirmFinish) {
+                Task {
+                    haptics.playFinished()
+                    await state.finish()
+                    onFinish()
+                }
+            }
+            .watchProminent()
+            Button(WatchMenuCopy.confirmCancel, role: .cancel) {
+                confirmingFinish = false
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    /// The Discard question (D-17104, D-22309): the phone's own words, a
+    /// destructive Discard that runs the model's discard with no haptic, then
+    /// Cancel, which only puts the menu back.
+    private var discardQuestion: some View {
+        WatchMenuConfirmationView(
+            title: WatchMenuCopy.discardConfirmTitle,
+            message: WatchMenuCopy.discardConfirmBody
+        ) {
             Button(WatchMenuCopy.discardConfirmDiscard, role: .destructive) {
                 Task {
                     await state.discard()
                     onDiscard()
                 }
             }
-        } message: {
-            Text(WatchMenuCopy.discardConfirmBody)
+            .buttonStyle(.bordered)
+            Button(WatchMenuCopy.discardConfirmCancel, role: .cancel) {
+                confirmingDiscard = false
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+}
+
+/// A question one of the menu's endings asks, on a screen of its own (plan 223,
+/// D-22309): the title, the message, then the answers in the order the caller
+/// gives them. It sits in a stack of its own so the clock keeps its corner.
+private struct WatchMenuConfirmationView<Answers: View>: View {
+    let title: String
+    let message: String
+    @ViewBuilder let answers: () -> Answers
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: WatchMenuView.surfaceInset) {
+                    Text(title)
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    answers()
+                        .padding(.top, WatchMenuView.sectionGap)
+                }
+                .padding(WatchMenuView.surfaceInset)
+            }
         }
     }
 }

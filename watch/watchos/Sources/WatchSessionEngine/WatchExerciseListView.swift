@@ -98,6 +98,7 @@ public struct WatchExerciseGroupList: View {
         .listStyle(.plain)
     }
 
+    // D-22311: the row is its button's one shape; the list draws no platter behind it.
     private func rows(of group: WatchExerciseGroup) -> some View {
         ForEach(group.exercises, id: \.exerciseId) { exercise in
             Button(exercise.name) {
@@ -106,11 +107,13 @@ public struct WatchExerciseGroupList: View {
             .buttonStyle(.bordered)
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .listRowBackground(Color.clear)
         }
     }
 
     /// A row the session already holds: it wears the picked style, since
     /// picking it moves the user to it rather than adding a second copy.
+    // D-22311: the row is its button's one shape; the list draws no platter behind it.
     private func leadingButton(
         _ row: (slotId: String, exercise: WatchCatalogExercise)
     ) -> some View {
@@ -120,6 +123,7 @@ public struct WatchExerciseGroupList: View {
         .watchProminent()
         .multilineTextAlignment(.leading)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .listRowBackground(Color.clear)
     }
 }
 

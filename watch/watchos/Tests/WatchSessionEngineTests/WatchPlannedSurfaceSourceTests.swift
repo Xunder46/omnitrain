@@ -346,4 +346,87 @@ final class WatchPlannedSurfaceSourceTests: XCTestCase {
             "S-17605 and a picker opened over a live session still only fills it"
         )
     }
+
+    // MARK: - S-22305 the start screen sits in a titleless stack (plan 223, D-22310)
+
+    /// The body's scroll content is wrapped in a `NavigationStack` with no title,
+    /// and the revision hook stays attached to the stack, outside its braces
+    /// (D-22310). A source scan, like the other guards here.
+    func testS22305TheStartScreenSitsInATitlelessStack() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let start = try XCTUnwrap(
+            braceBody(ofLineContaining: "public struct WatchStartView: View", in: view),
+            "the start surface is in the file"
+        )
+        let body = try XCTUnwrap(
+            braceBody(ofLineContaining: "public var body: some View {", in: start),
+            "the start surface's body is in the view"
+        )
+
+        let lines = sourceLines(body)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        XCTAssertEqual(lines[1], "NavigationStack {", "S-22305 the body opens with a stack")
+        XCTAssertEqual(lines[2], "ScrollView {", "S-22305 and the stack's first content is the scroll")
+        XCTAssertFalse(
+            lines.contains { $0.hasPrefix(".navigationTitle(") },
+            "S-22305 no title text appears on the Start screen (D-22303)"
+        )
+
+        let stackOpen = try XCTUnwrap(lines.firstIndex { $0 == "NavigationStack {" })
+        var depth = 0
+        var stackClose: Int?
+        for (offset, line) in lines[stackOpen...].enumerated() {
+            depth += line.filter { $0 == "{" }.count
+            depth -= line.filter { $0 == "}" }.count
+            if depth == 0, offset > 0 { stackClose = stackOpen + offset; break }
+        }
+        let onChange = try XCTUnwrap(
+            lines.firstIndex { $0 == ".onChange(of: revision) { _ in routineNotice = nil }" },
+            "S-22305 the body still re-reads on the host's revision bump (D-8969)"
+        )
+        let close = try XCTUnwrap(stackClose, "S-22305 the stack closes inside the body")
+        XCTAssertGreaterThan(onChange, close, "S-22305 the revision hook sits after the stack's closing brace")
+    }
+
+    // MARK: - S-22309 the tile labels keep their sides (plan 223, D-22312)
+
+    /// The label carries a named side inset between its text and its frame, keeps
+    /// one line at a lower scale floor, and the cell's ratio is unchanged
+    /// (D-22312). A source scan, like the other guards here.
+    func testS22309TheTileLabelsKeepTheirSides() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let grid = try XCTUnwrap(
+            braceBody(ofLineContaining: "struct WatchModalityStartGridView: View", in: view),
+            "the grid view is in the file"
+        )
+
+        let gridLines = sourceLines(grid).map { $0.trimmingCharacters(in: .whitespaces) }
+        XCTAssertTrue(gridLines.contains("static let labelSideInset = 6.0"), "S-22309 the side inset is one named constant")
+        XCTAssertTrue(gridLines.contains("static let cellAspectRatio = 1.4"), "S-22309 the cells stay 1.4 : 1 (owner call 2026-11-15)")
+        XCTAssertFalse(
+            grid.contains(".minimumScaleFactor(0.8)"),
+            "S-22309 the old scale floor is gone from the grid"
+        )
+
+        let body = try XCTUnwrap(
+            braceBody(ofLineContaining: "var body: some View {", in: grid),
+            "the grid's body is in the view"
+        )
+        let bodyLines = sourceLines(body).map { $0.trimmingCharacters(in: .whitespaces) }
+        let scale = bodyLines.firstIndex { $0 == ".minimumScaleFactor(0.6)" }
+        let colour = bodyLines.firstIndex { $0 == ".foregroundStyle(accent.labelColor)" }
+        let inset = bodyLines.firstIndex { $0 == ".padding(.horizontal, Self.labelSideInset)" }
+        let frame = bodyLines.firstIndex { $0 == ".frame(maxWidth: .infinity, maxHeight: .infinity)" }
+        XCTAssertNotNil(scale, "S-22309 the label shrinks before it would wrap")
+        XCTAssertNotNil(colour, "S-22309 the label keeps its accent")
+        XCTAssertNotNil(inset, "S-22309 the label keeps its named side inset")
+        XCTAssertNotNil(frame, "S-22309 the frame still fills the cell")
+        XCTAssertTrue(bodyLines.contains(".lineLimit(1)"), "S-22309 the label stays on one line")
+        if let scale, let colour, let inset, let frame {
+            XCTAssertTrue(scale < colour, "S-22309 the floor sits before the colour")
+            XCTAssertTrue(colour < inset, "S-22309 the inset sits between the colour and the frame (D-22312)")
+            XCTAssertTrue(inset < frame, "S-22309 the frame is the chain's last word")
+        }
+    }
 }

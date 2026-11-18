@@ -231,20 +231,22 @@ lists are one list in one order by
 
 **The modality grid is the surface's first control, and a tap on it creates
 nothing.** Four cells — Cardio, Resistance, Sports, Isometric — in the phone's
-order, in the phone's own colours, two abreast, each a fixed 44 pt high and read
-out as "Start <label> workout" (`WatchModalityStart`, held to the shared contract
-`watch/contract/watch_modality_start_contract.json`). The grid stands above the
-planned button, the "No routines yet" line and the routine rows; the **Free
-workout** button that used to sit below the plan is gone from this view, while
-`startFreeWorkout()` and `cancelEmptyFreeWorkout()` stay in the paths type, where
-the existing tests and the phone-side dev start still call them. A tap remembers
-the modality and opens the exercise picker in a start mode: no session, no row,
-no frame to the phone, and the list the picker offers is the one the free
-workout's picker offered. The pick is what creates the session — one creation
-carrying the tapped modality and the picked exercise as its only slot, the shape
-a routine's start uses — so the phone hears a single session that already holds
-the exercise, and the slot declares the modality's effort kind and keeps the
-exercise's own capabilities and Health kind,
+order, in the phone's own colours, two abreast,
+each 1.4 times as wide as it is tall, its label inset from both edges
+(`WatchPlannedSurfaceSourceTests.testS22309TheTileLabelsKeepTheirSides`), and
+read out as "Start <label> workout" (`WatchModalityStart`, held to the shared
+contract `watch/contract/watch_modality_start_contract.json`). The grid stands
+above the planned button, the "No routines yet" line and the routine rows; the
+**Free workout** button that used to sit below the plan is gone from this view,
+while `startFreeWorkout()` and `cancelEmptyFreeWorkout()` stay in the paths
+type, where the existing tests and the phone-side dev start still call them. A
+tap remembers the modality and opens the exercise picker in a start mode: no
+session, no row, no frame to the phone, and the list the picker offers is the
+one the free workout's picker offered. The pick is what creates the session —
+one creation carrying the tapped modality and the picked exercise as its only
+slot, the shape a routine's start uses — so the phone hears a single session
+that already holds the exercise, and the slot declares the modality's effort
+kind and keeps the exercise's own capabilities and Health kind,
 which is what types the workout: the kind the phone named where it named one, the
 modality's own otherwise. Verified by
 `WatchModalityStartTests.testS17604ATapRemembersItsModalityAndCreatesNothing`,
@@ -393,6 +395,15 @@ Verified by `WatchSyncNoAnswerTests` (S-9001:
 `…testS9002SyncNoAnswerLabelIsExactlyThePlannedSentence`) and the wiring by
 `WatchPhoneProblemWiringSourceTests.testS9004TheHostRaisesTheNoAnswerAndLinkLines`.
 
+**Every sheet on the wrist is solid.** The exercise picker, today's plans, the
+session menu with its Add Exercise list, Nutrition and Diagnostics each wear one
+solid black backdrop, so nothing behind a sheet shows through —
+every sheet on the wrist is solid black
+(`WatchSheetSoliditySourceTests.testS22301EverySheetWearsTheSolidBackdropOnce`).
+The Start screen sits in a titleless navigation stack, so nothing scrolls under
+the clock
+(`WatchPlannedSurfaceSourceTests.testS22305TheStartScreenSitsInATitlelessStack`).
+
 **One list serves both entry points.** The picker and the menu's Add Exercise
 list render the same `WatchExerciseGroupList` (`WatchExerciseListView.swift`),
 each supplying only its own rows and its own action (D-3105, D-3112); it is a
@@ -403,7 +414,11 @@ entry points, `WatchMenuTests.testS19913BothEntryPointsGroupWithTheRealModality`
 the headers,
 `WatchMenuTests.testS19920TheTitledGroupsAreHeadersAndTheUntitledAddsNone`).
 Verified by
-`WatchMenuTests.testS3106AOneListServesBothEntryPoints`.
+`WatchMenuTests.testS3106AOneListServesBothEntryPoints`. In both,
+each row is one shape — its button, with no list platter behind it
+(`WatchMenuTests.testS22307EachListRowIsOneShape`) — and the picker sits in a
+titleless stack so its rows stay clear of the close button and the clock
+(`WatchMenuTests.testS22308ThePickerSitsInATitlelessStack`).
 
 The picker carries no phone hint: the phone's status is the start surface's
 line.

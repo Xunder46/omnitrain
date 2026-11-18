@@ -162,106 +162,110 @@ public struct WatchStartView: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(spacing: Self.surfaceInset) {
-                // Plan 176, D-17605: the grid is the first thing on the surface.
-                WatchModalityStartGridView { cell in
-                    startModality(cell.key)
-                }
-                .padding(.bottom, Self.sectionGap)
-
-                // Plan 129, D-8964/D-8965: first among the routines, in the quiet
-                // bordered style so it never competes with them.
-                if !startablePlans.isEmpty {
-                    Button(
-                        startablePlans.count > 1
-                            ? WatchStartSurfaceCopy.plannedLabel
-                            : startablePlans[0].name
-                    ) {
-                        startPlanned()
+        // Plan 223, D-22310: a titleless stack keeps the clock's corner clear, so
+        // nothing scrolls under the time and the top rests where it launched.
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: Self.surfaceInset) {
+                    // Plan 176, D-17605: the grid is the first thing on the surface.
+                    WatchModalityStartGridView { cell in
+                        startModality(cell.key)
                     }
-                    .buttonStyle(.bordered)
-                }
+                    .padding(.bottom, Self.sectionGap)
 
-                if paths.routines.isEmpty {
-                    Text("No routines yet. Sync with your phone to get them.")
-                        .font(.footnote)
-                        .multilineTextAlignment(.center)
-                } else {
-                    ForEach(paths.routines, id: \.routineId) { routine in
-                        Button(routine.name) {
-                            Task { await start(routine) }
+                    // Plan 129, D-8964/D-8965: first among the routines, in the quiet
+                    // bordered style so it never competes with them.
+                    if !startablePlans.isEmpty {
+                        Button(
+                            startablePlans.count > 1
+                                ? WatchStartSurfaceCopy.plannedLabel
+                                : startablePlans[0].name
+                        ) {
+                            startPlanned()
                         }
-                        .watchProminent()
-                    }
-                }
-
-                if let routineNotice {
-                    Text(routineNotice)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                if let onOpenNutrition {
-                    Button(Self.nutritionLabel, action: onOpenNutrition)
                         .buttonStyle(.bordered)
-                        .padding(.top, Self.sectionGap)
-                }
+                    }
 
-                // The start buttons end here; Sync below is housekeeping, set apart.
-                if onRequestSync != nil, phoneStatus.offersSync {
-                    Divider()
-                        .padding(.vertical, Self.sectionGap)
-                }
-
-                if let onRequestSync, phoneStatus.offersSync {
-                    if isSyncing {
-                        // D-3: a row, not a button — the wrist has already asked,
-                        // and a second tap would start nothing new.
-                        HStack(spacing: Self.surfaceInset) {
-                            ProgressView()
-                            Text(WatchStartSurfaceCopy.syncingLabel)
-                        }
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .accessibilityElement(children: .combine)
+                    if paths.routines.isEmpty {
+                        Text("No routines yet. Sync with your phone to get them.")
+                            .font(.footnote)
+                            .multilineTextAlignment(.center)
                     } else {
-                        Button(Self.syncLabel, action: onRequestSync)
+                        ForEach(paths.routines, id: \.routineId) { routine in
+                            Button(routine.name) {
+                                Task { await start(routine) }
+                            }
+                            .watchProminent()
+                        }
+                    }
+
+                    if let routineNotice {
+                        Text(routineNotice)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    if let onOpenNutrition {
+                        Button(Self.nutritionLabel, action: onOpenNutrition)
+                            .buttonStyle(.bordered)
+                            .padding(.top, Self.sectionGap)
+                    }
+
+                    // The start buttons end here; Sync below is housekeeping, set apart.
+                    if onRequestSync != nil, phoneStatus.offersSync {
+                        Divider()
+                            .padding(.vertical, Self.sectionGap)
+                    }
+
+                    if let onRequestSync, phoneStatus.offersSync {
+                        if isSyncing {
+                            // D-3: a row, not a button — the wrist has already asked,
+                            // and a second tap would start nothing new.
+                            HStack(spacing: Self.surfaceInset) {
+                                ProgressView()
+                                Text(WatchStartSurfaceCopy.syncingLabel)
+                            }
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .accessibilityElement(children: .combine)
+                        } else {
+                            Button(Self.syncLabel, action: onRequestSync)
+                                .buttonStyle(.bordered)
+                        }
+                    }
+
+                    // D-8: said only once the radio has observed it.
+                    WatchPhoneStatusHint(status: phoneStatus)
+
+                    if let phoneProblem {
+                        Text(phoneProblem)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    if let syncNotice {
+                        Text(syncNotice)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    if healthAccess == .off {
+                        Text(WatchHealthAccessCopy.offLine)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    if let onOpenDiagnostics {
+                        Button(Self.diagnosticsLabel, action: onOpenDiagnostics)
                             .buttonStyle(.bordered)
                     }
                 }
-
-                // D-8: said only once the radio has observed it.
-                WatchPhoneStatusHint(status: phoneStatus)
-
-                if let phoneProblem {
-                    Text(phoneProblem)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                if let syncNotice {
-                    Text(syncNotice)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                if healthAccess == .off {
-                    Text(WatchHealthAccessCopy.offLine)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                if let onOpenDiagnostics {
-                    Button(Self.diagnosticsLabel, action: onOpenDiagnostics)
-                        .buttonStyle(.bordered)
-                }
+                .padding(Self.surfaceInset)
             }
-            .padding(Self.surfaceInset)
         }
         .onChange(of: revision) { _ in routineNotice = nil }
         .sheet(isPresented: $pickingExercise, onDismiss: cancelIfNothingPicked) {
@@ -356,13 +360,17 @@ struct WatchModalityStartGridView: View {
     /// A cell is wider than it is tall (1.4 : 1): square was too big on a wrist
     /// (owner call, 2026-11-15), the 44-point strips were too small, so the height
     /// follows the width and the routines are a short scroll away. The four labels
-    /// are one line each and shrink a little rather than wrap.
+    /// are one line each, kept clear of the cell's sides, and shrink rather than wrap.
     static let cellAspectRatio = 1.4
 
     /// The one corner radius, applied once. The button's own style draws a second,
     /// darker rounded fill over a coloured background and leaves a double edge,
     /// so the cell uses the plain style and owns its whole look.
     static let cellCornerRadius = 12.0
+
+    /// The room a label keeps from each side of its cell (plan 223, D-22312), so
+    /// the longest word on a 40 mm watch never touches the edges.
+    static let labelSideInset = 6.0
 
     private let onPick: (WatchModalityStart.Cell) -> Void
 
@@ -385,8 +393,9 @@ struct WatchModalityStartGridView: View {
                     Text(cell.label)
                         .font(.footnote.weight(.semibold))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.6)
                         .foregroundStyle(accent.labelColor)
+                        .padding(.horizontal, Self.labelSideInset)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(accent.color)
                         .aspectRatio(Self.cellAspectRatio, contentMode: .fit)
@@ -424,6 +433,7 @@ public struct WatchPlannedPickerView: View {
             .padding(4.0)
         }
         .navigationTitle(WatchStartSurfaceCopy.plannedPickerTitle)
+        .solidSheetBackground()
     }
 }
 
@@ -469,17 +479,22 @@ public struct WatchExercisePickerView: View {
     }
 
     public var body: some View {
-        WatchExerciseGroupList(
-            leading: inSessionRows,
-            groups: deriveExerciseGroups(paths.availablePickerExercises, modality: paths.listModality),
-            emptyText: Self.emptyText,
-            onPickLeading: { slotId, exercise in
-                Task { await select(.inSession(slotId: slotId, exercise: exercise)) }
-            },
-            onPick: { exercise in
-                Task { await select(.available(exercise)) }
-            }
-        )
+        // Plan 223, D-22311: a titleless stack keeps the rows clear of the
+        // sheet's close button and the clock.
+        NavigationStack {
+            WatchExerciseGroupList(
+                leading: inSessionRows,
+                groups: deriveExerciseGroups(paths.availablePickerExercises, modality: paths.listModality),
+                emptyText: Self.emptyText,
+                onPickLeading: { slotId, exercise in
+                    Task { await select(.inSession(slotId: slotId, exercise: exercise)) }
+                },
+                onPick: { exercise in
+                    Task { await select(.available(exercise)) }
+                }
+            )
+        }
+        .solidSheetBackground()
     }
 
     /// The rows the session itself holds, in the ladder's order: the list's own
