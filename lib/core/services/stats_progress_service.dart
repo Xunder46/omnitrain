@@ -995,14 +995,16 @@ class StatsProgressService {
     return measured;
   }
 
-  /// Whether [session] holds any `set` effort (plans 179, 224): only a session
-  /// with a set effort that holds at least one stored row gives its unmeasured
-  /// minutes to Resistance.
+  /// Whether [session] holds any `set` effort (plans 179, 224, 227): only a
+  /// session with a set effort that holds at least one stored set that was
+  /// not skipped gives its unmeasured minutes to Resistance.
   bool _hasSetEffort(_HistoryIndex history, TrainingSession session) {
     for (final segment in history.segmentsOf(session.id)) {
       for (final effort in history.effortsOf(segment.id)) {
         if (_sectionForKind(effort.effortKind) == ExerciseSection.resistance &&
-            history.observationsOf(effort.id).isNotEmpty) {
+            EntryRows.setGroups(history.observationsOf(effort.id)).any(
+              (group) => !(group.rowFor(MetricIds.reps)?.valueBool ?? false),
+            )) {
           return true;
         }
       }

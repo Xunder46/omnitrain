@@ -68,6 +68,8 @@ class SessionSummaryBuilder {
 
         if (effort.effortKind == 'set') {
           for (final entry in entries) {
+            // Plan 227: a skipped set was not done — it feeds nothing here.
+            if (entry['skipped'] == true) continue;
             final reps = entry['reps'] as int?;
             final weight = entry['weight'] as double?;
 
@@ -112,8 +114,9 @@ class SessionSummaryBuilder {
           setsCompleted = entries
               .where(
                 (entry) =>
-                    ((entry['reps'] as int?) ?? 0) > 0 ||
-                    ((entry['weight'] as double?) ?? 0.0) > 0,
+                    entry['skipped'] != true &&
+                    (((entry['reps'] as int?) ?? 0) > 0 ||
+                        ((entry['weight'] as double?) ?? 0.0) > 0),
               )
               .length;
           totalSets += setsCompleted;

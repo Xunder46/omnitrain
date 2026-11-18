@@ -63,13 +63,13 @@ The split takes a per-modality map of **measured active time** in seconds; it
 never derives that map itself and never reads a stored instance. A caller that
 produces the sums is the only place that touches the stored instances.
 
-- A non-rolling session that holds a set effort with a stored row gets its Resistance time as the
+- A non-rolling session that holds a set effort with a stored set that was not skipped gets its Resistance time as the
   remainder: its own duration minus the measured sums, never below zero. Its
   duration is the same figure the all-time totals use.
 - A session with no set effort and some measured time shares its whole duration
   across the measured modalities in proportion to their measured time (plan
   179): nothing in it is lifting, so Resistance takes none of it, and its load
-  still counts the full duration. A session that holds efforts but no set with a stored row and has no measured time contributes nothing (plan 224: a never-started run or round, a lift emptied of its sets); a session with no effort at all keeps the remainder rule.
+  still counts the full duration. A session that holds efforts but no set that was done (a skipped set is not one) and has no measured time contributes nothing (plan 224: a never-started run or round, a lift emptied of its sets); a session with no effort at all keeps the remainder rule.
 - When the measured sums exceed the duration, the whole session's time goes to
   its **dominant** modality instead — the modality with the most efforts of
   that modality's kind. A session with no effort that maps to a modality

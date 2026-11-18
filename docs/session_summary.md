@@ -20,7 +20,7 @@ A set the user never logged is not stored at Finish, so it is never in this summ
 
 The Finish confirmation before it counts only the exercises the user did (a lift with a logged set, or a started timed, drill or round exercise), not every exercise in the session (plan 217, `test/finish_completed_exercise_count_screen_test.dart` `S-21704`).
 
-Finish on a workout with nothing done in it (no logged set, no started timed, drill or round exercise) and no watch involvement asks `Discard Workout?` (`Nothing was logged, so this workout won't be saved.`) instead of saving an empty workout; Discard deletes it like the empty-workout case, Cancel keeps it open. `WorkoutState.finishWouldSaveNothing` decides, and answers false for a workout the wrist runs or has a staged row for (plan 220, `test/finish_nothing_logged_discards_test.dart`, `test/finish_nothing_logged_discards_screen_test.dart`).
+Finish on a workout with nothing done in it (no logged set, no started timed, drill or round exercise on the phone, and no set, timed, round or hold the watch has sent) asks `Discard Workout?` (`Nothing was logged, so this workout won't be saved.`) instead of saving an empty workout; Discard deletes it like the empty-workout case, Cancel keeps it open. `WorkoutState.finishWouldSaveNothing` decides, and decides after the wrist import passes already queued, so a wrist set still on its way counts; a workout the watch runs with nothing logged is discarded the same way (plans 220 and 228, `test/finish_nothing_logged_discards_test.dart`, `test/finish_nothing_logged_discards_screen_test.dart`, `test/finish_wrist_nothing_logged_discards_test.dart`).
 
 ### Effort Rating Capture
 
@@ -208,6 +208,7 @@ Behavior details:
 - Cardio rounds are counted from timed entries.
 - Sports time comes from completed round durations.
 - Strength volume is formatted using preferred weight unit (kg or lbs).
+- A set marked skipped was not done: it is not counted in Sets, and its planned weight and reps feed no volume, best weight or e1RM (plan 227, `test/skipped_set_counts_for_nothing_test.dart`).
 
 ---
 
