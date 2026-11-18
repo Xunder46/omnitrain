@@ -959,6 +959,12 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       return;
     }
 
+    // Plan 240: a routine with no exercise can never start, so it is not saved.
+    if (widget.routineState.currentEfforts.isEmpty) {
+      OmniMessage.show(context, 'Add at least one exercise before saving');
+      return;
+    }
+
     await widget.routineState.saveRoutine();
 
     if (!mounted) return;

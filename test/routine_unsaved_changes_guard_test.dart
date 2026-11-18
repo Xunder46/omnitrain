@@ -559,6 +559,12 @@ void main() {
 
       expect(deps.routineState.hasUnsavedChanges, isTrue);
 
+      // Plan 240 reader: the editor no longer saves a routine with no
+      // exercise, so give this new routine one before the Save tap — the
+      // test's premise is the baseline reset, not an empty save.
+      final ex = await _getExerciseById(deps.repo, 'exercise-barbell-squat');
+      await deps.routineState.addExerciseToRoutine(ex, 'set');
+
       // Save.
       await _tapSaveButton(tester);
       await _pumpAndSettle(tester);

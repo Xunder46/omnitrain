@@ -135,7 +135,7 @@ The template hierarchy cascades on delete: removing a template removes its segme
    - The template metadata
    - List of `SessionExerciseEntry` objects (exercise + effort kind + set count + targets)
 
-**Throws**: `Exception` if template not found or has no exercises
+**Throws**: `Exception` if template not found or has no exercises. The start paths build the manifest before discarding a running workout, and the editor refuses to save a routine with no exercise (plan 240)
 
 **A routine started on the wrist opens as that routine too.** The wrist builds
 its slot ids from the phone's own template effort ids, each ending in the

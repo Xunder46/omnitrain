@@ -272,14 +272,19 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
     }
 
     try {
+      // Plan 240: a routine that cannot start (an empty one) is found out
+      // BEFORE the running workout is discarded.
+      final manifest = ps.routineTemplateId == null
+          ? null
+          : await widget.routineSessionService.buildSessionFromTemplate(
+              ps.routineTemplateId!,
+            );
+
       // Plan 230: confirmed Start New really discards the running workout.
       await widget.workoutState.discardUnfinishedSession();
 
-      if (ps.routineTemplateId != null) {
+      if (manifest != null) {
         // Start routine-based session.
-        final manifest = await widget.routineSessionService
-            .buildSessionFromTemplate(ps.routineTemplateId!);
-
         await widget.workoutState.createNewSession(
           // Routine session carries the routine's Focus as a snapshot.
           modality: manifest.template.focusModality,
