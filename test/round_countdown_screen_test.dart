@@ -501,11 +501,13 @@ void main() {
       (tester) async {
         final deps = await _buildDeps(modality: 'cardio_endurance');
         final seeded = await _seedRounds(deps, rounds: 2);
-        // Round 1 logged, round 2 running with its rest open: the strip shows
-        // while the surface keeps its ring, row and sets control reachable.
+        // Round 1 logged, round 2 waiting with its rest open: the strip shows
+        // while the surface keeps its ring, row and sets control reachable. (A
+        // round that is RUNNING hides the strip, and a reopened screen now
+        // counts it, plan 233: the old fixture only showed the strip because
+        // a reopened screen froze the running round.)
         await deps.workoutState.startRound(seeded.effortId, 0);
         await deps.workoutState.endRoundEarly(seeded.effortId, 0);
-        await deps.workoutState.startRound(seeded.effortId, 1);
         await deps.workoutState.recordRestStart(seeded.effortId, 1);
 
         await _pumpDetail(tester, deps, seeded.name);
@@ -525,7 +527,7 @@ void main() {
 
         expect(_lengthRow(seeded.effortId, 1).hitTestable(), findsOneWidget);
         expect(
-          find.widgetWithText(FilledButton, 'Log Round').hitTestable(),
+          find.widgetWithText(FilledButton, 'Start').hitTestable(),
           findsOneWidget,
         );
         expect(find.text('Round 2 of 2'), findsOneWidget);

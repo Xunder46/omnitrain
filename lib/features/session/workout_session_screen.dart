@@ -633,6 +633,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
         // Pre-populate timer state from persisted entries for all timer-based exercises
         _restoreTimerStateFromPersisted(_exercises);
+        // Plan 233: an interval stored as running keeps counting on a freshly
+        // opened screen (the restore above only seeds its numbers).
+        _adoptRunningTimerState();
 
         // Pre-populate _loggedSetKeys from persisted data to prevent rest timer
         // resets when navigating through already-completed exercises.
