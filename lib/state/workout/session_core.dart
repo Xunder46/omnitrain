@@ -105,6 +105,10 @@ class SessionCore {
   /// one costs nothing extra.
   final List<SensorSummary> _sensorSummaries = [];
 
+  /// Plan 229: the id of the running workout that a history view replaced in
+  /// the shared session slot, so closing the view can put it back.
+  String? _suspendedLiveSessionId;
+
   bool _isLoading = false;
 
   /// Bumped where a watch-driven write changes the data the open session

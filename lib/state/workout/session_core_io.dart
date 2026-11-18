@@ -128,6 +128,33 @@ extension SessionCoreIOMethods on SessionCore {
     }
   }
 
+  /// Plan 229: shows a finished session (the calendar's summary) without
+  /// losing the workout that is running: the running session's id is kept so
+  /// [resumeSuspendedLiveSession] can put it back. A viewed session that is
+  /// itself finished never overwrites a kept id.
+  Future<void> viewHistoricalSession(String sessionId) async {
+    final live = _currentSession;
+    if (live != null && live.endedAtMs == null && live.id != sessionId) {
+      _suspendedLiveSessionId = live.id;
+    }
+    await loadHistoricalSession(sessionId);
+  }
+
+  /// Plan 229: puts the running workout a history view replaced back in the
+  /// session slot, the same load the app uses to restore it at launch. Does
+  /// nothing when none was kept, when the stored session is gone or has
+  /// ended, or when another open session became current meanwhile.
+  Future<void> resumeSuspendedLiveSession() async {
+    final id = _suspendedLiveSessionId;
+    if (id == null) return;
+    _suspendedLiveSessionId = null;
+    final current = _currentSession;
+    if (current != null && current.endedAtMs == null) return;
+    final stored = await _repository.getSession(id);
+    if (stored == null || stored.endedAtMs != null) return;
+    await loadHistoricalSession(id);
+  }
+
   Future<void> loadSessionData() async {
     if (_currentSession == null) {
       await createNewSession();

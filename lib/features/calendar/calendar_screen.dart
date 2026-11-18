@@ -179,7 +179,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         // Single past session → open summary screen if it's a real completed session,
         // or DaySessionListScreen for a planned-not-completed session.
         if (entry.session != null && entry.session!.endedAtMs != null) {
-          _openSessionSummary(context, entry.session!.id);
+          await _openSessionSummary(context, entry.session!.id);
         } else {
           await _openDayList(context, date);
         }
@@ -191,24 +191,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  void _openSessionSummary(BuildContext context, String sessionId) {
-    widget.workoutState.loadHistoricalSession(sessionId).then((_) {
-      if (context.mounted) {
-        OmniNavigator.push(
-          context,
-          (_) => SessionSummaryScreen(
-            workoutState: widget.workoutState,
-            routineState: widget.routineState,
-            sessionSummaryService: widget.sessionSummaryService,
-            settingsState: widget.settingsState,
-            timerAlertService: widget.timerAlertService,
-            restNotificationService: widget.restNotificationService,
-            openedFromCalendar: true,
-            originatingCalendarState: widget.calendarState,
-          ),
-        );
-      }
-    });
+  // Plan 229: the running workout is kept while the summary is open and put
+  // back when it closes.
+  Future<void> _openSessionSummary(
+    BuildContext context,
+    String sessionId,
+  ) async {
+    await widget.workoutState.viewHistoricalSession(sessionId);
+    if (!context.mounted) {
+      await widget.workoutState.resumeSuspendedLiveSession();
+      return;
+    }
+    await OmniNavigator.push(
+      context,
+      (_) => SessionSummaryScreen(
+        workoutState: widget.workoutState,
+        routineState: widget.routineState,
+        sessionSummaryService: widget.sessionSummaryService,
+        settingsState: widget.settingsState,
+        timerAlertService: widget.timerAlertService,
+        restNotificationService: widget.restNotificationService,
+        openedFromCalendar: true,
+        originatingCalendarState: widget.calendarState,
+      ),
+    );
+    await widget.workoutState.resumeSuspendedLiveSession();
   }
 
   Future<void> _openDayList(BuildContext context, DateTime date) async {

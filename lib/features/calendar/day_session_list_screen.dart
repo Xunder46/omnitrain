@@ -226,11 +226,12 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
         entry.session?.id ?? entry.plannedSession?.linkedSessionId;
     if (sessionId == null) return;
 
-    // Load the historical session into workoutState, then show summary.
-    await widget.workoutState.loadHistoricalSession(sessionId);
+    // Plan 229: load the historical session into workoutState, then show
+    // summary; the running workout is put back when the summary closes.
+    await widget.workoutState.viewHistoricalSession(sessionId);
 
     if (context.mounted) {
-      OmniNavigator.push(
+      await OmniNavigator.push(
         context,
         (_) => SessionSummaryScreen(
           workoutState: widget.workoutState,
@@ -244,6 +245,7 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
         ),
       );
     }
+    await widget.workoutState.resumeSuspendedLiveSession();
   }
 
   // ─── Navigation: Tap planned session → start workout ─────────────────────

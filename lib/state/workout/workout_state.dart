@@ -221,6 +221,16 @@ class WorkoutState extends ChangeNotifier {
   );
   Future<void> loadHistoricalSession(String sessionId) =>
       _sessionCore.loadHistoricalSession(sessionId);
+
+  /// Plan 229: loads a finished session without losing the running workout;
+  /// [resumeSuspendedLiveSession] puts it back.
+  Future<void> viewHistoricalSession(String sessionId) =>
+      _sessionCore.viewHistoricalSession(sessionId);
+
+  /// Plan 229: puts the running workout a history view replaced back in the
+  /// session slot.
+  Future<void> resumeSuspendedLiveSession() =>
+      _sessionCore.resumeSuspendedLiveSession();
   Future<void> loadSessionData() => _sessionCore.loadSessionData();
 
   /// Re-reads the named efforts' rows into the live session, notifying once.

@@ -85,6 +85,8 @@ return (`test/session_summary_effort_row_test.dart`, `S-5: day list → …`).
 
 #### Historical-session summary behavior
 
+Opening a finished session while a workout is running does not end that workout: the running workout is put back when the summary closes (plan 229, `test/past_session_keeps_running_workout_test.dart`, `test/past_session_keeps_running_workout_screen_test.dart`).
+
 When a `SessionSummaryScreen` is opened from the calendar flow (either
 from the day-list row tap on a completed entry, or from a single-entry
 past-day cell on the month grid), the screen is constructed with
