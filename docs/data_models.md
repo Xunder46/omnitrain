@@ -41,7 +41,7 @@ Models with no behaviour beyond their fields: SessionSegment, SessionBlock.
 > and have been added.
 
 Ordering contract:
-- Top-level active-session order is persisted via `SessionBlock.topLevelOrderIndex` and `SegmentEffort.topLevelOrderIndex`.
+- Top-level active-session order is persisted via `SessionBlock.topLevelOrderIndex` and `SegmentEffort.topLevelOrderIndex`. Renaming a block keeps its top-level position, so a block placed below standalone exercises stays there (plan 234, `test/block_rename_keeps_its_place_test.dart`).
 - Intra-block order is persisted via `SegmentEffort.blockOrderIndex`.
 - `createdAtMs` is a tie-breaker only, never the primary ordering source.
 

@@ -1840,11 +1840,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     );
     Future.delayed(const Duration(milliseconds: 300), ctrl.dispose);
     if (newName != null && newName.isNotEmpty && mounted) {
+      // Plan 234: a rename keeps the block's top-level position.
       final updated = SessionBlock(
         id: block.id,
         sessionId: block.sessionId,
         name: newName,
         orderIndex: block.orderIndex,
+        topLevelOrderIndex: block.topLevelOrderIndex,
         createdAtMs: block.createdAtMs,
         updatedAtMs: DateTime.now().millisecondsSinceEpoch,
       );
