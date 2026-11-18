@@ -35,7 +35,9 @@ Keep the seed's Goal, Ledger (`D-n`), scenarios (`S-n`) and outline exactly as w
    governor can pass as `--scope`. Say which phases can run in parallel (disjoint write scopes) and
    which must wait, with the reason.
 5. **Docs delta**: the table of doc sentences added, changed or removed (format in the rules), completed from the
-   seed by searching `docs/` for what the change makes false. The docs phase's items are its rows.
+   seed by searching `docs/` for what the change makes false. The docs phase's items are its rows. Add your
+   rows to the seeded table itself, directly under its last row: never start a second table (plan-lint reads a
+   second header as a bad row).
 6. **Progress** table (one line per item) and an empty **Assumption Log** and **Feedback**.
 7. **Open questions**: everything you are unsure of, with file:line evidence for any seeded entry that
    looks wrong.

@@ -97,7 +97,8 @@ could not tie to code or a test. `.work/` is not yours to search or glob (a brie
 under it is wrong: ask for the facts in the brief instead; a search loop stopped one run in unit 36b).
 
 When the plan has a `## Docs delta`, an Update run executes that table row by row and nothing else: a New marker must
-appear in the doc exactly as written (write the sentence around it and cite its test as above), an Old marker of a
+appear in the doc exactly as written and on ONE line (when you re-wrap a paragraph, break before or after the marker,
+never inside it: the checker reads line by line) (write the sentence around it and cite its test as above), an Old marker of a
 MODIFIED or REMOVED row must be gone. Then search `docs/` once for the plan's old terms and report any other hit as
 "Stale claim" with `doc:line` instead of editing it, unless the brief allows that doc. In the report, one line per
 row: `<doc> <change> -> done | not done: <why>`. A marker you cannot place is a finding, not a reworded marker.
