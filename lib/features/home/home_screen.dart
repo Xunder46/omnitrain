@@ -135,7 +135,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   static const double _minSheetExtent = 0.0;
   double _maxSheetExtent = 0.9;
 
@@ -145,18 +146,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final Animation<double> _hintOffset;
 
   bool _resumeCheckDone = false;
-  late int _lastSeenDate; // Track the last date we checked for rollover
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (!_resumeCheckDone) {
       widget.workoutState.checkForInProgressSession();
       _resumeCheckDone = true;
     }
-
-    // Initialize last seen date for rollover detection
-    _initializeLastSeenDate();
 
     _sheetController = DraggableScrollableController();
     _sheetExtent = ValueNotifier<double>(_minSheetExtent);
@@ -225,6 +223,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _sheetExtent.removeListener(_onSheetExtentChanged);
     _sheetExtent.dispose();
     _hintController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -249,59 +248,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       widget.nutritionState.loadNutritionTarget(),
       widget.nutritionState.loadConsumedToday(),
     ]);
-    // One rollover check after the initial loads settle
-    // (S-054): covers the edge case where the user opens the
-    // app right at midnight, the loads above grabbed the new
-    // day's target, but yesterday's cached `consumedToday` is
-    // still in memory.
-    if (mounted) _checkAndHandleDateRollover();
+    // Plan 237: covers a midnight that passes during the first load.
+    if (mounted) unawaited(widget.nutritionState.rolloverIfDayChanged());
   }
 
-  /// Initialize last seen date for rollover detection
-  void _initializeLastSeenDate() {
-    final now = DateTime.now();
-    _lastSeenDate = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).millisecondsSinceEpoch;
-  }
-
-  /// Check if date has rolled over and trigger nutrition state rollover if needed
-  void _checkAndHandleDateRollover() {
-    final now = DateTime.now();
-    final todayMs = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).millisecondsSinceEpoch;
-
-    if (todayMs != _lastSeenDate) {
-      _lastSeenDate = todayMs;
-      // Date has changed; trigger rollover (S-054). The
-      // rollover clears the in-memory consumed cache and reloads
-      // the target for the new day. We additionally reload
-      // today's consumed foods (which the rollover does not
-      // auto-reload) so the home strip rebuilds into the empty
-      // state immediately rather than staying on yesterday's
-      // values until the next manual load.
-      // Schedule the rollover through `addPostFrameCallback`
-      // (not `Future.microtask`): a microtask runs *between*
-      // frames, but the strip's `ListenableBuilder` will still
-      // try to rebuild in response to the notify, and if a
-      // build is currently in flight we trip Flutter's
-      // "setState during build" assertion. The post-frame
-      // callback runs *after* the current frame, so the notify
-      // schedules a clean rebuild for the next frame.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(() async {
-          await widget.nutritionState.rolloverToDate(todayMs);
-          if (mounted) {
-            await widget.nutritionState.loadConsumedToday();
-          }
-        }());
-      });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Plan 237: a resume after midnight must show the new day, not yesterday's.
+    if (state == AppLifecycleState.resumed && mounted) {
+      unawaited(widget.nutritionState.rolloverIfDayChanged());
     }
   }
 

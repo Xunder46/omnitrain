@@ -166,11 +166,13 @@ legacy bottom "Edit Targets" button is gone. The legacy placeholder still exists
 as unreachable dead code (see Non-Production Screens below).
 
 Day rollover:
-- `HomeScreen` calls `NutritionState.rolloverToDate(todayMs)` from
-  `addPostFrameCallback` whenever `_lastSeenDate` differs from today.
-- This re-loads today's target (walking back to the most recent ancestor
-  if no entry exists for the new day) so the user always sees the current
-  day's target after midnight.
+- `HomeScreen` calls `NutritionState.rolloverIfDayChanged()` when the app
+  resumes and once after its first load; `NutritionState` also calls it
+  before every food log, so no log lands on yesterday's list (plan 237).
+- A rollover empties the day's food, water and target caches and re-loads
+  the new day's target (walking back to the most recent ancestor if no
+  entry exists for the new day), so the user always sees the current
+  day after midnight.
 
 ---
 
