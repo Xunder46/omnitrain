@@ -174,6 +174,8 @@ keeps a bare number with its unit once under the labels. Verified by
 `test/scrollable_trend_chart_test.dart` (group `ScrollableTrendChart — clock
 y-axis`).
 
+For a pace, where a smaller number is the better one, the line is drawn flipped (reflected inside the axis bounds) so a faster pace rises, agreeing with the change arrow; the axis ticks still read the true clock values, and the Instruments sparkline flips the same way (plan 226, `test/pace_trend_direction_test.dart`). Every other metric is drawn as it reads.
+
 An id with no history reaches the shared empty state (`OmniEmptyState`, title
 `No history for this exercise`, hint `Log this exercise in a session to see
 its history.`) instead of throwing. The entry list

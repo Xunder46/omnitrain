@@ -56,3 +56,4 @@ Owner decisions 2026-11-15: pace change reads better/worse (faster = green up); 
 | 221 | `docs/plans/2026-11-17-221-stats-skips-exercises-with-no-work-plan/`: an exercise added and never done leaves Stats (second review items 2 and 3). | committed |
 | 222 | `docs/plans/2026-11-17-222-nutrition-entry-below-recent-prs-plan/`: the Nutrition entry on Records & Trends sits below Recent PRs (owner request). | committed |
 | 224 | `docs/plans/2026-11-17-224-mix-ignores-a-session-with-nothing-done-plan/`: a workout that holds exercises but nothing done adds no time to the Training Mix (second review item 2, Mix half). | committed |
+| 226 | `docs/plans/2026-11-17-226-pace-trend-line-rises-when-faster-plan/`: a faster pace rises on the Exercise Progress chart and the Instruments sparkline, agreeing with the change arrow (second review small item 5). | committed |

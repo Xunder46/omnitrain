@@ -240,16 +240,25 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
     final bounds = isClock
         ? ChartAxisHelper.computeTimeBounds(values)
         : ChartAxisHelper.computeBounds(values);
+    // Pace is seconds per kilometre, so a faster pace is a smaller number;
+    // the line is drawn reflected in the bounds' midpoint so getting faster
+    // rises, while the bounds and the axis labels keep the true values (plan
+    // 226). The reflection is its own inverse, so it maps a plotted y back to
+    // the value it reads as.
+    final flip = metric == NativeMetric.pace;
+    double plotted(double value) => flip ? bounds.min + bounds.max - value : value;
     final spots = List.generate(
       values.length,
-      (i) => FlSpot(i.toDouble(), values[i]),
+      (i) => FlSpot(i.toDouble(), plotted(values[i])),
     );
 
     return ScrollableTrendChart(
       themeColors: themeColors,
       bounds: bounds,
       unitLabel: nativeMetricUnitLabel(metric, widget.settingsState),
-      yLabelFormatter: isClock ? ChartAxisHelper.formatClockAxisValue : null,
+      yLabelFormatter: isClock
+          ? (value) => ChartAxisHelper.formatClockAxisValue(plotted(value))
+          : null,
       pointCount: points.length,
       chartBuilder: (plotWidth) {
         return LineChart(
