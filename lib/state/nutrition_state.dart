@@ -56,6 +56,17 @@ class NutritionState extends ChangeNotifier {
   /// when the UI navigates between dates or re-queries the same day.
   final Map<int, NutritionTarget?> _targetsByDate = {};
 
+  /// Plan 231: the last stamp a logged row's id was built from. Two foods
+  /// logged in the same millisecond must not share an id (both stores replace
+  /// a row with an equal id), so the stamp only ever goes up.
+  int _lastIdStamp = 0;
+
+  int _nextIdStamp() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _lastIdStamp = now > _lastIdStamp ? now : _lastIdStamp + 1;
+    return _lastIdStamp;
+  }
+
   /// Returns the most recent cached or loaded target for [dateMs], if any.
   /// Does not trigger a repository fetch.
   NutritionTarget? getCachedTargetForDate(int dateMs) => _targetsByDate[dateMs];
@@ -430,8 +441,11 @@ class NutritionState extends ChangeNotifier {
     required NutritionTarget target,
     required String? groupNameSnapshot,
   }) {
+    // Plan 231: the id stamp is taken once, at the top, so two rows built in
+    // the same millisecond never share an id (the stamp only goes up).
+    final stamp = _nextIdStamp();
     return ConsumedFood(
-      id: 'consumed-$nowMs-${nowMs ~/ 1000}',
+      id: 'consumed-$stamp-${stamp ~/ 1000}',
       loggedAtMs: loggedAtMs,
       dateMs: dateMs,
       sourceFoodId: food.id,
