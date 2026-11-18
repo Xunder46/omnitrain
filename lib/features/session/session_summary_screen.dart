@@ -1368,7 +1368,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // `OmniCardHeader` above this card (see `_buildCalendarHeader`
     // and the body composition site). The card body is content-only.
     final workoutDays = _workoutDays.length;
-    final restDays = (_daysInMonth - workoutDays).clamp(0, _daysInMonth);
+    // Plan 239: a day that has not started is not a rest day.
+    final elapsed = OmniDateUtils.daysElapsedInMonth(
+      _viewMonth,
+      DateTime.now(),
+    );
+    final restDays = (elapsed - workoutDays).clamp(0, elapsed);
 
     return OmniSurface(
       padding: const EdgeInsets.all(16),

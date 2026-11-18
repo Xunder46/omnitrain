@@ -12,6 +12,19 @@ class OmniDateUtils {
   /// Convenience wrapper over [startOfDayMs] using [DateTime.now].
   static int todayMidnightMs() => startOfDayMs(DateTime.now());
 
+  /// How many days of [month]'s calendar month have started by [today]: every
+  /// day of a past month, [today]'s day number within the same month, none of a
+  /// later month (plan 239).
+  static int daysElapsedInMonth(DateTime month, DateTime today) {
+    final monthIndex = month.year * 12 + month.month;
+    final todayIndex = today.year * 12 + today.month;
+    if (monthIndex < todayIndex) {
+      return DateTime(month.year, month.month + 1, 0).day;
+    }
+    if (monthIndex == todayIndex) return today.day;
+    return 0;
+  }
+
   /// The zone-independent key of [date]'s local calendar date: that date's
   /// UTC midnight. The same year-month-day gives the same key in every time
   /// zone, which is what a stored day (food, water, target) needs after the
