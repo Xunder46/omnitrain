@@ -156,7 +156,7 @@ guard (S-2901)`: `typed name + system back shows the Unsaved changes dialog`,
 
 Key fields:
 - `id`
-- `scheduledDateMs` (start-of-day local)
+- `scheduledDateMs` (start-of-day local in memory; stored as that wall-clock time read as UTC, so a time-zone change keeps the day)
 - `modality` (nullable)
 - `routineTemplateId` (nullable)
 - `isCompleted`
@@ -176,6 +176,7 @@ Key fields:
 - `name`
 - `startDateMs`
 - `endDateMs`
+  (`startDateMs` and `endDateMs` are stored the same way: as the wall-clock time read as UTC, the end at 23:59:59.999, so a time-zone change keeps the dates; plan 236, `test/plans_and_periods_survive_zone_change_test.dart`)
 - `focusModalities`
 - `notes`
 - `colorHex` (nullable)

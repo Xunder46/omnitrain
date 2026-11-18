@@ -20,6 +20,39 @@ class OmniDateUtils {
   static int dayKeyMs(DateTime date) =>
       DateTime.utc(date.year, date.month, date.day).millisecondsSinceEpoch;
 
+  /// The zone-independent key of the local date-time [localMs]: its wall-clock
+  /// components (date, hour, minute, second, millisecond) read as UTC. The same
+  /// wall-clock time gives the same key in every zone, so a stored planned day
+  /// or period bound (midnight, or 23:59:59.999) keeps its date after a zone
+  /// change (plan 236). Storage-boundary use only.
+  static int wallClockKeyMs(int localMs) {
+    final d = fromMs(localMs);
+    return DateTime.utc(
+      d.year,
+      d.month,
+      d.day,
+      d.hour,
+      d.minute,
+      d.second,
+      d.millisecond,
+    ).millisecondsSinceEpoch;
+  }
+
+  /// The local instant, in the current zone, of the wall-clock time a stored
+  /// [key] names (the inverse of [wallClockKeyMs]).
+  static int localMsOfWallClockKeyMs(int key) {
+    final u = DateTime.fromMillisecondsSinceEpoch(key, isUtc: true);
+    return DateTime(
+      u.year,
+      u.month,
+      u.day,
+      u.hour,
+      u.minute,
+      u.second,
+      u.millisecond,
+    ).millisecondsSinceEpoch;
+  }
+
   /// Local midnight, in the current zone, of the calendar date a stored day
   /// [key] names (the inverse of [dayKeyMs] for a date's local midnight).
   static int localMidnightOfDayKeyMs(int key) {

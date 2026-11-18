@@ -934,7 +934,7 @@ CREATE TABLE app_sync_op_local_example (
 CREATE TABLE app_planned_session (
   id TEXT NOT NULL PRIMARY KEY,
   owner_user_id TEXT NOT NULL,
-  scheduled_date_ms INTEGER NOT NULL,     -- Epoch ms of the intended training day
+  scheduled_date_ms INTEGER NOT NULL,     -- Intended training day (midnight local, stored as that wall-clock time read as UTC)
   modality TEXT,                          -- Modality key or NULL for Free Training
   title TEXT,                             -- Optional short title
   note TEXT,                              -- Optional notes
@@ -1006,8 +1006,8 @@ CREATE TABLE app_training_period (
   id TEXT NOT NULL PRIMARY KEY,
   owner_user_id TEXT,
   name TEXT NOT NULL,
-  start_date_ms INTEGER NOT NULL,          -- Epoch ms of first day (midnight local)
-  end_date_ms INTEGER NOT NULL,            -- Epoch ms of last day  (end-of-day local)
+  start_date_ms INTEGER NOT NULL,          -- First day (midnight local, stored as that wall-clock time read as UTC)
+  end_date_ms INTEGER NOT NULL,            -- Last day  (end-of-day local, stored as that wall-clock time read as UTC)
   focus_modalities_csv TEXT NOT NULL DEFAULT '', -- ''-separated modality keys; '' = all
   notes TEXT,
   color_hex TEXT,                          -- Hex color string (e.g. '#4CAF50') for calendar highlight; NULL = theme default

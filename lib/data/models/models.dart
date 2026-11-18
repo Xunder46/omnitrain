@@ -1478,6 +1478,8 @@ class PlannedSession {
 
   /// Epoch milliseconds representing the intended training day.
   /// Store start-of-day (midnight local time) for reliable day-level grouping.
+  /// Stored as that local wall-clock time read as UTC, held in memory as the
+  /// local instant (plan 236).
   final int scheduledDateMs;
 
   /// Modality key (e.g. 'cardio_endurance', 'resistance_lifting'), or null
@@ -1524,7 +1526,9 @@ class PlannedSession {
   factory PlannedSession.fromMap(Map<String, dynamic> m) => PlannedSession(
     id: m['id'] as String,
     ownerUserId: m['owner_user_id'] as String,
-    scheduledDateMs: m['scheduled_date_ms'] as int,
+    scheduledDateMs: OmniDateUtils.localMsOfWallClockKeyMs(
+      m['scheduled_date_ms'] as int,
+    ),
     modality: m['modality'] as String?,
     title: m['title'] as String?,
     note: m['note'] as String?,
@@ -1539,7 +1543,7 @@ class PlannedSession {
   Map<String, dynamic> toMap() => {
     'id': id,
     'owner_user_id': ownerUserId,
-    'scheduled_date_ms': scheduledDateMs,
+    'scheduled_date_ms': OmniDateUtils.wallClockKeyMs(scheduledDateMs),
     'modality': modality,
     'title': title,
     'note': note,
@@ -1577,9 +1581,13 @@ class TrainingPeriod {
   final String name;
 
   /// Epoch ms representing the first day of the period (midnight local time).
+  /// Stored as that local wall-clock time read as UTC, held in memory as the
+  /// local instant (plan 236).
   final int startDateMs;
 
   /// Epoch ms representing the last day of the period (end-of-day local time).
+  /// Stored as that local wall-clock time read as UTC, held in memory as the
+  /// local instant (plan 236).
   final int endDateMs;
 
   /// Modality keys for the training focus. Empty = all/unspecified.
@@ -1617,8 +1625,12 @@ class TrainingPeriod {
       id: m['id'] as String,
       ownerUserId: m['owner_user_id'] as String?,
       name: m['name'] as String,
-      startDateMs: m['start_date_ms'] as int,
-      endDateMs: m['end_date_ms'] as int,
+      startDateMs: OmniDateUtils.localMsOfWallClockKeyMs(
+        m['start_date_ms'] as int,
+      ),
+      endDateMs: OmniDateUtils.localMsOfWallClockKeyMs(
+        m['end_date_ms'] as int,
+      ),
       focusModalities: modalities,
       notes: m['notes'] as String?,
       colorHex: m['color_hex'] as String?,
@@ -1631,8 +1643,8 @@ class TrainingPeriod {
     'id': id,
     'owner_user_id': ownerUserId,
     'name': name,
-    'start_date_ms': startDateMs,
-    'end_date_ms': endDateMs,
+    'start_date_ms': OmniDateUtils.wallClockKeyMs(startDateMs),
+    'end_date_ms': OmniDateUtils.wallClockKeyMs(endDateMs),
     'focus_modalities_csv': focusModalities.join(','),
     'notes': notes,
     'color_hex': colorHex,
