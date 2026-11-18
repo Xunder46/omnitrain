@@ -696,10 +696,10 @@ focused-set rule itself is verified in **Stepper Remove Rule** above.
 **UI**: Alert dialog
 ```
 "Start New Session?"
-"Changing modality will start a new session. Current session will not be saved."
+"Your current session will be discarded and cannot be recovered."
 [Cancel] [Start New]
 ```
-**Behavior**: Confirm → End current session, create new session, navigate to new session
+**Behavior**: Confirm → the running workout is deleted from the store (the Discard button's delete, so it does not come back at the next launch; plan 230), a new session is created and opened. The same prompt and delete guard every start over a running workout: the Home Free and Routines tiles, a routine's Start and a planned session on the calendar.
 
 ---
 

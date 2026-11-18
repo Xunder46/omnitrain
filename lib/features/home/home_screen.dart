@@ -683,7 +683,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           );
           if (confirmed != true) return;
-          widget.workoutState.clearSession();
+          // Plan 230: confirmed Start New really discards the running workout.
+          await widget.workoutState.discardUnfinishedSession();
         }
         if (context.mounted) {
           OmniNavigator.push(
@@ -769,8 +770,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return;
     }
 
-    // Standard modality tile: clear any prior session and start a new one.
-    widget.workoutState.clearSession();
+    // Standard modality tile: discard any prior session and start a new one.
+    await widget.workoutState.discardUnfinishedSession();
     await widget.workoutState.createNewSession(modality: tile.modality);
 
     if (context.mounted) {
@@ -906,7 +907,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     BuildContext context, {
     required bool isRolling,
   }) async {
-    widget.workoutState.clearSession();
+    await widget.workoutState.discardUnfinishedSession();
     await widget.workoutState.createNewSession(isRolling: isRolling);
     if (context.mounted) {
       OmniNavigator.push(

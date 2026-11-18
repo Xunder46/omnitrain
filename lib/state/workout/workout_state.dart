@@ -259,6 +259,11 @@ class WorkoutState extends ChangeNotifier {
   Future<void> catchUpEndedSession(int atMs) =>
       _sessionCore.catchUpEndedSession(atMs);
   Future<void> discardCurrentSession() => _sessionCore.discardCurrentSession();
+
+  /// Plan 230: a confirmed "Start New Session?" really discards a running
+  /// workout; a finished session in the slot is only released.
+  Future<void> discardUnfinishedSession() =>
+      _sessionCore.discardUnfinishedSession();
   Future<void> updateSessionNote(String note) =>
       _sessionCore.updateSessionNote(note);
   Future<void> updateSessionEndTime(int durationSecs) =>

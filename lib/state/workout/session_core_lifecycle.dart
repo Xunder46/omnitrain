@@ -319,6 +319,19 @@ extension SessionCoreLifecycleMethods on SessionCore {
     _healthSync?.onSessionDeleted(discarded);
   }
 
+  /// Plan 230: what a confirmed "Start New Session?" does with the slot. A
+  /// workout that is still open is really discarded (the store row goes, like
+  /// the Discard button); a finished session shown in the slot is only
+  /// released, never deleted.
+  Future<void> discardUnfinishedSession() async {
+    final current = _currentSession;
+    if (current != null && current.endedAtMs == null) {
+      await discardCurrentSession();
+    } else {
+      clearSession();
+    }
+  }
+
   Future<void> updateSessionNote(String note) async {
     if (_currentSession == null) return;
 

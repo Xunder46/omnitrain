@@ -187,6 +187,9 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
       if (!confirmed) return;
     }
 
+    // Plan 230: a confirmed Start New really discards the running workout.
+    await widget.workoutState!.discardUnfinishedSession();
+
     try {
       // Step 1: Build session manifest from template (via service)
       final manifest = await widget.routineSessionService

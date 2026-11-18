@@ -272,7 +272,8 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
     }
 
     try {
-      widget.workoutState.clearSession();
+      // Plan 230: confirmed Start New really discards the running workout.
+      await widget.workoutState.discardUnfinishedSession();
 
       if (ps.routineTemplateId != null) {
         // Start routine-based session.
