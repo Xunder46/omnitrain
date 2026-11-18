@@ -174,7 +174,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   void dispose() {
     widget.workoutState.removeListener(_closeAutoSheetOnOutsideRating);
     widget.workoutState.wristSummary.removeListener(_reloadHeartRateOnWristSummary);
-    _noteDebounce?.cancel();
+    final pending = _noteDebounce;
+    if (pending != null && pending.isActive) {
+      pending.cancel();
+      unawaited(
+        widget.workoutState.updateSessionNote(_noteController.text.trim()),
+      );
+    }
     _noteController.dispose();
     super.dispose();
   }
@@ -299,6 +305,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
 
     _workoutDays = days;
+  }
+
+  /// Plan 238: a note still waiting in the 600 ms pause is written now, so a
+  /// Done or Back inside that pause does not lose it.
+  Future<void> _flushNote() async {
+    final pending = _noteDebounce;
+    if (pending == null || !pending.isActive) return;
+    pending.cancel();
+    await widget.workoutState.updateSessionNote(_noteController.text.trim());
   }
 
   void _handleNoteChanged(String value) {
@@ -480,6 +495,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Future<void> _finishAndSaveSession() async {
+    // Plan 238: write a note still in its 600 ms pause before the session ends.
+    await _flushNote();
     if (!mounted) return;
 
     showDialog(

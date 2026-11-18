@@ -62,7 +62,7 @@ The screen renders a CustomScrollView over OmniGradientBackground with this orde
 | Header | Session title only (the app bar shows no date or modality badge) |
 | Session info card | Duration and Rest Time, then the heart-rate row when the session has one ([Heart rate](#heart-rate)), then the EFFORT row with its Calories pill (rolling sessions: no Duration / Rest Time row — see [Effort Rating Capture](#effort-rating-capture)); the formatted start date/time and the modality chip sit in this card's header |
 | Group Cards | One card per group that has data in this session |
-| Session Note | Inline TextField with debounce save |
+| Session Note | Inline TextField with debounce save (a note still pending when Done or Back is pressed is written first) |
 | Calendar | Month grid and Open Calendar navigation button |
 
 What is not rendered in the active layout:
