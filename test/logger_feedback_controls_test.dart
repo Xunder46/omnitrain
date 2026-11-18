@@ -41,14 +41,17 @@ typedef _Deps = ({
   SettingsState settingsState,
 });
 
-Future<_Deps> _buildDeps({String? modality}) async {
+Future<_Deps> _buildDeps({String? modality, bool isRolling = false}) async {
   final repo = await _freshRepo();
   final workoutState = WorkoutState(repo);
   final routineState = RoutineState(repo);
   final sessionSummaryService = SessionSummaryService(repo);
   final settingsState = SettingsState(repo, fakePreferencesService());
   await settingsState.initialize();
-  await workoutState.createNewSession(modality: modality);
+  // One session only: two `createNewSession` calls inside the same
+  // millisecond share an id (`session-<ms>`, `segment-<ms>`), which made the
+  // rolling S-5115 test lose its exercise about once in twelve runs.
+  await workoutState.createNewSession(modality: modality, isRolling: isRolling);
   return (
     workoutState: workoutState,
     routineState: routineState,
@@ -505,8 +508,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final deps = await _buildDeps(modality: null);
-        await deps.workoutState.createNewSession(isRolling: true);
+        final deps = await _buildDeps(modality: null, isRolling: true);
         final repo = await _freshRepo();
         final squat = await _getExerciseById(repo, 'exercise-barbell-squat');
 
