@@ -1,9 +1,11 @@
 // Plan 220 P1 — Finish with nothing logged discards the workout (state side).
 //
 // `finishWouldSaveNothing()` on the state: true when the session is live, no
-// exercise counts ([completedExerciseCount] is 0), the wrist does not run it
-// and no wrist row is staged for it; false once anything is logged or started,
-// and always false for a workout the watch took part in.
+// exercise counts ([completedExerciseCount] is 0) and no wrist ACTIVITY row is
+// staged for it; false once anything is logged or started. Plan 228: a workout
+// the watch runs is decided after the import passes already queued, so a wrist
+// set that has not landed yet still counts (a `session_end`/`effort_rating`/
+// `rest` row alone is not work).
 //
 // Scenario S-22001 of
 // `docs/plans/2026-11-17-220-finish-with-nothing-logged-discards-plan/2026-11-17-220-finish-with-nothing-logged-discards-plan.md`.
@@ -96,15 +98,15 @@ void main() {
         expect(await state.finishWouldSaveNothing(), isFalse);
       });
 
-      test('S-22001 a session the wrist runs is never nothing done', () async {
+      test('S-22801 a session the wrist runs with nothing logged is nothing done', () async {
         await openLiveSession(wristRuns: (_) => true);
         final xId = await seedAndAdd('ex-squat', 'Barbell Back Squat');
         await fillSet(xId, 0, reps: 3, weight: 100.0);
 
-        expect(await state.finishWouldSaveNothing(), isFalse);
+        expect(await state.finishWouldSaveNothing(), isTrue);
       });
 
-      test('S-22001 a staged wrist row is never nothing done', () async {
+      test('S-22802 a staged wrist set row is not nothing done', () async {
         await openLiveSession();
         final xId = await seedAndAdd('ex-squat', 'Barbell Back Squat');
         await fillSet(xId, 0, reps: 3, weight: 100.0);

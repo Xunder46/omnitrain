@@ -722,7 +722,7 @@ focused-set rule itself is verified in **Stepper Remove Rule** above.
 
 Finishing a workout runs a deterministic shutdown sequence: local UI timers are frozen, every active or paused timer-based entry is persisted, the session is ended (idempotently), and the summary replaces the workout screen on the back-stack so Back cannot return to an active-timer view. A `_isFinishingSession` flag prevents double-tap races, and tick callbacks guard against ghost updates by checking `session.endedAtMs != null`.
 
-A workout with nothing done in it is discarded after a `Discard Workout?` confirmation instead of being finished (plan 220; see [Session Summary](session_summary.md)).
+A workout with nothing done in it is discarded after a `Discard Workout?` confirmation instead of being finished, a workout the watch runs included once the watch's pending sets landed (plans 220 and 228; see [Session Summary](session_summary.md)).
 
 Verified by `test/session_finish_timers_test.dart`.
 

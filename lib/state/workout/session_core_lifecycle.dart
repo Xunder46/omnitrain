@@ -1,5 +1,12 @@
 part of 'session_core.dart';
 
+const _wristActivityKinds = {
+  WatchInboxEntry.kindSet,
+  WatchInboxEntry.kindTimed,
+  WatchInboxEntry.kindRound,
+  WatchInboxEntry.kindHold,
+};
+
 extension SessionCoreLifecycleMethods on SessionCore {
   /// Ends the current session and, unless the watch saves its own workout for
   /// it, writes it to Health (plan 89c1): [writeToHealth] false is the wrist's
@@ -208,18 +215,39 @@ extension SessionCoreLifecycleMethods on SessionCore {
     return count;
   }
 
-  /// Plan 220: whether Finish would save a workout with nothing done in it:
-  /// no exercise counts ([completedExerciseCount] is 0), the wrist does not run
-  /// the session and no wrist row is staged for it (the same two checks
-  /// `endSession` makes). A workout the watch took part in is never discarded
-  /// this way: its caches may not hold the wrist's sets yet.
+  /// Plan 220 / plan 228: whether Finish would save a workout with nothing
+  /// done in it: no exercise counts ([completedExerciseCount] is 0) and no
+  /// wrist ACTIVITY row is staged for it (D-3: a `rest`, `effort_rating` or
+  /// `session_end` row alone is not work). A workout the watch runs is
+  /// decided after the import passes already queued (the seam `endSession`
+  /// uses, plan 218), so a wrist set that has not landed yet still counts —
+  /// the in-memory caches may not hold a set whose import pass is still
+  /// queued. `_wristRunsSession` is not a reason to save the workout; it
+  /// stays used by `endSession`.
   Future<bool> finishWouldSaveNothing() async {
     final session = _currentSession;
     if (session == null) return false;
-    if (completedExerciseCount() != 0) return false;
-    if (_wristRunsSession?.call(session.id) ?? false) return false;
-    final staged = await _repository.getWatchInboxEntriesForSession(session.id);
-    return !staged.any((row) => row.origin == WatchInboxEntry.originWatch);
+
+    Future<bool> decide() async {
+      if (completedExerciseCount() != 0) return false;
+      final staged = await _repository.getWatchInboxEntriesForSession(
+        session.id,
+      );
+      return !staged.any(
+        (row) =>
+            row.origin == WatchInboxEntry.originWatch &&
+            _wristActivityKinds.contains(row.kind),
+      );
+    }
+
+    // Plan 228: a wrist set's row is written before its rest, so the check
+    // waits for the import passes already queued (the seam `endSession`
+    // uses, plan 218) and reads the caches after both.
+    final queue = _afterPendingWristImports;
+    if (queue == null) return decide();
+    var nothing = false;
+    await queue(() async => nothing = await decide());
+    return nothing;
   }
 
   /// Resets the session start timestamp to now.

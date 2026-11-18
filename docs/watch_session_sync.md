@@ -561,6 +561,11 @@ in place, resending the structure as a snapshot and no new started lifecycle
   D-16401/D-16402), and neither ever pulls an end backward: an end already
   stored beyond the bound stands (`S-16407 a clamp never drags an end backward`
   in `test/watch_session_import_end_clamp_test.dart`).
+- **Finish on a workout with nothing logged discards it, the watch's workout
+  too.** The phone first lets the import passes already queued land, then
+  counts only wrist set, timed, round and hold rows as work; a wrist set that
+  arrives after the discard is consumed, never re-created (plan 228,
+  `test/finish_wrist_nothing_logged_discards_test.dart`).
 - **A wrist set fills the phone's next unlogged planned row, in the held merge
   only.** While the phone holds the session, a wrist `set` fills the first row
   the phone reads as unlogged — no rest at its position + 1, which differs from
