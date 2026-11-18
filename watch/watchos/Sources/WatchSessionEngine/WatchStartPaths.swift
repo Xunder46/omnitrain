@@ -758,6 +758,17 @@ public final class WatchSessionStartPaths {
         pendingModalityStart = nil
     }
 
+    /// The workout the wrist is running, or nil. An ended workout (discarded or
+    /// finished) stays `engine.session` until the next start, also after a
+    /// relaunch, but it is no ladder: the picker offers no rows from it, ranks
+    /// nothing by it and writes nothing to it (plan 225, D-22501).
+    private var liveSession: WatchSessionRecord? {
+        guard let session = engine.session,
+            session.status == WatchSessionStatus.active
+        else { return nil }
+        return session
+    }
+
     /// The modality the exercise lists rank by (plan 199, D-19906): the tile's
     /// while a modality start is pending, otherwise the live session's own, and
     /// nil when there is none — then the list is one plain A-to-Z run. A session
@@ -765,7 +776,7 @@ public final class WatchSessionStartPaths {
     /// left pending by a picker that never reported its dismissal cannot outlive
     /// the start it was for.
     public var listModality: String? {
-        let session = engine.session
+        let session = liveSession
         let holdsExercises = !(session?.exercises.isEmpty ?? true)
         if !holdsExercises, let pendingModalityStart { return pendingModalityStart }
         guard let own = session?.modality, !own.isEmpty else { return nil }
@@ -853,7 +864,7 @@ public final class WatchSessionStartPaths {
     /// order (D-3111).
     public var pickerRows: [WatchExercisePickerRow] {
         derivePickerRows(
-            sessionExercises: engine.session?.exercises ?? [],
+            sessionExercises: liveSession?.exercises ?? [],
             fallback: addableExercises
         )
     }
@@ -867,7 +878,7 @@ public final class WatchSessionStartPaths {
     /// exercise the ladder holds is offered once, as its in-session row.
     public var availablePickerExercises: [WatchCatalogExercise] {
         let onLadder = Set(
-            (engine.session?.exercises ?? []).compactMap {
+            (liveSession?.exercises ?? []).compactMap {
                 WatchCatalogExercise(slot: $0)?.exerciseId
             }
         )
@@ -911,9 +922,11 @@ public final class WatchSessionStartPaths {
 
     /// Picking a row: a slot the session already holds moves the user to it, and
     /// an exercise it does not appends one. Nil when the slot is gone by the
-    /// time the tap lands, which changes nothing.
+    /// time the tap lands, or when no workout is running (an ended one takes no
+    /// pick, plan 225, D-22502): either way nothing changes.
     @discardableResult
     public func selectExercise(_ row: WatchExercisePickerRow) async -> WatchSessionRecord? {
+        guard liveSession != nil else { return nil }
         switch row {
         case .inSession(let slotId, _):
             return await engine.selectExercise(slotId: slotId)

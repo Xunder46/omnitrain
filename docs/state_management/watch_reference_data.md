@@ -139,6 +139,17 @@ holds, so an exercise the user is on is offered once, as its own in-session row
 rows behind the ladder's own
 (`testS3113AThePickerRowsAndTheAvailableExercisesAgree`).
 
+A workout the wrist has ended is no live ladder. A discarded or finished
+workout stays the engine's `session` until the next start, also after a
+relaunch, but until a workout is running again the picker offers no
+in-session row from it and offers the whole list, `listModality` ranks by
+the tile tapped, and `selectExercise(_:)` returns nil and writes nothing,
+so a stray tap can never add a row to the ended workout or send the phone a
+frame about it; a pick in a tile start begins a new workout (plan 225,
+`WatchEndedSessionPickerTests.testS22501ATileStartOffersNoRowsFromAnEndedWorkout`,
+`…testS22502APickOfAnExerciseTheEndedWorkoutHeldStartsANewOne`,
+`…testS22503SelectingAnEndedWorkoutsSlotWritesNothing`).
+
 With a modality to rank it, the offered list is grouped: `WatchMenu.swift`'s
 `deriveExerciseGroups` partitions the already-A-to-Z list into a **Recommended
 group** — the exercises whose `recommendedFor` names the modality — and then
