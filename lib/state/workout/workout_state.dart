@@ -443,7 +443,8 @@ class WorkoutState extends ChangeNotifier {
     int durationSecs,
   ) => _timerManager.setRoundFinished(effortId, roundIndex, durationSecs);
 
-  /// Normalises every non-finished round in the current session to `finished`.
+  /// Normalises every started (running or paused) round in the current session
+  /// to `finished`; a round that was never started is left alone (plan 232).
   /// Called at the end of edit-mode save to ensure no stale round states remain.
   Future<void> normalizeRoundsToFinished() =>
       _timerManager.normalizeAllRoundsToFinished();

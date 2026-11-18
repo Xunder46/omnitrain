@@ -209,6 +209,7 @@ Behavior details:
 - Sports time comes from completed round durations.
 - Strength volume is formatted using preferred weight unit (kg or lbs).
 - A set marked skipped was not done: it is not counted in Sets, and its planned weight and reps feed no volume, best weight or e1RM (plan 227, `test/skipped_set_counts_for_nothing_test.dart`).
+- Saving an edited workout (Edit Session, Save Changes) finishes the rounds that were running or paused at their planned length, but a round that was never started stays never started: the summary's round count and time do not grow (plan 232, `test/edit_save_keeps_unstarted_rounds_test.dart`).
 
 ---
 

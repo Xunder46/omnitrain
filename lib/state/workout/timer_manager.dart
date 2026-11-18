@@ -1649,18 +1649,22 @@ class TimerManager {
     }
   }
 
-  /// Normalises every non-finished round in the session to `finished`, using
-  /// its [plannedDurationSecs] as the actual duration.
+  /// Normalises every started (running or paused) round in the session to
+  /// `finished`, using its [plannedDurationSecs] as the actual duration;
+  /// a round that was never started is left alone (plan 232).
   ///
   /// Called at the end of [_saveEditChanges] so that a historical session never
-  /// contains rounds in notStarted / active / paused states after the user saves.
+  /// contains rounds in active / paused states after the user saves.
   Future<void> normalizeAllRoundsToFinished() async {
     for (final entry in _roundInstances.entries) {
       final effortId = entry.key;
       final rounds = entry.value;
       for (int i = 0; i < rounds.length; i++) {
         final round = rounds[i];
-        if (round.state != RoundState.finished) {
+        // Plan 232: a round that was never started stays never started: only
+        // a running or paused round is finished here.
+        if (round.state == RoundState.active ||
+            round.state == RoundState.paused) {
           final durationSecs = round.plannedDurationSecs > 0
               ? round.plannedDurationSecs
               : 0;

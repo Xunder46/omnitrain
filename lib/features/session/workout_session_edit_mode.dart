@@ -213,9 +213,10 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
       }
     }
 
-    // ── Step 2: normalise all non-finished rounds to finished ───────────────
-    // Ensures a historical session never contains rounds in notStarted / active
-    // / paused states after the user saves.
+    // ── Step 2: finish the rounds that were started ─────────────────────────
+    // Ensures a historical session never contains running or paused rounds
+    // after the user saves; a round that was never started stays never
+    // started (plan 232).
     await widget.workoutState.normalizeRoundsToFinished();
 
     // ── Step 3: persist session duration change if any ──────────────────────
