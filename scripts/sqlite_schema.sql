@@ -1108,7 +1108,7 @@ CREATE INDEX IF NOT EXISTS IX_effort_block_order
 --
 -- Fields:
 --   id: Unique identifier (UUID)
---   date_ms: Start-of-day timestamp (ms since epoch, midnight local time), UNIQUE per date
+--   date_ms: Day key (ms since epoch: the calendar date's UTC midnight, zone-independent), UNIQUE per date
 --   calories, protein, carbs, fat: Target macronutrients (0.0 = unset/"no goal")
 --   created_at_ms, updated_at_ms: Wall-clock timestamps
 --
@@ -1437,7 +1437,7 @@ CREATE INDEX IF NOT EXISTS IX_consumed_food_logged ON app_consumed_food(logged_a
 -- app_water_log — Per-day water volume (milliliters).
 -- ─────────────────────────────────────────────────────────────────────────────
 --
--- One row per calendar day, keyed by `date_ms` (local midnight ms). The
+-- One row per calendar day, keyed by `date_ms` (the date's UTC midnight, the zone-independent day key). The
 -- day's water volume is stored as a real volume in milliliters so the
 -- historical record stays unit-clean; the on-screen "glass count" is
 -- derived at the display boundary (`volume_ml / 250`), never stored.

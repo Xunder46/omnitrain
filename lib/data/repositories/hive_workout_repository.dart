@@ -96,6 +96,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
   @visibleForTesting
   static String get catalogVersionKey => _catalogVersionKey;
 
+  /// The zone-independent day key of a local-midnight day instant: the
+  /// calendar date's UTC midnight (plan 235). The per-day boxes key on it.
+  int _dayKey(int dateMs) =>
+      OmniDateUtils.dayKeyMs(OmniDateUtils.fromMs(dateMs));
+
   late Box<Map> _exercisesBox;
   late Box<Map> _sessionsBox;
   late Box<Map> _userProfilesBox;
@@ -1131,7 +1136,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<NutritionTarget?> getNutritionTargetForDate(int dateMs) async {
-    final dateKey = dateMs.toString();
+    final dateKey = _dayKey(dateMs).toString();
 
     // Check if target exists for this exact date
     final raw = _nutritionTargetsByDateBox.get(dateKey);
@@ -1139,11 +1144,13 @@ class HiveWorkoutRepository implements WorkoutRepository {
       return NutritionTarget.fromMap(_asStringMap(raw));
     }
 
-    // Walk backward to find the most recent ancestor target. Keys are local
-    // midnights, so step by calendar day: a fixed 24 h step misses every key
-    // after a DST change (it lands at 01:00 or 23:00 local).
-    final from = DateTime.fromMillisecondsSinceEpoch(dateMs);
-    var day = DateTime(from.year, from.month, from.day - 1);
+    // Walk backward to find the most recent ancestor target. Box keys are
+    // the calendar date's UTC midnight (the zone-independent day key), so
+    // step by calendar day over UTC components: a fixed 24 h step misses
+    // every key after a DST change, and local instants never match the keys
+    // (plan 235 D-4).
+    final from = OmniDateUtils.fromMs(dateMs);
+    var day = DateTime.utc(from.year, from.month, from.day - 1);
     while (day.millisecondsSinceEpoch > 0) {
       final ancestorRaw = _nutritionTargetsByDateBox.get(
         day.millisecondsSinceEpoch.toString(),
@@ -1155,7 +1162,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
         );
         return ancestorTarget.copyWith(dateMs: dateMs);
       }
-      day = DateTime(day.year, day.month, day.day - 1);
+      day = DateTime.utc(day.year, day.month, day.day - 1);
     }
 
     // No ancestor found
@@ -1167,7 +1174,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
     int dateMs,
     NutritionTarget target,
   ) async {
-    final dateKey = dateMs.toString();
+    final key = _dayKey(dateMs);
+    final dateKey = key.toString();
 
     // Fetch the old target (if it exists) to compare for forward propagation
     final oldRaw = _nutritionTargetsByDateBox.get(dateKey);
@@ -1184,8 +1192,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
       final allKeys = _nutritionTargetsByDateBox.keys
           .map((k) => int.tryParse(k.toString()) ?? 0)
           .toList();
-      final sortedFutureKeys = allKeys.where((k) => k > dateMs).toList()
-        ..sort();
+      final sortedFutureKeys = allKeys.where((k) => k > key).toList()..sort();
 
       for (final futureKey in sortedFutureKeys) {
         final futureRaw = _nutritionTargetsByDateBox.get(futureKey.toString());
@@ -1197,7 +1204,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
               futureTarget.carbs == oldTarget.carbs &&
               futureTarget.fat == oldTarget.fat) {
             // Update to the new values, preserving the future date
-            final updated = target.copyWith(dateMs: futureKey);
+            final updated = target.copyWith(
+              dateMs: OmniDateUtils.localMidnightOfDayKeyMs(futureKey),
+            );
             await _nutritionTargetsByDateBox.put(
               futureKey.toString(),
               updated.toMap(),
@@ -2539,11 +2548,13 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   // ===== WATER LOG (DAY LOG) =====
 
-  /// Daily water volume map keyed by `dateMs` (local midnight) in milliliters.
-  /// Absence of a key = 0 ml for that day — callers never see `null`.
+  /// Daily water volume map keyed by the calendar day's UTC-midnight day key
+  /// (plan 235) in milliliters. Absence of a key = 0 ml for that day —
+  /// callers never see `null`.
   @override
   Future<int> getWaterVolumeForDate(int dateMs) async {
-    final raw = _waterLogBox.get(dateMs.toString());
+    final key = _dayKey(dateMs);
+    final raw = _waterLogBox.get(key.toString());
     if (raw == null) return 0;
     final map = _asStringMap(raw);
     return (map['volume_ml'] as int?) ?? 0;
@@ -2554,22 +2565,22 @@ class HiveWorkoutRepository implements WorkoutRepository {
     // Clamp at 0 — the state layer should already have floored the value,
     // but the repository is the last line of defense against bad inputs.
     final clamped = volumeMl < 0 ? 0 : volumeMl;
-    final key = dateMs.toString();
-    final raw = _waterLogBox.get(key);
+    final key = _dayKey(dateMs);
+    final raw = _waterLogBox.get(key.toString());
     final now = DateTime.now().millisecondsSinceEpoch;
     if (raw == null) {
-      await _waterLogBox.put(key, <String, dynamic>{
-        'id': WaterLogEntry.idForDate(dateMs),
-        'date_ms': dateMs,
+      await _waterLogBox.put(key.toString(), <String, dynamic>{
+        'id': WaterLogEntry.idForDate(key),
+        'date_ms': key,
         'volume_ml': clamped,
         'created_at_ms': now,
         'updated_at_ms': now,
       });
     } else {
       final existing = _asStringMap(raw);
-      await _waterLogBox.put(key, <String, dynamic>{
-        'id': WaterLogEntry.idForDate(dateMs),
-        'date_ms': dateMs,
+      await _waterLogBox.put(key.toString(), <String, dynamic>{
+        'id': WaterLogEntry.idForDate(key),
+        'date_ms': key,
         'volume_ml': clamped,
         'created_at_ms': (existing['created_at_ms'] as int?) ?? now,
         'updated_at_ms': now,
@@ -2593,8 +2604,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }) async {
     // Read and write with no await between them, so no other write can land
     // between the ledger check and the put (D-5).
-    final key = dateMs.toString();
-    final raw = _waterLogBox.get(key);
+    final key = _dayKey(dateMs);
+    final raw = _waterLogBox.get(key.toString());
     final existing = raw == null ? null : _asStringMap(raw);
     final ledger = _waterTapIdsOf(existing);
     if (ledger.contains(tapId) || ledger.length >= kWatchWaterTapsPerDay) {
@@ -2603,9 +2614,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
     final volume = (existing?['volume_ml'] as int?) ?? 0;
     final next = volume + deltaMl < 0 ? 0 : volume + deltaMl;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await _waterLogBox.put(key, <String, dynamic>{
-      'id': WaterLogEntry.idForDate(dateMs),
-      'date_ms': dateMs,
+    await _waterLogBox.put(key.toString(), <String, dynamic>{
+      'id': WaterLogEntry.idForDate(key),
+      'date_ms': key,
       'volume_ml': next,
       'created_at_ms': (existing?['created_at_ms'] as int?) ?? now,
       'updated_at_ms': now,
@@ -2616,7 +2627,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<List<String>> getAppliedWaterTapIds(int dateMs) async {
-    final raw = _waterLogBox.get(dateMs.toString());
+    final key = _dayKey(dateMs);
+    final raw = _waterLogBox.get(key.toString());
     return _waterTapIdsOf(raw == null ? null : _asStringMap(raw));
   }
 

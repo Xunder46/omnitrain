@@ -12,6 +12,21 @@ class OmniDateUtils {
   /// Convenience wrapper over [startOfDayMs] using [DateTime.now].
   static int todayMidnightMs() => startOfDayMs(DateTime.now());
 
+  /// The zone-independent key of [date]'s local calendar date: that date's
+  /// UTC midnight. The same year-month-day gives the same key in every time
+  /// zone, which is what a stored day (food, water, target) needs after the
+  /// phone changes zone. Storage-boundary use only; the app passes local
+  /// midnights ([startOfDayMs]) everywhere else (plan 235).
+  static int dayKeyMs(DateTime date) =>
+      DateTime.utc(date.year, date.month, date.day).millisecondsSinceEpoch;
+
+  /// Local midnight, in the current zone, of the calendar date a stored day
+  /// [key] names (the inverse of [dayKeyMs] for a date's local midnight).
+  static int localMidnightOfDayKeyMs(int key) {
+    final d = DateTime.fromMillisecondsSinceEpoch(key, isUtc: true);
+    return DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
+  }
+
   /// Returns the epoch-ms of the end of the given day (23:59:59.999 local time).
   static int endOfDayMs(DateTime date) => DateTime(
     date.year,

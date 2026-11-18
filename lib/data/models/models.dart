@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../core/utils/date_utils.dart';
 import '../../core/utils/macro_energy.dart';
 
 // Data model classes aligned with SQLite schema
@@ -1837,8 +1838,10 @@ class NutritionTarget {
   final double protein;
   final double carbs;
   final double fat;
-  final int?
-  dateMs; // Optional date (ms since epoch); null for legacy global targets
+  /// The day this target applies to, held as the local midnight; stored as
+  /// that calendar date's UTC midnight (the zone-independent day key, plan
+  /// 235). Null for legacy global targets.
+  final int? dateMs;
 
   NutritionTarget({
     this.calories = 0.0,
@@ -1857,7 +1860,9 @@ class NutritionTarget {
     protein: ((m['protein'] as num?) ?? 0.0).toDouble(),
     carbs: ((m['carbs'] as num?) ?? 0.0).toDouble(),
     fat: ((m['fat'] as num?) ?? 0.0).toDouble(),
-    dateMs: m['date_ms'] as int?,
+    dateMs: m['date_ms'] == null
+        ? null
+        : OmniDateUtils.localMidnightOfDayKeyMs(m['date_ms'] as int),
   );
 
   Map<String, dynamic> toMap() => {
@@ -1865,7 +1870,9 @@ class NutritionTarget {
     'protein': protein,
     'carbs': carbs,
     'fat': fat,
-    'date_ms': dateMs,
+    'date_ms': dateMs == null
+        ? null
+        : OmniDateUtils.dayKeyMs(OmniDateUtils.fromMs(dateMs!)),
   };
 
   NutritionTarget copyWith({
@@ -2201,7 +2208,10 @@ const Object _foodCopyWithUnset = Object();
 class ConsumedFood {
   final String id;
   final int loggedAtMs; // when the user logged this (wall clock)
-  final int dateMs; // day key (local midnight ms) this counts toward
+  /// The day this food counts toward, held as the local midnight; stored as
+  /// that calendar date's UTC midnight (the zone-independent day key, plan
+  /// 235).
+  final int dateMs;
 
   // Source reference — nullable if the original food was deleted
   final String? sourceFoodId;
@@ -2282,7 +2292,7 @@ class ConsumedFood {
   factory ConsumedFood.fromMap(Map<String, dynamic> m) => ConsumedFood(
     id: m['id'] as String,
     loggedAtMs: m['logged_at_ms'] as int,
-    dateMs: m['date_ms'] as int,
+    dateMs: OmniDateUtils.localMidnightOfDayKeyMs(m['date_ms'] as int),
     sourceFoodId: m['source_food_id'] as String?,
     name: m['name'] as String,
     unitType: FoodUnitType.fromString(m['unit_type'] as String?),
@@ -2310,7 +2320,7 @@ class ConsumedFood {
   Map<String, dynamic> toMap() => {
     'id': id,
     'logged_at_ms': loggedAtMs,
-    'date_ms': dateMs,
+    'date_ms': OmniDateUtils.dayKeyMs(OmniDateUtils.fromMs(dateMs)),
     'source_food_id': sourceFoodId,
     'name': name,
     'unit_type': unitType.toStorageString(),
@@ -2409,7 +2419,9 @@ class WaterLogEntry {
   /// repository owns the id minting and `NutritionState` writes through it.
   final String id;
 
-  /// Day key (local midnight ms) this row counts toward.
+  /// The day this row counts toward, held as the local midnight; stored as
+  /// that calendar date's UTC midnight (the zone-independent day key, plan
+  /// 235).
   final int dateMs;
 
   /// Stored volume in milliliters. Always `>= 0`. The state layer floors
@@ -2437,7 +2449,7 @@ class WaterLogEntry {
 
   factory WaterLogEntry.fromMap(Map<String, dynamic> m) => WaterLogEntry(
     id: m['id'] as String,
-    dateMs: m['date_ms'] as int,
+    dateMs: OmniDateUtils.localMidnightOfDayKeyMs(m['date_ms'] as int),
     volumeMl: m['volume_ml'] as int,
     createdAtMs: m['created_at_ms'] as int,
     updatedAtMs: m['updated_at_ms'] as int,
@@ -2454,7 +2466,7 @@ class WaterLogEntry {
 
   Map<String, dynamic> toMap() => {
     'id': id,
-    'date_ms': dateMs,
+    'date_ms': OmniDateUtils.dayKeyMs(OmniDateUtils.fromMs(dateMs)),
     'volume_ml': volumeMl,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,

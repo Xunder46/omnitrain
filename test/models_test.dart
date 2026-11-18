@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:test/test.dart';
+import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/core/constants/capability.dart';
 
@@ -1290,14 +1291,17 @@ void main() {
       expect(map['protein'], 180);
       expect(map['carbs'], 300);
       expect(map['fat'], 80);
-      expect(map['date_ms'], 1749312000000);
+      // Plan 235: `date_ms` is stored as the calendar date's UTC midnight
+      // (the zone-independent day key), read back as that day's local
+      // midnight.
+      expect(map['date_ms'], OmniDateUtils.dayKeyMs(OmniDateUtils.fromMs(1749312000000)));
 
       final restored = NutritionTarget.fromMap(map);
       expect(restored.calories, 2500);
       expect(restored.protein, 180);
       expect(restored.carbs, 300);
       expect(restored.fat, 80);
-      expect(restored.dateMs, 1749312000000);
+      expect(restored.dateMs, OmniDateUtils.startOfDayMs(OmniDateUtils.fromMs(1749312000000)));
     });
 
     test('defaults are 0.0 (not nullable) when constructed empty', () {

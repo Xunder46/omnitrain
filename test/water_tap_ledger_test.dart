@@ -10,6 +10,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:omnitrain/core/constants/water_constants.dart';
+import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
@@ -22,6 +23,11 @@ final int dMs = DateTime(2026, 11, 1).millisecondsSinceEpoch;
 final int pMs = DateTime(2026, 10, 31).millisecondsSinceEpoch;
 final int nMs = DateTime(2026, 11, 2).millisecondsSinceEpoch;
 final int qMs = DateTime(2026, 10, 30).millisecondsSinceEpoch;
+
+/// The stored day key of a local-midnight day instant (plan 235): the
+/// calendar date's UTC midnight, which is what the raw `water_log` box keys
+/// and stores as `date_ms`.
+int dayKey(int dateMs) => OmniDateUtils.dayKeyMs(OmniDateUtils.fromMs(dateMs));
 
 void main() {
   group('water constants (D-11)', () {
@@ -59,9 +65,11 @@ void main() {
 
   group('WaterLogEntry round trip (D-4)', () {
     test('appliedTapIds survives toMap → fromMap, in order', () {
-      const entry = WaterLogEntry(
+      final entry = WaterLogEntry(
         id: 'water-1',
-        dateMs: 1,
+        // A local midnight, the app's day currency: the map stores the day
+        // key and reads back the same local midnight (plan 235).
+        dateMs: dMs,
         volumeMl: 500,
         createdAtMs: 2,
         updatedAtMs: 3,
@@ -71,7 +79,7 @@ void main() {
       expect(back.appliedTapIds, ['w-2', 'w-1']);
       expect(back.volumeMl, 500);
       expect(back.id, 'water-1');
-      expect(back.dateMs, 1);
+      expect(back.dateMs, dMs);
       expect(back.createdAtMs, 2);
       expect(back.updatedAtMs, 3);
     });
@@ -214,7 +222,7 @@ void main() {
         expect(await repo.getWaterVolumeForDate(dMs), 0);
         expect(await repo.getAppliedWaterTapIds(dMs), ['w-0']);
         if (harness.name == 'Hive') {
-          final row = Hive.box<Map>('water_log').get(dMs.toString());
+          final row = Hive.box<Map>('water_log').get(dayKey(dMs).toString());
           expect(row, isNotNull, reason: 'a row with 0 ml exists');
           expect(row!['volume_ml'], 0);
         }
@@ -326,9 +334,9 @@ void main() {
           // A row written before 94a: no applied_tap_ids key.
           await Hive.box<Map>(
             'water_log',
-          ).put(dMs.toString(), <String, dynamic>{
-            'id': WaterLogEntry.idForDate(dMs),
-            'date_ms': dMs,
+          ).put(dayKey(dMs).toString(), <String, dynamic>{
+            'id': WaterLogEntry.idForDate(dayKey(dMs)),
+            'date_ms': dayKey(dMs),
             'volume_ml': 750,
             'created_at_ms': 1,
             'updated_at_ms': 1,

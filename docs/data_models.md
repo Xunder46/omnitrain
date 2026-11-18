@@ -391,6 +391,7 @@ Round-trip notes:
 - `0.0` is the canonical "no goal" sentinel — the UI hides the row and never attempts division-by-zero math against it.
 - Protein, carbs and fat are grams the user sets on the `NutritionTargetScreen`; `0.0` is no target for that macro, and the carbs target counts TOTAL carbohydrates, fibre included. Verified by `test/daily_targets_screen_test.dart` (`S-14015 Save stores the typed target for today`) and `test/daily_targets_display_test.dart` (group `CalorieRingCard — focus text with macro targets (S-14035)`).
 - A target with `dateMs == null` indicates a legacy single-row save (kept for back-compat with `WorkoutRepository.getNutritionTarget()` / `saveNutritionTarget()`).
+- A day is stored as its calendar date's UTC midnight (`OmniDateUtils.dayKeyMs`) and held in memory as the local midnight, in `NutritionTarget`, `ConsumedFood` and `WaterLogEntry` alike, so a time-zone change keeps the same date (plan 235, `test/day_keys_survive_zone_change_test.dart`).
 
 ### FoodUnitType
 
@@ -545,7 +546,7 @@ fields were added to the model, this section documents state-side caching only.
 
 ### WaterLogEntry
 
-One row per calendar day, keyed by `dateMs` (local midnight). The day's water volume is stored as a real volume in milliliters so the historical record stays unit-clean; the on-screen total is shown in the user's volume unit at the display boundary, never stored. Verified by `test/nutrition_test.dart` (group `WaterTrackerControl — total in the volume unit (S-13207, S-13210, S-13214)`: `S-13207 1500 ml in ml reads 1.5 L with step 250 ml`) and `test/state_test.dart` (group `NutritionState volume unit`: `S-13206 a unit switch notifies NutritionState exactly once; another setting is silent; waterTodayMl never rewrites`).
+One row per calendar day, keyed by `dateMs` (the calendar date as the phone's local midnight; stored as that date's UTC midnight so a time-zone change keeps the day). The day's water volume is stored as a real volume in milliliters so the historical record stays unit-clean; the on-screen total is shown in the user's volume unit at the display boundary, never stored. Verified by `test/nutrition_test.dart` (group `WaterTrackerControl — total in the volume unit (S-13207, S-13210, S-13214)`: `S-13207 1500 ml in ml reads 1.5 L with step 250 ml`) and `test/state_test.dart` (group `NutritionState volume unit`: `S-13206 a unit switch notifies NutritionState exactly once; another setting is silent; waterTodayMl never rewrites`).
 
 Water has no goal — like macros and sodium, it is tracked and stored for the historical record only. Each new day starts at 0; logging takes effect immediately and survives closing and reopening the app on the same day. Prior days are never modified automatically.
 
