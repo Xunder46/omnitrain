@@ -160,7 +160,7 @@ class ExerciseLibrary {
     String? description,
     String? disciplineId,
     List<String> capabilities = const [],
-    List<String> muscleGroupIds = const [],
+    List<ExerciseMuscleLink> muscleLinks = const [],
   }) async {
     _clearError();
 
@@ -186,7 +186,7 @@ class ExerciseLibrary {
 
       await _repository.createExercise(exercise);
       await _repository.setExerciseCapabilities(exerciseId, capabilities);
-      await _repository.setExerciseMuscleGroups(exerciseId, muscleGroupIds);
+      await _repository.setExerciseMuscleLinks(exerciseId, muscleLinks);
 
       final exerciseWithCaps = exercise.copyWith(capabilities: capabilities);
       _allExercises = [
@@ -205,7 +205,7 @@ class ExerciseLibrary {
   Future<Exercise?> updateCustomExercise({
     required Exercise exercise,
     List<String> capabilities = const [],
-    List<String> muscleGroupIds = const [],
+    List<ExerciseMuscleLink> muscleLinks = const [],
   }) async {
     _clearError();
 
@@ -225,7 +225,7 @@ class ExerciseLibrary {
 
       await _repository.updateExercise(updated);
       await _repository.setExerciseCapabilities(updated.id, capabilities);
-      await _repository.setExerciseMuscleGroups(updated.id, muscleGroupIds);
+      await _repository.setExerciseMuscleLinks(updated.id, muscleLinks);
 
       // Mark the entry as user-touched so the next catalog refresh
       // doesn't overwrite the user's edit (or capability / muscle-group
@@ -315,12 +315,24 @@ class ExerciseLibrary {
     }
   }
 
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
+  /// The exercise's stored muscle links, or `null` when the read failed (the
+  /// failure is on the error channel).
+  ///
+  /// `null` is not "no muscles". Display callers degrade on purpose: a failed
+  /// read leaves the picker and library rows without muscle chips and collapses
+  /// the detail section (`?? const []`, see `test/muscle_filter_picker_test.dart`,
+  /// 'a failing links read leaves rows chip-less, not crashed'). The muscle
+  /// editor must not treat it as empty — it reads `null` as a failure and leaves
+  /// without writing (`test/muscle_editor_screen_test.dart`, 'a failing links
+  /// read shows the failure and leaves').
+  Future<List<ExerciseMuscleLink>?> getExerciseMuscleLinks(
+    String exerciseId,
+  ) async {
     try {
-      return await _repository.getExerciseMuscleGroups(exerciseId);
+      return await _repository.getExerciseMuscleLinks(exerciseId);
     } catch (e) {
-      _setError('Failed to load exercise muscle groups: $e');
-      return [];
+      _setError('Failed to load exercise muscle links: $e');
+      return null;
     }
   }
 

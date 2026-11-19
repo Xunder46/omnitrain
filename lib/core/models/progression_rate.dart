@@ -246,7 +246,8 @@ class ProgressionRateCopy {
 ProgressionRateCopy progressionRateCopy(ProgressionRate rate) =>
     ProgressionRateCopy(
       observation:
-          'Resistance progression rate is ${rate.recentPercent}% over the last '
-          '4 weeks, up from ${rate.priorPercent}%.',
+          'In the last 4 weeks, ${rate.recentPercent}% of your lifting '
+          'sessions matched or beat your previous one for that lift, up from '
+          '${rate.priorPercent}% before.',
       suggestion: 'The current approach is working.',
     );

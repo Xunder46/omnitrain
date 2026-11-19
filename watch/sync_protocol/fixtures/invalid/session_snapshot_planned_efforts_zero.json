@@ -1,0 +1,26 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-planned-efforts-zero",
+  "sessionId": "s-2026-11-12-2",
+  "type": "session_snapshot",
+  "origin": "phone",
+  "sentAt": "2026-11-12T18:00:00Z",
+  "payload": {
+    "sessionId": "s-2026-11-12-2",
+    "revision": 1,
+    "status": "active",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"],
+        "effortKind": "drill",
+        "plannedEfforts": 0
+      }
+    ],
+    "entries": [],
+    "timers": {}
+  }
+}

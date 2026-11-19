@@ -4,12 +4,30 @@ import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+  private var healthEffortChannel: HealthEffortChannel?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     UNUserNotificationCenter.current().delegate = self
     GeneratedPluginRegistrant.register(with: self)
+    if let registrar = registrar(forPlugin: "HealthEffortChannel") {
+      healthEffortChannel = HealthEffortChannel.register(with: registrar.messenger())
+    }
+    // Plan 120: keep the screen awake while a work timer runs on the session screen.
+    if let registrar = registrar(forPlugin: "ScreenAwakeChannel") {
+      let screenAwake = FlutterMethodChannel(
+        name: "omnitrain/screen_awake", binaryMessenger: registrar.messenger())
+      screenAwake.setMethodCallHandler { call, result in
+        if call.method == "setKeepAwake", let on = call.arguments as? Bool {
+          UIApplication.shared.isIdleTimerDisabled = on
+          result(nil)
+        } else {
+          result(FlutterMethodNotImplemented)
+        }
+      }
+    }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

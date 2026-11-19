@@ -229,4 +229,70 @@ final class WatchRestSurfaceTests: XCTestCase {
             afterEntryId: logged.entryId
         )
     }
+
+    // MARK: - S-8621 the rest clock is wrist-scale, like the work readout
+
+    func testS8621TheRestClockMatchesTheWorkReadoutsScale() throws {
+        let restSource = try engineSource("WatchRestView.swift")
+        let restChain = try modifierChain(of: "Text(elapsed)", in: restSource)
+        XCTAssertTrue(
+            restChain.contains(".font(.largeTitle)"),
+            "S-8621 the rest clock is .largeTitle, the work readout's scale"
+        )
+        XCTAssertTrue(
+            restChain.contains(".monospacedDigit()"),
+            "S-8621 the rest clock's digits hold their width as it counts"
+        )
+        XCTAssertFalse(restChain.contains("title3"), "S-8621 the old .title3 clock is gone")
+
+        let loggingSource = try engineSource("WatchLoggingView.swift")
+        let loggingChain = try modifierChain(of: "Text(readout)", in: loggingSource)
+        XCTAssertTrue(
+            loggingChain.contains(".font(.largeTitle)"),
+            "S-8621 the work readout stays .largeTitle, so the two clocks cannot drift"
+        )
+    }
+
+    // MARK: - Helpers (the source guard, as WatchRestLabelsTests reads views)
+
+    /// A file of the watch package's engine module, read from the repository
+    /// root, with every comment-only line blanked out (the line count is kept).
+    private func engineSource(_ name: String) throws -> String {
+        let url = Fixtures.repositoryRoot
+            .appendingPathComponent("watch/watchos/Sources/WatchSessionEngine/\(name)")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        return strippingCommentLines(text)
+    }
+
+    /// Blanks every line whose trimmed text starts with `//`, keeping the line
+    /// boundaries so line indexes stay true. A trailing `//` comment on a code
+    /// line is blanked too, so prose there can neither satisfy a guard nor trip
+    /// one.
+    private func strippingCommentLines(_ source: String) -> String {
+        source.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") { return "" }
+                guard let comment = line.range(of: "//") else { return String(line) }
+                return String(line[..<comment.lowerBound])
+            }
+            .joined(separator: "\n")
+    }
+
+    /// The modifier chain that follows `call` in `source`: the lines after the
+    /// line carrying `call` that start with `.` once trimmed, up to the first
+    /// that does not.
+    private func modifierChain(of call: String, in source: String) throws -> String {
+        let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let index = lines.firstIndex(where: { $0.contains(call) }) else {
+            XCTFail("S-8621 \(call) not found in the source")
+            return ""
+        }
+        var chain: [String] = []
+        for line in lines[(index + 1)...] {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix(".") else { break }
+            chain.append(trimmed)
+        }
+        return chain.joined(separator: "\n")
+    }
 }

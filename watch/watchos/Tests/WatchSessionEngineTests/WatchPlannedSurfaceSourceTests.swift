@@ -1,0 +1,432 @@
+//
+//  WatchPlannedSurfaceSourceTests.swift
+//  WatchSessionEngineTests
+//
+//  Source guards for what `swift test` cannot compile: the watchOS-only start
+//  surface's planned-workout button and picker, and the copy they read. Plan
+//  `docs/plans/2026-11-05-129-wrist-planned-button-plan/2026-11-05-129-wrist-planned-button-plan.md`,
+//  scenarios S-8965 and S-8969 (decisions D-8963, D-8964, D-8965, D-8969).
+//
+//  Every guard reads a file's text with its comment lines removed, so a
+//  sentence of prose can neither satisfy a guard nor trip one.
+//
+
+import Foundation
+import XCTest
+
+final class WatchPlannedSurfaceSourceTests: XCTestCase {
+
+    // MARK: - Reading the surface
+
+    private func engineSource(_ name: String) throws -> String {
+        let url = Fixtures.sourcesRoot.appendingPathComponent(name)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        return strippingCommentLines(text)
+    }
+
+    /// Blanks every line whose trimmed text starts with `//`, keeping the line
+    /// boundaries. A trailing `//` comment on a code line is blanked too, so
+    /// prose there can neither satisfy a guard nor trip one.
+    private func strippingCommentLines(_ source: String) -> String {
+        source.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") { return "" }
+                guard let comment = line.range(of: "//") else { return String(line) }
+                return String(line[..<comment.lowerBound])
+            }
+            .joined(separator: "\n")
+    }
+
+    private func sourceLines(_ source: String) -> [String] {
+        source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    }
+
+    /// The brace-balanced body of the first line containing `needle`, from its
+    /// opening brace to its closing one, or nil when that line is not there.
+    private func braceBody(ofLineContaining needle: String, in source: String) -> String? {
+        let lines = sourceLines(source)
+        guard let start = lines.firstIndex(where: { $0.contains(needle) }) else {
+            return nil
+        }
+
+        var depth = 0
+        var started = false
+        var body: [String] = []
+        for line in lines[start...] {
+            for character in line {
+                if character == "{" {
+                    depth += 1
+                    started = true
+                } else if character == "}" {
+                    depth -= 1
+                }
+            }
+            if started { body.append(line) }
+            if started, depth == 0 { break }
+        }
+        return started ? body.joined(separator: "\n") : nil
+    }
+
+    /// How many times `needle` appears.
+    private func occurrences(of needle: String, in source: String) -> Int {
+        var count = 0
+        var range = source.startIndex..<source.endIndex
+        while let found = source.range(of: needle, range: range) {
+            count += 1
+            range = found.upperBound..<source.endIndex
+        }
+        return count
+    }
+
+    // MARK: - S-8965 the planned button is the first thing on the surface
+
+    func testS8965ThePlannedButtonComesBeforeTheRoutineList() throws {
+        let view = try engineSource("WatchStartView.swift")
+
+        let lines = sourceLines(view)
+        let plannedIndex = lines.firstIndex { $0.contains("if !startablePlans.isEmpty") }
+        let emptyRoutinesIndex = lines.firstIndex { $0.contains("if paths.routines.isEmpty") }
+        let routinesRow = sourceLines(view)
+        let forEachIndex = routinesRow.firstIndex { $0.contains("ForEach(paths.routines") }
+
+        XCTAssertNotNil(plannedIndex, "the planned button block is in the view")
+        XCTAssertNotNil(emptyRoutinesIndex, "the empty-routines branch is in the view")
+        XCTAssertNotNil(forEachIndex, "the routine `ForEach` is in the view")
+        XCTAssertTrue(plannedIndex! < emptyRoutinesIndex!, "the planned button stands above the empty-routines branch")
+        XCTAssertTrue(plannedIndex! < forEachIndex!, "the planned button stands above the routine rows")
+    }
+
+    func testS8965ThePlannedCaptionCountsThePlans() throws {
+        let view = try engineSource("WatchStartView.swift")
+
+        let plannedBlock = try XCTUnwrap(
+            braceBody(ofLineContaining: "if !startablePlans.isEmpty", in: view),
+            "the planned button block is in the view"
+        )
+        XCTAssertTrue(
+            occurrences(of: "startablePlans.count > 1", in: plannedBlock) == 1,
+            "the caption counts the wrist's plans once"
+        )
+        XCTAssertTrue(
+            occurrences(of: "WatchStartSurfaceCopy.plannedLabel", in: plannedBlock) == 1,
+            "several plans are captioned with the shared label"
+        )
+        XCTAssertTrue(
+            occurrences(of: "startablePlans[0].name", in: plannedBlock) == 1,
+            "one plan is captioned with its own name"
+        )
+        // The three caption pieces stand together in the same statement, in
+        // that order.
+        let blockLines = sourceLines(plannedBlock)
+        let totalCount = blockLines.firstIndex { $0.contains("startablePlans.count > 1") }
+        let labelCount = blockLines.firstIndex { $0.contains("WatchStartSurfaceCopy.plannedLabel") }
+        let nameCount = blockLines.firstIndex { $0.contains("startablePlans[0].name") }
+        XCTAssertTrue(
+            (totalCount != nil && labelCount != nil && nameCount != nil),
+            "the caption is one statement holding all three pieces"
+        )
+        if let totalCount, let labelCount, let nameCount {
+            XCTAssertTrue(totalCount < labelCount, "the count precedes the label")
+            XCTAssertTrue(labelCount < nameCount, "the label precedes the single plan's name")
+        }
+    }
+
+    func testS8965ThePlannedButtonWearsBorderedAndTheRoutineStaysProminent() throws {
+        let view = try engineSource("WatchStartView.swift")
+
+        let plannedBlock = try XCTUnwrap(
+            braceBody(ofLineContaining: "if !startablePlans.isEmpty", in: view),
+            "the planned button block is in the view"
+        )
+        XCTAssertTrue(
+            plannedBlock.contains("Button(") && plannedBlock.contains(".buttonStyle(.bordered)"),
+            "the planned button follows its `Button(` with the bordered style"
+        )
+        XCTAssertTrue(
+            !plannedBlock.contains(".watchProminent()"),
+            "the planned button never competes with the routines"
+        )
+
+        let routineBlock = try XCTUnwrap(
+            braceBody(ofLineContaining: "ForEach(paths.routines", in: view),
+            "the routine rows are in the view"
+        )
+        XCTAssertTrue(
+            routineBlock.contains("Button(routine.name)"),
+            "the routine block still taps its own row"
+        )
+        XCTAssertTrue(
+            routineBlock.contains(".watchProminent()"),
+            "the routine rows keep their prominent style"
+        )
+    }
+
+    // MARK: - S-8965 the picker and its state
+
+    func testS8965ThePlanPickerSheetAndItsStateExist() throws {
+        let view = try engineSource("WatchStartView.swift")
+
+        XCTAssertTrue(
+            occurrences(of: ".sheet(isPresented: $pickingPlan)", in: view) == 1,
+            "one sheet presents the planned picker"
+        )
+        XCTAssertTrue(
+            occurrences(of: "@State private var pickingPlan = false", in: view) == 1,
+            "one state flag holds the planned picker"
+        )
+    }
+
+    func testS8965ThePlannedPickerShowsOnlyNames() throws {
+        let view = try engineSource("WatchStartView.swift")
+
+        let picker = try XCTUnwrap(
+            braceBody(ofLineContaining: "public struct WatchPlannedPickerView", in: view),
+            "the planned picker is in the view"
+        )
+        XCTAssertTrue(
+            occurrences(of: "Button(plan.name)", in: picker) == 1,
+            "each plan is a row named for itself"
+        )
+        XCTAssertTrue(
+            !picker.contains("Text("),
+            "the picker carries no other sentence"
+        )
+    }
+
+    // MARK: - S-8969 the copy lives in the shared enum
+
+    func testS8969ThePlannedCopyLivesInWatchStartSurfaceCopy() throws {
+        let paths = try engineSource("WatchStartPaths.swift")
+
+        XCTAssertTrue(
+            occurrences(of: "public static let plannedLabel = \"Planned\"", in: paths) == 1,
+            "the planned button's label is declared once"
+        )
+        XCTAssertTrue(
+            occurrences(of: "public static let plannedPickerTitle = \"Planned workouts\"", in: paths) == 1,
+            "the planned picker's title is declared once"
+        )
+    }
+
+    // MARK: - S-17601 the grid is the surface's first content
+
+    func testS17601TheGridStandsAboveThePlanAndTheRoutines() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let lines = sourceLines(view)
+
+        let gridIndex = try XCTUnwrap(
+            lines.firstIndex { $0.contains("WatchModalityStartGridView {") },
+            "S-17601 the grid is on the start surface"
+        )
+        let plannedIndex = try XCTUnwrap(lines.firstIndex { $0.contains("if !startablePlans.isEmpty") })
+        let emptyRoutinesIndex = try XCTUnwrap(lines.firstIndex { $0.contains("if paths.routines.isEmpty") })
+
+        XCTAssertTrue(gridIndex < plannedIndex, "S-17601 the grid stands above the planned button")
+        XCTAssertTrue(gridIndex < emptyRoutinesIndex, "S-17601 and above the routines")
+    }
+
+    func testS17601TheGridsTapStartsNothingAndOpensThePicker() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let tap = try XCTUnwrap(
+            braceBody(ofLineContaining: "private func startModality(", in: view),
+            "the cell's tap is in the view"
+        )
+
+        XCTAssertTrue(tap.contains("paths.beginModalityStart(modality)"), "S-17601 the tap remembers the modality")
+        XCTAssertTrue(tap.contains("pickingExercise = true"), "S-17601 and opens the picker")
+        XCTAssertFalse(tap.contains("startModalityWorkout"), "S-17601 and creates nothing (D-17608)")
+    }
+
+    // MARK: - S-17603 the cells wear the phone's accents at a fixed height
+
+    func testS17603EachCellWearsItsAccentAtTheFixedHeight() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let grid = try XCTUnwrap(
+            braceBody(ofLineContaining: "struct WatchModalityStartGridView: View", in: view),
+            "the grid view is in the file"
+        )
+
+        XCTAssertTrue(grid.contains("WatchModalityStart.cells"), "S-17603 the cells are the contract's table, in its order")
+        XCTAssertTrue(grid.contains("LazyVGrid("), "S-17603 four cells, two abreast")
+        XCTAssertTrue(occurrences(of: "GridItem(.flexible()", in: grid) == 2, "S-17603 in two flexible columns")
+        XCTAssertTrue(grid.contains("static let cellAspectRatio = 1.4"), "S-17603 cells 1.4 : 1 (owner call 2026-11-15: square was too big, 44 pt strips too small)")
+        XCTAssertTrue(grid.contains(".buttonStyle(.plain)"), "S-17603 the cell owns its look: no second default fill, no double edge")
+        XCTAssertTrue(occurrences(of: "RoundedRectangle(cornerRadius:", in: grid) == 1, "S-17603 one corner radius, applied once")
+        XCTAssertTrue(
+            grid.contains("WatchAccent.worn(hex: cell.hex)"),
+            "S-17603 the colour is the phone's, read through the accent machinery"
+        )
+        XCTAssertTrue(
+            grid.contains(".foregroundStyle(accent.labelColor)"),
+            "S-17603 and the label is the one that reads on that colour"
+        )
+        XCTAssertTrue(grid.contains(".font(.footnote.weight(.semibold))"), "S-17603 the short word, semibold")
+        XCTAssertTrue(grid.contains(".lineLimit(1)"), "S-17603 on one line")
+        XCTAssertFalse(grid.contains("Color(red:"), "S-17603 no colour is invented here")
+        XCTAssertFalse(grid.contains(".tint("), "S-17603 the accent comes from the cell, not the environment")
+    }
+
+    func testS17603EveryCellIsSpokenAsTheContractSays() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let grid = try XCTUnwrap(
+            braceBody(ofLineContaining: "struct WatchModalityStartGridView: View", in: view)
+        )
+
+        XCTAssertTrue(
+            grid.contains(".accessibilityLabel(WatchModalityStart.startSentence(for: cell.label))"),
+            "S-17603 the spoken sentence is the contract's, built from the cell's own label"
+        )
+    }
+
+    // MARK: - S-17612 the free workout's button is gone, its path stays
+
+    func testS17612TheFreeWorkoutButtonAndItsHelperAreGone() throws {
+        let view = try engineSource("WatchStartView.swift")
+
+        XCTAssertFalse(view.contains("Free workout"), "S-17612 the button is off the surface")
+        XCTAssertFalse(view.contains("func startFreeWorkout()"), "S-17612 and so is the helper it called")
+        XCTAssertFalse(view.contains("paths.startFreeWorkout()"), "S-17612 nothing on the surface starts one")
+    }
+
+    func testS17612ThePathsStillOfferTheFreeWorkout() throws {
+        let paths = try engineSource("WatchStartPaths.swift")
+
+        XCTAssertTrue(
+            occurrences(of: "public func startFreeWorkout() async -> WatchSessionRecord", in: paths) == 1,
+            "S-17612 the path itself stays: a plan's own start is a free workout (D-17609)"
+        )
+    }
+
+    // MARK: - S-17613 a wrist with no routines says so, grid or not
+
+    func testS17613TheEmptyRoutinesSentenceIsUnchanged() throws {
+        let view = try engineSource("WatchStartView.swift")
+
+        XCTAssertTrue(
+            view.contains("\"No routines yet. Sync with your phone to get them.\""),
+            "S-17613 the grid does not take the routines' place on a wrist that has none"
+        )
+    }
+
+    // MARK: - S-17606 a dismiss drops the start mode and creates nothing
+
+    func testS17606ThePickerOpensInTheStartModeAndADismissDropsIt() throws {
+        let view = try engineSource("WatchStartView.swift")
+
+        XCTAssertTrue(
+            view.contains("startModality: paths.pendingModalityStart"),
+            "S-17606 the picker is opened for the modality the tap remembered"
+        )
+        let dismiss = try XCTUnwrap(
+            braceBody(ofLineContaining: "private func cancelIfNothingPicked()", in: view),
+            "the sheet's dismiss handler is in the view"
+        )
+        XCTAssertTrue(dismiss.contains("paths.cancelModalityStart()"), "S-17606 a dismiss drops the start mode")
+        XCTAssertFalse(dismiss.contains("startModalityWorkout"), "S-17606 and creates nothing")
+        XCTAssertTrue(dismiss.contains("cancelEmptyFreeWorkout()"), "S-17606 plan 57's guard still runs")
+    }
+
+    // MARK: - S-17605 a start-mode pick is what creates the session
+
+    func testS17605TheStartModePickersPickIsWhatCreatesTheSession() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let picker = try XCTUnwrap(
+            braceBody(ofLineContaining: "public struct WatchExercisePickerView: View", in: view)
+        )
+        let select = try XCTUnwrap(
+            braceBody(ofLineContaining: "private func select(_ row: WatchExercisePickerRow)", in: picker)
+        )
+
+        XCTAssertTrue(
+            select.contains("paths.startModalityWorkout(startModality, with: exercise)"),
+            "S-17605 a pick in a start mode starts the session carrying that modality"
+        )
+        XCTAssertTrue(
+            select.contains("paths.selectExercise(row)"),
+            "S-17605 and a picker opened over a live session still only fills it"
+        )
+    }
+
+    // MARK: - S-22305 the start screen sits in a titleless stack (plan 223, D-22310)
+
+    /// The body's scroll content is wrapped in a `NavigationStack` with no title,
+    /// and the revision hook stays attached to the stack, outside its braces
+    /// (D-22310). A source scan, like the other guards here.
+    func testS22305TheStartScreenSitsInATitlelessStack() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let start = try XCTUnwrap(
+            braceBody(ofLineContaining: "public struct WatchStartView: View", in: view),
+            "the start surface is in the file"
+        )
+        let body = try XCTUnwrap(
+            braceBody(ofLineContaining: "public var body: some View {", in: start),
+            "the start surface's body is in the view"
+        )
+
+        let lines = sourceLines(body)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        XCTAssertEqual(lines[1], "NavigationStack {", "S-22305 the body opens with a stack")
+        XCTAssertEqual(lines[2], "ScrollView {", "S-22305 and the stack's first content is the scroll")
+        XCTAssertFalse(
+            lines.contains { $0.hasPrefix(".navigationTitle(") },
+            "S-22305 no title text appears on the Start screen (D-22303)"
+        )
+
+        let stackOpen = try XCTUnwrap(lines.firstIndex { $0 == "NavigationStack {" })
+        var depth = 0
+        var stackClose: Int?
+        for (offset, line) in lines[stackOpen...].enumerated() {
+            depth += line.filter { $0 == "{" }.count
+            depth -= line.filter { $0 == "}" }.count
+            if depth == 0, offset > 0 { stackClose = stackOpen + offset; break }
+        }
+        let onChange = try XCTUnwrap(
+            lines.firstIndex { $0 == ".onChange(of: revision) { _ in routineNotice = nil }" },
+            "S-22305 the body still re-reads on the host's revision bump (D-8969)"
+        )
+        let close = try XCTUnwrap(stackClose, "S-22305 the stack closes inside the body")
+        XCTAssertGreaterThan(onChange, close, "S-22305 the revision hook sits after the stack's closing brace")
+    }
+
+    // MARK: - S-22309 the tile labels keep their sides (plan 223, D-22312)
+
+    /// The label carries a named side inset between its text and its frame, keeps
+    /// one line at a lower scale floor, and the cell's ratio is unchanged
+    /// (D-22312). A source scan, like the other guards here.
+    func testS22309TheTileLabelsKeepTheirSides() throws {
+        let view = try engineSource("WatchStartView.swift")
+        let grid = try XCTUnwrap(
+            braceBody(ofLineContaining: "struct WatchModalityStartGridView: View", in: view),
+            "the grid view is in the file"
+        )
+
+        let gridLines = sourceLines(grid).map { $0.trimmingCharacters(in: .whitespaces) }
+        XCTAssertTrue(gridLines.contains("static let labelSideInset = 6.0"), "S-22309 the side inset is one named constant")
+        XCTAssertTrue(gridLines.contains("static let cellAspectRatio = 1.4"), "S-22309 the cells stay 1.4 : 1 (owner call 2026-11-15)")
+        XCTAssertFalse(
+            grid.contains(".minimumScaleFactor(0.8)"),
+            "S-22309 the old scale floor is gone from the grid"
+        )
+
+        let body = try XCTUnwrap(
+            braceBody(ofLineContaining: "var body: some View {", in: grid),
+            "the grid's body is in the view"
+        )
+        let bodyLines = sourceLines(body).map { $0.trimmingCharacters(in: .whitespaces) }
+        let scale = bodyLines.firstIndex { $0 == ".minimumScaleFactor(0.6)" }
+        let colour = bodyLines.firstIndex { $0 == ".foregroundStyle(accent.labelColor)" }
+        let inset = bodyLines.firstIndex { $0 == ".padding(.horizontal, Self.labelSideInset)" }
+        let frame = bodyLines.firstIndex { $0 == ".frame(maxWidth: .infinity, maxHeight: .infinity)" }
+        XCTAssertNotNil(scale, "S-22309 the label shrinks before it would wrap")
+        XCTAssertNotNil(colour, "S-22309 the label keeps its accent")
+        XCTAssertNotNil(inset, "S-22309 the label keeps its named side inset")
+        XCTAssertNotNil(frame, "S-22309 the frame still fills the cell")
+        XCTAssertTrue(bodyLines.contains(".lineLimit(1)"), "S-22309 the label stays on one line")
+        if let scale, let colour, let inset, let frame {
+            XCTAssertTrue(scale < colour, "S-22309 the floor sits before the colour")
+            XCTAssertTrue(colour < inset, "S-22309 the inset sits between the colour and the frame (D-22312)")
+            XCTAssertTrue(inset < frame, "S-22309 the frame is the chain's last word")
+        }
+    }
+}

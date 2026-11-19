@@ -153,7 +153,14 @@ void main() {
               .whereType<File>()
               .map((file) => file.path.substring(fixturesRoot.length))
               .where(
-                (path) => path != 'manifest.json' && path.endsWith('.json'),
+                (path) =>
+                    path != 'manifest.json' &&
+                    path.endsWith('.json') &&
+                    // The replay corpus (plan 152) is a different kind of
+                    // file: recordings, not conformance fixtures. It has its
+                    // own manifest, and `test/watch_replay_corpus_test.dart`
+                    // checks it against its directory (S-15204).
+                    !path.startsWith('replay/'),
               )
               .toList()
             ..sort();
@@ -242,6 +249,83 @@ void main() {
         );
       });
     }
+  });
+
+  group('S-3808 a batch carries at most one hundred exercises', () {
+    test('a batch of 101 exercises is refused by maxItems', () {
+      final fixture = _readJson('fixtures/valid/exercises_down.json');
+      final message = {
+        ...fixture,
+        'payload': {
+          ..._payloadOf(fixture),
+          'totalCount': 101,
+          'batchCount': 2,
+          'exercises': [
+            for (var index = 0; index < 101; index++)
+              {
+                'exerciseId': 'ex-batch-$index',
+                'name': 'Batch exercise $index',
+                'capabilities': <String>['sets', 'reps', 'load'],
+              },
+          ],
+        },
+      };
+
+      final rejections = _validator.validateEnvelope(message);
+
+      expect(
+        rejections.map((r) => r.toString()).toList(),
+        hasLength(1),
+        reason: 'only the batch size is wrong',
+      );
+      expect(rejections.single.code, 'constraint_violation');
+      expect(rejections.single.message, 'expected at most 100 items, found 101');
+    });
+
+    test('a 65-character catalogVersion is refused by maxLength', () {
+      final fixture = _readJson('fixtures/valid/exercises_down.json');
+      final message = {
+        ...fixture,
+        'payload': {
+          ..._payloadOf(fixture),
+          'catalogVersion': List.filled(65, 'a').join(),
+        },
+      };
+
+      final rejections = _validator.validateEnvelope(message);
+
+      expect(
+        rejections.map((r) => r.toString()).toList(),
+        hasLength(1),
+        reason: 'only the version length is wrong',
+      );
+      expect(rejections.single.code, 'constraint_violation');
+      expect(
+        rejections.single.message,
+        'expected at most 64 characters, found 65',
+      );
+    });
+  });
+
+  test('S-3834 an empty fallback with routines still fails coverage (D-3812)', () {
+    final fixture = _readJson('fixtures/valid/routines_down.json');
+    final message = {
+      ...fixture,
+      'payload': {
+        ..._payloadOf(fixture),
+        'fallbackExercises': <Object?>[],
+      },
+    };
+
+    final rejections = _validator.validateEnvelope(message);
+
+    expect(
+      rejections.map((r) => r.toString()).toList(),
+      hasLength(1),
+      reason: 'the relax must not open a coverage hole',
+    );
+    expect(rejections.single.code, 'semantic_violation');
+    expect(rejections.single.path, r'$.payload.fallbackExercises');
   });
 
   group('S-165 the wire refuses a rest length', () {
@@ -737,7 +821,10 @@ void main() {
 
       for (final statement in const [
         'Lifecycle messages are applied in the order received',
-        'the most recent status wins',
+        // Re-pointed 2026-11-11 (plan 146, "Ended is final"): the rule that
+        // replaced "the most recent status wins".
+        'The first ending of a session is final',
+        'MUST NOT return to `active`',
       ]) {
         expect(spec, contains(statement));
       }

@@ -55,11 +55,15 @@ before committing.
 | `imageBytes` | `Uint8List` | Encoded image bytes (JPEG, PNG, HEIC — anything `Image.memory` decodes). Read once at construction. |
 
 **Behavior**:
-- Square viewport via `AspectRatio(aspectRatio: 1.0)` capped at
-  `min(screenW - 32, 360)`. Wrapped in a `RepaintBoundary` whose
+- Square viewport via `AspectRatio` capped at the
+  smaller of the surface width minus horizontal padding and a fixed
+  maximum (inline literals in
+  `lib/features/profile/widgets/avatar_crop_sheet.dart` — no token).
+  Wrapped in a `RepaintBoundary` whose
   `key` is `@visibleForTesting` so tests can drive the capture
   pipeline.
-- `InteractiveViewer` (`minScale: 1.0`, `maxScale: 4.0`) lets the
+- `InteractiveViewer` (zoom bounded between the cover-fit scale and a
+  fixed maximum, inline literals in the same file) lets the
   user pan / zoom inside the square. A `TransformationController`
   is exposed via `@visibleForTesting` so tests can drive a
   deliberately off-center / zoomed crop.
@@ -75,7 +79,8 @@ before committing.
   with the same height. The Use Photo button shows a
   `CircularProgressIndicator` while the capture is in flight
   (`_isSaving = true`) and is disabled to prevent double-tap.
-- On Use Photo: `RepaintBoundary.toImage(pixelRatio: 3.0)` →
+- On Use Photo: `RepaintBoundary.toImage(pixelRatio: _capturePixelRatio)`
+  (the file's own private constant) →
   `image.toByteData(format: ui.ImageByteFormat.png)` →
   `Navigator.pop(context, bytes)`. Cancel pops with `null`.
 - Capture pipeline runs in the test zone's fake async clock;
@@ -133,13 +138,18 @@ without enlarging the mark itself.
 
 **File**: `lib/widgets/logo/animated_zen_halo.dart`
 
-Animated brand mark with slow rotation (8000ms) and breathing pulse (3000ms). Used on the splash screen.
+Animated brand mark with slow rotation and breathing pulse; the
+durations are `OmniTheme.rotationDuration` and
+`OmniTheme.breathingDuration` in `lib/core/constants/omni_theme.dart`.
+Rendered by the splash screen (`lib/features/splash/omni_splash_screen.dart`).
 
 ### `ZenHaloPainter`
 
 **File**: `lib/widgets/logo/zen_halo_painter.dart`
 
-`CustomPainter` for the Enso arc (zen circle). Stroke reveal animation at 1200ms.
+`CustomPainter` for the Enso arc (zen circle). Stroke reveal animation
+driven by `OmniTheme.strokeDrawDuration` in
+`lib/core/constants/omni_theme.dart`.
 
 ---
 

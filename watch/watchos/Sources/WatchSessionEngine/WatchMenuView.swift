@@ -2,21 +2,25 @@
 //  WatchMenuView.swift
 //  WatchSessionEngine
 //
-//  The native watchOS session menu: the session's own exercises to jump to, then
-//  Finish. Compiled only into a watch target, like the other views in this
-//  module; the model it reads is `WatchMenuState` (`WatchMenu.swift`), which the
-//  suite covers.
+//  The native watchOS session menu: the session's own exercises to jump to, an
+//  Add Exercise row that opens the wrist's own list, then End Session, then
+//  Discard Session. Food is logged from the start screen only, not while a
+//  session is running. Compiled only into a watch target, like the other views
+//  in this module; the model it reads is `WatchMenuState` (`WatchMenu.swift`),
+//  which the suite covers.
 //
-//  The menu never edits, adds or deletes anything: a row is the engine's existing
-//  select path, and Finish is the rating state's `end()`. Exercises are added on
-//  the phone. It carries no rest control and mints no ids.
+//  The menu shows the session as it is and adds only through the end of the
+//  ladder: a row is the engine's existing select path, Add Exercise appends the
+//  picked exercise last, End Session asks first, then is the rating state's
+//  `end()`, and Discard Session asks first, then throws the session away. It
+//  carries no rest control, deletes nothing and mints no ids.
 //
 
 #if os(watchOS)
 
 import SwiftUI
 
-/// The session menu: one row per exercise on the ladder, then Finish.
+/// The session menu: one row per exercise on the ladder, then End Session.
 public struct WatchMenuView: View {
     private let state: WatchMenuState
 
@@ -28,33 +32,98 @@ public struct WatchMenuView: View {
     private let onClose: () -> Void
     private let onFinish: () -> Void
 
+    /// The shell's own dismissal for a session the user threw away, handed over
+    /// as Close's and Finish's are: the discard ends the session, and the sheet
+    /// closes on the status change it already observes (plan 171 D-17102).
+    private let onDiscard: () -> Void
+
+    /// The wrist's "N entries waiting for your phone" line, or nil (plan 51d).
+    private let syncNotice: String?
+
+    /// The wrist's haptics, handed over or defaulted to the device: the Finish
+    /// tap confirms the choice before the rating prompt takes the screen
+    /// (plan 82 D-8).
+    private let haptics: WatchHaptics
+
     /// The screen's title, and the fixed copy of its one action row (D-1114).
     public static let title = "Exercises"
-    public static let finishLabel = "Finish"
+    public static let finishLabel = WatchMenuCopy.finishLabel
 
     /// The one line the menu shows while a work clock is running, so the inert
     /// rows say why they are inert (D-1309).
     public static let lockCaptionText = "An effort is running"
 
     /// Wrist-scale inset, as the other wrist surfaces use.
-    private static let surfaceInset = 4.0
+    fileprivate static let surfaceInset = 4.0
+
+    /// The gap that sets a group of buttons apart from the separator line: the
+    /// same value above and below it here, and on the start screen (the Sync
+    /// separator and the groups above it).
+    fileprivate static let sectionGap = 10.0
+
+    /// Set by the action row and read by the menu's body, which shows the
+    /// Finish question in place of the menu (D-22309): `state.finish()` runs
+    /// only on the question's Finish (D-3402).
+    @State private var confirmingFinish = false
+
+    /// Set by the Discard row and by an End on an empty session, and read by
+    /// the menu's body, which shows the Discard question in place of the menu
+    /// (D-22309): a discard is the one ending that cannot be undone, so it
+    /// asks first (D-17104).
+    @State private var confirmingDiscard = false
+
+    /// How many exercises this menu has added. The rows come from a plain class
+    /// that publishes nothing, and the ladder changes with no `revision` of its
+    /// own, so the body re-runs only because this value changed (D-3608).
+    @State private var addedCount = 0
 
     public init(
         state: WatchMenuState,
         revision: Int = 0,
+        syncNotice: String? = nil,
+        haptics: WatchHaptics = WristHaptics(),
         onClose: @escaping () -> Void,
-        onFinish: @escaping () -> Void
+        onFinish: @escaping () -> Void,
+        onDiscard: @escaping () -> Void
     ) {
         self.state = state
         self.revision = revision
+        self.syncNotice = syncNotice
+        self.haptics = haptics
         self.onClose = onClose
         self.onFinish = onFinish
+        self.onDiscard = onDiscard
     }
 
+    /// The menu, or the question one of its endings asked, on the sheet's own
+    /// solid screen (plan 223, D-22309): the question replaces the menu inside
+    /// the menu sheet, so the shell's closes on a session end or an owed rating
+    /// take it down with the sheet, and nothing behind it shows through.
     public var body: some View {
+        Group {
+            if confirmingFinish {
+                finishQuestion
+            } else if confirmingDiscard {
+                discardQuestion
+            } else {
+                menu
+            }
+        }
+        .solidSheetBackground()
+    }
+
+    /// The rows, Add Exercise, End Session and Discard Session.
+    private var menu: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Self.surfaceInset) {
+                    if let syncNotice {
+                        Text(syncNotice)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
                     if state.isLocked {
                         lockCaption
                     }
@@ -62,8 +131,23 @@ public struct WatchMenuView: View {
                     ForEach(state.rows, id: \.slotId) { row in
                         rowButton(row)
                     }
+                    // An add the user just made shows up only because this
+                    // identity moved. The rows themselves are read fresh from
+                    // the state on every body run.
+                    .id(addedCount)
 
-                    finishRow
+                    Divider()
+                        .padding(.top, Self.sectionGap)
+
+                    addExerciseRow
+                        .padding(.top, Self.sectionGap)
+
+                    // Plan 223, D-22313: the two endings stand a section gap
+                    // apart, Discard last.
+                    VStack(spacing: Self.sectionGap) {
+                        finishRow
+                        discardRow
+                    }
                 }
                 .padding(Self.surfaceInset)
             }
@@ -84,7 +168,7 @@ public struct WatchMenuView: View {
         }
 
         if row.isCurrent {
-            button.buttonStyle(.borderedProminent).disabled(state.isLocked)
+            button.watchProminent().disabled(state.isLocked)
         } else {
             button.buttonStyle(.bordered).disabled(state.isLocked)
         }
@@ -104,25 +188,178 @@ public struct WatchMenuView: View {
     private func rowLabel(_ row: WatchMenuRow) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(row.name)
+                .frame(maxWidth: .infinity, alignment: .leading)
             if let countLabel = row.countLabel {
                 Text(countLabel)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        // A wrapped name and its count line both start on the row's leading
+        // edge, so a two-line name is not centred and "N logged" sits under
+        // the title's own edge.
+        .multilineTextAlignment(.leading)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // VoiceOver reads the row as one element: "name, count" (plan 84, D-3).
+        .accessibilityElement(children: .combine)
     }
 
-    /// Finish ends the session through the rating state, so the owed prompt and
-    /// the finish stay one implementation, and then hands the surface back.
-    private var finishRow: some View {
-        Button(Self.finishLabel) {
-            Task {
-                await state.finish()
-                onFinish()
-            }
+    /// The Add Exercise row: it opens the wrist's own list, and it sits below
+    /// the divider, above End Session. Never disabled — adding moves nothing
+    /// the running effort logs (D-3607).
+    private var addExerciseRow: some View {
+        NavigationLink {
+            WatchAddExerciseList(state: state) { addedCount += 1 }
+        } label: {
+            Text(WatchMenuCopy.addExerciseLabel)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
         .buttonStyle(.bordered)
+    }
+
+    /// End Session ends the session through the rating state, so the owed prompt
+    /// and the finish stay one implementation, and then hands the surface back.
+    /// Tapping it only raises the question (`finishQuestion`): Cancel changes
+    /// nothing, and the rating state's `end()` runs on the question's Finish
+    /// alone (D-3402).
+    ///
+    /// A session with nothing logged raises the discard's question instead
+    /// (D-17105): an empty End is a discard, so the user confirms the ending
+    /// they are actually about to make.
+    private var finishRow: some View {
+        Button(Self.finishLabel) {
+            if state.hasWorkToSave {
+                confirmingFinish = true
+            } else {
+                confirmingDiscard = true
+            }
+        }
+        .watchProminent()
+    }
+
+    /// Discard Session throws the session away: the question it raises
+    /// (`discardQuestion`) speaks the phone's own words, its destructive button
+    /// runs the model's discard, and nothing plays — a discard is not a
+    /// completion (D-17104).
+    ///
+    /// Never disabled, unlike the rows: a session the user cannot finish is
+    /// exactly the one they need a way out of (D-17103).
+    private var discardRow: some View {
+        Button(WatchMenuCopy.discardLabel) {
+            confirmingDiscard = true
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
+    }
+
+    /// The Finish question (D-3402, D-22309): the phone's own words, Finish in
+    /// the theme colour and never destructive, then Cancel, which only puts the
+    /// menu back.
+    private var finishQuestion: some View {
+        WatchMenuConfirmationView(
+            title: WatchMenuCopy.confirmTitle,
+            message: WatchMenuCopy.confirmBody
+        ) {
+            Button(WatchMenuCopy.confirmFinish) {
+                Task {
+                    haptics.playFinished()
+                    await state.finish()
+                    onFinish()
+                }
+            }
+            .watchProminent()
+            Button(WatchMenuCopy.confirmCancel, role: .cancel) {
+                confirmingFinish = false
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    /// The Discard question (D-17104, D-22309): the phone's own words, a
+    /// destructive Discard that runs the model's discard with no haptic, then
+    /// Cancel, which only puts the menu back.
+    private var discardQuestion: some View {
+        WatchMenuConfirmationView(
+            title: WatchMenuCopy.discardConfirmTitle,
+            message: WatchMenuCopy.discardConfirmBody
+        ) {
+            Button(WatchMenuCopy.discardConfirmDiscard, role: .destructive) {
+                Task {
+                    await state.discard()
+                    onDiscard()
+                }
+            }
+            .buttonStyle(.bordered)
+            Button(WatchMenuCopy.discardConfirmCancel, role: .cancel) {
+                confirmingDiscard = false
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+}
+
+/// A question one of the menu's endings asks, on a screen of its own (plan 223,
+/// D-22309): the title, the message, then the answers in the order the caller
+/// gives them. It sits in a stack of its own so the clock keeps its corner.
+private struct WatchMenuConfirmationView<Answers: View>: View {
+    let title: String
+    let message: String
+    @ViewBuilder let answers: () -> Answers
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: WatchMenuView.surfaceInset) {
+                    Text(title)
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    answers()
+                        .padding(.top, WatchMenuView.sectionGap)
+                }
+                .padding(WatchMenuView.surfaceInset)
+            }
+        }
+    }
+}
+
+/// The Add Exercise list: the exercises the phone sent down, A to Z, pushed
+/// inside the menu's own `NavigationStack`, so the system back button returns to
+/// the menu (D-3608).
+///
+/// A tap adds the exercise at the end of the ladder and pops back itself; the
+/// menu's `addedCount` bump is what makes the new last row appear.
+private struct WatchAddExerciseList: View {
+    private let state: WatchMenuState
+    private let onAdded: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    init(state: WatchMenuState, onAdded: @escaping () -> Void) {
+        self.state = state
+        self.onAdded = onAdded
+    }
+
+    var body: some View {
+        WatchExerciseGroupList(
+            leading: [],
+            groups: state.addExerciseGroups,
+            emptyText: WatchMenuCopy.addExerciseEmpty,
+            onPickLeading: { _, _ in },
+            onPick: { exercise in
+                Task {
+                    await state.addExercise(exercise)
+                    onAdded()
+                    dismiss()
+                }
+            }
+        )
+        .navigationTitle(WatchMenuCopy.addExerciseTitle)
     }
 }
 

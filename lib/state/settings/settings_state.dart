@@ -6,6 +6,20 @@ import '../../core/services/health_platform_service.dart';
 import '../../core/services/preferences_service.dart';
 import '../../data/repositories/workout_repository.dart';
 
+/// The number controls of the logger that carry a `tap to type` hint. Each
+/// kind is learned once, across every exercise, set and session.
+enum TapHintControl {
+  reps('hint_seen_tap_to_type_reps'),
+  weight('hint_seen_tap_to_type_weight'),
+  roundLength('hint_seen_tap_to_type_round_length'),
+  elapsed('hint_seen_tap_to_type_elapsed');
+
+  const TapHintControl(this.preferenceKey);
+
+  /// The preference key the learned flag is stored under.
+  final String preferenceKey;
+}
+
 class SettingsState extends ChangeNotifier {
   static const String _themeKey = 'app_theme';
   static const String _preferredWeightUnitKey = 'preferred_weight_unit';
@@ -56,11 +70,18 @@ class SettingsState extends ChangeNotifier {
   /// honest answer when no health store is reachable.
   final HealthPlatformService? _healthPlatform;
 
+  /// Source for the daily active-energy read (Apple Health / Health
+  /// Connect). Null (tests, unsupported platforms) resolves every enable
+  /// attempt to denied and every read to `{}`.
+  final HealthActiveEnergySource? _activeEnergySource;
+
   SettingsState(
     this._repository,
     this._preferencesService, {
     HealthPlatformService? healthPlatform,
-  }) : _healthPlatform = healthPlatform;
+    HealthActiveEnergySource? activeEnergySource,
+  }) : _healthPlatform = healthPlatform,
+       _activeEnergySource = activeEnergySource;
 
   AppTheme _appTheme = AppTheme.abyssalNeon;
   String _preferredWeightUnit = 'kg';
@@ -74,6 +95,8 @@ class SettingsState extends ChangeNotifier {
   bool _notificationPermissionAsked = false;
   HealthToggleState _healthWriteWorkouts = HealthToggleState.off;
   HealthToggleState _healthReadBodyWeight = HealthToggleState.off;
+  HealthToggleState _healthReadActiveEnergy = HealthToggleState.off;
+  final Set<TapHintControl> _learnedTapHints = {};
 
   AppTheme get appTheme => _appTheme;
   String get preferredWeightUnit => _preferredWeightUnit;
@@ -87,7 +110,19 @@ class SettingsState extends ChangeNotifier {
   bool get notificationPermissionAsked => _notificationPermissionAsked;
   HealthToggleState get healthWriteWorkouts => _healthWriteWorkouts;
   HealthToggleState get healthReadBodyWeight => _healthReadBodyWeight;
+  HealthToggleState get healthReadActiveEnergy => _healthReadActiveEnergy;
   bool get showHubLabel => _hubOpenCount < 2;
+
+  /// Whether the user has already tapped this kind of number to type.
+  bool isTapHintLearned(TapHintControl control) =>
+      _learnedTapHints.contains(control);
+
+  /// Remembers that the user tapped this kind of number; the hint stays gone.
+  Future<void> markTapHintLearned(TapHintControl control) async {
+    if (!_learnedTapHints.add(control)) return;
+    notifyListeners();
+    await _repository.setPreferenceBool(control.preferenceKey, true);
+  }
 
   Future<void> initialize() async {
     await _loadFromPrefs();
@@ -236,6 +271,34 @@ class SettingsState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Enables or disables reading daily active energy from the platform health
+  /// store for the Stats Fuel card's "Burned per day" line (plan 208 D-9).
+  Future<void> setHealthReadActiveEnergyEnabled(bool enabled) async {
+    _healthReadActiveEnergy = await _resolveHealthToggle(
+      enabled,
+      () =>
+          _activeEnergySource?.requestActiveEnergyReadPermission() ??
+          Future.value(false),
+    );
+    await _repository.setPreferenceString(
+      HealthPrefs.readActiveEnergyKey,
+      healthToggleStateValue(_healthReadActiveEnergy),
+    );
+    notifyListeners();
+  }
+
+  /// The user's active energy per local day, read fresh from the platform
+  /// health store; `{}` unless the switch is on and a source exists (D-13).
+  Future<Map<int, double>> readDailyActiveEnergy(
+    List<DateTime> dayStarts,
+  ) async {
+    final source = _activeEnergySource;
+    if (_healthReadActiveEnergy != HealthToggleState.on || source == null) {
+      return const {};
+    }
+    return source.readDailyActiveEnergy(dayStarts);
+  }
+
   Future<HealthToggleState> _resolveHealthToggle(
     bool enabled,
     Future<bool> Function() requestPermission,
@@ -364,6 +427,16 @@ class SettingsState extends ChangeNotifier {
     _healthReadBodyWeight = parseHealthToggleState(
       await _repository.getPreferenceString(HealthPrefs.readBodyWeightKey),
     );
+    _healthReadActiveEnergy = parseHealthToggleState(
+      await _repository.getPreferenceString(HealthPrefs.readActiveEnergyKey),
+    );
+
+    _learnedTapHints.clear();
+    for (final control in TapHintControl.values) {
+      if (await _repository.getPreferenceBool(control.preferenceKey)) {
+        _learnedTapHints.add(control);
+      }
+    }
 
     notifyListeners();
   }

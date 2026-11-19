@@ -271,6 +271,11 @@ FROM app_sport_category c
 WHERE c.key='resistance_lifting' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='calisthenics');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), c.id, 'conditioning', 'Conditioning', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_sport_category c
+WHERE c.key='resistance_lifting' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='conditioning');
+
+INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'soccer', 'Soccer', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
 WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='soccer');
@@ -353,6 +358,14 @@ INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
 VALUES (lower(hex(randomblob(16))), 'Heavy Bag', (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
 VALUES (lower(hex(randomblob(16))), 'Body Weight', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
+VALUES (lower(hex(randomblob(16))), 'Cable Machine', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
+VALUES (lower(hex(randomblob(16))), 'Machine', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
+VALUES (lower(hex(randomblob(16))), 'Trap Bar', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_equipment (id, name, created_at_ms)
+VALUES (lower(hex(randomblob(16))), 'Sled', (strftime('%s','now') * 1000));
 
 -- Tags
 INSERT OR IGNORE INTO app_tag (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Legs', (strftime('%s','now') * 1000));
@@ -363,16 +376,35 @@ INSERT OR IGNORE INTO app_tag (id, name, created_at_ms) VALUES (lower(hex(random
 INSERT OR IGNORE INTO app_tag (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Stretching', (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_tag (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Full Body', (strftime('%s','now') * 1000));
 
--- Muscle Groups
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Chest', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Back', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Shoulders', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Biceps', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Triceps', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Quadriceps', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Hamstrings', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Glutes', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Core', (strftime('%s','now') * 1000));
+-- Muscle Groups: regions and standalone entries first (no parent), then each
+-- muscle with its region as parent.
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Arms', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Legs', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Back', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Shoulders', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Core', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Chest', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Neck', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Biceps', (SELECT id FROM app_muscle_group WHERE name = 'Arms'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Triceps', (SELECT id FROM app_muscle_group WHERE name = 'Arms'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Forearms', (SELECT id FROM app_muscle_group WHERE name = 'Arms'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Brachialis', (SELECT id FROM app_muscle_group WHERE name = 'Arms'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Quadriceps', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Hamstrings', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Glutes', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Calves', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Shins', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Adductors', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Abductors', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Lats', (SELECT id FROM app_muscle_group WHERE name = 'Back'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Traps', (SELECT id FROM app_muscle_group WHERE name = 'Back'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Lower back', (SELECT id FROM app_muscle_group WHERE name = 'Back'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Front delts', (SELECT id FROM app_muscle_group WHERE name = 'Shoulders'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Side delts', (SELECT id FROM app_muscle_group WHERE name = 'Shoulders'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Rear delts', (SELECT id FROM app_muscle_group WHERE name = 'Shoulders'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Rotator cuff', (SELECT id FROM app_muscle_group WHERE name = 'Shoulders'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Abs', (SELECT id FROM app_muscle_group WHERE name = 'Core'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Obliques', (SELECT id FROM app_muscle_group WHERE name = 'Core'), (strftime('%s','now') * 1000));
 
 -- Default shared exercises (owner_user_id IS NULL)
 INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
@@ -1974,10 +2006,6 @@ JOIN (
     'Classic hip-flexor stretch in a half-kneeling position, shifting the hips forward over the front foot.',
     json_array('Half-kneeling, front foot flat, rear knee on a pad.','Tuck the pelvis and squeeze the rear glute before shifting forward.','Don''t just push the hips forward — the stretch comes from the posterior pelvic tilt.')
   UNION ALL
-  SELECT 'Pigeon Pose',
-    'Deep stretch for the glutes, piriformis, and outer hip, with the front leg folded under the torso and the rear leg extended straight back.',
-    json_array('Front shin angled across the body, rear leg extended straight back with the top of the foot down.','Square the hips as much as possible — use a block under the front-side hip if it floats.','Walk the hands forward to deepen; keep the breath steady.')
-  UNION ALL
   SELECT 'Seated Piriformis Stretch (Figure-4)',
     'Seated stretch for the piriformis and deep hip rotators, crossing one ankle over the opposite knee and folding forward.',
     json_array('Cross the ankle over the opposite knee, foot flexed to protect the knee.','Hinge from the hips and fold forward.','If the knee of the crossed leg sits high, support it with a cushion rather than forcing it down.')
@@ -2005,10 +2033,6 @@ JOIN (
   SELECT 'Soleus Stretch (Bent-Knee Calf Stretch)',
     'Variant of the calf stretch targeting the soleus, performed with the rear knee bent rather than straight.',
     json_array('Same setup as a calf stretch, but bend the rear knee.','Keep the rear heel planted.','Sink straight down into the rear ankle.')
-  UNION ALL
-  SELECT 'Child''s Pose',
-    'Kneeling rest position with hips sitting back onto the heels and arms extended forward. Gentle stretch for the low back, lats, and shoulders.',
-    json_array('Knees wide, big toes together, hips sinking back to the heels.','Reach the arms long in front, chest heavy toward the floor.','Breathe into the low back.')
   UNION ALL
   SELECT '90/90 Hip Hold',
     'Seated hold with both hips at 90 degrees — front leg bent in front, rear leg bent to the side. Stretches internal rotation of the front hip and external rotation of the rear.',
@@ -2039,6 +2063,25 @@ JOIN (
     json_array('Sit tall, soles of the feet together, hands on the ankles.','Let the knees drop under their own weight — don''t force them down.','Hinge forward from the hips to deepen, keeping the back long.')
 ) e
 WHERE d.key='stretching'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
+-- Yoga poses — the two rows this catalog keeps under the Yoga discipline.
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_discipline d
+JOIN (
+  SELECT 'Pigeon Pose' AS name,
+    'Deep stretch for the glutes, piriformis, and outer hip, with the front leg folded under the torso and the rear leg extended straight back.' AS description,
+    json_array('Front shin angled across the body, rear leg extended straight back with the top of the foot down.','Square the hips as much as possible — use a block under the front-side hip if it floats.','Walk the hands forward to deepen; keep the breath steady.') AS how_to_steps
+  UNION ALL
+  SELECT 'Child''s Pose',
+    'Kneeling rest position with hips sitting back onto the heels and arms extended forward. Gentle stretch for the low back, lats, and shoulders.',
+    json_array('Knees wide, big toes together, hips sinking back to the heels.','Reach the arms long in front, chest heavy toward the floor.','Breathe into the low back.')
+) e
+WHERE d.key='yoga'
 AND NOT EXISTS (
   SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
 );

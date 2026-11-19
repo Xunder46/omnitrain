@@ -294,6 +294,17 @@
           "steps": 3200
         },
         {
+          "entryId": "rec-6-rest",
+          "eventId": "rec-6-rest",
+          "kind": "rest",
+          "loggedAt": "2026-09-25T10:25:00.000Z",
+          "sessionExerciseId": "sx-run",
+          "exerciseId": "ex-run",
+          "startedAt": "2026-09-25T10:20:00.000Z",
+          "endedAt": "2026-09-25T10:25:00.000Z",
+          "afterEntryId": "e-run"
+        },
+        {
           "entryId": "e-r1",
           "eventId": "e-r1",
           "kind": "round",
@@ -334,6 +345,17 @@
           "maxHeartRateBpm": 165
         },
         {
+          "entryId": "rec-21-rest",
+          "eventId": "rec-21-rest",
+          "kind": "rest",
+          "loggedAt": "2026-09-25T10:45:00.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:42:10.000Z",
+          "endedAt": "2026-09-25T10:45:00.000Z",
+          "afterEntryId": "e-r3"
+        },
+        {
           "entryId": "e-set1",
           "eventId": "e-set1",
           "kind": "set",
@@ -344,8 +366,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-15-rest",
-          "eventId": "rec-15-rest",
+          "entryId": "rec-23-rest",
+          "eventId": "rec-23-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:48:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -365,8 +387,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-17-rest",
-          "eventId": "rec-17-rest",
+          "entryId": "rec-25-rest",
+          "eventId": "rec-25-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:51:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -386,8 +408,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-19-rest",
-          "eventId": "rec-19-rest",
+          "entryId": "rec-27-rest",
+          "eventId": "rec-27-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:55:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -574,15 +596,17 @@
         ],
         "receiptedEntryIds": [
           "e-run",
+          "rec-6-rest",
           "e-r1",
           "e-r2",
           "e-r3",
+          "rec-21-rest",
           "e-set1",
-          "rec-15-rest",
+          "rec-23-rest",
           "e-set2",
-          "rec-17-rest",
+          "rec-25-rest",
           "e-set3",
-          "rec-19-rest",
+          "rec-27-rest",
           "end-s-cap-1",
           "rating-s-cap-1"
         ]
@@ -593,7 +617,7 @@
         "e-r2": "The period's countdown starts at 10:30:00, planned 300 s, and is paused over [10:32:00, 10:34:00), so it completes at 10:37:00; logged at 10:37:05, the window is 10:30:00-10:37:00 and pausedMs is 120000. HR: 150 (10:31:00), 180 (10:36:00), so avg 165, max 180. The 100 at 10:33:00 falls inside the pause and is excluded; including it would give 143.33.",
         "e-r3": "The period's countdown starts at 10:37:05, planned 300 s, and completes at 10:42:05; logged at 10:42:10, the window is 10:37:05-10:42:05. HR: 145 (10:37:05, window start inclusive; the sample is applied before e-r2's log at the same instant), 165 (10:40:00), so avg 155, max 165. The 175 at 10:42:08 is after the window end.",
         "e-set1, e-set2, e-set3": "Set events never carry heart rate. Each is 5 reps x 80 kg.",
-        "rec-15-rest, rec-17-rest, rec-19-rest": "Every completed rest is its own event (D-219, D-224): the follow-on rest timer a set's log starts, ended by the next log (rec-15-rest 10:45:00-10:48:00, rec-17-rest 10:48:00-10:51:00) or by the finish (rec-19-rest 10:51:00-10:55:00). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221).",
+        "rec-6-rest, rec-21-rest, rec-23-rest, rec-25-rest, rec-27-rest": "Every logged effort starts a rest (D-3501, D-219, D-224): the follow-on rest timer that effort's log starts, ended by the next log or by the finish. The BJJ period's Start ends e-run's rest at 10:25:00, so rec-6-rest covers 10:20:00-10:25:00, and e-set1's log ends e-r3's rest at 10:45:00, so rec-21-rest covers 10:42:10-10:45:00. The set logs give rec-23-rest 10:45:00-10:48:00, rec-25-rest 10:48:00-10:51:00 and rec-27-rest 10:51:00-10:55:00 (ended by the finish). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221).",
         "end-s-cap-1 session": "Session window 10:00:00-10:55:00. Fifteen positive samples sum to 2145, so avg 143; max 180. A round's pause is not a session pause, so the 100 at 10:33:00 counts. The 0 at 10:50:00 is a glitch and is ignored.",
         "end-s-cap-1 set block sx-bench/ex-bench": "The span starts at the loggedAt of the latest effort entry logged before e-set1 (e-r3, 10:42:10) and ends at e-set3's loggedAt (10:51:00, inclusive). HR: 110 (10:44:00), 130 (10:47:00), 150 (10:51:00), so avg 130, max 150. The 175 at 10:42:08 is before the span; the 0 at 10:50:00 is ignored.",
         "rating-s-cap-1": "The user answers 4 at 10:55:20."
@@ -762,6 +786,17 @@
           "endedAt": "2026-09-25T10:20:00.000Z"
         },
         {
+          "entryId": "rec-6-rest",
+          "eventId": "rec-6-rest",
+          "kind": "rest",
+          "loggedAt": "2026-09-25T10:25:00.000Z",
+          "sessionExerciseId": "sx-run",
+          "exerciseId": "ex-run",
+          "startedAt": "2026-09-25T10:20:00.000Z",
+          "endedAt": "2026-09-25T10:25:00.000Z",
+          "afterEntryId": "e-run"
+        },
+        {
           "entryId": "e-r1",
           "eventId": "e-r1",
           "kind": "round",
@@ -796,6 +831,17 @@
           "roundNumber": 3
         },
         {
+          "entryId": "rec-21-rest",
+          "eventId": "rec-21-rest",
+          "kind": "rest",
+          "loggedAt": "2026-09-25T10:45:00.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:42:10.000Z",
+          "endedAt": "2026-09-25T10:45:00.000Z",
+          "afterEntryId": "e-r3"
+        },
+        {
           "entryId": "e-set1",
           "eventId": "e-set1",
           "kind": "set",
@@ -806,8 +852,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-15-rest",
-          "eventId": "rec-15-rest",
+          "entryId": "rec-23-rest",
+          "eventId": "rec-23-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:48:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -827,8 +873,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-17-rest",
-          "eventId": "rec-17-rest",
+          "entryId": "rec-25-rest",
+          "eventId": "rec-25-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:51:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -848,8 +894,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-19-rest",
-          "eventId": "rec-19-rest",
+          "entryId": "rec-27-rest",
+          "eventId": "rec-27-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:55:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -972,22 +1018,24 @@
         "sensorSummaries": [],
         "receiptedEntryIds": [
           "e-run",
+          "rec-6-rest",
           "e-r1",
           "e-r2",
           "e-r3",
+          "rec-21-rest",
           "e-set1",
-          "rec-15-rest",
+          "rec-23-rest",
           "e-set2",
-          "rec-17-rest",
+          "rec-25-rest",
           "e-set3",
-          "rec-19-rest",
+          "rec-27-rest",
           "end-s-cap-1",
           "rating-s-cap-1"
         ]
       },
       "derivation": {
         "all": "Heart-rate and steps permission are denied, so the wrist holds no samples: no event carries a summary field, the session end carries no heart-rate pair and no set blocks, and the phone holds no sensor summary. e-r2 still carries pausedMs 120000, because the pause is the round timer's, not a sensor's.",
-        "rec-15-rest, rec-17-rest, rec-19-rest": "Every completed rest is its own event (D-219, D-224): the follow-on rest timer a set's log starts, ended by the next log (rec-15-rest 10:45:00-10:48:00, rec-17-rest 10:48:00-10:51:00) or by the finish (rec-19-rest 10:51:00-10:55:00). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221). A rest carries no sensor fields, so denying them changes nothing here.",
+        "rec-6-rest, rec-21-rest, rec-23-rest, rec-25-rest, rec-27-rest": "Every logged effort starts a rest (D-3501, D-219, D-224): the follow-on rest timer that effort's log starts, ended by the next log or by the finish. The BJJ period's Start ends e-run's rest at 10:25:00, so rec-6-rest covers 10:20:00-10:25:00, and e-set1's log ends e-r3's rest at 10:45:00, so rec-21-rest covers 10:42:10-10:45:00. The set logs give rec-23-rest 10:45:00-10:48:00, rec-25-rest 10:48:00-10:51:00 and rec-27-rest 10:51:00-10:55:00 (ended by the finish). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221). A rest carries no sensor fields, so denying them changes nothing here.",
         "rating-s-cap-1": "The user answers 4 at 10:55:20."
       }
     },
@@ -1252,6 +1300,17 @@
           "steps": 3200
         },
         {
+          "entryId": "rec-6-rest",
+          "eventId": "rec-6-rest",
+          "kind": "rest",
+          "loggedAt": "2026-09-25T10:25:00.000Z",
+          "sessionExerciseId": "sx-run",
+          "exerciseId": "ex-run",
+          "startedAt": "2026-09-25T10:20:00.000Z",
+          "endedAt": "2026-09-25T10:25:00.000Z",
+          "afterEntryId": "e-run"
+        },
+        {
           "entryId": "e-r1",
           "eventId": "e-r1",
           "kind": "round",
@@ -1292,6 +1351,17 @@
           "maxHeartRateBpm": 165
         },
         {
+          "entryId": "rec-21-rest",
+          "eventId": "rec-21-rest",
+          "kind": "rest",
+          "loggedAt": "2026-09-25T10:45:00.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:42:10.000Z",
+          "endedAt": "2026-09-25T10:45:00.000Z",
+          "afterEntryId": "e-r3"
+        },
+        {
           "entryId": "e-set1",
           "eventId": "e-set1",
           "kind": "set",
@@ -1302,8 +1372,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-15-rest",
-          "eventId": "rec-15-rest",
+          "entryId": "rec-23-rest",
+          "eventId": "rec-23-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:48:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -1323,8 +1393,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-17-rest",
-          "eventId": "rec-17-rest",
+          "entryId": "rec-25-rest",
+          "eventId": "rec-25-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:51:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -1344,8 +1414,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-19-rest",
-          "eventId": "rec-19-rest",
+          "entryId": "rec-27-rest",
+          "eventId": "rec-27-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:55:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -1525,15 +1595,17 @@
         ],
         "receiptedEntryIds": [
           "e-run",
+          "rec-6-rest",
           "e-r1",
           "e-r2",
           "e-r3",
+          "rec-21-rest",
           "e-set1",
-          "rec-15-rest",
+          "rec-23-rest",
           "e-set2",
-          "rec-17-rest",
+          "rec-25-rest",
           "e-set3",
-          "rec-19-rest",
+          "rec-27-rest",
           "end-s-cap-1"
         ]
       },
@@ -1543,10 +1615,10 @@
         "e-r2": "The period's countdown starts at 10:30:00, planned 300 s, and is paused over [10:32:00, 10:34:00), so it completes at 10:37:00; logged at 10:37:05, the window is 10:30:00-10:37:00 and pausedMs is 120000. HR: 150 (10:31:00), 180 (10:36:00), so avg 165, max 180. The 100 at 10:33:00 falls inside the pause and is excluded; including it would give 143.33.",
         "e-r3": "The period's countdown starts at 10:37:05, planned 300 s, and completes at 10:42:05; logged at 10:42:10, the window is 10:37:05-10:42:05. HR: 145 (10:37:05, window start inclusive; the sample is applied before e-r2's log at the same instant), 165 (10:40:00), so avg 155, max 165. The 175 at 10:42:08 is after the window end.",
         "e-set1, e-set2, e-set3": "Set events never carry heart rate. Each is 5 reps x 80 kg.",
-        "rec-15-rest, rec-17-rest, rec-19-rest": "Every completed rest is its own event (D-219, D-224): the follow-on rest timer a set's log starts, ended by the next log (rec-15-rest 10:45:00-10:48:00, rec-17-rest 10:48:00-10:51:00) or by the finish (rec-19-rest 10:51:00-10:55:00). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221).",
+        "rec-6-rest, rec-21-rest, rec-23-rest, rec-25-rest, rec-27-rest": "Every logged effort starts a rest (D-3501, D-219, D-224): the follow-on rest timer that effort's log starts, ended by the next log or by the finish. The BJJ period's Start ends e-run's rest at 10:25:00, so rec-6-rest covers 10:20:00-10:25:00, and e-set1's log ends e-r3's rest at 10:45:00, so rec-21-rest covers 10:42:10-10:45:00. The set logs give rec-23-rest 10:45:00-10:48:00, rec-25-rest 10:48:00-10:51:00 and rec-27-rest 10:51:00-10:55:00 (ended by the finish). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221).",
         "end-s-cap-1 session": "Session window 10:00:00-10:55:00. Fifteen positive samples sum to 2145, so avg 143; max 180. A round's pause is not a session pause, so the 100 at 10:33:00 counts. The 0 at 10:50:00 is a glitch and is ignored.",
         "end-s-cap-1 set block sx-bench/ex-bench": "The span starts at the loggedAt of the latest effort entry logged before e-set1 (e-r3, 10:42:10) and ends at e-set3's loggedAt (10:51:00, inclusive). HR: 110 (10:44:00), 130 (10:47:00), 150 (10:51:00), so avg 130, max 150. The 175 at 10:42:08 is before the span; the 0 at 10:50:00 is ignored.",
-        "no rating": "The preferences say effortRatingPrompt false, so the wrist's End owes no prompt: there is no rating-s-cap-1, the phone's sessionFeeling stays null, and eleven entries are receipted."
+        "no rating": "The preferences say effortRatingPrompt false, so the wrist's End owes no prompt: there is no rating-s-cap-1, the phone's sessionFeeling stays null, and thirteen entries are receipted."
       }
     }
   ]

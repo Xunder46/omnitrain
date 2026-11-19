@@ -2,25 +2,32 @@ import 'dart:async';
 import 'package:app_settings/app_settings.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/constants/health_constants.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/models/app_version_info.dart';
+import '../../core/services/diagnostics_log.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
+import '../../state/watch/watch_link_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../widgets/feedback/omni_message.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 
-/// Widget keys for the two platform-health toggles. Tests target a specific
+/// Widget keys for the three platform-health toggles. Tests target a specific
 /// control through these rather than "the Nth switch in the list", which
 /// depends on which rows the lazy list happens to have built.
 const Key healthWriteToggleKey = Key('health-write-toggle');
 const Key healthReadToggleKey = Key('health-read-toggle');
+const Key healthReadActiveEnergyToggleKey = Key(
+  'health-read-active-energy-toggle',
+);
 
 class SettingsScreen extends StatefulWidget {
   final SettingsState settingsState;
@@ -30,6 +37,14 @@ class SettingsScreen extends StatefulWidget {
   final double? userHeightCm; // For testing - directly pass height value
   final AppVersionInfo appVersionInfo;
 
+  /// Where the watch stands, for the APPLE WATCH row (47c D-4). Null without a
+  /// watch graph, and the section is absent.
+  final WatchLinkState? watchLinkState;
+
+  /// The phone's diagnostics log, for the copy row (plan 143, D-14306). Null
+  /// without a log, and the row is absent.
+  final DiagnosticsLog? diagnostics;
+
   SettingsScreen({
     super.key,
     required this.settingsState,
@@ -38,6 +53,8 @@ class SettingsScreen extends StatefulWidget {
     RestNotificationService? restNotificationService,
     this.profileState,
     this.userHeightCm,
+    this.watchLinkState,
+    this.diagnostics,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
 
@@ -114,131 +131,150 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListenableBuilder(
           listenable: widget.settingsState,
           builder: (context, child) {
-            return ListView(
+            // A plain scroll view, not a lazy ListView: the page is a few
+            // dozen rows, and a lazy list guesses its total length from the
+            // rows it has built. With the tall sections here that guess swung
+            // by thousands of pixels while scrolling, so a fling at the
+            // bottom kept re-aiming and the page jittered.
+            return SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              children: [
-                const OmniCardHeader(title: 'PREFERENCES'),
-                _MeasurementsSection(
-                  settingsState: widget.settingsState,
-                  theme: theme,
-                  userHeightCm: _isLoadingHeight ? null : _userHeightCm,
-                ),
-                const SizedBox(height: 24),
-                const OmniCardHeader(title: 'SOUNDS & ALERTS'),
-                _SoundsAlertsSection(
-                  settingsState: widget.settingsState,
-                  timerAlertService: widget.timerAlertService,
-                  restNotificationService: widget.restNotificationService,
-                ),
-                const SizedBox(height: 24),
-                const OmniCardHeader(title: 'WORKOUT'),
-                _WorkoutSection(settingsState: widget.settingsState),
-                const SizedBox(height: 24),
-                const OmniCardHeader(title: 'HEALTH'),
-                _HealthSection(settingsState: widget.settingsState),
-                const SizedBox(height: 24),
-                const OmniCardHeader(title: 'APPEARANCE'),
-                OmniSurface(
-                  padding: const EdgeInsets.all(0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      GridView.builder(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 10,
-                        ),
-                        physics: const NeverScrollableScrollPhysics(),
-                        // Ghost-pad odd counts so the last row is never a
-                        // lone tile. When count becomes even after the
-                        // bake-off pruning pass this expression collapses
-                        // to plain length with no visual change needed.
-                        itemCount: AppTheme.values.length.isOdd
-                            ? AppTheme.values.length + 1
-                            : AppTheme.values.length,
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                              childAspectRatio: 2.8,
-                            ),
-                        itemBuilder: (context, index) {
-                          // Ghost slot that balances an odd-count final row.
-                          if (index >= AppTheme.values.length) {
-                            return const SizedBox.shrink();
-                          }
-                          final appTheme = AppTheme.values[index];
-                          final isSelected =
-                              widget.settingsState.appTheme == appTheme;
-
-                          return GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () =>
-                                widget.settingsState.setAppTheme(appTheme),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              curve: Curves.easeInOut,
-                              alignment: Alignment.center,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? theme.colorScheme.surface.withOpacity(
-                                        0.88,
-                                      )
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(
-                                  OmniTheme.buttonUtilityRadius,
-                                ),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.onSurface.withOpacity(
-                                          0.25,
-                                        ),
-                                ),
-                              ),
-                              child: Text(
-                                OmniTheme.displayNameForTheme(appTheme),
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: isSelected
-                                      ? theme.colorScheme.onSurface
-                                      : OmniTheme.colors.textSecondary,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const OmniCardHeader(title: 'PREFERENCES'),
+                  _MeasurementsSection(
+                    settingsState: widget.settingsState,
+                    theme: theme,
+                    userHeightCm: _isLoadingHeight ? null : _userHeightCm,
+                  ),
+                  const SizedBox(height: 24),
+                  const OmniCardHeader(title: 'SOUNDS & ALERTS'),
+                  _SoundsAlertsSection(
+                    settingsState: widget.settingsState,
+                    timerAlertService: widget.timerAlertService,
+                    restNotificationService: widget.restNotificationService,
+                  ),
+                  const SizedBox(height: 24),
+                  const OmniCardHeader(title: 'WORKOUT'),
+                  _WorkoutSection(settingsState: widget.settingsState),
+                  const SizedBox(height: 24),
+                  if (widget.watchLinkState != null) ...[
+                    const OmniCardHeader(title: 'APPLE WATCH'),
+                    _WatchSection(state: widget.watchLinkState!),
+                    if (widget.diagnostics != null) ...[
+                      const SizedBox(height: 12),
+                      _DiagnosticsRow(
+                        log: widget.diagnostics!,
+                        appVersionInfo: widget.appVersionInfo,
                       ),
                     ],
+                    const SizedBox(height: 24),
+                  ],
+                  const OmniCardHeader(title: 'HEALTH'),
+                  _HealthSection(settingsState: widget.settingsState),
+                  const SizedBox(height: 24),
+                  const OmniCardHeader(title: 'APPEARANCE'),
+                  OmniSurface(
+                    padding: const EdgeInsets.all(0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        GridView.builder(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 10,
+                          ),
+                          physics: const NeverScrollableScrollPhysics(),
+                          // Ghost-pad odd counts so the last row is never a
+                          // lone tile. When count becomes even after the
+                          // bake-off pruning pass this expression collapses
+                          // to plain length with no visual change needed.
+                          itemCount: AppTheme.values.length.isOdd
+                              ? AppTheme.values.length + 1
+                              : AppTheme.values.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                                childAspectRatio: 2.8,
+                              ),
+                          itemBuilder: (context, index) {
+                            // Ghost slot that balances an odd-count final row.
+                            if (index >= AppTheme.values.length) {
+                              return const SizedBox.shrink();
+                            }
+                            final appTheme = AppTheme.values[index];
+                            final isSelected =
+                                widget.settingsState.appTheme == appTheme;
+
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () =>
+                                  widget.settingsState.setAppTheme(appTheme),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                curve: Curves.easeInOut,
+                                alignment: Alignment.center,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? theme.colorScheme.surface.withOpacity(
+                                          0.88,
+                                        )
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(
+                                    OmniTheme.buttonUtilityRadius,
+                                  ),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurface
+                                              .withOpacity(0.25),
+                                  ),
+                                ),
+                                child: Text(
+                                  OmniTheme.displayNameForTheme(appTheme),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: isSelected
+                                        ? theme.colorScheme.onSurface
+                                        : OmniTheme.colors.textSecondary,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      widget.appVersionInfo.formatVersionLine(),
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: OmniTheme.colors.textMuted,
-                        fontWeight: FontWeight.w500,
+                  const SizedBox(height: 24),
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        widget.appVersionInfo.formatVersionLine(),
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: OmniTheme.colors.textMuted,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 40),
-              ],
+                  const SizedBox(height: 40),
+                ],
+              ),
             );
           },
         ),
@@ -394,7 +430,8 @@ class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
           _SurfaceDivider(theme: theme),
           _SettingsRow(
             label: 'Rest Ping Sound',
-            subtitle: 'Sound for the rest ping, phone only (the watch taps your wrist)',
+            subtitle:
+                'Sound for the rest ping, phone only (the watch taps your wrist)',
             trailing: Text(
               SettingsState.soundDisplayNames[widget
                       .settingsState
@@ -524,6 +561,7 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
+                    tooltip: 'Close',
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -619,6 +657,7 @@ class _IntervalPickerSheet extends StatelessWidget {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
+                    tooltip: 'Close',
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -674,7 +713,7 @@ class _MeasurementsSection extends StatelessWidget {
         children: [
           _SettingsRow(
             label: 'Start of Week',
-            subtitle: 'First day shown in the calendar',
+            subtitle: 'Week start in the calendar and on Stats',
             trailing: _SegmentedToggle(
               groupValue: settingsState.startOfWeek,
               options: const [
@@ -845,10 +884,11 @@ class _WorkoutSection extends StatelessWidget {
 
 // ── HEALTH ────────────────────────────────────────────────────────────────
 
-/// Phone health-store integration: two independent, off-by-default
+/// Phone health-store integration: three independent, off-by-default
 /// toggles. A denied OS permission is shown as the off switch plus a
 /// plain-language notice that points at the system settings, so the app
-/// stays fully usable without the integration (S-005).
+/// stays fully usable without the integration (S-005). The third toggle
+/// (Read active energy) is shown on iPhone and Android only.
 class _HealthSection extends StatelessWidget {
   final SettingsState settingsState;
 
@@ -858,6 +898,7 @@ class _HealthSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final writeState = settingsState.healthWriteWorkouts;
     final readState = settingsState.healthReadBodyWeight;
+    final energyState = settingsState.healthReadActiveEnergy;
 
     return OmniSurface(
       padding: EdgeInsets.zero,
@@ -892,6 +933,24 @@ class _HealthSection extends StatelessWidget {
           ),
           if (readState == HealthToggleState.permissionDenied)
             const _HealthDeniedNotice(),
+          if (!kIsWeb &&
+              (defaultTargetPlatform == TargetPlatform.iOS ||
+                  defaultTargetPlatform == TargetPlatform.android)) ...[
+            _SurfaceDivider(theme: Theme.of(context)),
+            _SettingsRow(
+              label: 'Read active energy',
+              subtitle:
+                  'Shows the calories you burn per day, from all movement, on '
+                  'the Stats Fuel card. Only active energy is read.',
+              trailing: Switch(
+                key: healthReadActiveEnergyToggleKey,
+                value: energyState == HealthToggleState.on,
+                onChanged: settingsState.setHealthReadActiveEnergyEnabled,
+              ),
+            ),
+            if (energyState == HealthToggleState.permissionDenied)
+              const _HealthDeniedNotice(),
+          ],
         ],
       ),
     );
@@ -933,6 +992,124 @@ class _HealthDeniedNotice extends StatelessWidget {
             child: const Text('Open settings'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── APPLE WATCH ───────────────────────────────────────────────────────────
+
+/// The one read-only row: where the watch stands, and when the phone last
+/// heard from it (plan 47c D-4). Refreshed on open, so a pairing change made
+/// while the app was away is read again; the state notifies on every change
+/// after that while the screen is up.
+class _WatchSection extends StatefulWidget {
+  final WatchLinkState state;
+
+  const _WatchSection({required this.state});
+
+  @override
+  State<_WatchSection> createState() => _WatchSectionState();
+}
+
+class _WatchSectionState extends State<_WatchSection> {
+  @override
+  void initState() {
+    super.initState();
+    widget.state.refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return OmniSurface(
+      padding: EdgeInsets.zero,
+      child: ListenableBuilder(
+        listenable: widget.state,
+        builder: (context, _) {
+          final connected = widget.state.phase == WatchLinkPhase.connected;
+          return _SettingsRow(
+            label: 'Apple Watch',
+            subtitle: widget.state.lastSyncedLabel(DateTime.now()),
+            trailing: Text(
+              widget.state.statusLabel,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: connected
+                    ? theme.colorScheme.primary
+                    : OmniTheme.colors.textSecondary,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Copies the phone's diagnostics log as text (plan 143, D-14306).
+class _DiagnosticsRow extends StatefulWidget {
+  final DiagnosticsLog log;
+  final AppVersionInfo appVersionInfo;
+
+  const _DiagnosticsRow({required this.log, required this.appVersionInfo});
+
+  @override
+  State<_DiagnosticsRow> createState() => _DiagnosticsRowState();
+}
+
+class _DiagnosticsRowState extends State<_DiagnosticsRow> {
+  late int _count = widget.log.events().length;
+  late int _watchCount = widget.log.watchEvents().length;
+
+  Future<void> _copy() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
+    final events = widget.log.events().length;
+    final text = widget.log.shareTextWithWatch(
+      header: [
+        'OmniTrain phone diagnostics',
+        'App ${widget.appVersionInfo.version} (${widget.appVersionInfo.build})',
+        'Platform ${defaultTargetPlatform.name}',
+        'Events $events',
+        'Copied ${DateTime.now().toUtc().toIso8601String()}',
+      ],
+    );
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+    } catch (_) {
+      // A clipboard that refuses is not worth a crash: nothing is announced.
+      return;
+    }
+    if (!mounted) return;
+    OmniMessage.showOn(messenger, theme, 'Diagnostics copied');
+    setState(() {
+      _count = widget.log.events().length;
+      _watchCount = widget.log.watchEvents().length;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final empty = _count == 0 && _watchCount == 0;
+    final hasWatchLog = _watchCount > 0;
+    return OmniSurface(
+      padding: EdgeInsets.zero,
+      child: _SettingsRow(
+        label: 'Diagnostics',
+        subtitle: empty
+            ? 'Nothing recorded yet'
+            : '$_count event${_count == 1 ? '' : 's'}'
+                '${hasWatchLog ? ' · watch log $_watchCount event${_watchCount == 1 ? '' : 's'}' : ''}',
+        trailing: Text(
+          'Copy',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: empty
+                ? OmniTheme.colors.textMuted
+                : theme.colorScheme.primary,
+          ),
+        ),
+        onTap: empty ? null : _copy,
       ),
     );
   }

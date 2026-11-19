@@ -22,15 +22,21 @@
     "type": {
       "enum": [
         "routines_down",
+        "exercises_down",
         "foods_down",
+        "bests_down",
+        "water_down",
         "preferences_down",
+        "planned_down",
         "exercise_push",
         "structure_change",
         "observations_up",
         "receipt",
         "session_lifecycle",
+        "session_started",
         "session_snapshot",
-        "timer_state"
+        "timer_state",
+        "energy_live"
       ]
     },
     "origin": {
@@ -64,6 +70,43 @@
     "effortKind": {
       "enum": ["set", "timed", "round", "drill"]
     },
+    "healthActivity": {
+      "enum": [
+        "running",
+        "cycling",
+        "swimming",
+        "rowing",
+        "walking",
+        "hiking",
+        "traditionalStrengthTraining",
+        "calisthenics",
+        "isometricHolds",
+        "conditioning",
+        "mixedCardio",
+        "preparationAndRecovery",
+        "flexibility",
+        "yoga",
+        "boxing",
+        "kickboxing",
+        "martialArts",
+        "tennis",
+        "badminton",
+        "tableTennis",
+        "cricket",
+        "hockey",
+        "baseball",
+        "americanFootball",
+        "rugby",
+        "lacrosse",
+        "soccer",
+        "basketball",
+        "volleyball",
+        "squash",
+        "golf",
+        "climbing"
+      ],
+      "description": "The Health workout kind the exercise records as, named by the phone from the exercise's discipline. Present whenever the phone can name the discipline's kind, regardless of capabilities; omitted otherwise (a receiver treats an unknown kind as absent)."
+    },
     "catalogExercise": {
       "type": "object",
       "description": "A catalog exercise: what it is, not where it sits in a session.",
@@ -89,6 +132,17 @@
           "type": "integer",
           "minimum": 1,
           "description": "The length of ONE round or period in seconds as the phone knows it. Omitted when unknown, and ignored by a receiver for any effort that is not a round."
+        },
+        "healthActivity": { "$ref": "#/$defs/healthActivity" },
+        "recommendedFor": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "enum": ["cardio_endurance", "resistance_lifting", "isometric_stretching", "sports"]
+          },
+          "description": "The primary modalities this exercise is recommended for, as the phone's own exercise picker ranks it (ModalityConfig.isRecommended). Present only when the exercise is recommended for at least one; omitted otherwise. The phone sends each key once; a receiver treats a key it does not know as matching nothing."
         }
       }
     },
@@ -130,6 +184,32 @@
           "type": "integer",
           "minimum": 1,
           "description": "The length of ONE round or period in seconds as the phone knows it. Omitted when unknown, and ignored by a receiver for any effort that is not a round."
+        },
+        "healthActivity": { "$ref": "#/$defs/healthActivity" },
+        "plannedSets": {
+          "type": "array",
+          "description": "The phone's set rows for this slot, in set order (index k is set k+1, the numbering of entry-<slot>-<k>), logged rows included. Sent only for a set effort. Optional: a slot with no set rows, a non-set slot, or an older phone omits it, and the wrist then starts each set from its own defaults.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "reps": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Omitted for a row with fewer than 1 rep (a skipped row)."
+              },
+              "loadKg": {
+                "type": "number",
+                "minimum": -200,
+                "description": "Omitted when the load is 0, as an entry omits it. Kilograms; negative is band assist, floored like an entry's loadKg."
+              }
+            }
+          }
+        },
+        "plannedEfforts": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many timed, drill (hold) or round efforts this slot plans, as the phone counts them. Sent only for a non-set effort, and only when it plans at least one: a set effort carries plannedSets instead, and no slot carries both keys. Optional: an older phone omits it, and the wrist then starts the slot from its own defaults."
         }
       }
     },
@@ -190,7 +270,8 @@
             "nutrition_quick_log",
             "effort_rating",
             "session_end",
-            "rest"
+            "rest",
+            "water_glass"
           ]
         },
         "loggedAt": {
@@ -268,6 +349,10 @@
           "minLength": 1,
           "description": "The session's modality, on a session_end entry only. Omitted when the session has none."
         },
+        "followed": {
+          "enum": [true],
+          "description": "On a session_end entry only: true when the wrist followed a session the phone started, so the entry carries the wrist's heart rate and nothing the phone lacks. Omitted when the wrist created the session."
+        },
         "avgHeartRateBpm": {
           "$ref": "#/$defs/heartRateBpm",
           "description": "Mean heart rate over the entry's active window, computed on the wrist from its own readings. Travels with maxHeartRateBpm or not at all; absent means not measured, never zero."
@@ -275,6 +360,11 @@
         "maxHeartRateBpm": {
           "$ref": "#/$defs/heartRateBpm",
           "description": "Maximum heart rate over the entry's active window. Travels with avgHeartRateBpm or not at all."
+        },
+        "activeEnergyKcal": {
+          "type": "number",
+          "minimum": 0,
+          "description": "On a session_end entry only: the active energy, in kilocalories, the wrist's workout measured over the whole session, above resting and without pauses, as the platform counts it. Absent when nothing was measured; a total of zero is never sent."
         },
         "steps": {
           "type": "integer",
@@ -291,6 +381,10 @@
           "minItems": 1,
           "items": { "$ref": "#/$defs/setBlockHeartRate" },
           "description": "On a session_end entry only: one heart-rate summary per set block — the sets logged for one sessionExerciseId and exerciseId pair."
+        },
+        "glassChange": {
+          "enum": ["add", "remove"],
+          "description": "On a water_glass entry only: one glass added to or removed from the day's water. A closed string, never a signed number."
         }
       }
     },
@@ -361,6 +455,10 @@
         "plannedDurationMs": {
           "type": "integer",
           "minimum": 1
+        },
+        "sessionExerciseId": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "if": {

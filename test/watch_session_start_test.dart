@@ -60,6 +60,28 @@ List<Map<String, Object?>> _objects(Object? value) =>
 List<String> _strings(Object? value) =>
     (value! as List).cast<String>().toList(growable: false);
 
+/// A plain slot id with a session token appended — what the wrist mints once
+/// plan 81's token rule is in force.
+String _tokened(String id, String token) => '$id~$token';
+
+/// Plain slot ids with a session token appended. [keepingPlain] names an id
+/// that stays as sent — a slot the phone pushed carries the phone's own id.
+List<String> _tokenedAll(
+  List<String> ids,
+  String token, {
+  String? keepingPlain,
+}) => [
+  for (final id in ids)
+    if (id == keepingPlain) id else _tokened(id, token),
+];
+
+/// A contract slot with a session token appended to its id — what a session
+/// slot looks like once plan 81's token rule is in force.
+Map<String, Object?> _tokenedSlot(Map<String, Object?> slot, String token) => {
+  ...slot,
+  'sessionExerciseId': '${slot['sessionExerciseId']}~$token',
+};
+
 Map<String, Object?> _readJson(String relativePath) => _asObject(
   jsonDecode(
     File('${Directory.current.path}/$relativePath').readAsStringSync(),
@@ -168,12 +190,14 @@ Future<String> effortKindFor(
 }
 
 class _Harness {
-  _Harness({WatchSessionStore? store})
+  _Harness({WatchSessionStore? store, String Function()? sessionIdFactory})
     : clock = _Clock(DateTime.utc(2026, 7, 13, 17)),
-      store = store ?? InMemoryWatchSessionStore();
+      store = store ?? InMemoryWatchSessionStore(),
+      _sessionIdFactory = sessionIdFactory;
 
   final _Clock clock;
   final WatchSessionStore store;
+  final String Function()? _sessionIdFactory;
 
   /// The session every engine in this harness starts, so a relaunch continues
   /// the same workout rather than inventing a new one.
@@ -189,7 +213,7 @@ class _Harness {
     validator: _validator(),
     clock: clock.call,
     idFactory: () => 'rec-${++_ids}',
-    sessionIdFactory: () => sessionId,
+    sessionIdFactory: _sessionIdFactory ?? () => sessionId,
   );
 
   WatchSessionStartPaths newPaths(WatchSessionEngine engine) =>
@@ -374,9 +398,11 @@ void main() {
       () async {
         watch = await harness.launch();
         await syncFirstMessage();
+        // The start mints the token from the id factory: the routines_down
+        // sync took `cat-1`, so the start takes `cat-2` (plan 81 D-9).
         final expected = _objects(
           _asObject(_contract()['routineSession'])['expectedSlots'],
-        );
+        ).map((slot) => _tokenedSlot(slot, 'cat-2')).toList();
 
         final session = await watch.paths.startFromRoutine('routine-push-a');
 
@@ -478,7 +504,11 @@ void main() {
         expect(session.exercises, hasLength(1));
         expect(
           session.exercises.first['sessionExerciseId'],
-          fallback['expectedPickerSlotId'],
+          // The pick's token comes from the live session's id (plan 81 D-1).
+          _tokened(
+            fallback['expectedPickerSlotId']! as String,
+            sessionToken(harness.sessionId),
+          ),
         );
         expect(session.exercises.first['exerciseId'], bench.exerciseId);
         expect(watch.surface.effortKind, WatchEffortKind.set);
@@ -607,9 +637,12 @@ void main() {
     test('S-178 a routine fills an active empty session in place', () async {
       watch = await harness.launch();
       await syncFirstMessage();
+      // The fill-in-place branch takes the token from the held session's id
+      // (plan 81 D-9).
       final expected = _objects(
         _asObject(_contract()['routineSession'])['expectedSlots'],
-      );
+      ).map((slot) => _tokenedSlot(slot, sessionToken(harness.sessionId)))
+          .toList();
       final empty = await watch.paths.startFreeWorkout();
       expect(empty.exercises, isEmpty);
       expect(empty.currentExerciseIndex, 0);
@@ -784,11 +817,15 @@ void main() {
           watch.engine.session!.exercises.map(
             (slot) => slot['sessionExerciseId'],
           ),
-          _strings(push['expectedSlotIds']),
+          _tokenedAll(
+            _strings(push['expectedSlotIds']),
+            'cat-2',
+            keepingPlain: push['pushedSlotId'] as String,
+          ),
         );
         expect(
           watch.engine.currentExercise!['sessionExerciseId'],
-          push['expectedCurrentSlotId'],
+          _tokened(push['expectedCurrentSlotId']! as String, 'cat-2'),
           reason: 'the push is not a request to move the user elsewhere',
         );
         expect(
@@ -845,7 +882,7 @@ void main() {
         await watch.engine.advanceExercise();
         expect(
           watch.engine.currentExercise!['sessionExerciseId'],
-          'sx-eff-pullup',
+          _tokened('sx-eff-pullup', 'cat-2'),
         );
         expect(watch.engine.session!.currentExerciseIndex, 2);
 
@@ -857,14 +894,14 @@ void main() {
           ),
           [
             'sx-push-front-squat',
-            'sx-eff-bench',
-            'sx-eff-plank',
-            'sx-eff-pullup',
+            _tokened('sx-eff-bench', 'cat-2'),
+            _tokened('sx-eff-plank', 'cat-2'),
+            _tokened('sx-eff-pullup', 'cat-2'),
           ],
         );
         expect(
           watch.engine.currentExercise!['sessionExerciseId'],
-          'sx-eff-pullup',
+          _tokened('sx-eff-pullup', 'cat-2'),
           reason: 'inserting earlier in the ladder must not move the user',
         );
         expect(
@@ -927,10 +964,10 @@ void main() {
         expect(watch.paths.routines, hasLength(1));
         expect(watch.paths.routines.single.name, edit['expectedRoutineName']);
         expect(
-          watch.paths.routines.single.slots.map(
+          watch.paths.routines.single.slotsFor('testtoken').map(
             (slot) => slot['sessionExerciseId'],
           ),
-          _strings(edit['expectedSlotIds']),
+          _tokenedAll(_strings(edit['expectedSlotIds']), 'testtoken'),
         );
         expect(
           watch.paths.syncedAt,
@@ -1003,6 +1040,97 @@ void main() {
         );
       },
     );
+  });
+
+  group('S-3610 a catalog with no routines', () {
+    test(
+      'stores an empty routines list and restores it with its exercise list',
+      () async {
+        watch = await harness.launch();
+        final sent = _readJson(
+          '$_protocolRoot/fixtures/valid/routines_down_catalog_only.json',
+        );
+
+        await harness.syncRoutinesDown(watch, sent);
+
+        watch = await harness.launch();
+
+        expect(watch.paths.routines, isEmpty);
+        expect(
+          watch.paths.fallbackExercises.map((e) => e.exerciseId).toList(),
+          ['ex-barbell-bench-press', 'ex-plank', 'ex-soccer'],
+        );
+      },
+    );
+  });
+
+  // Phase D1 of plan `2026-10-11-23d-watch-accent-color-plan`: the accent the
+  // phone sends with its preferences. The watchOS suite applies these same two
+  // fixtures (`WatchRestPingTests`, S-3713 and S-3714, and
+  // `WatchAccentTests`, S-3710 – S-3712); read here, they pin what the Dart
+  // stack accepts and refuses, and the schema key and shape both ends spell, so
+  // a drift on either side fails the other.
+  group('S-3701 the accent travels in preferences_down', () {
+    test('a copy carrying an accent conforms and keeps it', () {
+      final message = _readJson(
+        '$_protocolRoot/fixtures/valid/preferences_down_accent.json',
+      );
+
+      expect(_validator().validateEnvelope(message), isEmpty);
+      expect(message['type'], 'preferences_down');
+
+      final payload = _asObject(message['payload']);
+      expect(payload['accentColorHex'], '#2DE2E6');
+    });
+
+    test('the schema declares the accent optional, as #RRGGBB', () {
+      final schema = _readJson(
+        '$_protocolRoot/schemas/messages/preferences_down.schema.json',
+      );
+      final payload = _asObject(
+        _asObject(_objects(schema['allOf']).last['properties'])['payload'],
+      );
+      final accent = _asObject(
+        _asObject(payload['properties'])['accentColorHex'],
+      );
+
+      expect(accent['type'], 'string');
+      expect(accent['pattern'], r'^#[0-9A-Fa-f]{6}$');
+      expect(
+        _strings(payload['required']),
+        isNot(contains('accentColorHex')),
+        reason:
+            'a phone with no accent to send omits it, so a wrist right after '
+            'a sync keeps its default look',
+      );
+    });
+
+    test('a hex that is not #RRGGBB is refused as the pattern violation', () {
+      final message = _readJson(
+        '$_protocolRoot/fixtures/invalid/preferences_down_accent_bad.json',
+      );
+
+      final rejections = _validator().validateEnvelope(message);
+
+      expect(rejections, isNotEmpty);
+      expect(rejections.first.code, 'constraint_violation');
+      expect(
+        rejections.first.message,
+        contains('does not match the required pattern'),
+      );
+    });
+
+    test('a copy with no accent still conforms, and declares none', () {
+      final message = _readJson(
+        '$_protocolRoot/fixtures/valid/preferences_down.json',
+      );
+
+      expect(_validator().validateEnvelope(message), isEmpty);
+      expect(
+        _asObject(message['payload']).containsKey('accentColorHex'),
+        isFalse,
+      );
+    });
   });
 
   group('S-007 modality / effort-kind parity with the phone', () {
@@ -1137,6 +1265,102 @@ void main() {
         expect(watch.paths.fallbackExercises, isNotEmpty);
       },
     );
+  });
+
+  group('S-15005 slot ids carry a per-session token', () {
+    test('two sessions of the same exercise get different slot ids', () async {
+      var started = 0;
+      harness = _Harness(sessionIdFactory: () => 's-w${++started}');
+      watch = await harness.launch();
+      await syncFirstMessage();
+      final bench = watch.paths.fallbackExercises.firstWhere(
+        (exercise) => exercise.exerciseId == 'ex-barbell-bench-press',
+      );
+
+      await watch.paths.startFreeWorkout();
+      final first = await watch.paths.addExerciseToSession(bench);
+      await watch.engine.finishSession();
+
+      await watch.paths.startFreeWorkout();
+      final second = await watch.paths.addExerciseToSession(bench);
+
+      // Each token is the first 8 characters of that session's id — shorter
+      // ids whole (plan 81 D-9).
+      expect(first.exercises.single['sessionExerciseId'],
+          'sx-ex-barbell-bench-press~${sessionToken('s-w1')}');
+      expect(second.exercises.single['sessionExerciseId'],
+          'sx-ex-barbell-bench-press~${sessionToken('s-w2')}');
+      expect(
+        first.exercises.single['sessionExerciseId'],
+        isNot(second.exercises.single['sessionExerciseId']),
+      );
+    });
+
+    test('the same exercise twice in one session is ~tok then -2~tok',
+        () async {
+      watch = await harness.launch();
+      await syncFirstMessage();
+      final bench = watch.paths.fallbackExercises.firstWhere(
+        (exercise) => exercise.exerciseId == 'ex-barbell-bench-press',
+      );
+
+      await watch.paths.startFreeWorkout();
+      await watch.paths.addExerciseToSession(bench);
+      final session = await watch.paths.addExerciseToSession(bench);
+
+      final token = sessionToken(harness.sessionId);
+      expect(
+        session.exercises.map((slot) => slot['sessionExerciseId']),
+        [
+          'sx-ex-barbell-bench-press~$token',
+          'sx-ex-barbell-bench-press-2~$token',
+        ],
+        reason: 'the -n dedup runs on the plain base, the token goes on last',
+      );
+    });
+
+    test('startFromRoutine twice gives disjoint slot id sets', () async {
+      watch = await harness.launch();
+      await syncFirstMessage();
+
+      final first = await watch.paths.startFromRoutine('routine-push-a');
+      await watch.engine.finishSession();
+      final second = await watch.paths.startFromRoutine('routine-push-a');
+
+      final firstIds = [
+        for (final slot in first.exercises) slot['sessionExerciseId']! as String,
+      ];
+      final secondIds = [
+        for (final slot in second.exercises)
+          slot['sessionExerciseId']! as String,
+      ];
+      expect(
+        firstIds.toSet().intersection(secondIds.toSet()),
+        isEmpty,
+        reason: 'no slot id is shared across the two sessions (plan 81 D-1)',
+      );
+      // The create branch mints the token from the id factory: the sync took
+      // `cat-1`, so the first start takes `cat-2` (plan 81 D-9).
+      expect(firstIds, [
+        'sx-eff-bench~cat-2',
+        'sx-eff-plank~cat-2',
+        'sx-eff-pullup~cat-2',
+      ]);
+      // The second start mints a different token (the engine's own record ids
+      // share the counter, so the exact value is not pinned here) on the same
+      // bases.
+      final secondToken = secondIds.first.split('~').last;
+      expect(secondToken, isNot('cat-2'));
+      expect(
+        [for (final id in secondIds) id.split('~').first],
+        ['sx-eff-bench', 'sx-eff-plank', 'sx-eff-pullup'],
+      );
+      expect(
+        secondIds.every((id) => id.endsWith('~$secondToken')),
+        isTrue,
+        reason: 'every slot of the session carries the same token',
+      );
+    });
   });
 
   group('start surfaces', () {

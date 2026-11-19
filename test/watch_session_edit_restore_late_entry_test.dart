@@ -1000,7 +1000,7 @@ void main() {
         await tester.tap(find.text('Barbell Bench Press').first);
         await tester.pumpAndSettle();
 
-        final addSet = find.byIcon(Icons.add);
+        final addSet = find.byKey(const Key('set-count-add'));
         await tester.ensureVisible(addSet);
         await tester.tap(addSet);
         await tester.pumpAndSettle();

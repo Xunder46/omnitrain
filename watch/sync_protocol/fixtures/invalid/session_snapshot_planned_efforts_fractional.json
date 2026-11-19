@@ -1,0 +1,26 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-planned-efforts-fractional",
+  "sessionId": "s-2026-11-12-3",
+  "type": "session_snapshot",
+  "origin": "phone",
+  "sentAt": "2026-11-12T18:00:00Z",
+  "payload": {
+    "sessionId": "s-2026-11-12-3",
+    "revision": 1,
+    "status": "active",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-run",
+        "exerciseId": "ex-run",
+        "name": "Run",
+        "capabilities": ["time"],
+        "effortKind": "timed",
+        "plannedEfforts": 2.5
+      }
+    ],
+    "entries": [],
+    "timers": {}
+  }
+}

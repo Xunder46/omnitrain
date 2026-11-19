@@ -189,7 +189,7 @@ final class WatchSensorSummaryTests: XCTestCase {
         let replay = try CaptureReplay("no-sensors")
         try await replay.run(stoppingBefore: ["answer"])
 
-        let summaryFields = ["avgHeartRateBpm", "maxHeartRateBpm", "steps", "setBlockHeartRates"]
+        let summaryFields = ["avgHeartRateBpm", "maxHeartRateBpm", "steps", "setBlockHeartRates", "activeEnergyKcal"]
         XCTAssertFalse(replay.emittedEvents.isEmpty, "S-235 the session was logged")
         for event in replay.emittedEvents {
             for field in summaryFields {

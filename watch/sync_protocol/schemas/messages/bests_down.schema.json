@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/bests_down.schema.json",
+  "title": "bests_down",
+  "description": "Phone → watch. Each exercise's standing best — the numbers the phone's own \"New PR\" toast holds a set against, so the wrist can tell a record without holding any history. One frame, never batched, capped at 300 entries. Reference data: the phone owns the history, the watch reads it and never edits it.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "properties": {
+        "type": { "const": "bests_down" },
+        "origin": { "const": "phone" },
+        "payload": {
+          "type": "object",
+          "required": ["generatedAt", "bests"],
+          "additionalProperties": false,
+          "properties": {
+            "generatedAt": {
+              "$ref": "envelope.schema.json#/$defs/timestamp"
+            },
+            "bests": {
+              "type": "array",
+              "description": "Every exercise the user has a completed set for, one entry each, ordered by exerciseId. An exercise with no completed set appears nowhere: an empty array is a frame like any other, telling the wrist the phone knows of no history.",
+              "maxItems": 300,
+              "items": { "$ref": "#/$defs/bestEntry" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "bestEntry": {
+      "type": "object",
+      "description": "One exercise's standing best. At least one axis is present — a floor the dialect cannot express as a schema constraint (no `anyOf`, and `oneOf` is exactly-one), so both validators enforce it as a semantic rule; a weighted best and a bodyweight rep best may travel together.",
+      "required": ["exerciseId"],
+      "additionalProperties": false,
+      "properties": {
+        "exerciseId": { "type": "string", "minLength": 1 },
+        "e1rmKg": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The best estimated one-rep max, in kilograms, at the full precision the phone computes it — never rounded. Present only when the exercise has a set with load and reps; a zero estimate is refused as a semantic rule."
+        },
+        "repsBest": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The most reps in one set at zero load, a bodyweight set's best. Present only when the exercise has one."
+        }
+      }
+    }
+  }
+}

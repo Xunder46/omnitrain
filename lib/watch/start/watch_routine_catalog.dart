@@ -10,7 +10,14 @@
 /// the wrist's to read (PROTOCOL.md, authority rule 2).
 library;
 
+import '../sensors/watch_platform_workout.dart';
 import '../session/watch_records.dart';
+
+/// The per-session suffix the wrist appends to every slot id it mints (plan 81
+/// D-1): the first 8 characters of the source id, or the whole id when it is
+/// shorter. Production session ids are UUIDs, so the token never contains `~`
+/// and a slot id's last `~` segment is always the token.
+String sessionToken(String id) => id.length <= 8 ? id : id.substring(0, 8);
 
 /// A catalog exercise: what it is, not where it sits in a session.
 class WatchCatalogExercise {
@@ -54,6 +61,11 @@ class WatchCatalogExercise {
   /// Distinct from the ids the phone chooses, which is what lets a pushed
   /// exercise and a picked one of the same kind sit side by side.
   String get slotId => 'sx-$exerciseId';
+
+  /// The id the wrist mints for a live session: the base id with the session's
+  /// token appended, so two sessions never share a slot id (plan 81 D-1). The
+  /// menu and the picker keep reading the plain base.
+  String slotIdFor(String token) => '$slotId~$token';
 
   /// This exercise as a protocol `sessionExercise` slot.
   ///
@@ -112,13 +124,14 @@ class WatchRoutineEffort {
   /// Per-metric targets, keyed the way the protocol keys them.
   final Map<String, Object?> targets;
 
-  /// The slot this effort becomes when the routine is started. Keyed by
-  /// effort, so a routine that benches in two segments yields two slots — and
-  /// carrying the routine's declared effort kind, which is the one the wrist
-  /// renders (a Plank in an isometric routine is timed because the routine says
-  /// so, not because a capability suggests otherwise).
-  Map<String, Object?> get slot => catalogExercise.toSlot(
-    sessionExerciseId: 'sx-$effortId',
+  /// The slot this effort becomes when the routine is started, carrying
+  /// [token] — the session's — in its id (plan 81 D-1). Keyed by effort, so a
+  /// routine that benches in two segments yields two slots — and carrying the
+  /// routine's declared effort kind, which is the one the wrist renders (a
+  /// Plank in an isometric routine is timed because the routine says so, not
+  /// because a capability suggests otherwise).
+  Map<String, Object?> slotFor(String token) => catalogExercise.toSlot(
+    sessionExerciseId: 'sx-$effortId~$token',
     effortKind: effortKind,
   );
 
@@ -175,6 +188,7 @@ class WatchRoutine {
     required this.name,
     required this.updatedAt,
     required this.segments,
+    this.focusModality,
   });
 
   factory WatchRoutine.fromJson(Map<String, Object?> json) => WatchRoutine(
@@ -185,10 +199,29 @@ class WatchRoutine {
         .map(asJsonObject)
         .map(WatchRoutineSegment.fromJson)
         .toList(growable: false),
+    focusModality:
+        json['focusModality'] is String &&
+            (json['focusModality'] as String).isNotEmpty
+        ? json['focusModality'] as String
+        : null,
   );
 
   final String routineId;
   final String name;
+
+  /// The routine's Focus Modality key, as the phone sent it, or null when the
+  /// phone did not send one (an older phone, or a routine with no Focus).
+  final String? focusModality;
+
+  /// The Focus the wrist can start a session with: [focusModality] when the
+  /// wrist knows it as a modality (a key of [WatchActivityTypes.byModality]),
+  /// else null.
+  String? get startModality {
+    final focus = focusModality;
+    return focus != null && WatchActivityTypes.byModality.containsKey(focus)
+        ? focus
+        : null;
+  }
 
   /// When the phone last edited it. The cache is replaced wholesale, so this is
   /// what tells the user which version they are looking at.
@@ -200,9 +233,10 @@ class WatchRoutine {
   Iterable<WatchRoutineEffort> get efforts =>
       segments.expand((segment) => segment.efforts);
 
-  /// The session slots starting this routine creates, in order.
-  List<Map<String, Object?>> get slots => [
-    for (final effort in efforts) effort.slot,
+  /// The session slots starting this routine creates, in order, each carrying
+  /// [token] — the session's — in its id (plan 81 D-1).
+  List<Map<String, Object?>> slotsFor(String token) => [
+    for (final effort in efforts) effort.slotFor(token),
   ];
 
   /// The catalog exercises this routine cannot run without, in routine order,
@@ -220,6 +254,7 @@ class WatchRoutine {
     'routineId': routineId,
     'name': name,
     'updatedAt': utcIso(updatedAt),
+    if (focusModality != null) 'focusModality': focusModality,
     'segments': [for (final segment in segments) segment.toJson()],
   };
 }

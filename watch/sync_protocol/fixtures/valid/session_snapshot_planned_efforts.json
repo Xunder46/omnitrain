@@ -1,0 +1,55 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-planned-efforts-1",
+  "sessionId": "s-2026-11-12-1",
+  "type": "session_snapshot",
+  "origin": "phone",
+  "sentAt": "2026-11-12T18:00:00Z",
+  "payload": {
+    "sessionId": "s-2026-11-12-1",
+    "revision": 1,
+    "status": "active",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-bench",
+        "name": "Bench Press",
+        "capabilities": ["sets", "reps", "load"],
+        "effortKind": "set",
+        "plannedSets": [
+          { "reps": 10, "loadKg": 40 },
+          { "reps": 10, "loadKg": 40 },
+          { "reps": 8, "loadKg": 42.5 }
+        ]
+      },
+      {
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"],
+        "effortKind": "drill",
+        "plannedEfforts": 3
+      },
+      {
+        "sessionExerciseId": "sx-run",
+        "exerciseId": "ex-run",
+        "name": "Run",
+        "capabilities": ["time"],
+        "effortKind": "timed",
+        "plannedEfforts": 2
+      },
+      {
+        "sessionExerciseId": "sx-soccer",
+        "exerciseId": "ex-soccer",
+        "name": "Soccer",
+        "capabilities": ["time", "rounds"],
+        "effortKind": "round",
+        "roundDurationSecs": 180,
+        "plannedEfforts": 4
+      }
+    ],
+    "entries": [],
+    "timers": {}
+  }
+}

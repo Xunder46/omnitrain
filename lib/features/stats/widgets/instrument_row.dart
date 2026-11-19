@@ -24,11 +24,17 @@ class InstrumentRowTile extends StatelessWidget {
     required this.onTap,
   });
 
-  /// The parts that exist, in this order: the value's own secondary figure
-  /// (`Total hold 2:30`), the mean heart rate, the cadence. Resistance rows
-  /// carry no secondary line — their added weight is inside the figure above.
+  /// The parts that exist, in this order: what the figure above measures
+  /// (`Est. 1RM`, `Best pace`, `Best set`, `Total time`) when the metric names
+  /// itself, then the value's own secondary figure (`Total hold 2:30`), the mean
+  /// heart rate, the cadence. Resistance rows carry no second figure — their
+  /// added weight is inside the figure above — so on the recency window they
+  /// read `Best set` alone.
   String? _secondaryLine(NativeValue best) {
     final parts = <String>[];
+
+    final primary = nativePrimaryLabel(best.metric);
+    if (primary != null) parts.add(primary);
 
     final label = nativeSecondaryLabel(best.secondaryMetric);
     final value = formatNativeSecondary(best, settingsState);
@@ -83,7 +89,7 @@ class InstrumentRowTile extends StatelessWidget {
             ),
             InstrumentSparkline(
               key: Key('instrument_sparkline_${summary.exerciseId}'),
-              points: summary.points,
+              points: summary.trendPoints,
               themeColors: themeColors,
             ),
             const SizedBox(width: 12),
@@ -101,7 +107,9 @@ class InstrumentRowTile extends StatelessWidget {
                   label: delta == null
                       ? null
                       : formatNativeChange(best.metric, delta, settingsState),
-                  delta: delta,
+                  delta: delta == null
+                      ? null
+                      : nativeChangeGain(best.metric, delta),
                   themeColors: themeColors,
                   theme: theme,
                 ),
@@ -114,12 +122,16 @@ class InstrumentRowTile extends StatelessWidget {
   }
 }
 
-/// The row's change readout. Reads `'—'` when there is no comparable previous
-/// value, and otherwise carries the direction of the raw numeric change, so a
-/// slower pace reads `↑` like any other increase.
+/// The row's change readout. Reads `new` when there is no comparable previous
+/// value; a change of exactly zero is formatted by `formatNativeChange` as the
+/// dash. The [delta] it carries is a gain (positive reads in the primary
+/// colour, negative in the error colour, zero or null muted), so for a pace a
+/// faster run is the positive case (plan 209).
 class InstrumentChangeChip extends StatelessWidget {
   /// The formatted change, or null when there is nothing comparable.
   final String? label;
+
+  /// The change as a gain: positive is an improvement (see [nativeChangeGain]).
   final double? delta;
   final OmniThemeColors themeColors;
   final ThemeData theme;
@@ -132,7 +144,7 @@ class InstrumentChangeChip extends StatelessWidget {
     required this.theme,
   });
 
-  static const String _noChange = '—';
+  static const String _newLabel = 'new';
 
   @override
   Widget build(BuildContext context) {
@@ -149,7 +161,7 @@ class InstrumentChangeChip extends StatelessWidget {
     return SizedBox(
       width: 92,
       child: Text(
-        label ?? _noChange,
+        label ?? _newLabel,
         textAlign: TextAlign.right,
         style: theme.textTheme.labelSmall?.copyWith(
           color: color,

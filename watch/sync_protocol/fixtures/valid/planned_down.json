@@ -1,0 +1,28 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-planned-down-1",
+  "type": "planned_down",
+  "origin": "phone",
+  "sentAt": "2026-11-05T09:00:00Z",
+  "payload": {
+    "generatedAt": "2026-11-05T09:00:00Z",
+    "plans": [
+      {
+        "plannedSessionId": "p-today-routine",
+        "name": "Push A",
+        "scheduledDateMs": 1793836800000,
+        "createdAtMs": 1793750000000,
+        "updatedAtMs": 1793800000000,
+        "routineTemplateId": "tpl-push-a"
+      },
+      {
+        "plannedSessionId": "p-today-free",
+        "name": "Sports",
+        "scheduledDateMs": 1793836800000,
+        "createdAtMs": 1793650000000,
+        "updatedAtMs": 1793820000000,
+        "modality": "sports"
+      }
+    ]
+  }
+}

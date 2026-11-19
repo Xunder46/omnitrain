@@ -216,7 +216,7 @@ void main() {
     ) async {
       // The dialog must appear with the canonical wording. Scope the
       // assertions to the dialog subtree so the bottom Save button does
-      // not satisfy the dialog's "Save" assertion.
+      // not satisfy a "Save" assertion on the dialog.
       final dialogFinder = find.byType(AlertDialog);
       expect(dialogFinder, findsOneWidget);
       expect(
@@ -232,15 +232,15 @@ void main() {
       );
       expect(
         find.descendant(of: dialogFinder, matching: find.text('Save')),
-        findsOneWidget,
+        findsNothing,
       );
 
-      // Keep editing via the close icon — screen stays mounted.
-      final closeIcon = find.descendant(
+      // Keep editing via its own action — screen stays mounted.
+      final keepEditing = find.descendant(
         of: dialogFinder,
-        matching: find.byIcon(Icons.close),
+        matching: find.text('Keep editing'),
       );
-      await tester.tap(closeIcon);
+      await tester.tap(keepEditing);
       await _pumpAndSettle(tester);
 
       expect(find.byType(AlertDialog), findsNothing);
@@ -558,6 +558,12 @@ void main() {
       await _pumpAndSettle(tester);
 
       expect(deps.routineState.hasUnsavedChanges, isTrue);
+
+      // Plan 240 reader: the editor no longer saves a routine with no
+      // exercise, so give this new routine one before the Save tap — the
+      // test's premise is the baseline reset, not an empty save.
+      final ex = await _getExerciseById(deps.repo, 'exercise-barbell-squat');
+      await deps.routineState.addExerciseToRoutine(ex, 'set');
 
       // Save.
       await _tapSaveButton(tester);

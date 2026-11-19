@@ -467,7 +467,7 @@ void main() {
 
     // S-009: Start button starts the timer (outer GestureDetector removed per B-02-1)
     testWidgets(
-      'S-009: tapping Start button starts timer (play/pause icons reflect state)',
+      'S-009: tapping Start button starts the timer (centre button becomes Log Interval)',
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final deps = await _buildDeps(modality: 'cardio_endurance');
@@ -481,24 +481,27 @@ void main() {
         await tester.pumpWidget(_buildSessionScreen(deps));
         await _openDetailView(tester, 'Easy Run');
 
-        // Before starting: play_circle_outline icon is shown
-        expect(find.byIcon(Icons.play_circle_outline), findsOneWidget);
+        // Before starting the centre control offers Start.
+        expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
 
         // Start the timer via the dedicated Start button.
         await tester.tap(find.widgetWithText(FilledButton, 'Start'));
         await tester.pump();
 
-        // After starting, timer should be running (RUNNING text or pause icon).
+        // The timer runs: the centre control offers the log action and there is
+        // no play/pause glyph or status text (D-3).
         expect(
-          find.textContaining('RUNNING').evaluate().isNotEmpty ||
-              find.byIcon(Icons.pause_circle_outline).evaluate().isNotEmpty,
-          isTrue,
+          find.widgetWithText(FilledButton, 'Log Interval'),
+          findsOneWidget,
         );
+        expect(find.textContaining('RUNNING'), findsNothing);
+        expect(find.byIcon(Icons.play_circle_outline), findsNothing);
+        expect(find.byIcon(Icons.pause_circle_outline), findsNothing);
       },
     );
 
-    // S-010: Timer display shows play affordance when not running
-    testWidgets('S-010: timer shows play_circle_outline when not running', (
+    // S-010: the centre control offers Start before the timer runs
+    testWidgets('S-010: centre button reads Start before the timer runs', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -513,11 +516,12 @@ void main() {
       await tester.pumpWidget(_buildSessionScreen(deps));
       await _openDetailView(tester, 'Easy Run');
 
-      expect(find.byIcon(Icons.play_circle_outline), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
+      expect(find.byIcon(Icons.play_circle_outline), findsNothing);
     });
 
-    // S-011: Timer display shows pause affordance when running
-    testWidgets('S-011: timer shows pause_circle_outline when running', (
+    // S-011: the centre control offers the log action while the timer runs
+    testWidgets('S-011: centre button reads Log Interval while running', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -536,7 +540,12 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Start'));
       await tester.pump();
 
-      expect(find.byIcon(Icons.pause_circle_outline), findsOneWidget);
+      expect(
+        find.widgetWithText(FilledButton, 'Log Interval'),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.pause_circle_outline), findsNothing);
+      expect(find.textContaining('RUNNING'), findsNothing);
     });
   });
 
@@ -610,7 +619,7 @@ void main() {
       await _openDetailView(tester, 'Barbell Back Squat');
 
       // Tap remove
-      await tester.tap(find.byIcon(Icons.remove));
+      await tester.tap(find.byKey(const Key('set-count-remove')));
       await tester.pumpAndSettle();
 
       expect(find.byType(AlertDialog), findsNothing);
@@ -636,26 +645,16 @@ void main() {
       await deps.workoutState.addEntry(effortId);
       await deps.workoutState.addEntry(effortId);
 
+      // Every set logged: `−` can only drop a logged set, so it asks first.
+      await deps.workoutState.recordRestStart(effortId, 1);
+      await deps.workoutState.recordRestStart(effortId, 2);
+      await deps.workoutState.recordRestStart(effortId, 3);
+
       await tester.pumpWidget(_buildSessionScreen(deps));
       await _openDetailView(tester, 'Barbell Back Squat');
 
-      // Navigate to set 2 (middle set)
-      await tester.tap(find.byIcon(Icons.arrow_forward));
-      await tester.pumpAndSettle();
-
-      // Verify we are on set 2 of 3
-      expect(find.textContaining('Set 2 of 3'), findsOneWidget);
-
-      // Log set 2 so deletion requires confirmation.
-      await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
-      await tester.pumpAndSettle();
-
-      // Logging auto-advances to set 3, so navigate back to logged set 2.
-      await tester.tap(find.byIcon(Icons.arrow_back).last);
-      await tester.pumpAndSettle();
-
-      // Delete set 2
-      await tester.tap(find.byIcon(Icons.remove));
+      // Delete the last set
+      await tester.tap(find.byKey(const Key('set-count-remove')));
       await tester.pumpAndSettle();
 
       expect(find.byType(AlertDialog), findsOneWidget);
@@ -668,7 +667,7 @@ void main() {
       expect(
         find.textContaining('of 2'),
         findsOneWidget,
-        reason: 'After deleting set 2 of 3, only 2 sets should remain',
+        reason: 'After deleting one of 3 sets, only 2 sets should remain',
       );
     });
 
@@ -686,20 +685,16 @@ void main() {
       );
       await deps.workoutState.addEntry(effortId);
 
+      // Both sets logged: `−` can only drop a logged set, so it asks first.
+      await deps.workoutState.recordRestStart(effortId, 1);
+      await deps.workoutState.recordRestStart(effortId, 2);
+
       await tester.pumpWidget(_buildSessionScreen(deps));
       await _openDetailView(tester, 'Barbell Back Squat');
 
       expect(find.textContaining('of 2'), findsOneWidget);
 
-      // Mark current set logged so delete path prompts.
-      await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
-      await tester.pumpAndSettle();
-
-      // Logging auto-advances to set 2, so go back to logged set 1.
-      await tester.tap(find.byIcon(Icons.arrow_back).last);
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byIcon(Icons.remove));
+      await tester.tap(find.byKey(const Key('set-count-remove')));
       await tester.pumpAndSettle();
 
       expect(find.byType(AlertDialog), findsOneWidget);
@@ -735,8 +730,11 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // RUNNING should be displayed
-      expect(find.textContaining('RUNNING'), findsOneWidget);
+      // The timer runs: the centre control offers the log action.
+      expect(
+        find.widgetWithText(FilledButton, 'Log Interval'),
+        findsOneWidget,
+      );
 
       // Jump to set 2 and back — the set 1 timer must be untouched.
       await tester.tap(find.byIcon(Icons.arrow_forward));
@@ -747,8 +745,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('RUNNING'), findsOneWidget);
-      expect(find.textContaining('PAUSED'), findsNothing);
+      // Still running: the log button is unchanged, so the round trip did not
+      // stop or pause the timer.
+      expect(
+        find.widgetWithText(FilledButton, 'Log Interval'),
+        findsOneWidget,
+      );
       // No Resume control, because nothing paused the timer.
       expect(find.widgetWithText(FilledButton, 'Resume'), findsNothing);
     });
@@ -819,7 +821,13 @@ void main() {
 
         expect(find.text('Set 1 of 1'), findsOneWidget);
         expect(find.byIcon(Icons.delete_outline), findsOneWidget);
-        expect(find.byIcon(Icons.remove), findsNothing);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('set-count-remove')),
+            matching: find.byIcon(Icons.remove),
+          ),
+          findsNothing,
+        );
       },
     );
 
@@ -842,7 +850,13 @@ void main() {
         await _openDetailView(tester, 'Barbell Back Squat');
 
         expect(find.text('Set 1 of 2'), findsOneWidget);
-        expect(find.byIcon(Icons.remove), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('set-count-remove')),
+            matching: find.byIcon(Icons.remove),
+          ),
+          findsOneWidget,
+        );
         expect(find.byIcon(Icons.delete_outline), findsNothing);
       },
     );
@@ -865,16 +879,28 @@ void main() {
         await _openDetailView(tester, 'Barbell Back Squat');
 
         // 2 sets — minus icon
-        expect(find.byIcon(Icons.remove), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('set-count-remove')),
+            matching: find.byIcon(Icons.remove),
+          ),
+          findsOneWidget,
+        );
 
-        // Remove unlogged set 1 (no confirmation dialog)
-        await tester.tap(find.byIcon(Icons.remove));
+        // Remove the last unlogged set (no confirmation dialog)
+        await tester.tap(find.byKey(const Key('set-count-remove')));
         await tester.pumpAndSettle();
 
         // 1 set remaining — trash icon
         expect(find.text('Set 1 of 1'), findsOneWidget);
         expect(find.byIcon(Icons.delete_outline), findsOneWidget);
-        expect(find.byIcon(Icons.remove), findsNothing);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('set-count-remove')),
+            matching: find.byIcon(Icons.remove),
+          ),
+          findsNothing,
+        );
       },
     );
 

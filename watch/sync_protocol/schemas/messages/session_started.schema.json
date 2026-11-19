@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/session_started.schema.json",
+  "title": "session_started",
+  "description": "Watch → phone. The wrist's report that a session just started on the wrist, emitted by the start path itself — a planned tap or a free start — and not by the engine's generic start, so a start from a routine button sends nothing new. The report is durable: a start report the radio cannot carry is handed to the OS queue and delivered when the two devices meet. Named ids travel only when known.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "properties": {
+        "type": { "const": "session_started" },
+        "origin": { "const": "watch" },
+        "payload": {
+          "type": "object",
+          "required": ["sessionId", "at"],
+          "additionalProperties": false,
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The wrist's own session id; the phone stores the link under its own minted id."
+            },
+            "at": {
+              "$ref": "envelope.schema.json#/$defs/timestamp"
+            },
+            "routineTemplateId": {
+              "type": "string",
+              "description": "The routine the tapped plan was created from. Omitted (never null) when the start is a free workout."
+            },
+            "plannedSessionId": {
+              "type": "string",
+              "description": "The tapped plan's id. Omitted (never null) when the start is a free workout."
+            }
+          }
+        }
+      }
+    }
+  ]
+}

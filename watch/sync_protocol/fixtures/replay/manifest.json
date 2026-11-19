@@ -1,0 +1,216 @@
+{
+  "formatVersion": 1,
+  "description": "Plan 152 differential replay corpus. Generated — do not hand-edit; regenerate with `flutter test --dart-define=REPLAY_CORPUS_WRITE=true test/watch_replay_corpus_test.dart`.",
+  "classes": [
+    "status",
+    "entries",
+    "timers",
+    "current"
+  ],
+  "allowlist": [
+    {
+      "id": "A-152b",
+      "what": "timer adoption can move the wrist to another exercise on Swift only; the summary does not read `currentExerciseIndex`",
+      "owner": "the timer owner (a PR 152b candidate)"
+    },
+    {
+      "id": "A-152c",
+      "what": "Swift-only surfaces (water, energy, effort rating) are unreachable from the corpus action set",
+      "owner": "the watch app owner"
+    },
+    {
+      "id": "A-152d",
+      "what": "Swift falls back to a minted id or stamp on a malformed frame; the corpus carries closed envelopes only",
+      "owner": "the replay owner"
+    }
+  ],
+  "sources": [
+    {
+      "name": "trace-s14501",
+      "kind": "trace",
+      "file": "trace-s14501.json",
+      "tags": [
+        "entry",
+        "frame-prefix",
+        "no-fault"
+      ]
+    },
+    {
+      "name": "trace-s14503",
+      "kind": "trace",
+      "file": "trace-s14503.json",
+      "tags": [
+        "entry",
+        "frame-prefix",
+        "refused-queued"
+      ]
+    },
+    {
+      "name": "trace-f2",
+      "kind": "trace",
+      "file": "trace-f2.json",
+      "tags": [
+        "entry"
+      ]
+    },
+    {
+      "name": "trace-f3",
+      "kind": "trace",
+      "file": "trace-f3.json",
+      "tags": [
+        "timer",
+        "entry",
+        "frame-prefix"
+      ]
+    },
+    {
+      "name": "trace-f4",
+      "kind": "trace",
+      "file": "trace-f4.json",
+      "tags": [
+        "multi-session",
+        "entry",
+        "frame-prefix"
+      ]
+    },
+    {
+      "name": "trace-f5",
+      "kind": "trace",
+      "file": "trace-f5.json",
+      "tags": [
+        "multi-session",
+        "entry"
+      ]
+    },
+    {
+      "name": "trace-f6",
+      "kind": "trace",
+      "file": "trace-f6.json",
+      "tags": [
+        "multi-session",
+        "entry",
+        "frame-prefix"
+      ]
+    },
+    {
+      "name": "trace-f7",
+      "kind": "trace",
+      "file": "trace-f7.json",
+      "tags": [
+        "multi-session",
+        "entry",
+        "refused-queued"
+      ]
+    },
+    {
+      "name": "trace-a1",
+      "kind": "trace",
+      "file": "trace-a1.json",
+      "tags": [
+        "multi-session",
+        "entry",
+        "refused-queued"
+      ]
+    },
+    {
+      "name": "trace-a2",
+      "kind": "trace",
+      "file": "trace-a2.json",
+      "tags": [
+        "multi-session",
+        "entry",
+        "refused-queued"
+      ]
+    },
+    {
+      "name": "seed-1",
+      "kind": "seed",
+      "file": "seed-1.json",
+      "seed": 1,
+      "tags": [
+        "kill",
+        "entry",
+        "refused-queued",
+        "frame-prefix"
+      ]
+    },
+    {
+      "name": "seed-7",
+      "kind": "seed",
+      "file": "seed-7.json",
+      "seed": 7,
+      "tags": [
+        "multi-session",
+        "timer",
+        "entry"
+      ]
+    },
+    {
+      "name": "seed-50",
+      "kind": "seed",
+      "file": "seed-50.json",
+      "seed": 50,
+      "tags": [
+        "multi-session",
+        "entry",
+        "refused-queued",
+        "frame-prefix"
+      ]
+    },
+    {
+      "name": "seed-111",
+      "kind": "seed",
+      "file": "seed-111.json",
+      "seed": 111,
+      "tags": [
+        "multi-session",
+        "entry",
+        "refused-queued"
+      ]
+    },
+    {
+      "name": "seed-408",
+      "kind": "seed",
+      "file": "seed-408.json",
+      "seed": 408,
+      "tags": [
+        "kill",
+        "multi-session",
+        "timer",
+        "entry",
+        "refused-queued"
+      ]
+    },
+    {
+      "name": "seed-857",
+      "kind": "seed",
+      "file": "seed-857.json",
+      "seed": 857,
+      "tags": [
+        "kill",
+        "multi-session",
+        "entry",
+        "refused-queued"
+      ]
+    },
+    {
+      "name": "trace-kills",
+      "kind": "trace",
+      "file": "trace-kills.json",
+      "tags": [
+        "kill",
+        "entry",
+        "phone-kill"
+      ]
+    },
+    {
+      "name": "trace-echo",
+      "kind": "trace",
+      "file": "trace-echo.json",
+      "tags": [
+        "entry",
+        "frame-prefix"
+      ]
+    }
+  ]
+}

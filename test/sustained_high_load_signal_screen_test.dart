@@ -540,8 +540,10 @@ void main() {
             findsNothing,
           );
 
-          // The layer sits in its slot, under the Mix layer and above ALL TIME,
-          // and the card is inside it.
+          // The layer sits in its slot, under the Mix layer, and the card is
+          // inside it. This fixture seeds no effort and no food, so no
+          // Instruments list and no Fuel row follow the layer, and the
+          // "above the next block" side has no anchor to read.
           final signalsTop = tester
               .getTopLeft(find.byKey(const Key('signals_layer')))
               .dy;
@@ -552,17 +554,13 @@ void main() {
             ),
           );
           expect(
-            signalsTop,
-            lessThan(tester.getTopLeft(find.text('ALL TIME')).dy),
-          );
-          expect(
             tester.getTopLeft(find.byKey(const Key(_kCardKey))).dy,
             greaterThan(tester.getTopLeft(find.text('SIGNALS')).dy),
           );
 
-          // The blocks below are undisturbed.
+          // The blocks below are undisturbed. The fixture renders nothing
+          // below the layer: no effort, no food, no Instruments, no Fuel.
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
-          expect(find.byKey(const Key('all_time_card')), findsOneWidget);
           expect(tester.takeException(), isNull);
         });
       });

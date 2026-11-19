@@ -1,0 +1,25 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-wrist-modality",
+  "sessionId": "s-wrist-2026-11-15-1",
+  "type": "session_snapshot",
+  "origin": "watch",
+  "sentAt": "2026-07-13T17:21:00Z",
+  "payload": {
+    "sessionId": "s-wrist-2026-11-15-1",
+    "revision": 1,
+    "status": "active",
+    "modality": "sports",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-wrist-sport",
+        "exerciseId": "ex-pickup-soccer",
+        "name": "Pickup Soccer",
+        "capabilities": ["time", "rounds"]
+      }
+    ],
+    "entries": [],
+    "timers": {}
+  }
+}

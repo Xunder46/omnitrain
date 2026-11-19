@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../buttons/omni_utility_button.dart';
 import '../layout/omni_surface.dart';
 
 /// One row of the Session Summary's DISTANCE card.
@@ -33,6 +34,11 @@ class DistanceRowModel {
 /// The Session Summary's DISTANCE card: one tap-to-edit row per entry that
 /// carries a distance.
 ///
+/// The card says so itself: a hint above the rows explains the tap, and each
+/// row ends with an outlined pencil button. The button opens the same editor as
+/// the row; the row's own `InkWell` and its semantics label stay the one
+/// control a screen reader meets.
+///
 /// Reads no state. It is hidden by its caller when it has no rows, and it
 /// renders nothing itself in that case so a stale empty card can never show.
 class SessionDistanceCard extends StatelessWidget {
@@ -57,9 +63,19 @@ class SessionDistanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              'Tap a row to enter or correct it.',
+              key: const Key('session_distance_hint'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
           for (var i = 0; i < rows.length; i++) ...[
             if (i > 0) Divider(color: themeColors.surfaceBorder, height: 1),
-            _buildRow(context, theme, rows[i]),
+            _buildRow(context, theme, rows[i], i),
           ],
         ],
       ),
@@ -70,6 +86,7 @@ class SessionDistanceCard extends StatelessWidget {
     BuildContext context,
     ThemeData theme,
     DistanceRowModel row,
+    int index,
   ) {
     final unitStyle = theme.textTheme.labelSmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
@@ -82,7 +99,9 @@ class SessionDistanceCard extends StatelessWidget {
         button: true,
         label: '${row.name}, ${row.value} ${row.unitLabel}',
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          // The 48 dp pencil button sets the row height, so the row's own
+          // padding is small.
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
             children: [
               Expanded(
@@ -101,6 +120,19 @@ class SessionDistanceCard extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Text(row.unitLabel.toUpperCase(), style: unitStyle),
+              const SizedBox(width: 12),
+              // The outlined pencil marks the row as editable and is tappable
+              // itself; the row's own Semantics(button: true) already names
+              // the action, so the button says nothing more to a screen
+              // reader.
+              ExcludeSemantics(
+                child: OmniUtilityIconButton(
+                  buttonKey: Key('session_distance_edit_button_$index'),
+                  tooltip: 'Edit distance',
+                  icon: Icons.edit_outlined,
+                  onPressed: row.onTap,
+                ),
+              ),
             ],
           ),
         ),

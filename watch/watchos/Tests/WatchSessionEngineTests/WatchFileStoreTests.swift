@@ -50,7 +50,34 @@ private func fileFamilyJSON(_ contents: WatchStoreContents) -> [[String]] {
         contents.foodCatalogs.map { fileJSON(.foodCatalog($0)) },
         contents.preferences.map { fileJSON(.preferences($0)) },
         contents.ratingPrompts.map { fileJSON(.ratingPrompt($0)) },
+        contents.exerciseBatches.map { fileJSON(.exerciseBatch($0)) },
     ]
+}
+
+/// A stored `exercises_down` batch, its `recordId` the id D-3813 derives from
+/// version and index.
+private func fileBatchRow(
+    _ index: Int,
+    version: String,
+    at: Date,
+    exerciseIds: [String],
+    batchCount: Int = 2,
+    totalCount: Int? = nil
+) -> StoredWatchRecord {
+    .exerciseBatch(
+        WatchExerciseBatchRecord(
+            recordId: "exb-\(version)-\(index)",
+            recordedAt: at,
+            catalogVersion: version,
+            generatedAt: at,
+            batchIndex: index,
+            batchCount: batchCount,
+            totalCount: totalCount ?? exerciseIds.count * batchCount,
+            exercises: exerciseIds.map {
+                ["exerciseId": $0, "name": $0, "capabilities": ["reps"]]
+            }
+        )
+    )
 }
 
 private func fileSessionRow(_ id: String, sessionId: String = "s-file", at: Date) -> StoredWatchRecord {
@@ -455,6 +482,7 @@ final class WatchFileStoreTests: XCTestCase {
                     recordedAt: at
                 )
             ),
+            fileBatchRow(0, version: "v1", at: at, exerciseIds: ["ex-a", "ex-b"]),
         ]
 
         for record in script {
@@ -1004,6 +1032,188 @@ final class WatchFileStoreTests: XCTestCase {
             read.sessions.map(\.recordId),
             ["s-1", "s-2", "s-3", "s-4"],
             "F3 every row reads in order"
+        )
+    }
+
+    // MARK: - S-3821 / S-3835 the stored exercise batches
+
+    func testS3821APruneDropsEveryOtherVersionAndNothingElse() async throws {
+        let at = fileInstant("2026-10-06T12:00:00Z")
+        let fileStore = FileWatchSessionStore(directory: directory)
+        let memoryStore = InMemoryWatchSessionStore()
+
+        let script: [StoredWatchRecord] = [
+            fileBatchRow(0, version: "v1", at: at, exerciseIds: ["ex-a", "ex-b"]),
+            fileBatchRow(1, version: "v1", at: at, exerciseIds: ["ex-c", "ex-d"]),
+            fileBatchRow(0, version: "v2", at: at, exerciseIds: ["ex-a", "ex-b"]),
+            fileSessionRow("sess-1", at: at),
+            .routineCatalog(
+                WatchRoutineCatalogRecord(recordId: "rou-1", recordedAt: at, generatedAt: at)
+            ),
+        ]
+        for record in script {
+            _ = await fileStore.append(record)
+            _ = await memoryStore.append(record)
+        }
+
+        let fileDropped = await fileStore.pruneExerciseBatches(keepingVersion: "v2")
+        let memoryDropped = await memoryStore.pruneExerciseBatches(keepingVersion: "v2")
+        XCTAssertEqual(
+            fileDropped.sorted(),
+            ["exb-v1-0", "exb-v1-1"],
+            "S-3821 the two v1 batches are the ones dropped"
+        )
+        XCTAssertEqual(fileDropped, memoryDropped, "S-3821 both stores drop the same rows")
+
+        let fileContents = await fileStore.readAll()
+        let memoryContents = await memoryStore.readAll()
+        XCTAssertEqual(
+            fileContents.exerciseBatches.map(\.recordId),
+            ["exb-v2-0"],
+            "S-3821 the kept version's batch stays"
+        )
+        XCTAssertEqual(
+            fileContents.sessions.map(\.recordId),
+            ["sess-1"],
+            "S-3821 a session row is not a batch and stays"
+        )
+        XCTAssertEqual(
+            fileContents.routineCatalogs.map(\.recordId),
+            ["rou-1"],
+            "S-3821 a routine catalog row is not pruned either"
+        )
+        XCTAssertEqual(
+            fileFamilyJSON(fileContents),
+            fileFamilyJSON(memoryContents),
+            "S-3821 the two stores answer family by family after the prune"
+        )
+
+        // A relaunch: a brand-new store over the same directory reads the pruned
+        // file back, so the drop survived the process.
+        let reopened = await FileWatchSessionStore(directory: directory).readAll()
+        XCTAssertEqual(
+            fileFamilyJSON(reopened),
+            fileFamilyJSON(fileContents),
+            "S-3821 the prune reached the disk, not just the cache"
+        )
+    }
+
+    func testS3821APruneAfterATornTailStillDropsTheOtherVersion() async throws {
+        let at = fileInstant("2026-10-06T12:00:00Z")
+        let first = FileWatchSessionStore(directory: directory)
+        for record in [
+            fileBatchRow(0, version: "v1", at: at, exerciseIds: ["ex-a", "ex-b"]),
+            fileBatchRow(1, version: "v1", at: at, exerciseIds: ["ex-c", "ex-d"]),
+            fileBatchRow(0, version: "v2", at: at, exerciseIds: ["ex-a", "ex-b"]),
+            fileSessionRow("sess-1", at: at),
+        ] {
+            _ = await first.append(record)
+        }
+
+        // The shape a kill during an append leaves: the last line ends mid-JSON.
+        var torn = try Data(contentsOf: fileURL)
+        torn.removeLast(5)
+        try torn.write(to: fileURL)
+
+        let second = FileWatchSessionStore(directory: directory)
+        let dropped = await second.pruneExerciseBatches(keepingVersion: "v2")
+        XCTAssertEqual(
+            dropped,
+            ["exb-v1-0", "exb-v1-1"],
+            "S-3821 the torn row is skipped and the other version is dropped"
+        )
+
+        let relaunched = await FileWatchSessionStore(directory: directory).readAll()
+        XCTAssertEqual(
+            relaunched.exerciseBatches.map(\.recordId),
+            ["exb-v2-0"],
+            "S-3821 the kept batch is the only row of its family left"
+        )
+        XCTAssertTrue(relaunched.sessions.isEmpty, "S-3821 the torn session row is gone")
+        XCTAssertEqual(
+            try fileLines().count,
+            2,
+            "S-3821 the rewrite leaves the marker and the surviving row, no torn fragment"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: temporaryFileURL.path),
+            "S-3821 a prune leaves no temporary file behind"
+        )
+    }
+
+    func testS3835APruneWithNoBatchesWritesNothing() async throws {
+        let at = fileInstant("2026-10-06T12:00:00Z")
+        let store = FileWatchSessionStore(directory: directory)
+        _ = await store.append(fileSessionRow("s-1", at: at))
+        _ = await store.append(
+            .routineCatalog(WatchRoutineCatalogRecord(recordId: "rou-1", recordedAt: at, generatedAt: at))
+        )
+        let bytesBefore = try Data(contentsOf: fileURL)
+
+        let pruned = await store.pruneExerciseBatches(keepingVersion: "v2")
+        XCTAssertEqual(pruned, [], "S-3835 a store with no batch rows drops nothing")
+        XCTAssertEqual(
+            try Data(contentsOf: fileURL),
+            bytesBefore,
+            "S-3835 the file is byte-identical: a prune that finds nothing is not a write"
+        )
+
+        let memoryStore = InMemoryWatchSessionStore()
+        _ = await memoryStore.append(fileSessionRow("s-1", at: at))
+        let memoryPruned = await memoryStore.pruneExerciseBatches(keepingVersion: "v2")
+        XCTAssertEqual(memoryPruned, [], "S-3835 the in-memory store drops nothing either")
+
+        // A store that has never been written stays that way: no file appears.
+        let untouched = directory.appendingPathComponent("untouched", isDirectory: true)
+        let fresh = FileWatchSessionStore(directory: untouched)
+        let freshPruned = await fresh.pruneExerciseBatches(keepingVersion: "v2")
+        XCTAssertEqual(freshPruned, [], "S-3835 a never-written store drops nothing")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: untouched.path),
+            "S-3835 a prune creates nothing"
+        )
+    }
+
+    func testS3821ABatchRowRoundTripsThroughTheFile() async throws {
+        let at = fileInstant("2026-10-06T12:00:00Z")
+        let first = FileWatchSessionStore(directory: directory)
+        let stored = await first.append(
+            fileBatchRow(
+                1,
+                version: "v1-4-a1b2c3d4",
+                at: at,
+                exerciseIds: ["ex-a", "ex-b"],
+                batchCount: 2,
+                totalCount: 4
+            )
+        )
+        XCTAssertEqual(stored.sequence, 1, "S-3821 the first append is sequence 1")
+
+        let reopenedContents = await FileWatchSessionStore(directory: directory).readAll()
+        let reopened = try XCTUnwrap(
+            reopenedContents.exerciseBatches.first,
+            "S-3821 the batch row reads back from a fresh store"
+        )
+        XCTAssertEqual(reopened.recordId, "exb-v1-4-a1b2c3d4-1", "S-3821 the id survives")
+        XCTAssertEqual(reopened.sessionId, "", "S-3821 a batch belongs to no session")
+        XCTAssertEqual(reopened.catalogVersion, "v1-4-a1b2c3d4", "S-3821 the version survives")
+        XCTAssertEqual(reopened.generatedAt, at, "S-3821 generatedAt survives")
+        XCTAssertEqual(reopened.recordedAt, at, "S-3821 recordedAt survives")
+        XCTAssertEqual(reopened.batchIndex, 1, "S-3821 batchIndex survives")
+        XCTAssertEqual(reopened.batchCount, 2, "S-3821 batchCount survives")
+        XCTAssertEqual(reopened.totalCount, 4, "S-3821 totalCount survives")
+        XCTAssertEqual(reopened.sequence, 1, "S-3821 the sequence survives")
+        XCTAssertEqual(
+            reopened.exercises.compactMap { $0["exerciseId"] as? String },
+            ["ex-a", "ex-b"],
+            "S-3821 the batch's exercises survive in order"
+        )
+
+        var withoutVersion = stored.toJson()
+        withoutVersion.removeValue(forKey: "catalogVersion")
+        XCTAssertThrowsError(
+            try StoredWatchRecord.fromJson(withoutVersion),
+            "S-3821 a batch row with no catalogVersion is malformed, not a version-less row"
         )
     }
 

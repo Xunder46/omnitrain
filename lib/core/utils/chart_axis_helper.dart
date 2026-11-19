@@ -3,6 +3,8 @@
 /// No Flutter imports — safe to use in plain unit tests.
 library;
 
+import 'date_utils.dart';
+
 /// Axis bounds for a trend chart, with a nice label interval.
 class ChartAxisBounds {
   final double min;
@@ -41,7 +43,27 @@ class ChartAxisHelper {
   static ChartAxisBounds computeBounds(
     List<double> values, {
     double paddingFraction = 0.15,
-  }) {
+  }) => _computeBounds(values, paddingFraction, _niceNumber);
+
+  /// Like [computeBounds], for a series of seconds drawn on a clock axis.
+  ///
+  /// Tick steps land on whole clock units (5 s, 15 s, 1 min, 5 min, 15 min,
+  /// 1 h …) so the labels read `10:00`, `15:00`, `20:00` rather than
+  /// `8:20`, `16:40`.
+  static ChartAxisBounds computeTimeBounds(
+    List<double> secondsValues, {
+    double paddingFraction = 0.15,
+  }) => _computeBounds(secondsValues, paddingFraction, _niceTimeStep);
+
+  /// A y-axis tick of [seconds] as a clock: `0:45`, `15:00`, `1:30:00`.
+  static String formatClockAxisValue(double seconds) =>
+      OmniDateUtils.formatClock((seconds * 1000).round());
+
+  static ChartAxisBounds _computeBounds(
+    List<double> values,
+    double paddingFraction,
+    double Function(double) niceInterval,
+  ) {
     assert(values.isNotEmpty, 'computeBounds requires at least one value');
 
     final minVal = values.reduce((a, b) => a < b ? a : b);
@@ -60,13 +82,13 @@ class ChartAxisHelper {
     // [kMaxYAxisTickCount] = 5 cap downstream, this gives up to 5
     // labels on the y-axis.
     final rawInterval = (paddedMax - paddedMin) / 4.0;
-    final niceInterval = _niceNumber(rawInterval);
+    final step = niceInterval(rawInterval);
 
     // Round minimum DOWN to nearest multiple of interval (at or below paddedMin).
-    final roundedMin = (paddedMin / niceInterval).floor() * niceInterval;
+    final roundedMin = (paddedMin / step).floor() * step;
 
     // Round maximum UP to nearest multiple of interval (at or above paddedMax).
-    final roundedMax = (paddedMax / niceInterval).ceil() * niceInterval;
+    final roundedMax = (paddedMax / step).ceil() * step;
 
     // Ensure at least 2 distinct labels with visible range.
     // If rounding collapses the range to zero, expand it.
@@ -74,16 +96,12 @@ class ChartAxisHelper {
       // Flat data or rounding artifact: expand to at least one interval.
       return ChartAxisBounds(
         min: roundedMin,
-        max: roundedMin + niceInterval,
-        interval: niceInterval,
+        max: roundedMin + step,
+        interval: step,
       );
     }
 
-    return ChartAxisBounds(
-      min: roundedMin,
-      max: roundedMax,
-      interval: niceInterval,
-    );
+    return ChartAxisBounds(min: roundedMin, max: roundedMax, interval: step);
   }
 
   /// Format a y-axis label as a single-line "value unit" string.
@@ -198,6 +216,19 @@ class ChartAxisHelper {
     }
 
     return niceFraction * magnitude;
+  }
+
+  /// Round [seconds] up to the nearest step a clock axis reads cleanly.
+  static double _niceTimeStep(double seconds) {
+    const steps = <double>[
+      1, 2, 5, 10, 15, 30, //
+      60, 120, 300, 600, 900, 1800, //
+      3600, 7200, 14400, 28800,
+    ];
+    for (final step in steps) {
+      if (seconds <= step) return step;
+    }
+    return steps.last;
   }
 
   /// floor(log10(value)), e.g. value=35 → 1 (10^1 = 10 ≤ 35 < 100).

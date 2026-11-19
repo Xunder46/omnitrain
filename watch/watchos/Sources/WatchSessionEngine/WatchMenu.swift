@@ -2,14 +2,17 @@
 //  WatchMenu.swift
 //  WatchSessionEngine
 //
-//  The session menu's model: the ladder as rows, the jump, and Finish. `rows` is
-//  a pure function over the session and the engine's corrected projection, read
-//  on every access rather than cached, so a frame that lands while the menu is
-//  open is already in the list the user sees.
+//  The session menu's model: the ladder as rows, the jump, Finish and Discard.
+//  `rows` is a pure function over the session and the engine's corrected
+//  projection, read on every access rather than cached, so a frame that lands
+//  while the menu is open is already in the list the user sees.
 //
 //  The menu writes no session structure of its own: a jump is the engine's
-//  `selectExercise(slotId:)` through the start paths, and Finish is the rating
-//  state's `end()`. It mints no ids and appends no observation.
+//  `selectExercise(slotId:)` through the start paths, Finish is the rating
+//  state's `end()`, Discard is the engine's own `abandonSession()`, and Add
+//  Exercise is the start paths' `addExerciseToEnd`, which appends at the end of
+//  the ladder and nowhere else. It mints no ids of its own and appends no
+//  observation.
 //
 
 import Foundation
@@ -42,6 +45,96 @@ public struct WatchMenuRow: Equatable {
     public var countLabel: String? {
         loggedCount > 0 ? "\(loggedCount) logged" : nil
     }
+}
+
+/// One run of a list the user reads (plan 199, D-19902): its title, shown only
+/// when the list has two groups, and its exercises in the list's own order.
+///
+/// The concatenation of a list's groups is that list — nothing dropped, nothing
+/// repeated, nothing reordered.
+public struct WatchExerciseGroup: Equatable {
+    /// The group's header, or nil for a list that is one plain run.
+    public let title: String?
+
+    public let exercises: [WatchCatalogExercise]
+
+    public init(title: String?, exercises: [WatchCatalogExercise]) {
+        self.title = title
+        self.exercises = exercises
+    }
+}
+
+/// The list split into the groups it is read in (plan 199, D-19905).
+///
+/// Pure and in order: `exercises` is `addableExercises`, already A to Z, and the
+/// groups keep that order — a stable partition, nothing dropped, repeated or
+/// reordered. With a modality the list splits into Recommended (the exercises
+/// whose `recommendedFor` names the modality) then Other, titled only when both
+/// are non-empty; one non-empty group, or no modality, is one untitled group.
+/// Unknown keys in `recommendedFor` are kept but never match.
+public func deriveExerciseGroups(
+    _ exercises: [WatchCatalogExercise],
+    modality: String?
+) -> [WatchExerciseGroup] {
+    guard !exercises.isEmpty else { return [] }
+    guard let modality else {
+        return [WatchExerciseGroup(title: nil, exercises: exercises)]
+    }
+
+    let recommended = exercises.filter { $0.recommendedFor.contains(modality) }
+    let others = exercises.filter { !$0.recommendedFor.contains(modality) }
+    guard !recommended.isEmpty, !others.isEmpty else {
+        return [WatchExerciseGroup(title: nil, exercises: exercises)]
+    }
+
+    return [
+        WatchExerciseGroup(title: WatchMenuCopy.recommendedGroupTitle, exercises: recommended),
+        WatchExerciseGroup(title: WatchMenuCopy.otherGroupTitle, exercises: others),
+    ]
+}
+
+/// The menu's fixed copy, and the confirmation's (D-3401).
+///
+/// It lives here rather than on the view, which compiles only into a watch
+/// target: this is the half the suite can read. The confirmation's words are
+/// the phone's own sibling dialog (`workout_session_finish.dart`), so the two
+/// ends ask the same question in the same words.
+public enum WatchMenuCopy {
+    /// The menu's one action row: it ends the session, so it says so.
+    public static let finishLabel = "End Session"
+
+    /// The menu's other action row: it opens the wrist's own exercise list
+    /// (D-3608).
+    public static let addExerciseLabel = "Add Exercise"
+
+    /// What the Add Exercise list is called, on the pushed surface and in its
+    /// title bar.
+    public static let addExerciseTitle = "Add Exercise"
+
+    /// The first group's header, when the list splits into two: the phone's own
+    /// picker's word for the exercises its rule recommends (plan 199, D-19903).
+    public static let recommendedGroupTitle = "Recommended"
+
+    /// The second group's header: the phone's own word for everything its rule
+    /// does not recommend (plan 199, D-19903).
+    public static let otherGroupTitle = "Other"
+
+    /// Said in place of rows when the phone has sent no exercise down yet.
+    public static let addExerciseEmpty = "No exercises yet. Sync with your phone."
+
+    public static let confirmTitle = "Finish Workout?"
+    public static let confirmBody = "This action will save and close the workout session."
+    public static let confirmCancel = "Cancel"
+    public static let confirmFinish = "Finish"
+
+    /// The menu's third action row: it throws the session away, so both the row
+    /// and its confirmation say so (plan 171 D-17104). The body names what is
+    /// lost and where the user lands, because a discard cannot be undone.
+    public static let discardLabel = "Discard Session"
+    public static let discardConfirmTitle = "Discard session?"
+    public static let discardConfirmBody = "This will permanently delete this session and all its data. You will return to the start screen."
+    public static let discardConfirmCancel = "Cancel"
+    public static let discardConfirmDiscard = "Discard"
 }
 
 /// The id a slot answers to: its own `sessionExerciseId`, or the exercise's when
@@ -99,10 +192,15 @@ public final class WatchMenuState {
     /// The rating state Finish ends through.
     public let rating: WatchEffortRatingState
 
-    public init(engine: WatchSessionEngine, paths: WatchSessionStartPaths, rating: WatchEffortRatingState) {
+    /// The logging state End reads and logs through (plan 201, D-20104), or nil
+    /// where a menu is built without one.
+    private let logging: WatchLoggingState?
+
+    public init(engine: WatchSessionEngine, paths: WatchSessionStartPaths, rating: WatchEffortRatingState, logging: WatchLoggingState? = nil) {
         self.engine = engine
         self.paths = paths
         self.rating = rating
+        self.logging = logging
     }
 
     /// The ladder as rows right now.
@@ -155,7 +253,88 @@ public final class WatchMenuState {
 
     /// Finishes the session through the rating state's `end()`, so the owed
     /// rating prompt and `finishSession()` stay one implementation.
+    ///
+    /// A session with nothing logged is a discard instead (D-17105): there is
+    /// nothing to save and nothing to rate, which is also what the phone's own
+    /// empty finish does. The menu asks the discard's question for it.
+    /// With an effort clock running it logs that effort first (plan 201).
     public func finish() async {
+        // Plan 201, D-20104: a clock still running is the user's effort, so End
+        // logs it the way Log would, then finishes. A log the wrist refuses
+        // leaves nothing logged, and that is still a discard (D-17105).
+        if hasRunningEffort, let logging {
+            _ = try? await logging.log()
+        }
+        guard hasLoggedEfforts else {
+            await discard()
+            return
+        }
         await rating.end()
+    }
+
+    /// Whether the session holds an effort the user logged — what End reads to
+    /// tell a workout worth saving from an empty one (D-17105).
+    ///
+    /// Efforts only: a rest, a water tap and a food entry are not the workout,
+    /// so an End on a session holding nothing but those is still an empty one.
+    /// Read on every access, like `rows`.
+    public var hasLoggedEfforts: Bool {
+        engine.entries.contains { WatchObservationKind.efforts.contains($0.kind) }
+    }
+
+    /// Whether an effort clock is running on the exercise on screen with nothing
+    /// logged for it yet (plan 201, D-20104): the logging state's own work clock,
+    /// which already hides another exercise's phone clock.
+    public var hasRunningEffort: Bool {
+        logging?.workTimer != nil
+    }
+
+    /// Whether End has something to save: an effort already logged, or one
+    /// running that End will log (plan 201, D-20104).
+    public var hasWorkToSave: Bool {
+        hasLoggedEfforts || hasRunningEffort
+    }
+
+    /// Throws the session away, through the engine's own abandonment: the
+    /// session ends `abandoned`, its timers stop and the phone hears the
+    /// terminal lifecycle frame it already knows how to apply (D-17102).
+    ///
+    /// Deliberately not behind `isLocked` and deliberately not through the
+    /// rating state: a session the user cannot finish is exactly the one they
+    /// need a way out of (D-17103), and a discarded workout owes no rating
+    /// (D-17105). No session, or one that has already ended, changes nothing —
+    /// the engine's terminal guard hands back the held row, so the return value
+    /// is the record that stands.
+    @discardableResult
+    public func discard() async -> WatchSessionRecord? {
+        guard engine.session != nil else { return nil }
+        return await engine.abandonSession()
+    }
+
+    // MARK: - Add Exercise
+
+    /// Everything the user could add, A to Z, from the list the phone sent down
+    /// (23c, D-3605).
+    public var addableExercises: [WatchCatalogExercise] { paths.addableExercises }
+
+    /// The Add Exercise list split into the groups it is read in, in the list's
+    /// own order (plan 199, D-19905).
+    public var addExerciseGroups: [WatchExerciseGroup] {
+        deriveExerciseGroups(addableExercises, modality: paths.listModality)
+    }
+
+    /// Adds `exercise` at the end of the ladder, through the start paths.
+    ///
+    /// Deliberately not behind `isLocked`: adding moves nothing the running
+    /// effort is logging, unlike a jump (D-3607). False — and no change — when
+    /// there is no session or it is no longer active, so a stale menu cannot
+    /// grow a closed session.
+    @discardableResult
+    public func addExercise(_ exercise: WatchCatalogExercise) async -> Bool {
+        guard let session = engine.session, session.status == WatchSessionStatus.active else {
+            return false
+        }
+        await paths.addExerciseToEnd(exercise)
+        return true
     }
 }

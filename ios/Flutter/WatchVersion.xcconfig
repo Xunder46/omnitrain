@@ -1,0 +1,21 @@
+// The watch app ships inside the iPhone app, and App Store Connect rejects an
+// upload whose watch app carries a different version or build number than the
+// iPhone app around it. So the watch takes both from the same place the iPhone
+// app does: `version:` in pubspec.yaml, through Flutter's generated xcconfig.
+//
+// Used only as the base configuration of the "OmniTrain Watch App" target. The
+// target itself must NOT set MARKETING_VERSION or CURRENT_PROJECT_VERSION: a
+// target setting beats this file. The defaults apply only if Flutter's
+// Generated.xcconfig has not been produced yet (before the first `flutter pub get`).
+#include? "Generated.xcconfig"
+
+// Generated.xcconfig pins CONFIGURATION_BUILD_DIR to build/ios/iphoneos after a
+// command-line `flutter build ios`. That is the iPhone app's output folder; if
+// the watch target inherits it, the watch compile looks for the
+// WatchSessionEngine package module there instead of where Xcode builds it, and
+// fails with "No such module 'WatchSessionEngine'". The watch builds into
+// Xcode's normal products folder.
+CONFIGURATION_BUILD_DIR = $(BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)
+
+MARKETING_VERSION = $(FLUTTER_BUILD_NAME:default=1.0)
+CURRENT_PROJECT_VERSION = $(FLUTTER_BUILD_NUMBER:default=1)

@@ -1,0 +1,3 @@
+# crew-docs-keeper: docs and plan evidence only.
+--allow-tool=write(docs/**)
+--allow-tool=write(.work/crew/**)

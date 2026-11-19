@@ -21,6 +21,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:health/health.dart';
 
 import '../constants/health_constants.dart';
@@ -66,6 +67,10 @@ HealthWorkoutActivityType pluginActivityTypeFor(
           : HealthWorkoutActivityType.OTHER;
     case HealthActivityKind.sport:
       return HealthWorkoutActivityType.OTHER;
+    case HealthActivityKind.yoga:
+      // HealthKit's YOGA and Health Connect's YOGA are both in the plugin's
+      // platform sets (health 13.3.1: _isOnIOS/_isOnAndroid carry it).
+      return HealthWorkoutActivityType.YOGA;
     case HealthActivityKind.conditioning:
       return HealthWorkoutActivityType.HIGH_INTENSITY_INTERVAL_TRAINING;
     case HealthActivityKind.other:
@@ -73,19 +78,142 @@ HealthWorkoutActivityType pluginActivityTypeFor(
   }
 }
 
-/// `health`-package-backed gateway. Constructed only on iOS/Android —
-/// see [createHealthPlatformService].
-class HealthPluginPlatformService implements HealthPlatformService {
-  final Health _health = Health();
+/// One active-energy sample as the pure bucketing sees it: when it started and
+/// its kcal, or null for a value that is not numeric.
+typedef ActiveEnergyPoint = ({DateTime dateFrom, num? kcal});
 
+/// One day's query: [start, end) and the interval length in seconds.
+typedef ActiveEnergyDayQuery =
+    Future<List<ActiveEnergyPoint>> Function(
+      DateTime start,
+      DateTime end,
+      int intervalSeconds,
+    );
+
+/// The local day that begins at [dayStart]: from its local midnight to the NEXT
+/// local midnight by calendar arithmetic, so a DST day is 23 h or 25 h long.
+({DateTime start, DateTime end, int seconds}) activeEnergyDayBounds(
+  DateTime dayStart,
+) {
+  final start = DateTime(dayStart.year, dayStart.month, dayStart.day);
+  final end = DateTime(dayStart.year, dayStart.month, dayStart.day + 1);
+  return (start: start, end: end, seconds: end.difference(start).inSeconds);
+}
+
+/// Sums [points] per local day. A point belongs to the day in [dayStarts]
+/// whose bounds contain its `dateFrom` (`start <= dateFrom < end`); points of
+/// one day are summed; a non-numeric point (kcal null) is skipped and never
+/// creates a day. A day with at least one numeric point is in the result, even
+/// when the sum is 0.0. Keys are the day-start epoch milliseconds.
+Map<int, double> activeEnergyTotalsByDay({
+  required List<DateTime> dayStarts,
+  required Iterable<ActiveEnergyPoint> points,
+}) {
+  final totals = <int, double>{};
+  for (final day in dayStarts) {
+    final bounds = activeEnergyDayBounds(day);
+    for (final p in points) {
+      final kcal = p.kcal;
+      if (kcal == null) continue;
+      if (p.dateFrom.isBefore(bounds.start) ||
+          !p.dateFrom.isBefore(bounds.end)) {
+        continue;
+      }
+      final key = bounds.start.millisecondsSinceEpoch;
+      totals[key] = (totals[key] ?? 0.0) + kcal.toDouble();
+    }
+  }
+  return totals;
+}
+
+/// The Runner's own Workout Effort channel (plan 90 D-6,
+/// `ios/Runner/HealthEffortChannel.swift`). iOS only.
+const String healthEffortChannelName = 'omnitrain/health_effort';
+
+/// `health`-package-backed gateway. Constructed only on iOS/Android —
+/// see [createHealthPlatformService]. [isIOS] and [effortChannel] are
+/// injectable so the iOS-only channel use is testable off device.
+/// [dayQuery] overrides the plugin's per-day interval query, so the
+/// active-energy read (plan 208 D-18) is testable on the host.
+class HealthPluginPlatformService
+    implements HealthPlatformService, HealthActiveEnergySource {
+  HealthPluginPlatformService({
+    bool? isIOS,
+    MethodChannel? effortChannel,
+    ActiveEnergyDayQuery? dayQuery,
+  }) : _isIOS = isIOS ?? Platform.isIOS,
+       _effortChannel =
+           effortChannel ?? const MethodChannel(healthEffortChannelName),
+       _dayQueryOverride = dayQuery;
+
+  final Health _health = Health();
+  final bool _isIOS;
+  final MethodChannel _effortChannel;
+  final ActiveEnergyDayQuery? _dayQueryOverride;
+
+  /// Switching "Write workouts" on also asks for Workout Effort (plan 90
+  /// OQ-4). The effort request goes first and includes the workout type, so
+  /// the owner sees one Health sheet; its answer never decides the result.
   @override
   Future<bool> requestWritePermission() async {
+    await _invokeEffort('requestAuthorization');
     return _requestPermission([HealthDataType.WORKOUT], write: true);
   }
 
   @override
   Future<bool> requestReadPermission() async {
     return _requestPermission([HealthDataType.WEIGHT], write: false);
+  }
+
+  @override
+  Future<bool> requestActiveEnergyReadPermission() =>
+      _requestPermission([HealthDataType.ACTIVE_ENERGY_BURNED], write: false);
+
+  @override
+  Future<Map<int, double>> readDailyActiveEnergy(
+    List<DateTime> dayStarts,
+  ) async {
+    final query = _dayQueryOverride ?? _pluginDayQuery;
+    final totals = <int, double>{};
+    for (final day in dayStarts) {
+      final bounds = activeEnergyDayBounds(day);
+      try {
+        final points = await query(bounds.start, bounds.end, bounds.seconds);
+        totals.addAll(
+          activeEnergyTotalsByDay(dayStarts: [bounds.start], points: points),
+        );
+      } catch (e) {
+        // A day whose query fails (Health Connect missing, a plugin error) is
+        // left out; the other days stand. Never throws (D-18).
+        debugPrint('Health active energy read skipped (${bounds.start}): $e');
+      }
+    }
+    return totals;
+  }
+
+  /// The plugin call behind the seam: iOS runs HealthKit's statistics sum,
+  /// Android Health Connect's `aggregateGroupByDuration`, one query per local
+  /// day.
+  Future<List<ActiveEnergyPoint>> _pluginDayQuery(
+    DateTime start,
+    DateTime end,
+    int intervalSeconds,
+  ) async {
+    final points = await _health.getHealthIntervalDataFromTypes(
+      startDate: start,
+      endDate: end,
+      types: [HealthDataType.ACTIVE_ENERGY_BURNED],
+      interval: intervalSeconds,
+    );
+    return [
+      for (final p in points)
+        (
+          dateFrom: p.dateFrom,
+          kcal: p.value is NumericHealthValue
+              ? (p.value as NumericHealthValue).numericValue
+              : null,
+        ),
+    ];
   }
 
   @override
@@ -103,6 +231,67 @@ class HealthPluginPlatformService implements HealthPlatformService {
     } catch (e) {
       debugPrint('Health write skipped (${workout.activityKind.name}): $e');
       return false;
+    }
+  }
+
+  @override
+  Future<bool> deleteWorkouts(DateTime start, DateTime end) async {
+    try {
+      // iOS: the plugin deletes only this app's own workouts whose start
+      // lies in [start, end) (`.strictStartDate` + `HKSource.default()`),
+      // so a back-to-back neighbour or another app's workout is never hit.
+      return await _health.delete(
+        type: HealthDataType.WORKOUT,
+        startTime: start,
+        endTime: end,
+      );
+    } catch (e) {
+      debugPrint('Health workout delete skipped: $e');
+      return false;
+    }
+  }
+
+  // Plan 90 D-1, D-6, D-7: the `health` plugin has no Workout Effort
+  // support, so these go through the Runner's own channel on iOS only;
+  // Android answers "unavailable" without any work.
+  @override
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  ) async {
+    final answer = await _invokeEffort('set', {
+      'start': start.millisecondsSinceEpoch,
+      'end': end.millisecondsSinceEpoch,
+      'score': score,
+    });
+    return HealthEffortOutcome.values.firstWhere(
+      (outcome) => outcome.name == answer,
+      orElse: () => HealthEffortOutcome.unavailable,
+    );
+  }
+
+  @override
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end) async {
+    final answer = await _invokeEffort('clear', {
+      'start': start.millisecondsSinceEpoch,
+      'end': end.millisecondsSinceEpoch,
+    });
+    return answer == 'cleared';
+  }
+
+  /// The channel's string answer, or null off iOS or on any error.
+  Future<String?> _invokeEffort(String method, [Object? arguments]) async {
+    if (!_isIOS) return null;
+    try {
+      final answer = await _effortChannel.invokeMethod<Object?>(
+        method,
+        arguments,
+      );
+      return answer is String ? answer : null;
+    } catch (e) {
+      debugPrint('Health effort $method skipped: $e');
+      return null;
     }
   }
 

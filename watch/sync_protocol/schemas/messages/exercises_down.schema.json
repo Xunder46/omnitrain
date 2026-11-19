@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/exercises_down.schema.json",
+  "title": "exercises_down",
+  "description": "Phone → watch. One batch of the user's exercise list — the catalog every routine draws from and the list the free-workout picker offers. The phone sends the whole list in batches of at most 100; the wrist stores each batch as it arrives and uses the list only when every batch of one version is present, until then keeping the list it had. Reference data: the phone owns the catalog, the watch reads it and never edits it.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "properties": {
+        "type": { "const": "exercises_down" },
+        "origin": { "const": "phone" },
+        "payload": {
+          "type": "object",
+          "required": [
+            "generatedAt",
+            "catalogVersion",
+            "batchIndex",
+            "batchCount",
+            "totalCount",
+            "exercises"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "generatedAt": {
+              "$ref": "envelope.schema.json#/$defs/timestamp"
+            },
+            "catalogVersion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "The version of the whole exercise list this batch belongs to. An opaque string the wrist echoes back; the phone derives it from the list's own content."
+            },
+            "batchIndex": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "This batch's position in the list, 0-based, so it is always below batchCount."
+            },
+            "batchCount": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "How many batches the whole list takes."
+            },
+            "totalCount": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "How many exercises the whole list holds. At most batchCount * 100, the most the batches can carry."
+            },
+            "exercises": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 100,
+              "description": "This batch's slice of the list. At most 100: a longer list arrives as more batches.",
+              "items": { "$ref": "envelope.schema.json#/$defs/catalogExercise" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

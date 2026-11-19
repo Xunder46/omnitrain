@@ -240,8 +240,10 @@ void main() {
           weightKg: 120,
         );
 
-        // ex-pull, reps-axis: an old weightless set decides the axis for the
-        // whole exercise, then a recent weighted set with an added-weight row.
+        // ex-pull, reps-axis: two old weightless sets outnumber the one recent
+        // weighted set (plan 157b: the axis is the majority of the exercise's
+        // entries, so a single set never decides it), and that weighted set
+        // carries an added-weight row.
         await seedExercise(repo, id: 'ex-pull', name: 'Pull-up');
         await seedSession(repo, sessionId: 's-904c', daysAgo: 40);
         await addSetEffort(
@@ -255,6 +257,13 @@ void main() {
           effortId: 'eff-904-pull-old',
           number: 0,
           reps: 4,
+          weightKg: 0,
+        );
+        await seedSetEntry(
+          repo,
+          effortId: 'eff-904-pull-old',
+          number: 1,
+          reps: 3,
           weightKg: 0,
         );
         await seedSession(repo, sessionId: 's-904d', daysAgo: 2);

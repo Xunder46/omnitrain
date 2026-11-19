@@ -28,6 +28,7 @@ import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
 import 'package:omnitrain/core/utils/rest_ping_utils.dart';
 import 'package:omnitrain/core/utils/watch_reference_sync.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/watch/watch_sync_request_handler.dart';
@@ -305,6 +306,7 @@ void main() {
         transport: transport,
         repository: repository,
         settings: settings,
+        foodLibrary: FoodLibraryState(repository),
         clock: () => _now,
       );
 
@@ -323,6 +325,10 @@ void main() {
           'generatedAt': utcIso(_now),
           'effortRatingPrompt': settings.showFeelingSurvey,
           _contract()['preferencesField']! as String: 45,
+          // The default theme's accent (abyssalNeon), carried since plan 23d.
+          'accentColorHex': '#2DE2E6',
+          'weightUnit': 'kg',
+          'distanceUnit': 'km',
         },
         reason:
             'S-248 the setting the phone holds when the wrist asks is the '

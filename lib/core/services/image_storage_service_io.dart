@@ -249,6 +249,30 @@ class ImageStorageService {
     }
   }
 
+  /// Copies the managed file named by [reference] to a fresh
+  /// `<uuid><ext>` file under the managed directory and returns
+  /// that new basename (NOT an absolute path — D-1). Used by
+  /// `FoodLibraryState.createOwnCopyOfDefault` when a new food is
+  /// made from a default food's photo (plan 133 D-13315): the new
+  /// food never shares a managed basename with the source, so
+  /// replacing or deleting one cannot remove the other's bytes.
+  ///
+  /// [reference] may be a basename (the modern contract, D-1) or a
+  /// legacy absolute path. The source file is never modified or
+  /// deleted. The destination keeps the source file's extension.
+  Future<String> copyManagedFileToNewBasename(String reference) async {
+    final resolved = _isBasename(reference)
+        ? p.join(_managedDir, reference)
+        : reference;
+    final extension = p.extension(resolved);
+    final bytes = await File(resolved).readAsBytes();
+    // `persistImageBytes` owns the write and its D-6 cleanup.
+    return persistImageBytes(
+      bytes,
+      extension: extension.isEmpty ? _defaultExtension : extension,
+    );
+  }
+
   /// Resolves a stored reference back to a reachable file,
   /// re-linking by copy if the file is at a fallback location.
   ///

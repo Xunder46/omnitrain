@@ -60,7 +60,10 @@ Future<Exercise> _seedExercise(
     updatedAtMs: now,
   );
   await repo.createExercise(exercise);
-  await repo.setExerciseMuscleGroups(exercise.id, muscleIds);
+  await repo.setExerciseMuscleLinks(exercise.id, [
+    for (final id in muscleIds)
+      ExerciseMuscleLink(muscleGroupId: id, role: MuscleRole.primary),
+  ]);
   return exercise;
 }
 

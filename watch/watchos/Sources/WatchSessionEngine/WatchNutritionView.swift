@@ -2,8 +2,8 @@
 //  WatchNutritionView.swift
 //  WatchSessionEngine
 //
-//  The native watchOS quick-log surface: the foods the user eats, one portion,
-//  one log. Native half of
+//  The native watchOS quick-log surface: the foods the user eats, and the one
+//  food a tap opens — its portion, one log. Native half of
 //  `docs/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
 //  scenarios S-001, S-004 and S-006.
 //
@@ -20,7 +20,9 @@
 
 #if os(watchOS)
 
+import Foundation
 import SwiftUI
+import WatchKit
 
 /// What the surface draws, and what a tap or a turn does to it. A small
 /// observable wrapper so the state itself stays testable without SwiftUI.
@@ -35,11 +37,19 @@ public final class WatchNutritionModel: ObservableObject {
 
     public init(state: WatchNutritionState) {
         self.state = state
+        // The state may announce a change off the main thread — the store and the
+        // log are both async — so the nudge to SwiftUI hops first (D-4).
+        state.onFoodsChanged = { [weak self] in
+            DispatchQueue.main.async { self?.objectWillChange.send() }
+        }
     }
 
     public var foods: [WatchFood] { state.foods }
 
     public var confirmation: String? { state.confirmation }
+
+    /// Whether a food is open, which is what drives the list's push (D-5).
+    public var isShowingFood: Bool { state.selected != nil }
 
     /// Picks a food; its portion starts where the phone left it.
     public func select(_ foodId: String) {
@@ -48,16 +58,23 @@ public final class WatchNutritionModel: ObservableObject {
         crownPosition = 0
     }
 
+    /// Leaves the open food: the list has nothing selected, and the crown starts
+    /// over with the next one (D-4).
+    public func deselect() {
+        objectWillChange.send()
+        state.deselect()
+        crownPosition = 0
+    }
+
     /// A crown turn, in points: whole detents move the portion, and travel short
     /// of one is carried to the next event rather than rounding the portion off
     /// its step.
     public func turn(to points: Double) {
-        let rising = -(points - crownPosition)
-        let whole = (rising / Self.pointsPerDetent).rounded(.towardZero)
-        crownPosition = points + whole * Self.pointsPerDetent
-        guard whole != 0 else { return }
+        let step = WatchPortionCrown.turn(from: crownPosition, to: points)
+        crownPosition = step.position
+        guard step.detents != 0 else { return }
         objectWillChange.send()
-        state.stepPortion(Int(whole))
+        state.stepPortion(step.detents)
     }
 
     public func step(_ detents: Int) {
@@ -77,8 +94,146 @@ public final class WatchNutritionModel: ObservableObject {
 public struct WatchNutritionView: View {
     @ObservedObject private var model: WatchNutritionModel
 
+    /// The day's water, drawn under the list (plan 95 D-31). The bar observes
+    /// it; the list only hands it on.
+    private let water: WatchWaterModel
+
     /// Wrist-scale inset — the phone's spacing tokens are sized for a full-width
     /// screen.
+    private static let surfaceInset = 4.0
+
+    public init(model: WatchNutritionModel, water: WatchWaterModel) {
+        self.model = model
+        self.water = water
+    }
+
+    public var body: some View {
+        VStack(spacing: Self.surfaceInset) {
+            if model.foods.isEmpty {
+                Text("No foods yet. On your phone, open Nutrition and tap Choose foods.")
+                    .font(.footnote)
+                    .multilineTextAlignment(.center)
+                    // Fills the space, so the water bar sits at the bottom here too.
+                    .frame(maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    VStack(spacing: Self.surfaceInset) {
+                        ForEach(model.foods, id: \.foodId) { food in
+                            foodButton(food)
+                        }
+                    }
+                }
+            }
+
+            // Plan 95 D-31: after the branch and outside the scroll, so it is
+            // pinned at the bottom with or without foods.
+            WatchWaterBar(model: water)
+        }
+        .padding(.horizontal, Self.surfaceInset)
+        .navigationDestination(isPresented: showingFood) {
+            WatchFoodPortionView(model: model)
+        }
+    }
+
+    /// The push follows the selection: a tap selects a food and opens its screen,
+    /// and leaving it — the back button or a swipe — clears the selection (D-5).
+    private var showingFood: Binding<Bool> {
+        Binding(
+            get: { model.isShowingFood },
+            set: { isShowing in
+                if !isShowing { model.deselect() }
+            }
+        )
+    }
+
+    /// The row is the way into the food: the name, and what the food's starting
+    /// amount costs — the state derives that amount from the wrist's newest log
+    /// where it is newer than the phone's list (D-2).
+    private func foodButton(_ food: WatchFood) -> some View {
+        Button {
+            model.select(food.foodId)
+        } label: {
+            HStack {
+                Text(food.name).lineLimit(1)
+                Spacer()
+                Text("\(food.calories(at: food.defaultServings))")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.bordered)
+    }
+}
+
+/// The day's glasses of water: minus, the drop and the count, plus, like the
+/// phone's water control (plan 95 D-31 to D-34). Each press that stores a tap
+/// clicks once; minus is off at 0 and both are off past the day's cap (D-27).
+/// The count is computed on every read, so the minute timeline is what turns
+/// it over at local midnight while the bar stays on screen; each redraw reads
+/// one snapshot of the model and every control shows that one (plan 96 D-42).
+struct WatchWaterBar: View {
+    @ObservedObject private var model: WatchWaterModel
+
+    /// A wide count shrinks rather than wrapping on a 40 mm screen.
+    private static let countScale = 0.6
+
+    /// The drop sits tight against its number.
+    private static let dropSpacing = 2.0
+
+    init(model: WatchWaterModel) {
+        self.model = model
+    }
+
+    var body: some View {
+        TimelineView(.everyMinute) { _ in
+            let snapshot = model.snapshot
+            HStack {
+                Button {
+                    Task {
+                        if await model.press(.remove) {
+                            WKInterfaceDevice.current().play(.click)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "minus")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!snapshot.canRemove)
+                .accessibilityLabel(WatchWaterCopy.removeLabel)
+
+                HStack(spacing: Self.dropSpacing) {
+                    Image(systemName: "drop.fill")
+                    Text("\(snapshot.glasses)")
+                        .lineLimit(1)
+                        .minimumScaleFactor(Self.countScale)
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(WatchWaterCopy.countLabel)
+                .accessibilityValue(snapshot.spokenCount)
+
+                Button {
+                    Task {
+                        if await model.press(.add) {
+                            WKInterfaceDevice.current().play(.click)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!snapshot.canAdd)
+                .accessibilityLabel(WatchWaterCopy.addLabel)
+            }
+        }
+    }
+}
+
+/// One food, open: its portion, what it costs, and the one confirm. Pushed from
+/// the list, so leaving it hands the list back with nothing selected (D-5).
+public struct WatchFoodPortionView: View {
+    @ObservedObject private var model: WatchNutritionModel
+
+    /// Wrist-scale inset, as the list uses.
     private static let surfaceInset = 4.0
 
     private static let crownRangeDetents = 20.0
@@ -89,56 +244,19 @@ public struct WatchNutritionView: View {
 
     public var body: some View {
         VStack(spacing: Self.surfaceInset) {
-            if model.foods.isEmpty {
-                Text("No foods yet. Sync with your phone to get them.")
-                    .font(.footnote)
-                    .multilineTextAlignment(.center)
-            } else {
-                ScrollView {
-                    VStack(spacing: Self.surfaceInset) {
-                        ForEach(model.foods, id: \.foodId) { food in
-                            foodButton(food)
-                        }
-                    }
-                }
+            portionRow
 
-                if model.state.selected != nil {
-                    portionRow
-                    logButton
-                }
+            logButton
 
-                if let confirmation = model.confirmation {
-                    Text(confirmation)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
+            if let confirmation = model.confirmation {
+                Text(confirmation)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
         }
         .padding(.horizontal, Self.surfaceInset)
-    }
-
-    @ViewBuilder
-    private func foodButton(_ food: WatchFood) -> some View {
-        let isSelected = food.foodId == model.state.selectedFoodId
-        let button = Button {
-            model.select(food.foodId)
-        } label: {
-            HStack {
-                Text(food.name).lineLimit(1)
-                Spacer()
-                Text("\(food.calories(at: isSelected ? model.state.servings : food.defaultServings))")
-                    .foregroundStyle(.secondary)
-            }
-        }
-        // `.borderedProminent` and `.bordered` are distinct concrete types, so a
-        // ternary between them has no common type to infer. The branches have to
-        // be separate views.
-        if isSelected {
-            button.buttonStyle(.borderedProminent)
-        } else {
-            button.buttonStyle(.bordered)
-        }
+        .navigationTitle(model.state.selected?.name ?? "")
     }
 
     /// The portion row: the count, what it means in the food's own unit, the two
@@ -186,11 +304,16 @@ public struct WatchNutritionView: View {
     /// The primary action: a wrist log is one glance and one confirm.
     private var logButton: some View {
         Button {
-            Task { await model.log() }
+            Task {
+                // Plan 51e D-3: a food the wrist recorded earns the same tap as a set.
+                if await model.log() != nil {
+                    WKInterfaceDevice.current().play(.success)
+                }
+            }
         } label: {
             Text("Log").frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .watchProminent()
     }
 }
 

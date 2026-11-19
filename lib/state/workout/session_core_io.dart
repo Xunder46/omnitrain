@@ -13,7 +13,7 @@ extension SessionCoreIOMethods on SessionCore {
     _clearError();
 
     try {
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final sessionId = 'session-$now';
 
       final session = TrainingSession(
@@ -126,6 +126,33 @@ extension SessionCoreIOMethods on SessionCore {
     } finally {
       _setLoading(false);
     }
+  }
+
+  /// Plan 229: shows a finished session (the calendar's summary) without
+  /// losing the workout that is running: the running session's id is kept so
+  /// [resumeSuspendedLiveSession] can put it back. A viewed session that is
+  /// itself finished never overwrites a kept id.
+  Future<void> viewHistoricalSession(String sessionId) async {
+    final live = _currentSession;
+    if (live != null && live.endedAtMs == null && live.id != sessionId) {
+      _suspendedLiveSessionId = live.id;
+    }
+    await loadHistoricalSession(sessionId);
+  }
+
+  /// Plan 229: puts the running workout a history view replaced back in the
+  /// session slot, the same load the app uses to restore it at launch. Does
+  /// nothing when none was kept, when the stored session is gone or has
+  /// ended, or when another open session became current meanwhile.
+  Future<void> resumeSuspendedLiveSession() async {
+    final id = _suspendedLiveSessionId;
+    if (id == null) return;
+    _suspendedLiveSessionId = null;
+    final current = _currentSession;
+    if (current != null && current.endedAtMs == null) return;
+    final stored = await _repository.getSession(id);
+    if (stored == null || stored.endedAtMs != null) return;
+    await loadHistoricalSession(id);
   }
 
   Future<void> loadSessionData() async {
@@ -255,9 +282,78 @@ extension SessionCoreIOMethods on SessionCore {
         }
       }
 
+      _watchRefreshRevision++;
       _notify();
     } catch (e) {
       _setError('Failed to refresh efforts: $e');
+    }
+  }
+
+  /// Adopts a running timer the watch sent into [effortId]'s target interval,
+  /// then bumps the watch refresh revision and notifies once when something
+  /// was written (43b2 D-2). A timer naming an effort this state does not
+  /// hold, or pairing with the wrong effort kind, writes nothing. The
+  /// [RemoteWorkTimer] itself is built by the adoption that read the mirror.
+  Future<bool> adoptRemoteWorkTimer(
+    String effortId,
+    RemoteWorkTimer remote,
+  ) async {
+    _clearError();
+
+    try {
+      final effort = _findEffort(effortId);
+      if (effort == null) return false;
+
+      // The watch started an interval the phone has no room for (a second
+      // one): the exercise grows by one, as if the phone had added it.
+      final grew = _timerManager.needsIntervalFor(
+        effortId,
+        effort.effortKind,
+        remote,
+      );
+      if (grew) await addEntry(effortId);
+
+      final changed = await _timerManager.adoptRemoteTimer(
+        effortId,
+        effort.effortKind,
+        remote,
+      );
+      if (changed || grew) {
+        _watchRefreshRevision++;
+        _notify();
+      }
+      return changed || grew;
+    } catch (e) {
+      _setError('Failed to adopt the remote timer: $e');
+      return false;
+    }
+  }
+
+  /// Gives an interval back to the phone when the wrist no longer runs the
+  /// timer that had taken it (plan 244 D-24401): the effort's active or paused
+  /// interval that started with [startedAtMs] returns to not started, then the
+  /// watch refresh revision is bumped and listeners notified once when
+  /// something changed. An effort this state does not hold changes nothing.
+  Future<bool> releaseRemoteWorkTimer(String effortId, int startedAtMs) async {
+    _clearError();
+
+    try {
+      final effort = _findEffort(effortId);
+      if (effort == null) return false;
+
+      final changed = await _timerManager.releaseRemoteTimer(
+        effortId,
+        effort.effortKind,
+        startedAtMs,
+      );
+      if (changed) {
+        _watchRefreshRevision++;
+        _notify();
+      }
+      return changed;
+    } catch (e) {
+      _setError('Failed to release the remote timer: $e');
+      return false;
     }
   }
 
@@ -271,7 +367,7 @@ extension SessionCoreIOMethods on SessionCore {
     _clearError();
 
     try {
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       var segmentCounter = 0;
 
       for (final segmentEntry in manifest.segments) {

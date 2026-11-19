@@ -82,14 +82,94 @@ void main() {
 
     test('a pace reads per the preferred distance unit', () async {
       final km = await settingsWith();
-      expect(formatNativeChange(NativeMetric.pace, 30, km), '↑ +0:30 /km');
+      expect(formatNativeChange(NativeMetric.pace, 30, km), '↓ 0:30 /km');
 
       final miles = await settingsWith(distanceUnit: 'miles');
       expect(
         formatNativeChange(NativeMetric.pace, 30, miles),
-        '↑ +0:48 /mi',
+        '↓ 0:48 /mi',
         reason: 'the same conversion formatNativeMetric uses, not a second one',
       );
+    });
+
+    test('S-21001 a pace change reads better or worse, unsigned', () async {
+      final km = await settingsWith();
+      expect(formatNativeChange(NativeMetric.pace, -30, km), '↑ 0:30 /km');
+      expect(formatNativeChange(NativeMetric.pace, 30, km), '↓ 0:30 /km');
+      expect(formatNativeChange(NativeMetric.pace, 0, km), '—');
+
+      final miles = await settingsWith(distanceUnit: 'miles');
+      expect(formatNativeChange(NativeMetric.pace, -30, miles), '↑ 0:48 /mi');
+    });
+
+    test('S-21002 every other metric keeps arrow and raw sign', () async {
+      final settings = await settingsWith();
+      expect(formatNativeChange(NativeMetric.reps, 3, settings), '↑ +3 reps');
+      expect(formatNativeChange(NativeMetric.reps, -3, settings), '↓ -3 reps');
+      expect(
+        formatNativeChange(NativeMetric.estimatedOneRepMax, 5, settings),
+        '↑ +5 kg',
+      );
+      expect(formatNativeChange(NativeMetric.hold, 15, settings), '↑ +0:15');
+      expect(
+        formatNativeChange(NativeMetric.duration, -90, settings),
+        '↓ -1:30',
+      );
+      expect(
+        formatNativeChange(NativeMetric.rounds, 2, settings),
+        '↑ +2 rounds',
+      );
+      expect(
+        formatNativeChange(NativeMetric.roundMinutes, -3, settings),
+        '↓ -3 min',
+      );
+    });
+  });
+
+  group('nativeChangeGain', () {
+    test('S-21003 pace inverts, every other metric is raw', () {
+      expect(nativeChangeGain(NativeMetric.pace, -30), 30.0);
+      expect(nativeChangeGain(NativeMetric.pace, 30), -30.0);
+      expect(nativeChangeGain(NativeMetric.reps, 3), 3.0);
+      expect(nativeChangeGain(NativeMetric.duration, -90), -90.0);
+    });
+  });
+
+  // The Instruments rows' own table (D-4008): what the figure above the change
+  // chip *is*. It is a second table over the primary metric, so the secondary
+  // table's wording (`Total hold`, `Total time`) never moves.
+  group('nativePrimaryLabel', () {
+    test('every metric is pinned, including the three a row already labels '
+        'elsewhere', () {
+      const expected = <NativeMetric, String?>{
+        NativeMetric.estimatedOneRepMax: 'Est. 1RM',
+        NativeMetric.reps: 'Best set',
+        NativeMetric.duration: 'Total time',
+        NativeMetric.pace: 'Best pace',
+        NativeMetric.hold: null,
+        NativeMetric.rounds: null,
+        NativeMetric.roundMinutes: null,
+      };
+
+      expect(
+        expected.keys.toSet(),
+        NativeMetric.values.toSet(),
+        reason: 'a new metric must be given a label or an explicit null',
+      );
+      for (final entry in expected.entries) {
+        expect(nativePrimaryLabel(entry.key), entry.value, reason: '${entry.key}');
+      }
+    });
+
+    test('the nulls are the metrics whose row carries a labelled second '
+        'figure', () {
+      expect(nativePrimaryLabel(NativeMetric.hold), isNull);
+      expect(nativePrimaryLabel(NativeMetric.rounds), isNull);
+      expect(nativePrimaryLabel(NativeMetric.roundMinutes), isNull);
+
+      // The secondary table is untouched: it still names the second figure.
+      expect(nativeSecondaryLabel(NativeMetric.duration), 'Total hold');
+      expect(nativeSecondaryLabel(NativeMetric.roundMinutes), 'Total time');
     });
   });
 }

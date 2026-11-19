@@ -19,6 +19,8 @@ import 'state/nutrition/nutrition_primer_state.dart';
 import 'state/stats/stats_primer_state.dart';
 import 'state/exercise/exercise_library_state.dart';
 import 'state/watch/watch_resume_sync.dart';
+import 'state/watch/watch_link_state.dart';
+import 'core/services/diagnostics_log.dart';
 
 import 'features/home/home_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
@@ -52,6 +54,14 @@ class MyApp extends StatelessWidget {
   /// Null means no observer is mounted at all.
   final Future<void> Function()? onWatchResume;
 
+  /// Where the watch stands, for the Settings row (47c D-3). Null without a
+  /// watch graph, and Settings then carries no APPLE WATCH section.
+  final WatchLinkState? watchLinkState;
+
+  /// The phone's diagnostics log, handed on to Settings (plan 143, D-14306).
+  /// Null without a log, and Settings then carries no Diagnostics row.
+  final DiagnosticsLog? diagnostics;
+
   MyApp({
     super.key,
     required this.repository,
@@ -73,6 +83,8 @@ class MyApp extends StatelessWidget {
     required this.timerAlertService,
     this.appVersionInfo,
     this.onWatchResume,
+    this.watchLinkState,
+    this.diagnostics,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -166,6 +178,8 @@ class MyApp extends StatelessWidget {
                   statsPrimerState: statsPrimerState,
                   restNotificationService: restNotificationService,
                   appVersionInfo: appVersionInfo,
+                  watchLinkState: watchLinkState,
+                  diagnostics: diagnostics,
                 ),
         );
 

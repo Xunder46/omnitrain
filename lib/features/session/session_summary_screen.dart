@@ -17,6 +17,7 @@ import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/period/period_state.dart';
+import '../../widgets/buttons/omni_utility_button.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
@@ -33,6 +34,7 @@ import '../calendar/calendar_screen.dart';
 import 'workout_session_screen.dart';
 import '../../core/navigation/navigation.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -86,10 +88,19 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _isLoading = true;
   bool _hasShownFeelingSheet = false;
 
+  /// True only while the automatic post-workout question is on screen
+  /// (plan 42a D-3). The user's own answer clears it first, so only a rating
+  /// that arrived from outside (the watch) closes the sheet.
+  bool _autoFeelingSheetOpen = false;
+
   Map<String, GroupDelta> _groupDeltas = {};
   Map<String, List<PRAchievement>> _prsByGroup = {};
   Map<String, SessionGroupMetrics> _groupMetrics = {};
   int _restTimeMs = 0;
+  ({int avgBpm, int maxBpm})? _heartRate;
+
+  /// The active-energy row for the loaded session, if one is stored.
+  ({int kcal, bool measured})? _energy;
   String _preferredWeightUnit = 'kg';
   Set<int> _workoutDays = {};
   int _daysInMonth = 30;
@@ -154,14 +165,35 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _showFeelingSheet(context);
     });
+    _notifySessionSaved();
+    widget.workoutState.wristSummary.addListener(_reloadHeartRateOnWristSummary);
     _loadAsyncData();
   }
 
   @override
   void dispose() {
-    _noteDebounce?.cancel();
+    widget.workoutState.removeListener(_closeAutoSheetOnOutsideRating);
+    widget.workoutState.wristSummary.removeListener(_reloadHeartRateOnWristSummary);
+    final pending = _noteDebounce;
+    if (pending != null && pending.isActive) {
+      pending.cancel();
+      unawaited(
+        widget.workoutState.updateSessionNote(_noteController.text.trim()),
+      );
+    }
     _noteController.dispose();
     super.dispose();
+  }
+
+  /// The workout is already stored when the summary opens (Finish ends it
+  /// first), so the saved-session hook — which links a planned session — runs
+  /// here and not on "Done": Back must not leave the plan uncompleted.
+  void _notifySessionSaved() {
+    if (_isHistoricalView) return;
+    final sessionId = widget.workoutState.currentSession?.id;
+    final onSaved = widget.onSessionSaved;
+    if (sessionId == null || onSaved == null) return;
+    onSaved(sessionId);
   }
 
   Future<void> _loadAsyncData() async {
@@ -187,9 +219,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       final groupMetrics = await widget.sessionSummaryService.buildGroupMetrics(
         _summary,
+        modality: currentSession.modality,
       );
       final restTimeMs = await widget.sessionSummaryService
           .computeSessionRestTimeMs(currentSession.id);
+      final heartRate = await widget.sessionSummaryService.getSessionHeartRate(
+        currentSession.id,
+      );
+      final energy = await widget.sessionSummaryService.getSessionEnergy(
+        currentSession.id,
+      );
       final preferredWeightUnit = await widget.sessionSummaryService
           .getPreferredWeightUnit();
       await _loadCalendarData();
@@ -201,10 +240,34 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _prsByGroup = groupedPrs;
         _groupMetrics = groupMetrics;
         _restTimeMs = restTimeMs;
+        _heartRate = heartRate;
+        _energy = energy;
         _preferredWeightUnit = preferredWeightUnit;
         _isLoading = false;
       });
     }
+  }
+
+  /// The wrist's heart-rate summary landed after this screen opened (plan 72):
+  /// re-read the heart rate and the energy alone, so nothing else on the
+  /// screen reloads.
+  Future<void> _reloadHeartRateOnWristSummary() async {
+    final arrived = widget.workoutState.wristSummary.value;
+    final session = widget.workoutState.currentSession;
+    if (arrived == null || session == null || arrived.sessionId != session.id) {
+      return;
+    }
+    final heartRate = await widget.sessionSummaryService.getSessionHeartRate(
+      session.id,
+    );
+    final energy = await widget.sessionSummaryService.getSessionEnergy(
+      session.id,
+    );
+    if (!mounted) return;
+    setState(() {
+      _heartRate = heartRate;
+      _energy = energy;
+    });
   }
 
   Future<void> _loadCalendarData() async {
@@ -244,6 +307,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _workoutDays = days;
   }
 
+  /// Plan 238: a note still waiting in the 600 ms pause is written now, so a
+  /// Done or Back inside that pause does not lose it.
+  Future<void> _flushNote() async {
+    final pending = _noteDebounce;
+    if (pending == null || !pending.isActive) return;
+    pending.cancel();
+    await widget.workoutState.updateSessionNote(_noteController.text.trim());
+  }
+
   void _handleNoteChanged(String value) {
     _noteDebounce?.cancel();
     _noteDebounce = Timer(const Duration(milliseconds: 600), () async {
@@ -271,19 +343,56 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (session.sessionFeeling != null) return;
 
     _hasShownFeelingSheet = true;
+    _autoFeelingSheetOpen = true;
+    widget.workoutState.addListener(_closeAutoSheetOnOutsideRating);
 
-    await EffortRatingSheet.show(
-      context,
-      mustAnswer: true,
-      modality: session.modality,
-      startedAt: OmniDateUtils.fromMs(session.startedAtMs),
-      onRated: _saveEffortRating,
-    );
+    try {
+      await EffortRatingSheet.show(
+        context,
+        mustAnswer: true,
+        modality: session.modality,
+        startedAt: OmniDateUtils.fromMs(session.startedAtMs),
+        onRated: _saveAutomaticRating,
+      );
+    } finally {
+      _autoFeelingSheetOpen = false;
+      widget.workoutState.removeListener(_closeAutoSheetOnOutsideRating);
+    }
 
     // Rebuild to reflect any rating changes made in the automatic prompt
     if (mounted) {
       setState(() {});
     }
+  }
+
+  /// Closes the automatic question when the live session got a rating from
+  /// outside this sheet (the watch answered first, D-3). The pop is guarded:
+  /// it only runs while a route sits on top of this screen, so it can never
+  /// pop the Summary itself.
+  void _closeAutoSheetOnOutsideRating() {
+    if (!_autoFeelingSheetOpen || !mounted) return;
+    if (widget.workoutState.currentSession?.sessionFeeling == null) return;
+    final route = ModalRoute.of(context);
+    if (route == null || route.isCurrent) return;
+    // Cleared before the pop so a second notification during the sheet's
+    // exit animation cannot pop the Summary behind it.
+    _autoFeelingSheetOpen = false;
+    Navigator.of(context).pop();
+  }
+
+  /// Where the AUTOMATIC question's answer goes: first answer wins, so a
+  /// rating already stored (the watch's) is left alone. The Add/Change control
+  /// keeps [_saveEffortRating], which is an explicit edit.
+  Future<bool> _saveAutomaticRating(int rating) async {
+    final session = widget.workoutState.currentSession;
+    if (session == null) return false;
+    _autoFeelingSheetOpen = false;
+    await widget.workoutState.updateSessionFeeling(
+      session.id,
+      rating,
+      onlyIfUnrated: true,
+    );
+    return true;
   }
 
   /// Open the effort-rating sheet from the Summary's add/change control.
@@ -386,6 +495,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Future<void> _finishAndSaveSession() async {
+    // Plan 238: write a note still in its 600 ms pause before the session ends.
+    await _flushNote();
     if (!mounted) return;
 
     showDialog(
@@ -396,10 +507,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     if (!_isHistoricalView) {
       await widget.workoutState.endSession();
-      final completedSessionId = widget.workoutState.currentSession?.id;
-      if (completedSessionId != null && widget.onSessionSaved != null) {
-        await widget.onSessionSaved!(completedSessionId);
-      }
     }
     widget.workoutState.clearSession();
 
@@ -415,11 +522,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
 
     Navigator.of(context).popUntil((route) => route.isFirst);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Workout session saved successfully'),
-        duration: Duration(seconds: 2),
-      ),
+    OmniMessage.show(
+      context,
+      'Workout session saved successfully',
+      duration: const Duration(seconds: 2),
     );
   }
 
@@ -552,7 +658,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(24),
                   ),
-                  border: Border.all(color: Colors.white.withOpacity(0.06)),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.06),
+                  ),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -600,6 +710,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                             subtitle: Text(exercise.effortKind),
                             trailing: IconButton(
                               icon: const Icon(Icons.close),
+                              tooltip: 'Remove exercise',
                               onPressed: () {
                                 setSheetState(() {
                                   exercises.removeAt(index);
@@ -645,7 +756,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                                 Navigator.pop(context);
                                 await _finishAndSaveSession();
                               },
-                        child: const Text('Save Routine'),
+                        child: const Text('Save'),
                       ),
                     ),
                   ],
@@ -772,12 +883,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// [OmniBackHeader]; the date and modality chip live in
   /// [_buildSessionInfoHeader] above this card. The card body is
   /// content-only. The EFFORT row is always shown (even if toggle is off),
-  /// with an "Add rating" or "Change" button to modify the rating. The value
+  /// as two halves: the rating pill carries a pen (icon-only) button whose
+  /// tooltip reads "Add rating" or "Change rating", and the right half is a
+  /// CALORIES pill. The rating pill's own caption explains what the value
+  /// means. The value
   /// text uses the pills' shared value color; the rating's intensity is a
   /// non-text marker in its ramp step, because low ramp steps are below the
   /// text contrast floor (D-15 in the Stats PR 1 plan).
   ///
-  /// For rolling sessions, Duration/Rest Time are hidden, but EFFORT row
+  /// For rolling sessions, Duration/Rest Time are hidden, but the EFFORT row
   /// remains visible so the user can rate the session.
   Widget _buildSessionInfoCard(ThemeData theme) {
     final session = widget.workoutState.currentSession;
@@ -813,13 +927,42 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             // Gap between rows (only when Duration row is visible)
             const SizedBox(height: 16),
           ],
-          // Effort rating row: always visible (even for rolling sessions)
+          // Heart-rate row: only when the watch recorded a session heart
+          // rate (D-3, plan 66b). Sits between the Duration/Rest row and the
+          // Effort row.
+          if (_heartRate case final heartRate?) ...[
+            Row(
+              key: const Key('omni_session_heart_rate_row'),
+              children: [
+                Expanded(
+                  child: _StatPill(
+                    label: 'Avg heart rate',
+                    value: '${heartRate.avgBpm} bpm',
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _StatPill(
+                    label: 'Max heart rate',
+                    value: '${heartRate.maxBpm} bpm',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+          // Effort + calories row: always visible (even for rolling
+          // sessions). LEFT half: the rating pill with its outlined pen
+          // button right beside the value; RIGHT half: the Calories pill.
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: _StatPill(
                   label: 'Effort',
                   value: feeling != null ? '$feeling / 5' : '—',
+                  caption: 'How hard the session felt',
+                  captionKey: const Key('omni_session_effort_caption'),
                   leading: feeling != null
                       ? Container(
                           key: const Key('omni_session_effort_marker'),
@@ -831,30 +974,34 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                           ),
                         )
                       : null,
+                  trailing: OmniUtilityIconButton(
+                    buttonKey: const Key('omni_session_effort_rating_button'),
+                    tooltip: feeling != null ? 'Change rating' : 'Add rating',
+                    icon: feeling != null ? Icons.edit_outlined : Icons.add,
+                    onPressed: _openEffortRatingSheet,
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
-              TextButton(
-                onPressed: _openEffortRatingSheet,
-                style: ButtonStyle(
-                  shape: WidgetStatePropertyAll(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                  padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: KeyedSubtree(
+                  key: const Key('omni_session_calories_pill'),
+                  child: _StatPill(label: 'Calories', value: _energyLabel()),
                 ),
-                child: Text(feeling != null ? 'Change' : 'Add rating'),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  /// The label of the CALORIES pill: a measured row reads plain, an
+  /// estimated row carries a `~`, and no stored row reads `—`.
+  String _energyLabel() {
+    final e = _energy;
+    if (e == null) return '—';
+    return e.measured ? '${e.kcal} kcal' : '~${e.kcal} kcal';
   }
 
   /// Small modality pill rendered in the top-right of the first card's
@@ -1099,7 +1246,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ),
           if (prs.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Divider(color: Colors.white.withOpacity(0.06), height: 1),
+            Divider(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+              height: 1,
+            ),
             const SizedBox(height: 10),
             for (final pr in prs)
               Padding(
@@ -1165,7 +1315,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         break;
       case 'rounds':
         final count = d.abs().toInt();
-        formattedValue = '$count round${count != 1 ? 's' : ''}';
+        formattedValue = ModalityDisplay.roundCount(
+          widget.workoutState.currentSession?.modality,
+          count,
+        );
         break;
       default:
         formattedValue = _formatNumber(d.abs());
@@ -1215,7 +1368,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // `OmniCardHeader` above this card (see `_buildCalendarHeader`
     // and the body composition site). The card body is content-only.
     final workoutDays = _workoutDays.length;
-    final restDays = (_daysInMonth - workoutDays).clamp(0, _daysInMonth);
+    // Plan 239: a day that has not started is not a rest day.
+    final elapsed = OmniDateUtils.daysElapsedInMonth(
+      _viewMonth,
+      DateTime.now(),
+    );
+    final restDays = (elapsed - workoutDays).clamp(0, elapsed);
 
     return OmniSurface(
       padding: const EdgeInsets.all(16),
@@ -1382,7 +1540,26 @@ class _StatPill extends StatelessWidget {
   /// row's intensity marker).
   final Widget? leading;
 
-  const _StatPill({required this.label, required this.value, this.leading});
+  /// Optional control drawn right after [value] on the same line (the EFFORT
+  /// row's pen button). It wraps under the value on a very narrow pill.
+  final Widget? trailing;
+
+  /// Optional muted line under the value, inside the pill's own column (the
+  /// EFFORT row's "How hard the session felt").
+  final String? caption;
+
+  /// The key carried by the caption [Text], so a reader can point at just
+  /// that line.
+  final Key? captionKey;
+
+  const _StatPill({
+    required this.label,
+    required this.value,
+    this.leading,
+    this.trailing,
+    this.caption,
+    this.captionKey,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1404,13 +1581,28 @@ class _StatPill extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        if (leading == null)
+        if (leading == null && trailing == null)
           valueText
         else
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [leading!, const SizedBox(width: 8), valueText],
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              ?leading,
+              valueText,
+              ?trailing,
+            ],
           ),
+        if (caption != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            caption!,
+            key: captionKey,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
+            ),
+          ),
+        ],
       ],
     );
   }

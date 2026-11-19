@@ -29,6 +29,8 @@ import 'package:omnitrain/watch/session/watch_session_engine.dart';
 import 'package:omnitrain/watch/session/watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_timer_math.dart';
 
+import 'helpers/sync_protocol_harness.dart' show loadProtocolValidator;
+
 const String _protocolRoot = 'watch/sync_protocol';
 
 /// Deterministic clock: the engine reads time only through its injected clock,
@@ -131,6 +133,7 @@ Map<String, Object?> _snapshotOf(
   String sessionId, {
   required String messageId,
   String status = WatchSessionStatus.active,
+  String sentAt = '2026-07-13T06:30:00Z',
   List<Map<String, Object?>>? exercises,
   List<Map<String, Object?>> entries = const <Map<String, Object?>>[],
   Map<String, Object?> timers = const <String, Object?>{},
@@ -140,7 +143,7 @@ Map<String, Object?> _snapshotOf(
   'sessionId': sessionId,
   'type': 'session_snapshot',
   'origin': 'phone',
-  'sentAt': '2026-07-13T06:30:00Z',
+  'sentAt': sentAt,
   'payload': <String, Object?>{
     'sessionId': sessionId,
     'revision': 0,
@@ -158,16 +161,18 @@ Map<String, Object?> _lifecycleOf(
   required String messageId,
   required String state,
   int? exerciseIndex,
+  String sentAt = '2026-07-13T06:30:00Z',
+  String? at,
 }) => {
   'protocolVersion': SyncProtocolValidator.protocolVersion,
   'messageId': messageId,
   'sessionId': sessionId,
   'type': 'session_lifecycle',
   'origin': 'phone',
-  'sentAt': '2026-07-13T06:30:00Z',
+  'sentAt': sentAt,
   'payload': <String, Object?>{
     'state': state,
-    'at': '2026-07-13T06:30:00Z',
+    'at': at ?? sentAt,
     'exerciseIndex': ?exerciseIndex,
   },
 };
@@ -531,7 +536,10 @@ void main() {
         engine.timerFor(WatchTimerKind.rest)!.stoppedAt,
         t0.add(const Duration(seconds: 30)),
       );
-      expect(engine.observations.map((row) => row.kind), ['set', 'rest']);
+      expect(
+        engine.observations.map((row) => row.kind),
+        ['set', 'rest', WatchObservationKind.sessionEnd],
+      );
 
       // Rebuild: every box is closed, then a brand-new store opens the same
       // files and a brand-new engine restores from them.
@@ -553,14 +561,96 @@ void main() {
       );
       expect(
         relaunched.observations.map((row) => row.kind),
-        ['set', 'rest'],
+        ['set', 'rest', WatchObservationKind.sessionEnd],
         reason: 'and the rest the end emitted is stored, so the phone still '
-            'owes it a receipt',
+            'owes it a receipt — along with the end the finish captured '
+            '(S-16001)',
       );
       expect(
         relaunched.session!.exercises.map((slot) => slot['sessionExerciseId']),
         ['sx-bench'],
         reason: "the terminal row kept the slot the rest hung on",
+      );
+    });
+  });
+
+  // Phase 5.Z shape A: 33 of 200 random seeds ended a session and then started
+  // a rest on it (see the plan's `.evidence.md`, "Phase 5.Z"). D-14603 says an
+  // end stops every timer of that session; a start after the end is not a start.
+  group('D-14603 a timer after the end starts nothing', () {
+    test('D-14603 a rest tapped on a finished session is no rest at all', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.advance(const Duration(seconds: 30));
+      await engine.finishSession();
+      final emittedAtEnd = harness.emitted.length;
+
+      harness.clock.advance(const Duration(seconds: 5));
+      final started = await engine.startTimer(WatchTimerKind.rest);
+
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(
+        started.state,
+        WatchTimerState.stopped,
+        reason: 'the returned timer is the one that applies: none',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest),
+        isNull,
+        reason: 'nothing runs on an ended session',
+      );
+      expect(
+        harness.emitted.skip(emittedAtEnd).map((frame) => frame['type']),
+        isNot(contains('timer_state')),
+        reason: 'and nothing claims a rest started, so the phone mirrors none',
+      );
+    });
+
+    test('D-14603 a rest tapped on an abandoned session is no rest either', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.abandonSession();
+      final emittedAtEnd = harness.emitted.length;
+
+      await engine.startTimer(WatchTimerKind.rest);
+
+      expect(engine.timerFor(WatchTimerKind.rest), isNull);
+      expect(
+        harness.emitted.skip(emittedAtEnd).map((frame) => frame['type']),
+        isNot(contains('timer_state')),
+      );
+    });
+
+    test('D-14603 a phone timer frame starts nothing on an ended session', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      final sessionId = engine.session!.sessionId;
+      await engine.finishSession();
+
+      await engine.applyMessage(
+        _timerStateOf(
+          sessionId,
+          messageId: 'msg-late-rest',
+          timers: {'rest': _runningRest('2026-07-13T06:29:50Z')},
+        ),
+      );
+
+      expect(
+        engine.timerFor(WatchTimerKind.rest),
+        isNull,
+        reason: 'a frame that arrives after the end cannot start a timer either',
       );
     });
   });
@@ -1674,9 +1764,10 @@ void main() {
         expect(relaunched.session!.status, WatchSessionStatus.abandoned);
         expect(
           relaunched.observations.map((record) => record.entryId),
-          ['e-1', 'e-2'],
-          reason:
-              'giving up on the session does not discard work already logged',
+          ['e-1', 'e-2', WatchSessionCapture.sessionEndId(harness.sessionId)],
+          reason: 'giving up on the session does not discard work already '
+              'logged, and the end the discard captured is stored with it '
+              '(S-16002)',
         );
       },
     );
@@ -2350,10 +2441,12 @@ void main() {
       expect(ended.recordId, 'rec-2', reason: "the fixture's terminal row");
       expect(
         harness.emitted,
-        hasLength(1),
-        reason: 'the fixture ends it once, live, and the frame is the one to replay',
+        hasLength(2),
+        reason:
+            'the fixture ends it once, live: the end observation, then the '
+            'lifecycle the replay repeats',
       );
-      return (harness: harness, engine: engine, live: harness.emitted.single);
+      return (harness: harness, engine: engine, live: harness.emitted.last);
     }
 
     test('S-212 the replay repeats the live frame field for field', () async {
@@ -2364,7 +2457,7 @@ void main() {
 
       expect(
         ended.harness.emitted,
-        hasLength(2),
+        hasLength(3),
         reason: 'exactly one more frame (D-199)',
       );
       final replay = ended.harness.emitted.last;
@@ -2398,7 +2491,11 @@ void main() {
 
       ended.engine.replaySessionEnd();
 
-      expect(ended.harness.emitted, hasLength(2));
+      expect(
+        ended.harness.emitted,
+        hasLength(3),
+        reason: 'the end, the end\'s lifecycle, and the replay of it',
+      );
       final replay = ended.harness.emitted.last;
       expect(replay, ended.live, reason: 'a given-up session replays as itself');
       expect(replay['messageId'], 'msg-rec-2');
@@ -2690,10 +2787,10 @@ void main() {
       );
       expect(
         _emittedKinds(harness),
-        ['set', 'rest'],
+        ['set', 'rest', WatchObservationKind.sessionEnd],
         reason:
-            'the rest travels after the set it followed; the end itself is a '
-            'lifecycle frame, not an observation (V-5)',
+            'the rest travels after the set it followed, and the end the '
+            'finish captured travels last (S-16001, D-16003)',
       );
       expect(
         engine.timerFor(WatchTimerKind.rest)!.state,
@@ -2720,7 +2817,7 @@ void main() {
       );
       expect(
         _emittedKinds(harness),
-        ['set', 'rest'],
+        ['set', 'rest', WatchObservationKind.sessionEnd],
         reason: 'and the replay added no observation',
       );
       expect(
@@ -2728,6 +2825,1441 @@ void main() {
         greaterThan(frames.length),
         reason: 'the terminal frame itself is re-sent, as a replay means',
       );
+    });
+  });
+
+  group('S-6006 a work timer says which exercise it is for', () {
+    Map<String, Object?> lastTimerFrame(_Harness harness) =>
+        harness.emitted.lastWhere(
+          (envelope) => envelope['type'] == 'timer_state',
+        );
+
+    Map<String, Object?> timersOf(Map<String, Object?> frame) =>
+        _asObject(_asObject(frame['payload'])['timers']!);
+
+    test(
+      'S-6006 a work timer started with a slot names it on its own frame',
+      () async {
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        await engine.createSession(
+          modality: 'cardio_endurance',
+          exercises: [_exercise('sx-run')],
+        );
+
+        await engine.startTimer(
+          WatchTimerKind.elapsed,
+          sessionExerciseId: 'sx-run',
+        );
+
+        final frame = lastTimerFrame(harness);
+        final elapsed = _asObject(timersOf(frame)[WatchTimerKind.elapsed]!);
+        expect(elapsed['sessionExerciseId'], 'sx-run');
+        expect(
+          loadProtocolValidator().validateEnvelope(frame),
+          isEmpty,
+          reason: 'the slot is a field the wire admits (S-6001)',
+        );
+      },
+    );
+
+    test('S-6006 a rest names none, whatever it was started with', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+
+      await engine.startTimer(
+        WatchTimerKind.rest,
+        sessionExerciseId: 'sx-run',
+      );
+
+      final rest = _asObject(
+        timersOf(lastTimerFrame(harness))[WatchTimerKind.rest]!,
+      );
+      expect(
+        rest.containsKey('sessionExerciseId'),
+        isFalse,
+        reason: 'a rest belongs to no slot (D-6)',
+      );
+      expect(
+        loadProtocolValidator().validateEnvelope(lastTimerFrame(harness)),
+        isEmpty,
+      );
+    });
+
+    test('S-6006 a timer row keeps its slot across the store', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: 'cardio_endurance',
+        exercises: [_exercise('sx-run')],
+      );
+
+      await engine.startTimer(
+        WatchTimerKind.elapsed,
+        sessionExerciseId: 'sx-run',
+      );
+
+      final relaunched = await harness.runningEngine();
+      expect(
+        relaunched.timerFor(WatchTimerKind.elapsed)!.sessionExerciseId,
+        'sx-run',
+        reason: 'the slot is part of the stored row, not of the frame only',
+      );
+    });
+
+    test('S-6006 a stored timer row restores its slot through JSON', () {
+      final row = WatchTimerRecord(
+        recordId: 'rec-slot',
+        sessionId: 's-watch-1',
+        recordedAt: DateTime.utc(2026, 7, 13, 6),
+        kind: WatchTimerKind.elapsed,
+        startedAt: DateTime.utc(2026, 7, 13, 6, 1),
+        sessionExerciseId: 'sx-run',
+        sequence: 3,
+      );
+
+      final restored = WatchTimerRecord.fromJson(row.toJson());
+      expect(
+        restored.sessionExerciseId,
+        'sx-run',
+        reason:
+            'the slot travels in the row itself: a store that re-reads JSON '
+            'must not drop it',
+      );
+      expect(restored.recordId, 'rec-slot');
+      expect(restored.startedAt, row.startedAt);
+
+      final older = WatchTimerRecord.fromJson({
+        'recordId': 'rec-old',
+        'sessionId': 's-watch-1',
+        'recordedAt': '2026-07-13T06:00:00Z',
+        'sequence': 1,
+        'kind': WatchTimerKind.elapsed,
+        'startedAt': '2026-07-13T06:00:00Z',
+        'accumulatedPauseMs': 0,
+      });
+      expect(
+        older.sessionExerciseId,
+        isNull,
+        reason: 'a row whose JSON carries no slot restores with none',
+      );
+    });
+
+    test('S-6006 a row written without the slot restores with none', () {
+      final row = WatchTimerRecord.fromJson({
+        'recordId': 'rec-old',
+        'sessionId': 's-watch-1',
+        'recordedAt': '2026-07-13T06:00:00Z',
+        'sequence': 1,
+        'kind': WatchTimerKind.elapsed,
+        'startedAt': '2026-07-13T06:00:00Z',
+        'accumulatedPauseMs': 0,
+      });
+
+      expect(
+        row.sessionExerciseId,
+        isNull,
+        reason: 'a row from an older build carries no slot',
+      );
+    });
+
+    test('S-6006 a stopped row keeps the slot of the row it copies', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: 'cardio_endurance',
+        exercises: [_exercise('sx-run')],
+      );
+
+      await engine.startTimer(
+        WatchTimerKind.elapsed,
+        sessionExerciseId: 'sx-run',
+      );
+      harness.clock.advance(const Duration(seconds: 30));
+      await engine.stopTimer(kind: WatchTimerKind.elapsed);
+
+      final stopped = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(stopped.state, WatchTimerState.stopped);
+      expect(
+        stopped.sessionExerciseId,
+        'sx-run',
+        reason: 'the ending is a row copied from the start, not a new timer',
+      );
+    });
+  });
+
+  group('S-14601 a stale started cannot reopen a finished workout', () {
+    test('S-14601 the ending stands and the later start adds no row', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 10);
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-completed',
+          state: WatchLifecycleState.completed,
+        ),
+      );
+      final endedAt = engine.session!.recordedAt;
+      final rows = (await harness.store.readAll()).sessions.length;
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-stale-start',
+          state: WatchLifecycleState.started,
+          sentAt: '2026-07-13T06:20:00Z',
+        ),
+      );
+
+      expect(
+        applied,
+        isFalse,
+        reason: 'a start for an ended session changes nothing (D-14601)',
+      );
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(
+        engine.session!.recordedAt,
+        endedAt,
+        reason: "the first ending's instant stands",
+      );
+      expect(
+        (await harness.store.readAll()).sessions,
+        hasLength(rows),
+        reason: 'no row and no second end (D-14602)',
+      );
+      final relaunched = await harness.runningEngine();
+      expect(
+        relaunched.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'the stale start was never stored, so a relaunch sees it too',
+      );
+    });
+  });
+
+  group('S-14602 an active snapshot cannot reopen a finished workout', () {
+    test('S-14602 the wrist keeps its end, merges the late set, starts no '
+        'timer', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 10);
+      await engine.finishSession();
+      final endedAt = engine.session!.recordedAt;
+
+      final applied = await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-phone-active',
+          sentAt: '2026-07-13T06:20:00Z',
+          entries: [_entry('entry-late')],
+          timers: {'rest': _runningRest('2026-07-13T06:19:00Z')},
+        ),
+      );
+
+      expect(
+        applied,
+        isTrue,
+        reason: 'the snapshot still carries entries, so it is not refused (O-4)',
+      );
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'an active snapshot never reopens a terminal one (D-14604)',
+      );
+      expect(
+        engine.session!.recordedAt,
+        endedAt,
+        reason: 'and it moves no end',
+      );
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        contains('entry-late'),
+        reason: 'the late set is merged (D-14605)',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest),
+        isNull,
+        reason: 'no timer starts on a session that has ended (D-14604)',
+      );
+
+      final relaunched = await harness.runningEngine();
+      expect(
+        relaunched.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'and the row the wrist stored says so after a relaunch',
+      );
+      expect(relaunched.timerFor(WatchTimerKind.rest), isNull);
+    });
+  });
+
+  group('S-14603 an end stops the rest timer on the wrist', () {
+    test('S-14603 the applied end stops every timer, once', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _timerStateOf(
+          's-w1',
+          messageId: 'msg-phone-rest',
+          timers: {'rest': _runningRest('2026-07-13T06:05:00Z')},
+        ),
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.running,
+        reason: 'the fixture starts from a mirrored rest',
+      );
+
+      final abandon = _lifecycleOf(
+        's-w1',
+        messageId: 'msg-phone-abandon',
+        state: WatchLifecycleState.abandoned,
+        sentAt: '2026-07-13T06:10:00Z',
+      );
+      await engine.applyMessage(abandon);
+
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.stopped,
+        reason: 'an end stops the session\'s timers (D-14603a)',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.recordId,
+        'tms-msg-phone-abandon-rest',
+        reason: 'the stop is keyed by the message that named it, so a re-send '
+            'is the same stop',
+      );
+      final rows = (await harness.store.readAll()).timers.length;
+
+      await engine.applyMessage(abandon);
+
+      expect(
+        (await harness.store.readAll()).timers,
+        hasLength(rows),
+        reason: 'a redelivered end stops nothing a second time',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.stopped,
+      );
+    });
+  });
+
+  group('S-14605 an ended session is never reported active again', () {
+    test("S-14605 the wrist's own finish cannot upgrade a discard", () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.appendObservation(
+        _setEvent(harness.clock, entryId: 'entry-1'),
+      );
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-abandon',
+          state: WatchLifecycleState.abandoned,
+          sentAt: '2026-07-13T06:10:00Z',
+        ),
+      );
+      final endedAt = engine.session!.recordedAt;
+      final entries = engine.observations.map((row) => row.entryId).toList();
+      final rows = (await harness.store.readAll()).sessions.length;
+
+      final returned = await engine.finishSession();
+
+      expect(returned.status, WatchSessionStatus.abandoned);
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      expect(
+        engine.session!.recordedAt,
+        endedAt,
+        reason: "the discard's instant stands: it was the first ending",
+      );
+      expect(
+        engine.observations.map((row) => row.entryId),
+        entries,
+        reason: 'and the held set is untouched',
+      );
+      final stored = (await harness.store.readAll()).sessions;
+      expect(stored, hasLength(rows), reason: 'no row was appended');
+      expect(
+        stored.where((row) => row.status == WatchSessionStatus.completed),
+        isEmpty,
+        reason: 'a discard can never be reported as a completion (D-14601)',
+      );
+    });
+  });
+
+  group('S-14512 two endings at the same instant agree', () {
+    test('S-14512 a phone completion replaces a wrist discard at the tie',
+        () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.abandonSession();
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      final instant = _iso(harness.clock.now);
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-end',
+          state: WatchLifecycleState.completed,
+          sentAt: instant,
+          at: instant,
+        ),
+      );
+
+      expect(applied, isTrue, reason: 'the tie-break applies the completion');
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'on an equal end instant completed wins (D-14601 as amended), '
+            'so the wrist shows what the phone finished (S-14512)',
+      );
+    });
+
+    test('S-14512 a phone discard does not replace a wrist completion', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.finishSession();
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      final instant = _iso(harness.clock.now);
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-discard',
+          state: WatchLifecycleState.abandoned,
+          sentAt: instant,
+          at: instant,
+        ),
+      );
+
+      expect(applied, isFalse, reason: 'the tie is the completion\'s');
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'a finished workout is never deleted on a tie (D-14601 as '
+            'amended)',
+      );
+    });
+    test('S-14641 a later phone completion loses to the wrist\'s discard', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.abandonSession();
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      final discardedAt = engine.session!.recordedAt;
+      harness.clock.advance(const Duration(minutes: 30));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-end',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(harness.clock.now),
+          at: _iso(harness.clock.now),
+        ),
+      );
+
+      expect(applied, isFalse, reason: 'a later end loses (D-14630)');
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.abandoned,
+        reason: 'the earlier end instant wins whether it is the discard or '
+            'the finish (D-14630); this is A-146-15\'s interim, superseded',
+      );
+      expect(
+        engine.session!.recordedAt,
+        discardedAt,
+        reason: 'the ending that stands keeps its own instant',
+      );
+    });
+  });
+
+  group('S-14640 an earlier discard replaces the twin\'s completed', () {
+    test('S-14640 the held completion flips to the earlier abandon, and later '
+        'frames change nothing', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.appendObservation(_setEvent(harness.clock, entryId: 'e-1'));
+
+      // The phone's finish is t2; the wrist's discard is t1, half a minute
+      // earlier, and it stayed on the wrist while the link was down.
+      harness.clock.advance(const Duration(minutes: 1));
+      final t2 = harness.clock.now;
+      await engine.finishSession();
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(engine.session!.recordedAt, t2);
+      final t1 = t2.subtract(const Duration(seconds: 30));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-wrist-discard',
+          state: WatchLifecycleState.abandoned,
+          sentAt: _iso(t2),
+          at: _iso(t1),
+        ),
+      );
+
+      expect(applied, isTrue, reason: 'the earlier ending replaces the later');
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.abandoned,
+        reason: 'a discard stamped before the finish is the ending that was '
+            'always the truth (D-14630)',
+      );
+      expect(
+        engine.session!.recordedAt,
+        t1,
+        reason: 'the ending row records the moment it claims',
+      );
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['e-1', 'end-s-w1'],
+        reason: 'an ending never drops a logged set, and adds the end it '
+            'captured as an entry of its own (S-16005)',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.round),
+        isNull,
+        reason: 'an end stops every timer of the session',
+      );
+
+      // A stale start and an active snapshot arrive afterwards: neither
+      // returns a terminal session to `active`.
+      harness.clock.advance(const Duration(minutes: 1));
+      expect(
+        await engine.applyMessage(
+          _lifecycleOf(
+            's-w1',
+            messageId: 'msg-stale-start',
+            state: WatchLifecycleState.started,
+            sentAt: _iso(harness.clock.now),
+            at: _iso(harness.clock.now),
+          ),
+        ),
+        isFalse,
+      );
+      harness.clock.advance(const Duration(minutes: 1));
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-stale-snapshot',
+          sentAt: _iso(harness.clock.now),
+          entries: [_entry('e-1')],
+        ),
+      );
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      expect(engine.session!.recordedAt, t1);
+      expect(engine.timerFor(WatchTimerKind.round), isNull);
+      expect(engine.entries.map((entry) => entry.entryId), [
+        'e-1',
+        'end-s-w1',
+      ], reason: 'and nothing drops the end either');
+    });
+
+    test('S-14641 both arrival orders converge on the same ending', () async {
+      Future<(String, DateTime)> ending({
+        required bool discardFirst,
+      }) async {
+        final harness = _Harness(sessionId: 's-w1');
+        final engine = await harness.runningEngine();
+        await engine.createSession(
+          modality: null,
+          exercises: [_exercise('sx-bench')],
+        );
+        harness.clock.advance(const Duration(minutes: 1));
+        final t1 = harness.clock.now;
+
+        if (discardFirst) {
+          await engine.abandonSession();
+          harness.clock.advance(const Duration(seconds: 30));
+          final t2 = harness.clock.now;
+          await engine.applyMessage(
+            _lifecycleOf(
+              's-w1',
+              messageId: 'msg-late-finish',
+              state: WatchLifecycleState.completed,
+              sentAt: _iso(t2),
+              at: _iso(t2),
+            ),
+          );
+        } else {
+          harness.clock.advance(const Duration(seconds: 30));
+          final t2 = harness.clock.now;
+          await engine.finishSession();
+          await engine.applyMessage(
+            _lifecycleOf(
+              's-w1',
+              messageId: 'msg-late-discard',
+              state: WatchLifecycleState.abandoned,
+              sentAt: _iso(t2),
+              at: _iso(t1),
+            ),
+          );
+        }
+        return (engine.session!.status, engine.session!.recordedAt);
+      }
+
+      // The wrist's abandon lands on its own clock in both orders; the phone's
+      // finish is `t2` whatever order the frames arrived in.
+      final discardFirst = await ending(discardFirst: true);
+      final finishFirst = await ending(discardFirst: false);
+
+      expect(discardFirst.$1, WatchSessionStatus.abandoned);
+      expect(
+        finishFirst.$1,
+        discardFirst.$1,
+        reason: 'the arrival order does not decide the ending (D-14630)',
+      );
+      expect(
+        finishFirst.$2,
+        discardFirst.$2,
+        reason: 'both orders keep the same ending instant',
+      );
+    });
+  });
+
+  // Plan 154 (D-15403) — the same tolerance the phone bridge uses, on both of
+  // the twin's earlier-end sites. Two ends within `kEndSkewToleranceMs` are the
+  // same instant, so D-14601's tie-break applies; only a terminal state earlier
+  // by MORE than the tolerance replaces the held ending (D-14630).
+  group('D-15403 the twin treats a near-tie as the same instant', () {
+    /// A wrist session the phone has already ended with a discard, and the
+    /// instant it ended at.
+    Future<(_Harness, WatchSessionEngine, DateTime)> discarded() async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-wrist-discard',
+          state: WatchLifecycleState.abandoned,
+          sentAt: '2026-07-13T06:10:00Z',
+        ),
+      );
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      return (harness, engine, engine.session!.recordedAt);
+    }
+
+    test('S-15408 a completion inside the tolerance is the same instant '
+        '(lifecycle)', () async {
+      final (harness, engine, held) = await discarded();
+      final late = held.add(const Duration(seconds: 1));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-finish',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(late),
+          at: _iso(late),
+        ),
+      );
+
+      expect(
+        applied,
+        isTrue,
+        reason: 'S-15408 1 s between two end stamps is skew: the ends are '
+            'the same instant, so the tie-break decides',
+      );
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'S-15408 and the tie-break is completed\'s (D-14601) — the '
+            'phone shows the finished workout the phone recorded',
+      );
+      expect(
+        engine.session!.recordedAt,
+        late,
+        reason: 'S-15408 the ending row records the moment it claims',
+      );
+      expect(harness.clock.now.isAfter(late), isFalse);
+    });
+
+    test('S-15408 a completion exactly at the tolerance is the same instant',
+        () async {
+      final (_, engine, held) = await discarded();
+      final late = held.add(const Duration(milliseconds: 2000));
+
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-finish',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(late),
+          at: _iso(late),
+        ),
+      );
+
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'S-15408 the tolerance is inclusive of two seconds (D-15403)',
+      );
+    });
+
+    test('S-15408 a completion beyond the tolerance loses to the held discard',
+        () async {
+      final (_, engine, held) = await discarded();
+      final late = held.add(const Duration(seconds: 3));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-finish',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(late),
+          at: _iso(late),
+        ),
+      );
+
+      expect(applied, isFalse, reason: 'a later end loses (D-14630)');
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.abandoned,
+        reason: 'S-15408 3 s is a decision: the earlier end stands',
+      );
+      expect(engine.session!.recordedAt, held);
+    });
+
+    test('S-15408 a discard one second before a finished snapshot is the same '
+        'instant (snapshot)', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 10);
+      await engine.finishSession();
+      final held = engine.session!.recordedAt;
+      final earlier = held.subtract(const Duration(seconds: 1));
+
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-phone-discard',
+          status: WatchSessionStatus.abandoned,
+          sentAt: _iso(earlier),
+        ),
+      );
+
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'S-15408 a snapshot one second earlier is the same instant, so '
+            'the tie-break keeps the completion — a finished workout is not '
+            'deleted by a stamp the two clocks could not have told apart',
+      );
+      expect(engine.session!.recordedAt, held);
+    });
+
+    test('S-15408 a discard three seconds before a finished snapshot is the '
+        'earlier end (snapshot)', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 10);
+      await engine.finishSession();
+      final held = engine.session!.recordedAt;
+      final earlier = held.subtract(const Duration(seconds: 3));
+
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-phone-discard',
+          status: WatchSessionStatus.abandoned,
+          sentAt: _iso(earlier),
+        ),
+      );
+
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.abandoned,
+        reason: 'S-15408 beyond the tolerance the earlier end wins (D-14630)',
+      );
+      expect(engine.session!.recordedAt, earlier);
+    });
+  });
+
+  // Plan 154 follow-up (S-15411): the tolerance applies between a finish and a
+  // discard only. Two ends of the SAME status compare exactly, so an end a
+  // fraction of a second later never wins on a random messageId (the harness
+  // trace S-14502 went flaky when it did).
+  group('S-15411 two ends of the same status compare exactly', () {
+    Future<(WatchSessionEngine, DateTime)> finished() async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-m',
+          state: WatchLifecycleState.completed,
+          sentAt: '2026-07-13T06:10:00Z',
+          at: '2026-07-13T06:10:00Z',
+        ),
+      );
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      return (engine, engine.session!.recordedAt);
+    }
+
+    test('S-15411 a later completion with a smaller messageId does not '
+        'replace the held one', () async {
+      final (engine, held) = await finished();
+      final later = held.add(const Duration(seconds: 1));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-a',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(later),
+          at: _iso(later),
+        ),
+      );
+
+      expect(applied, isFalse, reason: 'S-15411 a later end is refused whole');
+      expect(
+        engine.session!.recordedAt,
+        held,
+        reason: 'S-15411 the held end stands whatever the ids sort like',
+      );
+    });
+
+    test('S-15411 an earlier completion with a larger messageId replaces the '
+        'held one', () async {
+      final (engine, held) = await finished();
+      final earlier = held.subtract(const Duration(seconds: 1));
+
+      final applied = await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-z',
+          state: WatchLifecycleState.completed,
+          sentAt: _iso(earlier),
+          at: _iso(earlier),
+        ),
+      );
+
+      expect(applied, isTrue);
+      expect(
+        engine.session!.recordedAt,
+        earlier,
+        reason: 'S-15411 the earlier of two same-status ends wins, as before '
+            'the tolerance',
+      );
+    });
+  });
+
+  // Plan 160 (D-16002, D-16003, D-16005): the twin captures the `session_end`
+  // Swift captures, at the same three sites, before the row that records the
+  // status — so the wrist's own finished workout reaches the phone.
+  group('plan 160 the twin\'s session_end', () {
+    /// The `session_end` rows the store holds, in append order.
+    Future<List<WatchObservationRecord>> storedEnds(_Harness harness) async => [
+      for (final row in (await harness.store.readAll()).observations)
+        if (row.kind == WatchObservationKind.sessionEnd) row,
+    ];
+
+    /// The `session_end` events that have travelled, in order.
+    List<Map<String, Object?>> emittedEnds(_Harness harness) => [
+      for (final event in _emittedObservations(harness))
+        if (event['kind'] == WatchObservationKind.sessionEnd) event,
+    ];
+
+    /// The one `observations_up` frame that carries [entryId].
+    Map<String, Object?> frameCarrying(_Harness harness, String entryId) =>
+        harness.emitted.singleWhere(
+          (frame) =>
+              frame['type'] == 'observations_up' &&
+              _eventsOf(
+                frame,
+              ).any((event) => event['entryId'] == entryId),
+        );
+
+    /// A started wrist-owned session with one set logged a minute in, ended at
+    /// T+600 s — S-16001's fixture.
+    Future<({_Harness harness, WatchSessionEngine engine, DateTime started})>
+    wristSessionToEnd() async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      final started = harness.clock.now;
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.advance(const Duration(seconds: 60));
+      await engine.appendObservation(
+        _setEvent(harness.clock, entryId: 'entry-1'),
+      );
+      harness.clock.advance(const Duration(minutes: 9));
+      return (harness: harness, engine: engine, started: started);
+    }
+
+    test('S-16001 the wrist\'s own finish captures its end before the '
+        'terminal row', () async {
+      final fixture = await wristSessionToEnd();
+      final harness = fixture.harness;
+      final engine = fixture.engine;
+      final sessionId = engine.session!.sessionId;
+      final endedAt = harness.clock.now;
+
+      final terminal = await engine.finishSession();
+
+      expect(terminal.status, WatchSessionStatus.completed);
+      final ends = await storedEnds(harness);
+      expect(ends, hasLength(1), reason: 'S-16001 the finish stores one end');
+      final end = ends.single;
+      expect(
+        end.recordId,
+        WatchSessionCapture.sessionEndId(sessionId),
+        reason: 'D-16003 the id is the session\'s, as on Swift',
+      );
+      expect(end.sessionId, sessionId);
+      expect(
+        end.payload,
+        {
+          'entryId': 'end-$sessionId',
+          'eventId': 'end-$sessionId',
+          'kind': WatchObservationKind.sessionEnd,
+          'loggedAt': utcIso(endedAt),
+          'startedAt': utcIso(fixture.started),
+          'endedAt': utcIso(endedAt),
+          'status': WatchSessionStatus.completed,
+        },
+        reason:
+            'S-16001 the end names when the session ran and how it ended, and '
+            'carries neither `followed` (the wrist created it) nor `modality` '
+            '(there is none) nor a summary the twin never measured (AL-1)',
+      );
+
+      final contents = await harness.store.readAll();
+      expect(
+        end.sequence,
+        lessThan(contents.sessions.last.sequence),
+        reason:
+            'D-16002 the end is stored before the row that records the '
+            'status, so a kill in between leaves it owed rather than lost',
+      );
+
+      final frame = frameCarrying(harness, 'end-$sessionId');
+      expect(frame['sessionId'], sessionId);
+      expect(frame['messageId'], 'msg-end-$sessionId');
+      expect(
+        _validator().validateEnvelope(frame),
+        isEmpty,
+        reason: 'S-16001 the real validator accepts the frame that travelled',
+      );
+
+      final pending = [
+        for (final envelope in engine.pendingObservations())
+          ..._eventsOf(envelope),
+      ];
+      expect(
+        pending.map((event) => event['entryId']),
+        contains('end-$sessionId'),
+        reason: 'D-16009 the end is owed until the phone acknowledges it',
+      );
+    });
+
+    test('S-16002 the wrist\'s own discard captures its end', () async {
+      final fixture = await wristSessionToEnd();
+      final harness = fixture.harness;
+      final engine = fixture.engine;
+      final sessionId = engine.session!.sessionId;
+      final endedAt = harness.clock.now;
+
+      await engine.abandonSession();
+
+      final ends = await storedEnds(harness);
+      expect(ends, hasLength(1), reason: 'S-16002 a discard stores one end');
+      expect(
+        ends.single.payload,
+        {
+          'entryId': 'end-$sessionId',
+          'eventId': 'end-$sessionId',
+          'kind': WatchObservationKind.sessionEnd,
+          'loggedAt': utcIso(endedAt),
+          'startedAt': utcIso(fixture.started),
+          'endedAt': utcIso(endedAt),
+          'status': WatchSessionStatus.abandoned,
+        },
+        reason: 'S-16002 the same shape, saying how it really ended',
+      );
+      expect(
+        emittedEnds(harness).single['status'],
+        WatchSessionStatus.abandoned,
+      );
+    });
+
+    test('S-16003 a second wrist finish stores and emits no second end', () async {
+      final fixture = await wristSessionToEnd();
+      final harness = fixture.harness;
+      final engine = fixture.engine;
+      await engine.finishSession();
+      final first = (await storedEnds(harness)).single.payload;
+      final rowsBefore = (await harness.store.readAll()).sessions.length;
+      final emissionsBefore = emittedEnds(harness).length;
+
+      harness.clock.advance(const Duration(minutes: 5));
+      final returned = await engine.finishSession();
+
+      expect(
+        returned.status,
+        WatchSessionStatus.completed,
+        reason: 'D-14602 an ended session stays ended',
+      );
+      final ends = await storedEnds(harness);
+      expect(ends, hasLength(1), reason: 'S-16003 one end per session');
+      expect(
+        ends.single.payload,
+        first,
+        reason: 'D-16004 the id is the session\'s, so the first end stands',
+      );
+      expect(
+        emittedEnds(harness),
+        hasLength(emissionsBefore),
+        reason: 'S-16003 and nothing is emitted a second time',
+      );
+      expect(
+        (await harness.store.readAll()).sessions,
+        hasLength(rowsBefore),
+        reason: 'S-16003 no row is appended for the second finish',
+      );
+    });
+
+    test('S-16003 a wrist finish after the phone\'s end keeps that end', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-phone-end',
+          state: WatchLifecycleState.completed,
+          sentAt: '2026-07-13T06:05:00Z',
+          at: '2026-07-13T06:05:00Z',
+        ),
+      );
+      final phoneEnd = (await storedEnds(harness)).single.payload;
+      final rowsBefore = (await harness.store.readAll()).sessions.length;
+
+      harness.clock.advance(const Duration(minutes: 5));
+      await engine.finishSession();
+
+      final ends = await storedEnds(harness);
+      expect(
+        ends,
+        hasLength(1),
+        reason: 'S-16003 the end the phone named is the one end this session has',
+      );
+      expect(ends.single.payload, phoneEnd);
+      expect(
+        (await harness.store.readAll()).sessions,
+        hasLength(rowsBefore),
+        reason: 'S-16003 and the wrist appends no row of its own',
+      );
+    });
+
+    test('S-16004 a phone snapshot that ends the session captures its end', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      final startedAt = DateTime.utc(2026, 7, 13, 6, 5);
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-snap-1',
+          sentAt: '2026-07-13T06:10:00Z',
+          entries: [_entry('entry-1', loggedAt: '2026-07-13T06:05:00Z')],
+        ),
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 20);
+      final endedAt = harness.clock.now;
+
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-snap-2',
+          status: WatchSessionStatus.completed,
+          sentAt: utcIso(endedAt),
+          entries: [_entry('entry-1', loggedAt: '2026-07-13T06:05:00Z')],
+        ),
+      );
+
+      final ends = await storedEnds(harness);
+      expect(ends, hasLength(1), reason: 'S-16004 a phone end is the end');
+      expect(
+        ends.single.payload,
+        {
+          'entryId': 'end-s-w1',
+          'eventId': 'end-s-w1',
+          'kind': WatchObservationKind.sessionEnd,
+          'loggedAt': utcIso(endedAt),
+          'startedAt': utcIso(startedAt),
+          'endedAt': utcIso(endedAt),
+          'status': WatchSessionStatus.completed,
+          'followed': true,
+        },
+        reason:
+            'S-16004 the session was created by the phone\'s snapshot, so the '
+            'wrist followed it into the end (D-16003)',
+      );
+      final contents = await harness.store.readAll();
+      expect(contents.sessions.last.recordId, 'snap-msg-snap-2');
+      expect(
+        ends.single.sequence,
+        lessThan(contents.sessions.last.sequence),
+        reason: 'S-16004 the end is stored before the snapshot\'s terminal row',
+      );
+    });
+
+    test('S-16005 a phone lifecycle end captures its end with the payload\'s '
+        'instant', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-snap-1',
+          sentAt: '2026-07-13T06:10:00Z',
+          entries: [_entry('entry-1', loggedAt: '2026-07-13T06:05:00Z')],
+        ),
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 20);
+
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'msg-life-2',
+          state: WatchLifecycleState.completed,
+          sentAt: '2026-07-13T06:20:00Z',
+          at: '2026-07-13T06:19:00Z',
+        ),
+      );
+
+      final ends = await storedEnds(harness);
+      expect(ends, hasLength(1), reason: 'S-16005 a lifecycle end is the end');
+      expect(ends.single.payload, {
+        'entryId': 'end-s-w1',
+        'eventId': 'end-s-w1',
+        'kind': WatchObservationKind.sessionEnd,
+        'loggedAt': '2026-07-13T06:20:00.000Z',
+        'startedAt': '2026-07-13T06:05:00.000Z',
+        'endedAt': '2026-07-13T06:19:00.000Z',
+        'status': WatchSessionStatus.completed,
+        'followed': true,
+      }, reason: 'S-16005 `endedAt` is the payload\'s `at`, not its delivery');
+      final contents = await harness.store.readAll();
+      expect(contents.sessions.last.recordId, 'life-msg-life-2');
+      expect(
+        ends.single.sequence,
+        lessThan(contents.sessions.last.sequence),
+        reason: 'S-16005 the end is stored before the lifecycle row',
+      );
+    });
+
+    test('S-16006 a first-hearing already-finished snapshot captures '
+        'nothing', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+
+      await engine.applyMessage(
+        _snapshotOf(
+          'w-unknown',
+          messageId: 'msg-snap-x',
+          status: WatchSessionStatus.completed,
+          sentAt: '2026-07-13T06:30:00Z',
+          entries: [_entry('entry-x')],
+        ),
+      );
+
+      expect(
+        await storedEnds(harness),
+        isEmpty,
+        reason:
+            'S-16006 the phone holds the whole session already — the wrist has '
+            'no creation row to say when it ran (D-16002)',
+      );
+      expect(emittedEnds(harness), isEmpty);
+      expect(engine.session!.sessionId, 'w-unknown');
+      expect(
+        engine.session!.status,
+        WatchSessionStatus.completed,
+        reason: 'S-16006 the terminal row is stored exactly as before',
+      );
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['entry-x'],
+        reason: 'S-16006 and so is the entry it carries',
+      );
+    });
+
+    test('S-16007 the end is still owed after another session started', () async {
+      final harness = _Harness();
+      final ids = ['w1', 'w2'];
+      var next = 0;
+      var records = 0;
+      final engine = await harness.runningEngine(
+        engine: WatchSessionEngine(
+          harness.store,
+          onEmit: harness.emitted.add,
+          validator: _validator(),
+          clock: harness.clock.call,
+          idFactory: () => 'rec-${++records}',
+          sessionIdFactory: () => ids[next++],
+        ),
+      );
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.appendObservation(
+        _setEvent(harness.clock, entryId: 'entry-1'),
+      );
+      harness.clock.advance(const Duration(minutes: 10));
+      await engine.finishSession();
+      harness.clock.advance(const Duration(minutes: 5));
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      expect(
+        engine.session!.sessionId,
+        'w2',
+        reason: 'the fixture moves the wrist on to a second session',
+      );
+      await engine.appendObservation(
+        _setEvent(harness.clock, entryId: 'entry-2'),
+      );
+
+      final pending = [
+        for (final envelope in engine.pendingObservations())
+          ..._eventsOf(envelope).map(
+            (event) => (sessionId: envelope['sessionId'], event: event),
+          ),
+      ];
+      expect(
+        pending.map((row) => row.event['entryId']),
+        containsAll(<Object?>['entry-1', 'end-w1', 'entry-2']),
+        reason:
+            'S-16007 D-16005 the re-offer covers every session\'s unconfirmed '
+            'rows, so the first session\'s end is not lost when the next starts',
+      );
+      expect(
+        [
+          for (final row in pending)
+            if (row.event['entryId'] == 'end-w1') row.sessionId,
+        ],
+        ['w1'],
+        reason: 'S-16007 and the end is re-offered under the session it ended',
+      );
+    });
+  });
+
+  group('S-14608 a set is never held twice', () {
+    test('S-14608 one entryId is one row, whatever carried it', () async {
+      final harness = _Harness();
+      final ids = ['s-w1', 's-w2'];
+      var next = 0;
+      var records = 0;
+      final engine = await harness.runningEngine(
+        engine: WatchSessionEngine(
+          harness.store,
+          onEmit: harness.emitted.add,
+          validator: _validator(),
+          clock: harness.clock.call,
+          idFactory: () => 'rec-${++records}',
+          sessionIdFactory: () => ids[next++],
+        ),
+      );
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.appendObservation({
+        'entryId': 'entry-1',
+        'eventId': 'evt-wrist-1',
+        'kind': WatchObservationKind.set,
+        'loggedAt': '2026-07-13T06:00:00Z',
+        'sessionExerciseId': 'sx-bench',
+        'exerciseId': 'ex-sx-bench',
+        'reps': 8,
+        'loadKg': 80,
+      });
+
+      // The phone's snapshot re-carries the same entry twice, under two ids
+      // the wrist has never held.
+      for (final messageId in ['msg-dup-1', 'msg-dup-2']) {
+        await engine.applyMessage(
+          _snapshotOf(
+            's-w1',
+            messageId: messageId,
+            entries: [_entry('entry-1')],
+          ),
+        );
+      }
+
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['entry-1'],
+        reason: 'the entry id is the identity, not the event id it arrived on',
+      );
+      expect(
+        engine.observations,
+        hasLength(1),
+        reason: 'one held set, one row',
+      );
+
+      // The same entry again, this time merged behind a terminal row.
+      await engine.finishSession();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-squat')],
+      );
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'msg-dup-3',
+          sentAt: '2026-07-13T06:40:00Z',
+          entries: [
+            _entry('entry-1'),
+            _entry('entry-2', loggedAt: '2026-07-13T06:30:00Z'),
+          ],
+        ),
+      );
+
+      final storedRows = (await harness.store.readAll()).observations
+          .where((row) => row.sessionId == 's-w1')
+          .map((row) => row.payload['entryId'])
+          .toList();
+      expect(
+        storedRows,
+        ['entry-1', 'end-s-w1', 'entry-2'],
+        reason: 'the late merge adds what is new and doubles nothing, and the '
+            'end the finish captured sits between the two sets (S-16001)',
+      );
+    });
+  });
+
+  group('S-14611 late actions on a finished workout change no status', () {
+    test('S-14611 a start, an active snapshot, a discard and a later end all '
+        'leave the first ending standing', () async {
+      final harness = _Harness(sessionId: 's-w1');
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      harness.clock.now = DateTime.utc(2026, 7, 13, 6, 10);
+      await engine.finishSession();
+      final endedAt = engine.session!.recordedAt;
+
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'life-started-late',
+          state: WatchLifecycleState.started,
+          sentAt: '2026-07-13T06:20:00Z',
+        ),
+      );
+      await engine.applyMessage(
+        _snapshotOf(
+          's-w1',
+          messageId: 'snap-active-late',
+          sentAt: '2026-07-13T06:30:00Z',
+          entries: [_entry('entry-late', loggedAt: '2026-07-13T06:25:00Z')],
+          timers: {'rest': _runningRest('2026-07-13T06:29:00Z')},
+        ),
+      );
+      await engine.abandonSession();
+      await engine.applyMessage(
+        _lifecycleOf(
+          's-w1',
+          messageId: 'life-completed-late',
+          state: WatchLifecycleState.completed,
+          sentAt: '2026-07-13T06:50:00Z',
+        ),
+      );
+
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(
+        engine.session!.recordedAt,
+        endedAt,
+        reason: 'no late frame moves the end (D-14604)',
+      );
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['end-s-w1', 'entry-late'],
+        reason: 'the late set still merges (O-4), beside the end the first '
+            'finish captured (S-16001)',
+      );
+      expect(
+        engine.entries.where((entry) => entry.entryId == 'entry-late'),
+        hasLength(1),
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest),
+        isNull,
+        reason: 'no timer runs on a finished session',
+      );
+
+      engine.replaySessionEnd();
+
+      expect(harness.emitted.last['payload'], {
+        'state': WatchSessionStatus.completed,
+        'at': utcIso(endedAt),
+      }, reason: 'the end the phone hears is the first one, not the last');
+      expect(harness.emitted.last['sentAt'], utcIso(endedAt));
     });
   });
 }

@@ -43,6 +43,7 @@ Future<_SessionHarness> _pumpSession(
   bool endSessionFirst = false,
   bool emptySession = false,
   String chosenMetric = 'reps',
+  bool logSet = false,
 }) async {
   final workoutState = WorkoutState(repo);
   final routineState = RoutineState(repo);
@@ -59,6 +60,14 @@ Future<_SessionHarness> _pumpSession(
       orElse: () => exercises.first,
     );
     await workoutState.addExerciseToSession(first, chosenMetric: chosenMetric);
+    // Plan 157a: Finish drops an unlogged set; a caller whose flow needs the
+    // seeded set to survive Finish logs it the way the screen does.
+    if (logSet) {
+      await workoutState.recordRestStart(
+        workoutState.getExercisesWithEntries().first['id'] as String,
+        1,
+      );
+    }
   }
 
   final screen = WorkoutSessionScreen(
@@ -209,7 +218,7 @@ void main() {
     });
 
     testWidgets(
-      'three visual states — running shows meditation icon, paused swaps to pause icon (same size)',
+      'three visual states — running shows pause icon, paused swaps to play icon (same size)',
       (WidgetTester tester) async {
         final repo = await _freshRepo();
         final harness = await _pumpSession(repo);
@@ -217,8 +226,8 @@ void main() {
 
         await _logSetToOpenRest(tester, harness);
 
-        // Running: meditation icon.
-        expect(find.byIcon(Icons.self_improvement), findsOneWidget);
+        // Running: pause icon.
+        expect(find.byIcon(Icons.pause), findsOneWidget);
         final runningRect = tester.getRect(
           find.byKey(const Key('rest-overlay-chip')),
         );
@@ -233,10 +242,10 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         await tester.pump();
 
-        // Paused: meditation icon is gone (replaced by the pause
+        // Paused: the pause icon is gone (replaced by the play
         // icon). The caption is intentionally absent — the chip
         // must stay the same size in both states.
-        expect(find.byIcon(Icons.self_improvement), findsNothing);
+        expect(find.byIcon(Icons.play_arrow), findsOneWidget);
         expect(find.text('Paused · tap to resume'), findsNothing);
         final pausedRect = tester.getRect(
           find.byKey(const Key('rest-overlay-chip')),
@@ -568,7 +577,7 @@ void main() {
         final repo = await _freshRepo();
         // Edit mode is a review mount: an ended session whose row carries a
         // feeling (the shape the summary's historical view hands it, D-179).
-        final harness = await _pumpSession(repo, editMode: true);
+        final harness = await _pumpSession(repo, editMode: true, logSet: true);
         final sessionId = harness.workoutState.currentSession!.id;
         await harness.workoutState.updateSessionFeeling(sessionId, 4);
         await harness.workoutState.endSession();
@@ -605,6 +614,16 @@ void main() {
         final harness = await _pumpSession(repo);
         final sessionId = harness.workoutState.currentSession!.id;
         await _pushSessionRoute(tester, harness);
+
+        // Plan 220: Finish with nothing logged now asks "Discard Workout?" —
+        // log one set through the state so this stays a real finish.
+        final effortId =
+            harness.workoutState.getExercisesWithEntries().first['id']
+                as String;
+        await harness.workoutState.updateEntryValue(effortId, 0, 'reps', 5);
+        await harness.workoutState.updateEntryValue(effortId, 0, 'weight', 50.0);
+        await harness.workoutState.recordRestStart(effortId, 1);
+        await tester.pump();
 
         await tester.tap(find.text('Finish Workout'));
         await tester.pump();

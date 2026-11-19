@@ -140,7 +140,7 @@ void main() {
 
     // S-001: a row with no `hidden` declaration loads as visible —
     // guards the default and prevents the new field from silently
-    // hiding the other 166 rows.
+    // hiding the other 167 rows.
     test(
       'S-001: parseCatalogJson leaves a row with no `hidden` field visible',
       () {
@@ -243,20 +243,33 @@ void main() {
   });
 
   group('MockWorkoutRepository catalog loading', () {
-    test('getCatalogFoods returns 166 visible foods after initialize; 168 with '
+    test('getCatalogFoods returns 167 visible foods after initialize; 169 with '
         'includeArchived: true', () async {
       final repo = await _freshRepo();
-      // Default non-archived read returns the 166 visible rows —
+      // Default non-archived read returns the 167 visible rows —
       // `beer_regular` and `red_wine` are bundled as hidden (the
       // app's calorie model cannot represent their alcohol-
       // derived energy — see
       // `docs/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`).
       final catalogFoods = await repo.getCatalogFoods();
-      expect(catalogFoods.length, 166);
+      expect(catalogFoods.length, 167);
       // Diagnostic read sees every row on disk.
       final allCatalogFoods = await repo.getCatalogFoods(includeArchived: true);
-      expect(allCatalogFoods.length, 168);
+      expect(allCatalogFoods.length, 169);
     });
+
+    test(
+      'chicken thigh ships as separate skinless and with-skin foods',
+      () async {
+        final repo = await _freshRepo();
+        final byId = {for (final f in await repo.getCatalogFoods()) f.id: f};
+        expect(byId['chicken_thigh']?.name, 'Chicken thigh, skinless');
+        final withSkin = byId['chicken_thigh_skin_on'];
+        expect(withSkin, isNotNull, reason: 'with-skin thigh must be bundled');
+        expect(withSkin!.name, 'Chicken thigh, with skin');
+        expect(withSkin.fat, greaterThan(byId['chicken_thigh']!.fat!));
+      },
+    );
 
     test('all catalog foods have required fields', () async {
       final repo = await _freshRepo();
@@ -349,7 +362,7 @@ void main() {
         includeArchived: true,
       )).where((food) => food.unitType == FoodUnitType.grams).toList();
 
-      expect(weightFoods, hasLength(105));
+      expect(weightFoods, hasLength(106));
       for (final food in weightFoods) {
         expect(
           food.referenceLabel,
@@ -628,16 +641,16 @@ void main() {
       // Library should be empty (no user foods added yet)
       expect(libraryFoods, isEmpty);
 
-      // Catalog still has all 168 rows on disk, but the default
-      // non-archived read returns 166 — `beer_regular` and
+      // Catalog still has all 169 rows on disk, but the default
+      // non-archived read returns 167 — `beer_regular` and
       // `red_wine` are bundled as hidden because their alcohol-
       // derived energy is unrepresentable in the Food macro
       // model. The diagnostic `includeArchived: true` read sees
-      // the full 168.
+      // the full 169.
       final catalogFoods = await repo.getCatalogFoods();
-      expect(catalogFoods.length, 166);
+      expect(catalogFoods.length, 167);
       final allCatalogFoods = await repo.getCatalogFoods(includeArchived: true);
-      expect(allCatalogFoods.length, 168);
+      expect(allCatalogFoods.length, 169);
     });
 
     // S-003: bundled beer_regular and red_wine load as hidden with
@@ -652,8 +665,8 @@ void main() {
       final all = await repo.getCatalogFoods(includeArchived: true);
       expect(
         all.length,
-        168,
-        reason: 'bundled catalog row count must stay at 168',
+        169,
+        reason: 'bundled catalog row count must stay at 169',
       );
 
       final beer = await repo.getCatalogFoodById('beer_regular');
@@ -692,7 +705,7 @@ void main() {
 
     // S-004: the default `getCatalogFoods()` (non-archived view)
     // excludes the two hidden rows; the diagnostic
-    // `includeArchived: true` view still returns all 168.
+    // `includeArchived: true` view still returns all 169.
     test(
       'S-004: default getCatalogFoods excludes beer_regular and red_wine',
       () async {
@@ -701,8 +714,8 @@ void main() {
         final visible = await repo.getCatalogFoods();
         expect(
           visible.length,
-          166,
-          reason: '166 visible foods; the 2 alcohol rows are hidden',
+          167,
+          reason: '167 visible foods; the 2 alcohol rows are hidden',
         );
         expect(
           visible.any((f) => f.id == 'beer_regular'),
@@ -716,7 +729,7 @@ void main() {
         );
 
         final all = await repo.getCatalogFoods(includeArchived: true);
-        expect(all.length, 168);
+        expect(all.length, 169);
       },
     );
 
@@ -799,9 +812,9 @@ void main() {
         expect(afterArchive, isNotNull);
         expect(afterArchive!.isArchived, originalArchived);
 
-        // Catalog count should still be 168
+        // Catalog count should still be 169
         final all = await repo.getCatalogFoods(includeArchived: true);
-        expect(all.length, 168);
+        expect(all.length, 169);
       },
     );
 
@@ -833,14 +846,14 @@ void main() {
         reason: 'createFood should not allow injecting into the catalog',
       );
 
-      // The catalog count should still be 168 on disk; the default
-      // non-archived read returns 166 because `beer_regular` and
+      // The catalog count should still be 169 on disk; the default
+      // non-archived read returns 167 because `beer_regular` and
       // `red_wine` are bundled as hidden (the app's calorie model
       // cannot represent their alcohol-derived energy).
       final catalogFoods = await repo.getCatalogFoods();
-      expect(catalogFoods.length, 166);
+      expect(catalogFoods.length, 167);
       final allCatalogFoods = await repo.getCatalogFoods(includeArchived: true);
-      expect(allCatalogFoods.length, 168);
+      expect(allCatalogFoods.length, 169);
     });
 
     test(
@@ -1744,14 +1757,14 @@ void main() {
 
   // ──────────────────────────────────────────────────────────────────────────
   // Food Catalog Expansion Tests (S-006 through S-014). Originally written for
-  // the 150-item expansion; covers the 168-item catalogue's structural
+  // the 150-item expansion; covers the 169-item catalogue's structural
   // invariants (unique ids, calorie reconciliation, non-negative macros,
   // field completeness, per-category distribution, group resolution,
   // search-by-name, bundled-id set parity, seed-vs-JSON parity).
   // ──────────────────────────────────────────────────────────────────────────
 
   group('S-006: Unique IDs (no collisions)', () {
-    test('all 168 catalog foods have unique IDs', () async {
+    test('all 169 catalog foods have unique IDs', () async {
       final repo = await _freshRepo();
       // Use the diagnostic `includeArchived: true` read so the
       // assertion covers every row on disk, not just the visible
@@ -1770,8 +1783,8 @@ void main() {
       );
       expect(
         uniqueIds.length,
-        168,
-        reason: 'Should have exactly 168 unique IDs',
+        169,
+        reason: 'Should have exactly 169 unique IDs',
       );
     });
   });
@@ -1957,7 +1970,7 @@ void main() {
   });
 
   group('S-010: Per-category counts match binding distribution', () {
-    test('all 168 foods are distributed across 9 categories per plan', () async {
+    test('all 169 foods are distributed across 9 categories per plan', () async {
       final repo = await _freshRepo();
       // Use the diagnostic `includeArchived: true` read so this
       // test sees every row on disk — `beer_regular` and `red_wine`
@@ -2003,7 +2016,7 @@ void main() {
       // categories whey affects; allow ±2 on Drinks. The stricter
       // per-category contract lives in the per-food test above.
       final expectedCounts = {
-        'Proteins': (33, 35),
+        'Proteins': (33, 36),
         'Grains & Starches': (21, 21),
         'Fruits': (18, 18),
         'Vegetables': (21, 21),
@@ -2188,7 +2201,7 @@ void main() {
 
   group('S-013: Bundled catalog ID set exhaustive and matches catalog', () {
     test(
-      'FoodLibraryState._bundledCatalogFoodIds matches all 168 catalog IDs',
+      'FoodLibraryState._bundledCatalogFoodIds matches all 169 catalog IDs',
       () async {
         final repo = await _freshRepo();
         // Use the diagnostic `includeArchived: true` read so the
@@ -2209,7 +2222,7 @@ void main() {
         await state.loadCatalogFoods();
 
         final catalogIds = catalogFoods.map((f) => f.id).toSet();
-        expect(catalogIds.length, 168, reason: 'Catalog should have 168 foods');
+        expect(catalogIds.length, 169, reason: 'Catalog should have 169 foods');
 
         // All catalog food IDs should be recognized as bundled
         for (final id in catalogIds) {
@@ -2224,7 +2237,7 @@ void main() {
   });
 
   group('S-014: Generated seed mirrors JSON entry-for-entry', () {
-    test('FoodCatalogSeed matches JSON for all 168 foods', () {
+    test('FoodCatalogSeed matches JSON for all 169 foods', () {
       final asset = File('assets/data/food_catalog.json');
       expect(
         asset.existsSync(),
@@ -2241,10 +2254,10 @@ void main() {
 
       expect(
         loaderFoods.length,
-        168,
-        reason: 'Loader should produce 168 foods',
+        169,
+        reason: 'Loader should produce 169 foods',
       );
-      expect(seedFoods.length, 168, reason: 'Seed should contain 168 foods');
+      expect(seedFoods.length, 169, reason: 'Seed should contain 169 foods');
 
       final seedById = {for (final f in seedFoods) f.id: f};
 

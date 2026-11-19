@@ -29,6 +29,20 @@
       "unitType": "grams"
     },
     {
+      "calories": 231,
+      "carbs": 0,
+      "category": "Proteins",
+      "fat": 15,
+      "fiber": 0,
+      "id": "chicken_thigh_skin_on",
+      "name": "Chicken thigh, with skin",
+      "protein": 24,
+      "referenceAmount": 100,
+      "referenceLabel": "g",
+      "sodium_mg": 93,
+      "unitType": "grams"
+    },
+    {
       "calories": 239,
       "carbs": 0,
       "category": "Proteins",

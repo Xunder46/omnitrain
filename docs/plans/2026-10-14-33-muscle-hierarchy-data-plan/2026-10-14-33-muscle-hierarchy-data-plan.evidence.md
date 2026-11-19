@@ -1,0 +1,10 @@
+# Evidence — plan 33 (muscle hierarchy, PR 1 of 3)
+
+Verified by the lead (observed output), base commit `1ca3b41`, working tree uncommitted (27 files, +2233 −601 incl. docs and tests).
+
+- Baseline before any change: `flutter analyze` 182 issues / 0 errors; `flutter test` +4519 ~1 all passed (2:48).
+- After each phase the lead re-ran the full suite: A +4576 ~1; B +4578 ~1; C+D +4587 ~1 (phase C alone left exactly the 5 predicted data-migration tests red: S-006, S-007, three S-156); after docs/prover +4587 ~1; after fix round 1 **+4588 ~1 all passed (2:57)**. `flutter analyze` 182 issues, 0 errors after every phase. `ui_standards_contract_test` + `docs_indexing_contract_test`: +42 passed. Invariant grep (state/features/widgets/core import of the Hive repository): empty. Diff under `lib/features lib/widgets lib/state lib/watch watch`: empty.
+- Seed transcription: parsed `SeedData.exerciseMuscleLinks` from the source file and compared with the approved tagging (`.work/2026-10-14-33-muscle-hierarchy/expected-tagging.json`): 178/178 rows identical, roles included.
+- Guard proof (lead applied each mutation, ran the guarding test, saw it red, restored the file and `cmp`-checked it): M1-M18 from `.work/crew/2026-10-14-33-muscle-hierarchy/report-prover-33.md` all RED (taxonomy matches/normalize ×7, Hive legacy reader, Mock and Hive filter, seed role builder, one seed row, refresh parent and role comparison, copy roles, Mock and Hive migration body, `currentDataVersion`); fix-round guard (corrupt Hive row) red when the fix is reverted, green restored. Prover also strengthened 3 filter tests (positive-only) and 2 idempotence tests.
+- Review: `docs/plans/2026-10-14-33-muscle-hierarchy-data-plan/2026-10-14-33-muscle-hierarchy-data-plan.review.md` — 0 blocker, 1 major (corrupt Hive row could stop the step): fixed in round 1.
+- Not shown on Mock: "refresh adds a missing muscle group" (no group-removal API); the add branch is pre-existing and covered by R-005 only for the groups that already existed.

@@ -51,7 +51,7 @@ const int kCrossModalityInterferencePriority = 500;
 /// [sportsLoadMinutes] is the session's Sports component in load minutes — 0
 /// when the session is unrated or holds no sports work. [hasSetEffort] is true
 /// when the session contains at least one effort whose section maps to
-/// Resistance. [bests] holds the per-exercise bests above zero, keyed by
+/// Resistance and that holds a stored row (plan 224). [bests] holds the per-exercise bests above zero, keyed by
 /// exercise id.
 class InterferenceSession {
   const InterferenceSession({

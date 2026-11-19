@@ -6,6 +6,7 @@ import '../../core/constants/workout_constants.dart';
 import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
+import '../../core/services/active_energy_service.dart';
 import '../../core/services/health_sync_service.dart';
 import '../../core/utils/entry_rows.dart';
 import '../../core/utils/logged_entry_rows.dart';
@@ -55,6 +56,11 @@ class SessionCore {
   final TimerManager _timerManager;
   final ExerciseLibrary _exerciseLibrary;
 
+  /// The clock behind every persisted stamp this core writes. Injected the
+  /// way the adoption bridge and the session importer inject theirs; the
+  /// default is the real clock, so production reads today's instants.
+  final DateTime Function() _clock;
+
   /// Optional platform-health write pipeline. Null in tests and in
   /// builds without a health integration; the lifecycle calls it only
   /// after a session has been persisted.
@@ -64,6 +70,22 @@ class SessionCore {
   /// was open. Null in tests and in builds without a watch; the restore then
   /// behaves exactly as it did before the recovery existed (D-803, D-811).
   final WatchLateEntryRecovery? _lateEntryRecovery;
+
+  /// Whether the wrist is running the session with this id, and so saves its
+  /// own Fitness workout for it (plan 89c1 D-2). Null in tests and in builds
+  /// without a watch; the phone's end then writes as it always has.
+  final bool Function(String sessionId)? _wristRunsSession;
+
+  /// Plan 218: runs the finish's drop of a watch-linked workout behind the
+  /// inbox's queued import passes. Null in tests and builds without a
+  /// watch: the drop then runs directly.
+  final Future<void> Function(Future<void> Function() action)?
+  _afterPendingWristImports;
+
+  /// Optional store of a finished session's active-energy estimate (plan 134
+  /// D-13407/D-13408). Null in tests and in builds that do not store energy;
+  /// the lifecycle then ends a session exactly as it did before.
+  final ActiveEnergyService? _activeEnergy;
 
   late final SessionBlockManager _blockManager;
   late final SessionSummaryBuilder _summaryBuilder;
@@ -83,7 +105,17 @@ class SessionCore {
   /// one costs nothing extra.
   final List<SensorSummary> _sensorSummaries = [];
 
+  /// Plan 229: the id of the running workout that a history view replaced in
+  /// the shared session slot, so closing the view can put it back.
+  String? _suspendedLiveSessionId;
+
   bool _isLoading = false;
+
+  /// Bumped where a watch-driven write changes the data the open session
+  /// screen reads (D-3505): the end of [refreshEfforts] and of
+  /// [appendSessionSlots]. The phone's own writes never move it, so a screen
+  /// that reacts to it cannot loop on its own reload.
+  int _watchRefreshRevision = 0;
 
   SessionCore(
     this._repository, {
@@ -94,13 +126,26 @@ class SessionCore {
     required ExerciseLibrary exerciseLibrary,
     HealthSyncService? healthSync,
     WatchLateEntryRecovery? lateEntryRecovery,
+    bool Function(String sessionId)? wristRunsSession,
+
+    /// Plan 218: runs the finish's drop of a watch-linked workout behind the
+    /// inbox's queued import passes. Null in tests and builds without a
+    /// watch: the drop then runs directly.
+    Future<void> Function(Future<void> Function() action)?
+    afterPendingWristImports,
+    ActiveEnergyService? activeEnergy,
+    DateTime Function()? clock,
   }) : _notify = notify,
        _setErrorCallback = setError,
        _clearErrorCallback = clearError,
        _timerManager = timerManager,
        _exerciseLibrary = exerciseLibrary,
+       _clock = clock ?? DateTime.now,
        _healthSync = healthSync,
-       _lateEntryRecovery = lateEntryRecovery {
+       _lateEntryRecovery = lateEntryRecovery,
+       _wristRunsSession = wristRunsSession,
+       _afterPendingWristImports = afterPendingWristImports,
+       _activeEnergy = activeEnergy {
     _blockManager = SessionBlockManager(
       _repository,
       notify: _notify,
@@ -132,6 +177,10 @@ class SessionCore {
       _efforts.values.any((list) => list.isNotEmpty);
   bool get isRollingSession => _currentSession?.isRolling ?? false;
   String? get currentSessionModality => _currentSession?.modality;
+
+  /// The revision of the watch-driven writes the open session screen last
+  /// read (D-3505). See [_watchRefreshRevision].
+  int get watchRefreshRevision => _watchRefreshRevision;
 
   Map<String, List<EffortObservation>> get observationsMap => _observations;
 

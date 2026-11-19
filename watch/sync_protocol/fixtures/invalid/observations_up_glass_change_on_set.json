@@ -1,0 +1,23 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-glass-change-on-set-1",
+  "sessionId": "s-2026-11-01-1",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-11-01T12:00:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "evt-1",
+        "entryId": "e-1",
+        "kind": "set",
+        "loggedAt": "2026-11-01T09:00:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80,
+        "glassChange": "add"
+      }
+    ]
+  }
+}

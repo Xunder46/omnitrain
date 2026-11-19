@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "source": {"kind":"trace","name":"trace-a1"},
+  "gridStartMs": 1794301200000,
+  "events": [
+    {"t":"action","clockMs":1794301200000,"name":"start","exercises":[{"sessionExerciseId":"sx-ex-run-1","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"]}]},
+    {"t":"action","clockMs":1794301200000,"name":"finish"},
+    {"t":"action","clockMs":1794301200000,"name":"start","exercises":[{"sessionExerciseId":"sx-ex-run-2","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"]}]},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-1","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:00:31.000Z","payload":{"entryIds":["end-s-w-1"]}}},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-2","sessionId":"s-w-2","type":"session_snapshot","origin":"phone","sentAt":"2026-11-10T09:00:31.000Z","payload":{"sessionId":"s-w-2","status":"active","revision":2,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"sx-ex-run-2","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"],"plannedEfforts":1}],"entries":[],"timers":{}}}},
+    {"t":"frame","clockMs":1794301231000,"envelope":{"protocolVersion":1,"messageId":"x-3","sessionId":"s-w-2","type":"session_snapshot","origin":"phone","sentAt":"2026-11-10T09:00:31.000Z","payload":{"sessionId":"s-w-2","status":"active","revision":2,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"sx-ex-run-2","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"],"plannedEfforts":1}],"entries":[],"timers":{}}}},
+    {"t":"frame","clockMs":1794301262000,"envelope":{"protocolVersion":1,"messageId":"x-4","sessionId":"s-w-2","type":"session_snapshot","origin":"phone","sentAt":"2026-11-10T09:01:02.000Z","payload":{"sessionId":"s-w-2","status":"active","revision":2,"currentExerciseIndex":0,"exercises":[{"sessionExerciseId":"sx-ex-run-2","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"],"plannedEfforts":1}],"entries":[],"timers":{}}}}
+  ],
+  "expected": {
+    "current": "s-w-2",
+    "sessions": {
+      "s-w-1": {
+        "status": "completed",
+        "entries": [
+          "end-s-w-1"
+        ],
+        "timers": {}
+      },
+      "s-w-2": {
+        "status": "active",
+        "entries": [],
+        "timers": {}
+      }
+    }
+  }
+}

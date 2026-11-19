@@ -1,3 +1,4 @@
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/models/routine_session_manifest.dart';
@@ -2425,6 +2426,53 @@ void main() {
       );
       expect(logs.where((m) => m.contains('alert=sound_preview')), isNotEmpty);
       expect(logs.where((m) => m.contains('soundId=signal_tone')), isNotEmpty);
+    });
+  });
+
+  group('TimerAlertService silent-switch behaviour', () {
+    setUpAll(TestWidgetsFlutterBinding.ensureInitialized);
+
+    test('rest ping uses the ambient category that obeys the silent switch', () {
+      final config = TimerAlertService.configurationFor(TimerAlertAudio.nudge);
+      expect(config.avAudioSessionCategory, AVAudioSessionCategory.ambient);
+      expect(
+        config.avAudioSessionCategoryOptions! &
+            AVAudioSessionCategoryOptions.duckOthers,
+        isNot(AVAudioSessionCategoryOptions.duckOthers),
+      );
+      expect(
+        config.androidAudioAttributes!.flags,
+        isNot(AndroidAudioFlags.audibilityEnforced),
+      );
+    });
+
+    test('effort timer alert still plays through the silent switch', () {
+      final config = TimerAlertService.configurationFor(TimerAlertAudio.alarm);
+      expect(config.avAudioSessionCategory, AVAudioSessionCategory.playback);
+      expect(
+        config.androidAudioAttributes!.flags,
+        AndroidAudioFlags.audibilityEnforced,
+      );
+    });
+
+    test('each alert switches the session to its own profile', () async {
+      final applied = <AVAudioSessionCategory?>[];
+      final service = TimerAlertService.forTesting(
+        isWeb: false,
+        configureSession: (c) async => applied.add(c.avAudioSessionCategory),
+      );
+
+      await service.fireRestPingAlert('soft_chime');
+      await service.fireRestPingAlert('soft_chime'); // no redundant reconfigure
+      await service.fireEffortTimerAlert('boxing_bell');
+      await service.playPreview('soft_chime');
+      await service.fireRestPingAlert('soft_chime');
+
+      expect(applied, [
+        AVAudioSessionCategory.ambient,
+        AVAudioSessionCategory.playback,
+        AVAudioSessionCategory.ambient,
+      ]);
     });
   });
 }

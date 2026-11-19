@@ -15,6 +15,17 @@
 //   * S-006 — toggles start off on a wiped (reinstall-equivalent) store.
 //   * S-007 — an unmapped modality writes with the generic kind.
 //   * S-008 — one platform entry per session, across repeats and restarts.
+//   * S-89-4 / S-89-5 (plan 89) — discarding a finished session asks the
+//     store to delete exactly its span, never blocking or failing the discard.
+//   * S-14670 / S-14671 (plan 146c) — a catch-up that moves a finished
+//     session's end rewrites its one workout to the new span, idempotently;
+//     a session the phone never wrote is left entirely alone.
+//   * S-15409 / S-15410 (plan 154 D) — a rewrite whose new write fails (false
+//     or thrown) puts the previous span back, so the delete cannot lose the
+//     workout; a rewrite whose delete is refused writes nothing back either.
+
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,10 +42,18 @@ import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/main.dart' as app_main;
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
+import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
+import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
+import 'package:omnitrain/state/watch/watch_sync_wiring.dart'
+    show watchSessionPlaceholder;
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/watch/session/watch_records.dart';
+import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/sync_protocol_harness.dart' show loadProtocolValidator;
+import 'helpers/watch_capture_import_harness.dart' show CaptureTransport;
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -51,6 +70,12 @@ class _FakeHealthPlatform implements HealthPlatformService {
   bool writeSucceeds = true;
   bool throwOnWrite = false;
 
+  /// Plan 154 D-15404: the `writeWorkout` call numbers (1-based) that fail or
+  /// throw, so a rewrite's own write can fail while the restore after it lands.
+  final Set<int> failWriteCalls = {};
+  final Set<int> throwWriteCalls = {};
+  int writeCalls = 0;
+
   int writePermissionRequests = 0;
   int readPermissionRequests = 0;
   int readQueries = 0;
@@ -58,6 +83,31 @@ class _FakeHealthPlatform implements HealthPlatformService {
 
   final List<HealthWorkoutDraft> writtenWorkouts = [];
   List<HealthWeightSample> weightSamples = const [];
+
+  /// Plan 89: what the store still holds, and every delete window asked for.
+  final List<HealthWorkoutDraft> store = [];
+  final List<(DateTime, DateTime)> deleteRequests = [];
+  bool deleteSucceeds = true;
+  bool throwOnDelete = false;
+
+  /// Plan 146c: the effort calls a rewrite makes, in order — `set` carries the
+  /// score, `clear` carries none.
+  final List<(String, DateTime, DateTime, int?)> effortRequests = [];
+
+  /// Held open to prove a discard never waits on the platform.
+  Completer<bool>? pendingDelete;
+
+  @override
+  Future<bool> deleteWorkouts(DateTime start, DateTime end) {
+    deleteRequests.add((start, end));
+    if (throwOnDelete) throw Exception('platform delete exploded');
+    if (pendingDelete != null) return pendingDelete!.future;
+    if (!deleteSucceeds) return Future.value(false);
+    // The health plugin's iOS rule, read from its source (plan 89 D-5):
+    // `.strictStartDate` - a workout goes when it starts in [start, end).
+    store.removeWhere((w) => !w.start.isBefore(start) && w.start.isBefore(end));
+    return Future.value(true);
+  }
 
   @override
   Future<bool> requestWritePermission() async {
@@ -73,12 +123,30 @@ class _FakeHealthPlatform implements HealthPlatformService {
 
   @override
   Future<bool> writeWorkout(HealthWorkoutDraft workout) async {
-    if (throwOnWrite) {
+    writeCalls++;
+    if (throwOnWrite || throwWriteCalls.contains(writeCalls)) {
       throw Exception('platform write exploded');
     }
-    if (!writeSucceeds) return false;
+    if (!writeSucceeds || failWriteCalls.contains(writeCalls)) return false;
     writtenWorkouts.add(workout);
+    store.add(workout);
     return true;
+  }
+
+  @override
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  ) async {
+    effortRequests.add(('set', start, end, score));
+    return HealthEffortOutcome.unavailable;
+  }
+
+  @override
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end) async {
+    effortRequests.add(('clear', start, end, null));
+    return false;
   }
 
   @override
@@ -112,6 +180,7 @@ class _Rig {
   static Future<_Rig> create({
     bool writeEnabled = false,
     bool readEnabled = false,
+    bool Function(String sessionId)? wristRunsSession,
   }) async {
     final repo = await _freshRepo();
     final platform = _FakeHealthPlatform();
@@ -136,7 +205,11 @@ class _Rig {
       isReadEnabled: () =>
           settings.healthReadBodyWeight == HealthToggleState.on,
     );
-    final workoutState = WorkoutState(repo, healthSync: sync);
+    final workoutState = WorkoutState(
+      repo,
+      healthSync: sync,
+      wristRunsSession: wristRunsSession,
+    );
     return _Rig._(
       repo: repo,
       settings: settings,
@@ -316,6 +389,868 @@ void main() {
       await rig.workoutState.endSession();
 
       expect(rig.platform.writtenWorkouts, hasLength(1));
+    });
+  });
+
+  group('plan 89: deleting a session removes its workout', () {
+    final day = DateTime(2026, 10, 28);
+    int at(int hour, int minute) =>
+        day.add(Duration(hours: hour, minutes: minute)).millisecondsSinceEpoch;
+
+    /// Saves a finished session row; [written] also runs the real write-back
+    /// so the store and the ledger hold it.
+    Future<TrainingSession> finished(
+      _Rig rig,
+      String id,
+      int startMs,
+      int endMs, {
+      bool written = true,
+      bool isRolling = false,
+    }) async {
+      final row = TrainingSession(
+        id: id,
+        ownerUserId: 'user-1',
+        startedAtMs: startMs,
+        endedAtMs: endMs,
+        modality: Modality.resistanceLifting,
+        isRolling: isRolling,
+        createdAtMs: startMs,
+        updatedAtMs: endMs,
+      );
+      await rig.repo.createSession(row);
+      if (written) await rig.sync.onSessionCompleted(row);
+      return row;
+    }
+
+    /// The Session Summary path: open the session, then discard it.
+    Future<void> discard(_Rig rig, String id) async {
+      await rig.workoutState.loadHistoricalSession(id);
+      expect(rig.workoutState.currentSession?.id, id);
+      await rig.workoutState.discardCurrentSession();
+      await pumpEventQueue();
+    }
+
+    Future<List<String>> ledger(_Rig rig) async {
+      final raw = await rig.repo.getPreferenceString(
+        HealthPrefs.writtenSessionIdsKey,
+        defaultValue: '[]',
+      );
+      return (jsonDecode(raw ?? '[]') as List).cast<String>();
+    }
+
+    Future<void> expectDiscarded(_Rig rig, String id) async {
+      expect(rig.workoutState.currentSession, isNull);
+      expect(rig.workoutState.error, isNull);
+      expect(await rig.repo.getSession(id), isNull);
+    }
+
+    (DateTime, DateTime) span(TrainingSession s) => (
+      DateTime.fromMillisecondsSinceEpoch(s.startedAtMs),
+      DateTime.fromMillisecondsSinceEpoch(s.endedAtMs!),
+    );
+
+    test('S-89-4 a written session asks the store to delete its span once '
+        'and leaves the ledger', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final a = await finished(rig, 'a', at(10, 0), at(10, 45));
+      expect(await ledger(rig), contains('a'));
+
+      await discard(rig, 'a');
+
+      await expectDiscarded(rig, 'a');
+      expect(rig.platform.deleteRequests, [span(a)]);
+      expect(rig.platform.store, isEmpty);
+      expect(await ledger(rig), isNot(contains('a')));
+    });
+
+    test('S-89-4 a session the phone never wrote still asks the store '
+        '(a watch-saved workout has no ledger entry)', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final w = await finished(rig, 'w', at(9, 0), at(9, 30), written: false);
+
+      await discard(rig, 'w');
+
+      await expectDiscarded(rig, 'w');
+      expect(rig.platform.deleteRequests, [span(w)]);
+    });
+
+    test('S-89-4 a store that refuses leaves the discard successful', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final a = await finished(rig, 'a', at(10, 0), at(10, 45));
+      rig.platform.deleteSucceeds = false;
+
+      await discard(rig, 'a');
+
+      await expectDiscarded(rig, 'a');
+      expect(rig.platform.deleteRequests, [span(a)]);
+    });
+
+    test('S-89-4 a store that throws leaves the discard successful', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final a = await finished(rig, 'a', at(10, 0), at(10, 45));
+      rig.platform.throwOnDelete = true;
+
+      await discard(rig, 'a');
+
+      await expectDiscarded(rig, 'a');
+      expect(rig.platform.deleteRequests, [span(a)]);
+    });
+
+    test('S-89-4 the discard does not wait for the store', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      await finished(rig, 'a', at(10, 0), at(10, 45));
+      rig.platform.pendingDelete = Completer<bool>();
+      await rig.workoutState.loadHistoricalSession('a');
+
+      var discardDone = false;
+      unawaited(
+        rig.workoutState.discardCurrentSession().then(
+          (_) => discardDone = true,
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(rig.platform.deleteRequests, hasLength(1));
+      expect(discardDone, isTrue, reason: 'store still pending');
+      await expectDiscarded(rig, 'a');
+      rig.platform.pendingDelete!.complete(true);
+    });
+
+    test('S-89-4 with Write workouts off nothing reaches the store', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      await finished(rig, 'a', at(10, 0), at(10, 45));
+      await rig.settings.setHealthWriteWorkoutsEnabled(false);
+
+      await discard(rig, 'a');
+
+      await expectDiscarded(rig, 'a');
+      expect(rig.platform.deleteRequests, isEmpty);
+      expect(rig.platform.store, hasLength(1));
+    });
+
+    test('S-89-5 deleting B of back-to-back A and B asks for exactly B and '
+        'keeps A', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final a = await finished(rig, 'a', at(10, 0), at(10, 45));
+      await finished(rig, 'b', at(10, 45), at(11, 30));
+      expect(rig.platform.store, hasLength(2));
+
+      await discard(rig, 'b');
+
+      expect(rig.platform.deleteRequests, [
+        (DateTime(2026, 10, 28, 10, 45), DateTime(2026, 10, 28, 11, 30)),
+      ]);
+      expect(rig.platform.store.map((w) => w.start), [span(a).$1]);
+      expect(await ledger(rig), ['a']);
+    });
+
+    test('S-89-5 deleting A of back-to-back A and B keeps B', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      await finished(rig, 'a', at(10, 0), at(10, 45));
+      final b = await finished(rig, 'b', at(10, 45), at(11, 30));
+
+      await discard(rig, 'a');
+
+      expect(rig.platform.store.map((w) => w.start), [span(b).$1]);
+      expect(rig.platform.deleteRequests, [
+        (DateTime(2026, 10, 28, 10, 0), DateTime(2026, 10, 28, 10, 45)),
+      ]);
+    });
+
+    test('S-89-5 a rolling session spanning a day is passed its own span '
+        'only', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final before = await finished(rig, 'before', at(6, 0), at(7, 0));
+      final rolling = await finished(
+        rig,
+        'rolling',
+        at(8, 0),
+        at(32, 0),
+        isRolling: true,
+      );
+      final after = await finished(rig, 'after', at(32, 0), at(33, 0));
+
+      await discard(rig, 'rolling');
+
+      expect(rig.platform.deleteRequests, [span(rolling)]);
+      expect(rig.platform.store.map((w) => w.start), [
+        span(before).$1,
+        span(after).$1,
+      ]);
+    });
+
+    test('D-4 discarding a session still in progress asks nothing of the '
+        'store (the phone never wrote it)', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      await rig.workoutState.createNewSession(modality: Modality.sports);
+      final id = rig.workoutState.currentSession!.id;
+
+      await rig.workoutState.discardCurrentSession();
+      await pumpEventQueue();
+
+      await expectDiscarded(rig, id);
+      expect(rig.platform.deleteRequests, isEmpty);
+    });
+
+    test('D-4 the no-op gateway reports the delete as not done', () async {
+      const gateway = UnavailableHealthPlatformService();
+      expect(await gateway.deleteWorkouts(day, day), isFalse);
+    });
+  });
+
+  group('plan 146c: a moved end rewrites the Health workout', () {
+    Future<List<String>> ledger(_Rig rig) async {
+      final raw = await rig.repo.getPreferenceString(
+        HealthPrefs.writtenSessionIdsKey,
+        defaultValue: '[]',
+      );
+      return (jsonDecode(raw ?? '[]') as List).cast<String>();
+    }
+
+    DateTime at(int minutes) => DateTime(2026, 11, 12, 9, minutes);
+
+    /// The phone's own workout over [09:00, 09:30), written to the store.
+    Future<TrainingSession> written(
+      _Rig rig, {
+      int? feeling,
+      bool write = true,
+    }) async {
+      final session = TrainingSession(
+        id: 's-rewrite',
+        ownerUserId: 'u-1',
+        startedAtMs: at(0).millisecondsSinceEpoch,
+        endedAtMs: at(30).millisecondsSinceEpoch,
+        modality: Modality.resistanceLifting,
+        title: 'Heavy day',
+        sessionFeeling: feeling,
+        createdAtMs: at(0).millisecondsSinceEpoch,
+        updatedAtMs: at(30).millisecondsSinceEpoch,
+      );
+      await rig.repo.createSession(session);
+      if (write) await rig.sync.onSessionCompleted(session);
+      return session;
+    }
+
+    TrainingSession moved(TrainingSession session, int endMinute) =>
+        TrainingSession.fromMap({
+          ...session.toMap(),
+          'ended_at_ms': at(endMinute).millisecondsSinceEpoch,
+        });
+
+    /// A second finished phone session at 09:35–09:45, written to the store and
+    /// the ledger the same way [written] writes the first one.
+    Future<TrainingSession> nextSession(_Rig rig) async {
+      final session = TrainingSession(
+        id: 's-next',
+        ownerUserId: 'u-1',
+        startedAtMs: at(35).millisecondsSinceEpoch,
+        endedAtMs: at(45).millisecondsSinceEpoch,
+        modality: Modality.resistanceLifting,
+        title: 'Next session',
+        createdAtMs: at(35).millisecondsSinceEpoch,
+        updatedAtMs: at(45).millisecondsSinceEpoch,
+      );
+      await rig.repo.createSession(session);
+      await rig.sync.onSessionCompleted(session);
+      return session;
+    }
+
+    test('S-14670 a moved end rewrites the one workout, and a second move '
+        'again', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+      expect(rig.platform.store, hasLength(1), reason: 'the fixture writes one');
+
+      final t2 = moved(session, 40);
+      await rig.sync.rewriteWorkout(
+        t2,
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(
+        rig.platform.store,
+        hasLength(1),
+        reason: 'S-14670 the delete precedes the write, so one workout remains',
+      );
+      expect(rig.platform.store.single.start, at(0));
+      expect(rig.platform.store.single.end, at(40));
+      expect(rig.platform.store.single.title, 'Heavy day');
+      expect(
+        rig.platform.deleteRequests,
+        [(at(0), at(0).add(const Duration(seconds: 1)))],
+        reason: 'S-14670 the delete covers only the session\'s own start '
+            '(plan 155 D-15501)',
+      );
+      expect([for (final c in rig.platform.effortRequests) c.$1], [
+        'clear',
+        'set',
+      ], reason: 'S-14670 the rating is re-applied once');
+      expect(rig.platform.effortRequests.last.$4, 8);
+
+      final t3 = moved(t2, 50);
+      await rig.sync.rewriteWorkout(t3, previousEndedAtMs: t2.endedAtMs!);
+
+      expect(rig.platform.store, hasLength(1), reason: 'S-14670 idempotent');
+      expect(rig.platform.store.single.end, at(50));
+      expect(
+        rig.platform.deleteRequests.last,
+        (at(0), at(0).add(const Duration(seconds: 1))),
+        reason: 'S-14670 the delete window does not grow with the moved end',
+      );
+      expect(
+        [for (final c in rig.platform.effortRequests) c.$1],
+        ['clear', 'set', 'clear', 'set'],
+        reason: 'S-14670 one re-rate per move',
+      );
+      expect(
+        await ledger(rig),
+        ['s-rewrite'],
+        reason: 'S-14670 the ledger is never touched: the session stays written',
+      );
+    });
+
+    test('S-14670 a rewrite for a session with no rating writes no effort', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig);
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(rig.platform.store, hasLength(1));
+      expect(
+        [for (final c in rig.platform.effortRequests) c.$1],
+        ['clear'],
+        reason: 'S-14670 no rating, no Workout Effort',
+      );
+    });
+
+    test('S-14671 a session the phone never wrote is left alone, whatever its '
+        'end does', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      // A workout the wrist saved: the phone never wrote it, so no ledger entry.
+      final session = await written(rig, feeling: 4, write: false);
+      expect(await ledger(rig), isEmpty, reason: 'the fixture: never written');
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(
+        rig.platform.deleteRequests,
+        isEmpty,
+        reason: "S-14671 the watch's own workout is never deleted",
+      );
+      expect(
+        rig.platform.writtenWorkouts,
+        isEmpty,
+        reason: "S-14671 nor replaced with a bare phone-written draft",
+      );
+      expect(rig.platform.effortRequests, isEmpty);
+      expect(
+        await ledger(rig),
+        isEmpty,
+        reason: 'S-14671 the ledger is untouched',
+      );
+    });
+
+    test('S-14671 with Write workouts off a move sends nothing', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+      await rig.settings.setHealthWriteWorkoutsEnabled(false);
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(rig.platform.deleteRequests, isEmpty);
+      expect(rig.platform.store.single.end, at(30));
+      expect(rig.platform.effortRequests, isEmpty);
+    });
+
+    test('S-14670 an end that did not move sends nothing', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+
+      await rig.sync.rewriteWorkout(
+        session,
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(rig.platform.deleteRequests, isEmpty);
+      expect(rig.platform.effortRequests, isEmpty);
+      expect(rig.platform.store, hasLength(1));
+    });
+
+    test('S-14670 a refused delete writes nothing and leaves the ledger as it '
+        'is', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+      rig.platform.deleteSucceeds = false;
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(
+        rig.platform.writtenWorkouts,
+        hasLength(1),
+        reason: 'S-14670 only the fixture write exists',
+      );
+      expect(rig.platform.store.single.end, at(30));
+      expect(rig.platform.effortRequests, isEmpty);
+      expect(await ledger(rig), ['s-rewrite']);
+    });
+
+    test('S-14670 the phone\'s own catch-up rewrites the workout it wrote', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      await written(rig, feeling: 4);
+      await rig.workoutState.loadHistoricalSession('s-rewrite');
+
+      await rig.workoutState.catchUpEndedSession(at(40).millisecondsSinceEpoch);
+
+      expect(rig.workoutState.currentSession!.endedAtMs, at(40).millisecondsSinceEpoch);
+      expect(rig.platform.store, hasLength(1));
+      expect(rig.platform.store.single.end, at(40));
+      expect(rig.platform.deleteRequests, [
+        (at(0), at(0).add(const Duration(seconds: 1))),
+      ]);
+    });
+
+    test('S-14671 the phone\'s catch-up writes nothing for a session the phone '
+        'never wrote', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      await written(rig, feeling: 4, write: false);
+      await rig.workoutState.loadHistoricalSession('s-rewrite');
+
+      await rig.workoutState.catchUpEndedSession(at(40).millisecondsSinceEpoch);
+
+      expect(rig.workoutState.currentSession!.endedAtMs, at(40).millisecondsSinceEpoch);
+      expect(rig.platform.deleteRequests, isEmpty);
+      expect(rig.platform.writtenWorkouts, isEmpty);
+      expect(await ledger(rig), isEmpty);
+    });
+
+    test('S-15409 a rewrite whose new write fails puts the previous span '
+        'back', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+      expect(rig.platform.store.single.end, at(30), reason: 'the fixture');
+      // The fixture's write is call 1; the rewrite's own write is call 2 and
+      // fails, so the restore that follows is call 3.
+      rig.platform.failWriteCalls.add(2);
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(
+        rig.platform.store,
+        hasLength(1),
+        reason: 'S-15409 the delete already ran, so the restore is what keeps '
+            'the workout there at all',
+      );
+      expect(rig.platform.store.single.start, at(0));
+      expect(
+        rig.platform.store.single.end,
+        at(30),
+        reason: 'S-15409 the span it had before the failed move',
+      );
+      expect(rig.platform.store.single.title, 'Heavy day');
+      expect(
+        [for (final c in rig.platform.effortRequests) c.$1],
+        ['clear', 'set'],
+        reason: 'S-15409 the clear took the rating off, so the restore puts it '
+            'back with the span',
+      );
+      expect(
+        await ledger(rig),
+        ['s-rewrite'],
+        reason: 'S-15409 the ledger is never touched: the session stays written',
+      );
+    });
+
+    test('S-15409 a rewrite whose new write throws restores the span too '
+        'and swallows the throw', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+      rig.platform.throwWriteCalls.add(2);
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(rig.platform.store, hasLength(1));
+      expect(rig.platform.store.single.end, at(30));
+      expect(rig.platform.store.single.start, at(0));
+      expect(await ledger(rig), ['s-rewrite']);
+    });
+
+    test('S-15410 a refused delete writes nothing back either', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+      rig.platform.deleteSucceeds = false;
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      expect(
+        rig.platform.writeCalls,
+        1,
+        reason: 'S-15410 the fixture write is the only one: nothing was deleted, '
+            'so nothing needs restoring and the new span is not written',
+      );
+      expect(rig.platform.store.single.end, at(30));
+      expect(rig.platform.effortRequests, isEmpty);
+      expect(await ledger(rig), ['s-rewrite']);
+    });
+
+    test('S-15501 a late end deletes only the moved session\'s own workout, '
+        'never the next session\'s', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final a = await written(rig, feeling: 4); // 09:00–09:30
+      final b = await nextSession(rig); // 09:35–09:45
+      expect(
+        rig.platform.store,
+        hasLength(2),
+        reason: 'the fixture: two own workouts',
+      );
+
+      // A's end moves to 09:40, past B's 09:35 start — inside the
+      // `[09:00, 09:40)` window the rewrite asked for before D-15501.
+      await rig.sync.rewriteWorkout(
+        moved(a, 40),
+        previousEndedAtMs: a.endedAtMs!,
+      );
+
+      expect(rig.platform.deleteRequests, [
+        (at(0), at(0).add(const Duration(seconds: 1))),
+      ], reason: 'S-15501 the delete window is the session\'s own start only');
+      expect(
+        rig.platform.store,
+        hasLength(2),
+        reason: 'S-15501 B is a workout of its own and is not deleted',
+      );
+      expect(
+        rig.platform.store
+            .where((w) => w.start.millisecondsSinceEpoch == b.startedAtMs)
+            .single
+            .end,
+        at(45),
+        reason: 'S-15501 B keeps its own span',
+      );
+      expect(
+        rig.platform.store.where((w) => w.start == at(0)).single.end,
+        at(40),
+        reason: 'S-15501 A is rewritten to its moved end',
+      );
+    });
+
+    test('S-15502 the delete and the effort clear ask for exactly '
+        '[start, start + 1 s)', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final session = await written(rig, feeling: 4);
+
+      await rig.sync.rewriteWorkout(
+        moved(session, 40),
+        previousEndedAtMs: session.endedAtMs!,
+      );
+
+      final window = (at(0), at(0).add(const Duration(seconds: 1)));
+      expect(rig.platform.deleteRequests, [window]);
+      final clear = rig.platform.effortRequests.firstWhere(
+        (call) => call.$1 == 'clear',
+      );
+      expect(
+        (clear.$2, clear.$3),
+        window,
+        reason: 'S-15502 the effort clear uses the same narrow window',
+      );
+    });
+  });
+
+  group('plan 89c1: one Fitness workout per session', () {
+    Future<List<String>> ledger(_Rig rig) async {
+      final raw = await rig.repo.getPreferenceString(
+        HealthPrefs.writtenSessionIdsKey,
+        defaultValue: '[]',
+      );
+      return (jsonDecode(raw ?? '[]') as List).cast<String>();
+    }
+
+    /// One ladder slot as the wrist sends it.
+    Map<String, Object?> slot(Exercise exercise) => <String, Object?>{
+      'sessionExerciseId': 'sl-${exercise.id}',
+      'exerciseId': exercise.id,
+      'name': exercise.name,
+      'capabilities': const ['time', 'distance'],
+    };
+
+    /// The wrist's session as the mirror converged it.
+    Map<String, Object?> wristState(
+      String sessionId, {
+      List<Map<String, Object?>> exercises = const [],
+      String status = WatchSessionStatus.active,
+    }) => <String, Object?>{
+      'sessionId': sessionId,
+      'status': status,
+      'revision': 1,
+      'currentExerciseIndex': 0,
+      'exercises': [...exercises],
+      'entries': <Object?>[],
+      'timers': <String, Object?>{},
+    };
+
+    /// A wrist frame of [type] about [sessionId].
+    Map<String, Object?> wristFrame(
+      String type,
+      String sessionId,
+      Map<String, Object?> payload, {
+      String messageId = 'msg-1',
+    }) => <String, Object?>{
+      'protocolVersion': SyncProtocolValidator.protocolVersion,
+      'messageId': messageId,
+      'sessionId': sessionId,
+      'type': type,
+      'origin': 'watch',
+      'sentAt': '2026-10-28T10:30:00.000Z',
+      'payload': payload,
+    };
+
+    Map<String, Object?> wristEnd(String sessionId, String state) =>
+        wristFrame('session_lifecycle', sessionId, <String, Object?>{
+          'state': state,
+          'at': '2026-10-28T10:30:00.000Z',
+        });
+
+    /// A Free session started on the wrist, adopted by the phone through the
+    /// real bridge: the shape the owner's outdoor walk had.
+    Future<WatchSessionAdoptionBridge> adoptWristSession(
+      _Rig rig,
+      String sessionId,
+    ) async {
+      final bridge = WatchSessionAdoptionBridge(repository: rig.repo)
+        ..bindWorkoutState(rig.workoutState);
+      final exercise = (await rig.repo.getExercises()).first;
+      final outcome = await bridge.consider(
+        wristState(sessionId, exercises: [slot(exercise)]),
+      );
+      expect(outcome, WatchSessionAdoption.adopted, reason: 'fixture adopts');
+      expect(rig.workoutState.currentSession?.id, sessionId);
+      expect(rig.workoutState.currentSession?.endedAtMs, isNull);
+      return bridge;
+    }
+
+    test('S-89c1-1 the wrist\'s completed ends the held session and writes '
+        'no workout from the phone', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final bridge = await adoptWristSession(rig, 'w-walk');
+
+      await bridge.onLifecycle(
+        wristEnd('w-walk', WatchLifecycleState.completed),
+      );
+      await pumpEventQueue();
+
+      expect((await rig.repo.getSession('w-walk'))?.endedAtMs, isNotNull);
+      expect(rig.workoutState.currentSession?.endedAtMs, isNotNull);
+      expect(rig.workoutState.error, isNull);
+      expect(rig.platform.writtenWorkouts, isEmpty);
+      expect(await ledger(rig), isNot(contains('w-walk')));
+    });
+
+    test('S-89c1-2 the wrist\'s abandoned still discards the session and '
+        'writes nothing', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final bridge = await adoptWristSession(rig, 'w-walk');
+
+      await bridge.onLifecycle(
+        wristEnd('w-walk', WatchLifecycleState.abandoned),
+      );
+      await pumpEventQueue();
+
+      expect(await rig.repo.getSession('w-walk'), isNull);
+      expect(rig.workoutState.currentSession, isNull);
+      expect(rig.platform.writtenWorkouts, isEmpty);
+      expect(await ledger(rig), isEmpty);
+    });
+
+    test('S-89c1-3 a phone-only session ended by the phone writes exactly one '
+        'workout', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      await rig.workoutState.createNewSession(
+        modality: Modality.cardioEndurance,
+      );
+      final id = rig.workoutState.currentSession!.id;
+
+      await rig.workoutState.endSession();
+
+      expect(rig.workoutState.currentSession!.endedAtMs, isNotNull);
+      expect(rig.platform.writtenWorkouts, hasLength(1));
+      expect(await ledger(rig), [id]);
+    });
+
+    test('S-89c1-3 with Write workouts off a phone-only session writes '
+        'none', () async {
+      final rig = await _Rig.create();
+      await rig.workoutState.createNewSession(
+        modality: Modality.cardioEndurance,
+      );
+
+      await rig.workoutState.endSession();
+
+      expect(rig.workoutState.currentSession!.endedAtMs, isNotNull);
+      expect(rig.platform.writtenWorkouts, isEmpty);
+    });
+
+    group('S-89c1-4 the phone ends a session the wrist is running', () {
+      /// The phone's mirror, wired into the phone's state the way `main.dart`
+      /// wires it, then told by the wrist what it holds.
+      Future<(_Rig, LiveSessionMirrorState)> phoneWithMirror() async {
+        final mirror = LiveSessionMirrorState(
+          transport: CaptureTransport(),
+          snapshot: watchSessionPlaceholder,
+          validator: loadProtocolValidator(),
+        );
+        final rig = await _Rig.create(
+          writeEnabled: true,
+          wristRunsSession: mirror.wristRunsSession,
+        );
+        await rig.workoutState.createNewSession(
+          modality: Modality.cardioEndurance,
+        );
+        return (rig, mirror);
+      }
+
+      Future<void> wristReports(
+        LiveSessionMirrorState mirror,
+        Map<String, Object?> state,
+      ) async {
+        final outcome = await mirror.receive(
+          wristFrame(
+            'session_snapshot',
+            state['sessionId']! as String,
+            state,
+            messageId: 'msg-snap-${state['sessionId']}',
+          ),
+        );
+        expect(outcome, MirrorOutcome.applied, reason: 'fixture applies');
+      }
+
+      Future<Map<String, Object?>> walkSlot(_Rig rig) async =>
+          slot((await rig.repo.getExercises()).first);
+
+      test('the wrist holds the same session active: no workout', () async {
+        final (rig, mirror) = await phoneWithMirror();
+        final id = rig.workoutState.currentSession!.id;
+        await wristReports(
+          mirror,
+          wristState(id, exercises: [await walkSlot(rig)]),
+        );
+
+        await rig.workoutState.endSession();
+
+        expect(rig.workoutState.currentSession!.endedAtMs, isNotNull);
+        expect(rig.platform.writtenWorkouts, isEmpty);
+        expect(await ledger(rig), isNot(contains(id)));
+      });
+
+      test('the wrist holds a different session X while the phone ends Y: '
+          'Y writes one workout', () async {
+        final (rig, mirror) = await phoneWithMirror();
+        final id = rig.workoutState.currentSession!.id;
+        await wristReports(
+          mirror,
+          wristState('w-other', exercises: [await walkSlot(rig)]),
+        );
+
+        await rig.workoutState.endSession();
+
+        expect(rig.platform.writtenWorkouts, hasLength(1));
+        expect(await ledger(rig), [id]);
+      });
+
+      test('the wrist holds no session: one workout', () async {
+        final (rig, _) = await phoneWithMirror();
+
+        await rig.workoutState.endSession();
+
+        expect(rig.platform.writtenWorkouts, hasLength(1));
+      });
+
+      test('the wrist holds the same session but no longer active: one '
+          'workout', () async {
+        final (rig, mirror) = await phoneWithMirror();
+        final id = rig.workoutState.currentSession!.id;
+        await wristReports(
+          mirror,
+          wristState(
+            id,
+            exercises: [await walkSlot(rig)],
+            status: WatchSessionStatus.abandoned,
+          ),
+        );
+
+        await rig.workoutState.endSession();
+
+        expect(rig.platform.writtenWorkouts, hasLength(1));
+      });
+
+      test('the wrist holds the same session with no exercise yet (it has no '
+          'workout open): one workout', () async {
+        final (rig, mirror) = await phoneWithMirror();
+        final id = rig.workoutState.currentSession!.id;
+        await wristReports(mirror, wristState(id));
+
+        await rig.workoutState.endSession();
+
+        expect(rig.platform.writtenWorkouts, hasLength(1));
+      });
+    });
+
+    test('S-89c1-5 the wrist\'s completed arriving twice ends once and writes '
+        'nothing', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final bridge = await adoptWristSession(rig, 'w-walk');
+
+      await bridge.onLifecycle(
+        wristEnd('w-walk', WatchLifecycleState.completed),
+      );
+      final endedAtMs = (await rig.repo.getSession('w-walk'))!.endedAtMs;
+      expect(endedAtMs, isNotNull);
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+      await bridge.onLifecycle(
+        wristEnd('w-walk', WatchLifecycleState.completed),
+      );
+      await pumpEventQueue();
+
+      expect((await rig.repo.getSession('w-walk'))!.endedAtMs, endedAtMs);
+      expect(rig.platform.writtenWorkouts, isEmpty);
+    });
+
+    test('S-89c1-5 the wrist\'s completed after the phone already ended the '
+        'session ends nothing and writes nothing more', () async {
+      final rig = await _Rig.create(writeEnabled: true);
+      final bridge = await adoptWristSession(rig, 'w-walk');
+      await rig.workoutState.endSession();
+      final endedAtMs = (await rig.repo.getSession('w-walk'))!.endedAtMs;
+      final writesAfterPhoneEnd = rig.platform.writtenWorkouts.length;
+
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+      await bridge.onLifecycle(
+        wristEnd('w-walk', WatchLifecycleState.completed),
+      );
+      await pumpEventQueue();
+
+      expect((await rig.repo.getSession('w-walk'))!.endedAtMs, endedAtMs);
+      expect(rig.platform.writtenWorkouts, hasLength(writesAfterPhoneEnd));
     });
   });
 
@@ -706,6 +1641,21 @@ void main() {
     });
   });
 
+  test('S-90-7 the fakes answer the effort calls with unavailable', () async {
+    final start = DateTime(2026, 10, 28, 9);
+    final end = DateTime(2026, 10, 28, 10);
+    for (final HealthPlatformService fake in [
+      _FakeHealthPlatform(),
+      _ThrowingReadPlatform(),
+    ]) {
+      expect(
+        await fake.setWorkoutEffort(start, end, 8),
+        HealthEffortOutcome.unavailable,
+      );
+      expect(await fake.clearWorkoutEffort(start, end), isFalse);
+    }
+  });
+
   group('unit conversion', () {
     test('platform pound samples convert to canonical kilograms', () {
       expect(
@@ -746,4 +1696,17 @@ class _ThrowingReadPlatform implements HealthPlatformService {
 
   @override
   Future<bool> writeWorkout(HealthWorkoutDraft workout) async => false;
+
+  @override
+  Future<bool> deleteWorkouts(DateTime start, DateTime end) async => false;
+
+  @override
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  ) async => HealthEffortOutcome.unavailable;
+
+  @override
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end) async => false;
 }

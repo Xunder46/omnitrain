@@ -88,6 +88,20 @@ public struct WatchFood: Equatable {
             "defaultServings": defaultServings,
         ]
     }
+
+    /// This food with a different starting amount, every other field as it was:
+    /// the wrist's own last log is a portion, not a changed food.
+    public func withDefaultServings(_ defaultServings: Double) -> WatchFood {
+        WatchFood(
+            foodId: foodId,
+            name: name,
+            categoryId: categoryId,
+            referenceAmount: referenceAmount,
+            referenceLabel: referenceLabel,
+            caloriesPerServing: caloriesPerServing,
+            defaultServings: defaultServings
+        )
+    }
 }
 
 /// One of the user's active food categories, as the phone named it.

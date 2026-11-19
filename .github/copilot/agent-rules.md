@@ -73,7 +73,21 @@ Create the plan's .review.md first, then append each finding as you find it. Spo
 change adds with `.github/copilot/scripts/macos/gateway.sh prove-red <base commit> test <test files>`: a guard that is GREEN AT the
 base proves nothing and is a critical finding. Run the full
 `.github/copilot/scripts/macos/gateway.sh test` once and paste the counts; read the diff with `.github/copilot/scripts/macos/gateway.sh git-diff`, one file at a
-time, once each.
+time, once each. If the brief says a docs phase is still in flight, missing docs are not a finding.
+
+## UI standards (developer, code-reviewer)
+
+The UI/UX standards are in `docs/design_system.md`, `docs/global_conventions.md` and the widget catalog, and they are enforced by
+`test/ui_standards_contract_test.dart` (source scans) with its exceptions in `test/helpers/ui_standards_allowlist.dart`.
+- Developer: use the shared piece for the job (`OmniSurface`, `OmniCardHeader`, `OmniBottomCTA`, `ConfirmationDialog`,
+  `OmniMessage`, `OmniEmptyState`, `OmniBackHeader`); never a raw `Card`, `SnackBar`, a bare `IconButton` without `tooltip`, a button
+  without an explicit `shape`, or a colour literal. Run `test/ui_standards_contract_test.dart` before you finish and paste the result.
+- Fix what you touch: if a file you edit has an entry in the allowlist, or a violation of a written standard that the scans do not
+  cover, fix it in the same change when the fix is at most 10 changed lines per deviation and only in files your brief names; remove
+  the allowlist entry you fixed. Otherwise list it under "Standards seen, not fixed" in your report with file:line.
+  Never add an allowlist entry, and never raise a ratchet count, to make a scan pass: stop and report.
+- Reviewer: a diff that adds an allowlist entry, raises a ratchet number, or introduces a raw piece the standards name is critical.
+  A copy change to a message, empty state or label is a product change: list it for the owner.
 
 ## Planners (conductor, conductor-v2)
 

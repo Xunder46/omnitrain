@@ -1,31 +1,18 @@
 // filepath: test/food_library_state_delete_guard_test.dart
 //
-// Regression tests for the **delete-category-must-not-leave-foods-
-// stranded** rule.
+// Regression tests for the plan-137 rule: a category the app ships
+// with (`shippedFoodGroupIds`) can never be deleted or archived.
+// `FoodLibraryState.archiveFoodGroup` and
+// `FoodLibraryState.deleteFoodGroupReassigningFoods` refuse with a
+// typed `ShippedFoodGroupError` (a `StateError` subclass) before
+// anything is read or written, so no row changes and no food is
+// stranded. The Categories tab never offers the control for such a
+// row; these tests cover direct callers.
 //
-// Symptom: the user deletes a category from the Library's Groups
-// tab. Foods filed under the category keep pointing at it.
-// Bundled catalog foods cannot be moved to a different category
-// by any path in the app, so deleting a category the bundled
-// catalog uses strands every catalog food in it, permanently.
-//
-// Constraint: do not solve this by rewriting the `groupId` of a
-// bundled catalog food. The catalog refresh restores the
-// categories of bundled foods on launch, so any such change
-// would silently revert and the user would watch their action
-// undo itself.
-//
-// Fix: `FoodLibraryState.deleteFoodGroupReassigningFoods` now
-// refuses the deletion when at least one bundled catalog food
-// (`isBundledCatalogFood(id) == true`) has `groupId` matching
-// the category being deleted. It throws a typed
-// `FoodGroupHasBundledFoodsError` (a `StateError` subclass) so
-// the UI can catch it and surface a snackbar. Non-bundled
-// catalog foods (user-created via **+ New Item**) and library
-// foods are reassigned as today.
-//
-// The non-bundled case (delete a category whose foods are all
-// user-created / library) is preserved as-is. S-007 pins it.
+// The reassignment path itself (library and user-created catalog
+// foods are reassigned, the source group archives) is unchanged
+// and still works for custom groups — S-007 pins it. The shipped
+// lock is also pinned by `test/shipped_food_groups_lock_test.dart`.
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -33,6 +20,7 @@ import 'package:omnitrain/core/models/food_draft.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/food_library_state.dart';
+import 'package:omnitrain/core/constants/shipped_food_groups.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -75,15 +63,14 @@ Food _libraryFood({required String id, required String name, String? groupId}) {
 }
 
 void main() {
-  group('FoodLibraryState.deleteFoodGroupReassigningFoods: bundled guard', () {
-    test('throws FoodGroupHasBundledFoodsError when a bundled catalog food '
-        'still points at the category (S-006)', () async {
+  group('FoodLibraryState: shipped categories cannot be deleted (plan 137)', () {
+    test('throws ShippedFoodGroupError for the shipped category even when a '
+        'bundled catalog food still points at it', () async {
       final repo = await _freshRepo();
       final state = FoodLibraryState(repo);
 
-      // Seed: the bundled `food-group-dairy` exists, and a
-      // bundled catalog food (any id from the bundled ids set
-      // — `almond_milk` is one of them) points at it.
+      // Dairy is shipped, so the lock fires regardless of what
+      // still references it — even a bundled catalog food.
       await repo.seedCatalogFood(
         _catalogFood(
           id: 'almond_milk',
@@ -91,30 +78,22 @@ void main() {
           groupId: 'food-group-dairy',
         ),
       );
-      await state.loadCatalogFoods();
       await state.loadFoodGroups();
 
+      expect(isShippedFoodGroupId('food-group-dairy'), isTrue);
       expect(
         () => state.deleteFoodGroupReassigningFoods('food-group-dairy', null),
-        throwsA(isA<FoodGroupHasBundledFoodsError>()),
+        throwsA(isA<ShippedFoodGroupError>()),
       );
     });
 
     test(
-      'leaves every food\'s groupId byte-identical when the deletion is refused '
-      '(S-006)',
+      'leaves the state unchanged when the deletion of a shipped category is '
+      'refused',
       () async {
         final repo = await _freshRepo();
         final state = FoodLibraryState(repo);
 
-        await repo.seedCatalogFood(
-          _catalogFood(
-            id: 'almond_milk',
-            name: 'Almond milk, unsweetened',
-            groupId: 'food-group-dairy',
-          ),
-        );
-        await state.loadCatalogFoods();
         await state.loadFoodGroups();
 
         try {
@@ -123,11 +102,6 @@ void main() {
           // expected
         }
 
-        // The bundled food's groupId is unchanged.
-        final reloaded = await repo.getCatalogFoodById('almond_milk');
-        expect(reloaded, isNotNull);
-        expect(reloaded!.groupId, 'food-group-dairy');
-
         // The category itself is not archived.
         final groups = await repo.getFoodGroups(includeArchived: true);
         final dairy = groups.firstWhere((g) => g.id == 'food-group-dairy');
@@ -135,18 +109,17 @@ void main() {
       },
     );
 
-    test('reassigns and archives when only non-bundled catalog foods '
-        'and library foods point at the category (S-007)', () async {
+    test('reassigns and archives a custom group holding non-bundled catalog '
+        'foods and library foods (S-007)', () async {
       final repo = await _freshRepo();
       final state = FoodLibraryState(repo);
 
-      // Use a brand-new user-defined category so the bundled
-      // guard does not fire on the seed catalog's bundled
-      // `food-group-*` ids. The id is generated by
-      // `createFoodGroup`, so capture it.
-      await state.createFoodGroup('My Custom');
+      // A custom group created by the state itself (never
+      // shipped). The id is generated by `createFoodGroup`, so
+      // capture it.
+      await state.createFoodGroup('Temp');
       final customId = state.foodGroups
-          .firstWhere((g) => g.name == 'My Custom')
+          .firstWhere((g) => g.name == 'Temp')
           .id;
 
       // Two user-created catalog foods (NOT in the bundled
@@ -210,33 +183,6 @@ void main() {
       // The category is archived.
       final group = state.foodGroups.firstWhere((g) => g.id == customId);
       expect(group.isArchived, isTrue);
-    });
-
-    test('allows deletion when no bundled catalog food still has the '
-        'group\'s id, even if other bundled foods exist in the repo '
-        '(S-006 negative)', () async {
-      final repo = await _freshRepo();
-      final state = FoodLibraryState(repo);
-
-      // Create a brand-new user-defined category that is
-      // guaranteed to be empty of bundled foods (the seed
-      // catalog only files under the 9 default
-      // `food-group-*` ids, so any other id is empty). This
-      // is the realistic "delete a category with no
-      // bundled foods" path — the bundled foods in the
-      // repo are simply filed under the *default* groups.
-      await state.createFoodGroup('Empty Custom');
-      final emptyId = state.foodGroups
-          .firstWhere((g) => g.name == 'Empty Custom')
-          .id;
-      await state.loadFoodGroups();
-
-      // No bundled food points at the empty group →
-      // deletion succeeds (the guard does not fire).
-      await state.deleteFoodGroupReassigningFoods(emptyId, null);
-      final groups = await repo.getFoodGroups(includeArchived: true);
-      final empty = groups.firstWhere((g) => g.id == emptyId);
-      expect(empty.isArchived, isTrue);
     });
   });
 }

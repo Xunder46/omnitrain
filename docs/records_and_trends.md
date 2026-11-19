@@ -19,11 +19,29 @@ Both screens read one `StatsProgressService.computeExerciseMetrics()` result and
 format values through the same shared formatters, so a best shown in the index and
 the same best shown on the detail page cannot disagree. The service only reads: an
 all-time best describes what is already stored, creates no PR event and writes
-nothing. The PR list Records & Trends renders is the service's own `recentPRs`.
+nothing. The PR list Records & Trends renders is the service's own `recentPRs`:
+the five newest records, one per exercise, over every exercise with a logged set
+— the scan is not limited to the lifts trained in the recent window, so a record
+on a lift trained long ago can still appear.
 
 Verified by `test/records_and_trends_screen_test.dart` (`S-913` for the totals and
-the PR list, `S-914` for the shared best) and
-`test/exercise_metric_service_test.dart`.
+the PR list, `S-914` for the shared best),
+`test/exercise_metric_service_test.dart` and
+`test/stats_recent_prs_every_lift_test.dart` (`S-21101` to `S-21108`).
+
+The Streak figure is the live streak and reads 0 d once it has lapsed. Verified
+by `test/calendar_streak_screen_test.dart` (group `S-17408 the Records and
+Trends Streak figure`: `S-17408 a live streak reads 2 d`, `S-17408 a lapsed
+streak reads 0 d, not the month best run`).
+
+A load that throws is not an empty state: each screen shows its failure line
+(`Could not load your records.` on the index, `Could not load this exercise.`
+on the detail page) with a full-width `Try again` button that re-runs the
+screen's load, through the shared `LoadFailureView`. Verified by
+`test/stats_load_failure_test.dart` (group `S-2704: a failed load is not an
+empty state`: `Records & Trends: the failure text and Try again replace the
+empty state`, `Exercise Progress: the failure text and Try again replace the
+empty state`).
 
 ---
 
@@ -31,13 +49,14 @@ the PR list, `S-914` for the shared best) and
 
 ```
 StatsScreen
-  ├── header chart icon → RecordsAndTrendsScreen
+  ├── Records & Trends row → RecordsAndTrendsScreen
+  │     ├── Nutrition entry → NutritionTrendScreen
   │     └── entry → ExerciseProgressScreen
   └── Instruments row → ExerciseProgressScreen
 ```
 
 `StatsScreen` is the only file in `lib/` that constructs
-`RecordsAndTrendsScreen`, so the header chart icon is the only entry point into
+`RecordsAndTrendsScreen`, so the Stats row is the only entry point into
 Records & Trends. Exercise Progress has two entry points — an entry in Records &
 Trends and a row of the Stats screen's Instruments list — and nothing else in
 `lib/` pushes it. The detail screen is named exactly `Exercise Progress`.
@@ -46,14 +65,23 @@ Verified by `test/records_and_trends_screen_test.dart` (the single-entry-point
 case, the Exercise Progress entry-point guard, and `S-913`) and by
 `test/instrument_list_screen_test.dart` (`S-1014`).
 
+Records & Trends also carries a **Nutrition** entry, directly under the Recent PRs
+list when it renders (otherwise under the All-time card), that opens the full-history nutrition trend. It appears whenever any food
+has ever been logged and is absent when none has. It exists because the Stats
+screen's Fuel card, once no recent food is logged, shows only its burn figures
+and stops opening the trend, which would otherwise leave old history
+unreachable. Verified by `test/records_nutrition_entry_test.dart` and by
+`test/fuel_section_widget_test.dart` (`S-20841 burn-only is not tappable`).
+
 ---
 
 ## Sections and the effort-kind rule
 
 One entry per exercise that appears in at least one **completed** session; a
 session still in progress contributes nothing. Entries are grouped under one
-header per `ExerciseSection`, in the enum's declaration order (Resistance →
-Cardio → Isometric → Sports), and a section with no matching entry is omitted.
+header per `ExerciseSection`, uppercase, in the enum's declaration order (`RESISTANCE` →
+`CARDIO` → `ISOMETRIC` → `SPORTS`), and a section with no matching entry is
+omitted.
 
 An exercise's section is the effort kind it was logged under most: `set` →
 Resistance, `timed` → Cardio, `drill` → Isometric, `round` → Sports. A tie
@@ -66,7 +94,9 @@ to return rows in.
 
 Verified by `test/records_and_trends_screen_test.dart` (`S-912` for the section
 order and the entry order) and `test/exercise_metric_service_test.dart` (`S-905`
-for the section rule).
+for the section rule). The headings' case is pinned by
+`test/stats_heading_consistency_screen_test.dart` (group `S-18713 R&T headings
+are uppercase in the enum order`).
 
 ---
 
@@ -77,13 +107,24 @@ Each section reads its exercises by one number, the exercise's **native value**:
 | Section | Metric | Second figure |
 |---------|--------|---------------|
 | Resistance | Estimated one-rep max, or the rep count for a reps-axis exercise | — |
-| Cardio | Pace, or total duration when no distance qualifies | — |
+| Cardio | Pace, or the longest single session's duration when no distance qualifies (these screens; a Stats window row keeps its total) | — |
 | Isometric | Longest hold | Total hold time |
-| Sports | Rounds completed | Total round minutes |
+| Sports | Rounds completed in the best session (these screens; a Stats window row keeps its total) | That session's round minutes |
 
 A sports entry counts rounds by the rule `StatsProgressService` applies rather
 than by the stored `completed` flag; the rule itself is stated in
 [Services and Utils](state_management/services_and_utils.md).
+
+The Cardio duration and the Sports round count are a best, not a running total:
+a cardio exercise with no distance anywhere in its history reads as its longest
+single session, and a rounds exercise as the session with the most rounds (its
+round minutes are that session's). A session is one completed session, not a
+calendar day, so two sessions on one day give the larger, and the trend line,
+which shows a day's own total, can peak above the Best on such a day. A cardio
+exercise with a distance keeps its fastest pace. Both screens ask the service for
+this (`computeExerciseMetrics(bestSingleSession: true)`); the Instruments rows keep
+the window's labelled totals, because that row is a window readout rather than a
+record.
 
 A resistance exercise is reps-axis when any set anywhere in its history carries
 reps with no load, so the axis is a property of the exercise's history rather than
@@ -96,8 +137,10 @@ An exercise with no usable data reports a zero on the metric its section uses
 instead of being dropped, so no entry can appear without a value.
 
 Verified by `test/exercise_metric_service_test.dart` (`S-904`, `S-906`, `S-907`,
-`S-908`) and `test/records_and_trends_screen_test.dart` (`S-915` for the rendered
-label).
+`S-908`), `test/records_and_trends_screen_test.dart` (`S-915` for the rendered
+label), `test/stats_best_single_session_test.dart` (`S-21201` to `S-21204`,
+`S-21207` to `S-21209`) and `test/stats_best_single_session_screen_test.dart`
+(`S-21205`, `S-21206`).
 
 ---
 
@@ -123,18 +166,36 @@ yields no value contributes no point, so a series can hold fewer points than the
 exercise has training days. Sessions that were never completed contribute nothing,
 so a cancelled session is absent from both the series and the list.
 
-An id with no history reaches an empty state instead of throwing. The entry list
+The trend chart's y-axis reads as a clock for the time-valued metrics — pace, a
+timed duration and a hold — with ticks like `10:00`, `15:00`, `20:00` and no unit
+text beneath them. Tick steps land on whole clock units (seconds, minutes, hours)
+rather than powers of ten, and the gridlines sit on the labels. Every other metric
+keeps a bare number with its unit once under the labels. Verified by
+`test/chart_axis_helper_test.dart` (group `ChartAxisHelper clock axis`) and
+`test/scrollable_trend_chart_test.dart` (group `ScrollableTrendChart — clock
+y-axis`).
+
+For a pace, where a smaller number is the better one, the line is drawn flipped (reflected inside the axis bounds) so a faster pace rises, agreeing with the change arrow; the axis ticks still read the true clock values, and the Instruments sparkline flips the same way (plan 226, `test/pace_trend_direction_test.dart`). Every other metric is drawn as it reads.
+
+An id with no history reaches the shared empty state (`OmniEmptyState`, title
+`No history for this exercise`, hint `Log this exercise in a session to see
+its history.`) instead of throwing. The entry list
 cannot offer such an id, so that state guards against a stale id rather than being
 a route a user walks.
 
-Verified by `test/records_and_trends_screen_test.dart` (`S-910` for both empty
-states, `S-915` for the series, the best and the list order).
+Verified by `test/records_and_trends_screen_test.dart` (group `Records & Trends
+/ Exercise Progress — ${harness.name}`: `S-910 an empty history shows the
+Records & Trends empty state` for the index's empty state, `S-910 an id with
+no history shows the guard empty state instead of throwing` for the detail
+page's, `S-915` for the series, the best and the list order). Both S-910 tests
+assert the composition with `find.byType(OmniEmptyState)`, so the shared piece
+itself is pinned, not just the copy.
 
 ---
 
 ## Related Documentation
 
-- [Stats Screen](stats_screen.md) — the screen the chart icon sits in
+- [Stats Screen](stats_screen.md) — the screen the Records & Trends row sits in
 - [Modality Tracking](modality_tracking.md) — effort kinds, capabilities and what they imply
 - [Navigation & Screens](navigation_and_screens.md)
 - [Data Models](data_models.md)

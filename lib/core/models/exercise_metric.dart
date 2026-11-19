@@ -91,11 +91,16 @@ class ExerciseMetricSummary {
   final ExerciseSection section;
 
   /// The best value over the range, never null: an exercise with no usable data
-  /// reports a zero on the metric its section uses.
+  /// reports a zero on the metric its section uses. For a cardio exercise with
+  /// no distance and for a rounds exercise the all-time screens read it as the
+  /// best one session, the Instruments rows as the window's total
+  /// (`computeExerciseMetrics`'s `bestSingleSession`).
   final NativeValue best;
 
-  /// One point per training day, oldest first. A day that yields no value for
-  /// the exercise's metric contributes no point.
+  /// One point per training day, oldest first, each in whatever metric that day
+  /// reads (a cardio exercise reads pace on a day with a distance and total
+  /// time on a day without). A day that yields no value for the exercise's
+  /// section contributes no point. A drawing plots [trendPoints], not this.
   final List<ExerciseMetricPoint> points;
 
   /// The start of the most recent completed session, in range, that logged the
@@ -114,6 +119,14 @@ class ExerciseMetricSummary {
     required this.lastTrainedMs,
     required this.sessionCount,
   });
+
+  /// The points a trend line or chart plots: only the days that read in the
+  /// same metric as [best], so one line never mixes a pace with a total time
+  /// (plan 209). The day lists and the rows' order keep using [points].
+  List<ExerciseMetricPoint> get trendPoints => [
+    for (final point in points)
+      if (point.value.metric == best.metric) point,
+  ];
 }
 
 /// The all-time totals the Stats screen and Records & Trends share.

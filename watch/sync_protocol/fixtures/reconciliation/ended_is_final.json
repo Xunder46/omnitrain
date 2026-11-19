@@ -1,0 +1,161 @@
+{
+  "protocolVersion": 1,
+  "name": "Ended is final: a stale start and a late snapshot leave the end alone",
+  "description": "The first ending of a session is final (D-14601). The snapshot is live with a rest running; the phone then abandons it, a stale started follows, and an active snapshot arrives carrying the entries the phone logged in the meantime. The end stands, the rest the end stopped stays stopped, the entries still merge, and the snapshot's own revision and position are taken. Active never beats terminal, whatever the order.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-a-snapshot",
+    "sessionId": "s-sw-a",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-07-13T20:00:00Z",
+    "payload": {
+      "sessionId": "s-sw-a",
+      "revision": 3,
+      "status": "active",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      ],
+      "entries": [
+        {
+          "entryId": "e-a1",
+          "eventId": "evt-a1",
+          "kind": "set",
+          "loggedAt": "2026-07-13T19:59:00Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "reps": 5,
+          "loadKg": 80
+        }
+      ],
+      "timers": {
+        "rest": {
+          "kind": "rest",
+          "state": "running",
+          "startedAt": "2026-07-13T19:59:30Z",
+          "accumulatedPauseMs": 0
+        }
+      }
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-a-abandoned",
+      "sessionId": "s-sw-a",
+      "type": "session_lifecycle",
+      "origin": "phone",
+      "sentAt": "2026-07-13T20:01:00Z",
+      "payload": { "state": "abandoned", "at": "2026-07-13T20:01:00Z" }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-a-stale-started",
+      "sessionId": "s-sw-a",
+      "type": "session_lifecycle",
+      "origin": "watch",
+      "sentAt": "2026-07-13T20:02:00Z",
+      "payload": { "state": "started", "at": "2026-07-13T20:02:00Z" }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-a-late-snapshot",
+      "sessionId": "s-sw-a",
+      "type": "session_snapshot",
+      "origin": "phone",
+      "sentAt": "2026-07-13T20:03:00Z",
+      "payload": {
+        "sessionId": "s-sw-a",
+        "revision": 4,
+        "status": "active",
+        "currentExerciseIndex": 1,
+        "exercises": [
+          {
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-barbell-bench-press",
+            "name": "Barbell Bench Press",
+            "capabilities": ["sets", "reps", "load"]
+          },
+          {
+            "sessionExerciseId": "sx-squat",
+            "exerciseId": "ex-goblet-squat",
+            "name": "Goblet Squat",
+            "capabilities": ["sets", "reps", "load"]
+          }
+        ],
+        "entries": [
+          {
+            "entryId": "e-a1",
+            "eventId": "evt-a1",
+            "kind": "set",
+            "loggedAt": "2026-07-13T19:59:00Z",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-barbell-bench-press",
+            "reps": 5,
+            "loadKg": 80
+          },
+          {
+            "entryId": "e-a2",
+            "eventId": "evt-a2",
+            "kind": "set",
+            "loggedAt": "2026-07-13T20:02:30Z",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-barbell-bench-press",
+            "reps": 6,
+            "loadKg": 82.5
+          }
+        ],
+        "timers": {}
+      }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-sw-a",
+    "status": "abandoned",
+    "revision": 4,
+    "currentExerciseIndex": 1,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "sessionExerciseId": "sx-squat",
+        "exerciseId": "ex-goblet-squat",
+        "name": "Goblet Squat",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "e-a1",
+        "eventId": "evt-a1",
+        "kind": "set",
+        "loggedAt": "2026-07-13T19:59:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80
+      },
+      {
+        "entryId": "e-a2",
+        "eventId": "evt-a2",
+        "kind": "set",
+        "loggedAt": "2026-07-13T20:02:30Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 6,
+        "loadKg": 82.5
+      }
+    ],
+    "timers": {}
+  }
+}

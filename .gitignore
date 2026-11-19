@@ -79,3 +79,7 @@ android/key.properties
 *.jks
 # Agent pipeline scratch (briefs, run logs, friction log)
 .work/
+
+# Owner-only device scripts (not for version control)
+/scripts/reset_ios_device_build.sh
+/scripts/run_on_iphone.sh

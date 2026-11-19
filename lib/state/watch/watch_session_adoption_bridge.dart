@@ -16,15 +16,26 @@
 /// carries no stack.
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../../core/constants/block_types.dart';
 import '../../core/constants/capability.dart';
+import '../../core/constants/metric_ids.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/constants/workout_constants.dart';
+import '../../core/services/diagnostics_log.dart';
+import '../../core/services/watch_routine_matcher.dart';
 import '../../core/services/watch_session_importer.dart';
+import '../../core/sync_protocol/end_skew.dart';
+import '../../core/sync_protocol/message_validator.dart';
 import '../../core/sync_protocol/phone_entries.dart';
+import '../../core/sync_protocol/wire_limits.dart';
+import '../../core/sync_protocol/wire_timestamps.dart';
 import '../../core/utils/entry_rows.dart';
 import '../../core/utils/logged_entry_rows.dart';
+import '../../core/utils/watch_reference_sync.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../watch/session/watch_records.dart'
@@ -86,6 +97,20 @@ const List<String> _kindPrecedence = [
   ExerciseCapability.distance,
 ];
 
+/// The reps a planned row carries when the routine's template has no target for
+/// that set — the phone's own add's default (`session_core_entry`).
+const int _defaultPlannedReps = 10;
+
+/// And the load, for the same row.
+const double _defaultPlannedWeightKg = 0.0;
+
+/// The routine a wrist ladder turned out to be (D-1/D-2): the phone's own
+/// template, and the plan per slot id the ladder matched it through.
+typedef _AdoptedRoutine = ({
+  WorkoutTemplate template,
+  Map<String, List<TemplateTarget>> targetsBySlot,
+});
+
 void _report(Object error, StackTrace stack) {
   debugPrint('Watch session adoption: $error');
   debugPrintStack(stackTrace: stack);
@@ -108,20 +133,55 @@ class WatchSessionAdoptionBridge {
     DateTime Function()? clock,
     void Function(Object error, StackTrace stack)? onFailure,
     void Function(String heldSessionId, String offeredSessionId)? onSkipped,
+    Future<void> Function(String plannedSessionId, String sessionId)?
+        onPlanStarted,
+    SyncProtocolValidator? validator,
+
+    /// The phone's diagnostics log (plan 174, D-17401); null records nothing
+    /// and changes no decision (D-17405).
+    this.diagnostics,
   }) : _repository = repository,
        _clock = clock ?? DateTime.now,
        _onFailure = onFailure ?? _report,
-       _onSkipped = onSkipped ?? _reportSkipped;
+       _onSkipped = onSkipped ?? _reportSkipped,
+       _onPlanStarted = onPlanStarted,
+       _validator = validator;
 
   final WorkoutRepository _repository;
   final DateTime Function() _clock;
   final void Function(Object error, StackTrace stack) _onFailure;
 
+  /// The phone's diagnostics log; null records nothing (plan 174).
+  final DiagnosticsLog? diagnostics;
+
   /// Where a refused adoption (D-10) is reported — the one observation of a
   /// skip the app has, so tests can see it without reading the debug log.
   final void Function(String heldSessionId, String offeredSessionId) _onSkipped;
 
+  /// Where a plan the wrist just started is marked started, if the graph has
+  /// one to mark it with (plan 129, D-8973). A phone built without one links
+  /// nothing — the report still opens the session row — and the app's own
+  /// `CalendarState.completePlannedSession` is what gets wired here. Defaulted
+  /// to null alongside [WatchSessionAdoptionBridge]'s other hooks so a test
+  /// graph never links by accident (D-8967).
+  final Future<void> Function(
+    String plannedSessionId,
+    String sessionId,
+  )? _onPlanStarted;
+
+  /// The protocol's gate for an arriving frame, or null when this build carries
+  /// no schemas — the same nullable the inbox, the mirror and the nutrition and
+  /// water bridges hold (plan 129, D-8972).
+  final SyncProtocolValidator? _validator;
+
   WorkoutState? _workoutState;
+
+  /// Plans the wrist reported it started, by the session that started them
+  /// (plan 130, D-13030). A plan is marked done when the wrist finishes that
+  /// session, never at the start: a discarded workout leaves the plan planned,
+  /// as on the phone. Memory only (D-13034): a restart forgets it and the plan
+  /// stays planned.
+  final Map<String, String> _plansAwaitingEnd = <String, String>{};
 
   /// The (held, offered) pair the last skip was reported for, or null while
   /// none has been. A wrist that has not converged repeats the snapshot it
@@ -147,6 +207,24 @@ class WatchSessionAdoptionBridge {
   /// snapshot carrying it appends nothing back. An entry lives only while the
   /// phone holds the session; a session it has moved on from keeps none.
   final Map<String, Set<String>> _everSeen = {};
+
+  /// The adoption decisions already noted, keyed `session detail`, so the
+  /// notes carry a decision once and not once per snapshot (D-17404).
+  final Set<String> _notedAdoptions = <String>{};
+
+  /// Notes a kind from the plan's fixed vocabulary (D-17402); a null log, and
+  /// a log that refuses the write, change no decision (D-17405).
+  void _note(String kind, {String? session, String? detail}) {
+    diagnostics?.note(kind, session: session, detail: detail);
+  }
+
+  /// Notes an adoption decision once per session and outcome: a wrist
+  /// re-sending a snapshot it has not converged makes the same decision again,
+  /// and the log holds the first one.
+  void _noteAdoption(String sessionId, String detail) {
+    if (!_notedAdoptions.add('$sessionId $detail')) return;
+    _note('adoption_decision', session: sessionId, detail: detail);
+  }
 
   /// Binds the state an adopted session is published into. Until this is called
   /// [consider] adopts nothing: a build with no session state has nowhere to put
@@ -223,6 +301,38 @@ class WatchSessionAdoptionBridge {
         final slot = _slotFor(effort, target);
         if (slot == null) continue;
         slots.add(slot);
+        // D-2: the plan the wrist dials each set in from is every set row the
+        // exercise holds — the index is the set number, logged rows included —
+        // and it is a read-only projection of the phone's own rows (I-1), so a
+        // slot with none, or a non-`set` slot, carries the key not at all.
+        // D-14901/D-14902: every other kind carries how many efforts the phone
+        // plans — its own record count, read live at each answer — and only
+        // when there is at least one, because the wire's minimum is 1 and a
+        // slot with no plan carries the key not at all (D-14904).
+        final wireKind = _wireKind(slot);
+        if (wireKind == PhoneEntries.setKind) {
+          final groups = EntryRows.setGroups(
+            await _repository.getEffortObservations(effort.id),
+          );
+          if (groups.isNotEmpty) {
+            final hasLoad = ((slot['capabilities'] as List?) ?? const [])
+                .contains(ExerciseCapability.load);
+            slot['plannedSets'] = [
+              for (final group in groups)
+                _plannedSetOf(group, exerciseHasLoad: hasLoad),
+            ];
+          }
+        } else {
+          final planned = switch (wireKind) {
+            PhoneEntries.roundKind =>
+              target.getRoundsForEffort(effort.id).length,
+            PhoneEntries.timedKind ||
+            PhoneEntries.holdKind =>
+              target.getTimedInstancesForEffort(effort.id).length,
+            _ => 0,
+          };
+          if (planned >= 1) slot['plannedEfforts'] = planned;
+        }
         entries.addAll(await _entriesFor(effort, slot, wristRows));
       }
     }
@@ -234,9 +344,14 @@ class WatchSessionAdoptionBridge {
 
     _countRevision(incoming, session.id, slots);
 
+    // The session's modality key, verbatim, only when it has one (plan 125d):
+    // the wrist stamps it on the snapshot that first creates its row. Omitted —
+    // never null, never empty — otherwise.
+    final focus = session.modality;
     return <String, Object?>{
       'sessionId': session.id,
       'status': WatchSessionStatus.active,
+      if (focus != null && focus.isNotEmpty) 'modality': focus,
       'revision': _projectedRevision,
       'currentExerciseIndex': _indexFor(incoming, slots.length),
       'exercises': slots,
@@ -267,13 +382,20 @@ class WatchSessionAdoptionBridge {
 
     switch (_wireKind(slot)) {
       case PhoneEntries.setKind:
+        final groups = EntryRows.setGroups(
+          await _repository.getEffortObservations(effort.id),
+        );
         return PhoneEntries.project(
           sessionExerciseId: effort.id,
           exerciseId: exerciseId,
-          groups: EntryRows.setGroups(
-            await _repository.getEffortObservations(effort.id),
-          ),
+          groups: groups,
+          exerciseHasLoad: ((slot['capabilities'] as List?) ?? const [])
+              .contains(ExerciseCapability.load),
           wristLoggedAtMs: _stampsOf(rows, PhoneEntries.setKind),
+          loggedNumbers: EntryRows.loggedSetNumbersOf(
+            groups,
+            await _repository.getEntryRests(effort.id),
+          ),
         );
       case PhoneEntries.timedKind:
         return PhoneEntries.projectTimed(
@@ -490,6 +612,10 @@ class WatchSessionAdoptionBridge {
       if (_declaredKinds.contains(effort.effortKind))
         'effortKind': effort.effortKind,
       'capabilities': [...capabilities],
+      'healthActivity': ?WatchReferenceSync.healthActivityOf(
+        disciplineId: exercise?.disciplineId,
+        exerciseId: exerciseId,
+      ),
       if (effort.effortKind == BlockTypes.round && secs != null && secs >= 1)
         'roundDurationSecs': secs,
     };
@@ -527,11 +653,40 @@ class WatchSessionAdoptionBridge {
     _projectedRevision += 1;
   }
 
+  /// One set row as the wire's planned set (D-2, I-1).
+  ///
+  /// The set's number is the item's position in `plannedSets`, so the map holds
+  /// only the values the wrist dials in, read exactly as `PhoneEntries._entry`
+  /// reads them: a set the phone has not dialled yet (reps 0) carries no `reps`
+  /// (the wire's minimum is 1), and a load of 0 — an exercise with no load —
+  /// carries no `loadKg`, as an entry's does (D-60). A load below the wire's
+  /// floor is omitted for the same reason an entry omits it: a value the wire
+  /// cannot carry is left out rather than clamped, and a rejected planned set
+  /// would reject the whole snapshot (D-58).
+  static Map<String, Object?> _plannedSetOf(
+    SetRows group, {
+    required bool exerciseHasLoad,
+  }) {
+    final set = group.entry;
+    final reps = (set['reps'] as int?) ?? 0;
+    // Without `load` the planned load is the extra-weight row (52c D-4).
+    final weightKg =
+        ((exerciseHasLoad ? set['weight'] : set['extra-weight']) as double?) ??
+        0.0;
+    return <String, Object?>{
+      if (reps >= 1) 'reps': reps,
+      if (weightKg != 0 && weightKg >= WireLimits.minLoadKg)
+        'loadKg': weightKg,
+    };
+  }
+
   /// The identity of a ladder as the wrist can see it: the facts a change to
   /// would make the wrist's copy stale.
   ///
   /// The length of a period is one of them (D-1410): the wrist renders it, so a
-  /// length-only edit is a changed ladder and must state a newer revision.
+  /// length-only edit is a changed ladder and must state a newer revision. The
+  /// planned values are another (D-3): the wrist starts each set from them, so an
+  /// edit to one is a changed ladder too (A5).
   static String _ladderOf(
     String sessionId,
     List<Map<String, Object?>> slots,
@@ -541,7 +696,9 @@ class WatchSessionAdoptionBridge {
       '${slot['sessionExerciseId']}:${slot['exerciseId']}:${slot['name']}:'
           '${(slot['capabilities']! as List).join(',')}:'
           '${slot['effortKind'] ?? ''}:'
-          '${slot['roundDurationSecs'] ?? ''}',
+          '${slot['roundDurationSecs'] ?? ''}'
+          ':${jsonEncode(slot['plannedSets'] ?? const <Object?>[])}'
+          ':${slot['plannedEfforts'] ?? ''}',
   ].join('|');
 
   /// The session a wrist frame names, or null when it names none.
@@ -557,6 +714,17 @@ class WatchSessionAdoptionBridge {
   /// has no payload at all, and a projection is composed for both kinds.
   static Map<String, Object?> _asObject(Object? value) =>
       value is Map ? value.cast<String, Object?>() : const <String, Object?>{};
+
+  /// The instant [value] names on the wire, in milliseconds, or null when it
+  /// names none a phone can read.
+  static int? _instantMs(Object? value) {
+    if (value is! String) return null;
+    try {
+      return parseUtcIso(value).millisecondsSinceEpoch;
+    } on FormatException {
+      return null;
+    }
+  }
 
   /// Reports a refused adoption (D-10) once per (held, offered) pair.
   ///
@@ -577,7 +745,13 @@ class WatchSessionAdoptionBridge {
   ///
   /// [converged] is `LiveSessionMirrorState.state` — the reconciler's own output
   /// for the session the wrist is running.
-  Future<WatchSessionAdoption> consider(Map<String, Object?> converged) async {
+  ///
+  /// The wrist's own modality, when it names a known one, wins over the
+  /// routine's Focus (plan 203).
+  Future<WatchSessionAdoption> consider(
+    Map<String, Object?> converged, {
+    String? wristModality,
+  }) async {
     final target = _workoutState;
     if (target == null) return WatchSessionAdoption.unbound;
 
@@ -600,6 +774,7 @@ class WatchSessionAdoptionBridge {
     // the snapshot with the session's end so the wrist catches up.
     final existing = await _repository.getSession(sessionId);
     if (existing != null && existing.endedAtMs != null) {
+      _noteAdoption(sessionId, 'skipped reason=already_history');
       return WatchSessionAdoption.alreadyEnded;
     }
 
@@ -628,17 +803,61 @@ class WatchSessionAdoptionBridge {
     // protect.
     if (held != null && target.hasActiveSession) {
       _reportSkipOnce(held.id, sessionId);
+      _noteAdoption(sessionId, 'skipped reason=held_session held=${held.id}');
       return WatchSessionAdoption.refusedConflict;
     }
 
     // A row that is already there is an earlier adoption of this same session:
     // adopt it again by loading it. Once the phone holds the session it is the
     // structure authority for it (D-2), so a snapshot never rewrites its rows.
+    // One exception (D-8978): a row a `session_started` report opened holds
+    // its segment and no effort — it is a *placeholder*, opened to receive the
+    // wrist's first snapshot. The radio can land that snapshot behind the
+    // durable report, so the first snapshot, not a second one, must write the
+    // ladder into it exactly as a fresh adoption writes one. A row that holds
+    // any effort (a row an adoption wrote, or one trained on the phone) is not
+    // a placeholder and is untouched.
+    final placeholder = existing != null &&
+        _slots(converged).isNotEmpty &&
+        await _isEffortless(sessionId);
     try {
       if (existing == null) {
-        await _adopt(sessionId, converged);
+        await _adopt(sessionId, converged, wristModality: wristModality);
+      } else if (placeholder) {
+        // Read before anything is written, the way `_adopt` does (D-1, I-2).
+        final routine = await _routineFor(_slots(converged));
+        final atMs = _clock().millisecondsSinceEpoch;
+        final segments = await _repository.getSessionSegments(sessionId);
+        final segmentId = segments.isNotEmpty
+            ? segments.first.id
+            : WatchSessionImporter.segmentIdFor(sessionId);
+        if (segments.isEmpty) {
+          // A report whose row opened without its segment gets one now, the
+          // way `_adopt` opens its row's segment.
+          await _repository.createSegment(
+            LoggedEntryRows.defaultSegment(
+              id: segmentId,
+              sessionId: sessionId,
+              atMs: atMs,
+            ),
+          );
+        }
+        await _writeLadder(sessionId, converged, atMs, routine,
+            segmentId: segmentId);
       }
       await target.loadHistoricalSession(sessionId);
+      if (existing == null || placeholder) {
+        // A fresh adoption — or a placeholder the first snapshot just filled
+        // (D-8978): a slot starts with its first entry, as an exercise the
+        // phone adds itself does. A reload of a session the phone already
+        // wrote is left as the user last had it.
+        final atMs = _clock().millisecondsSinceEpoch;
+        for (final segment in target.segments) {
+          for (final effort in target.getEffortsForSegment(segment.id)) {
+            await target.seedFirstEntry(effort.id, atMs: atMs);
+          }
+        }
+      }
     } catch (error, stack) {
       // Adoption is the one thing here that can fail for a reason that is not
       // the rule working — a row that cannot be written. That is a failure, and
@@ -647,7 +866,28 @@ class WatchSessionAdoptionBridge {
       _onFailure(error, stack);
       rethrow;
     }
+    // S-17401: the decision names the start the session row itself holds, so
+    // the log and the row agree without a second clock read.
+    final startMs =
+        target.currentSession?.startedAtMs ?? _clock().millisecondsSinceEpoch;
+    _noteAdoption(
+      sessionId,
+      'adopted status=active start=${_isoUtc(startMs)}',
+    );
     return WatchSessionAdoption.adopted;
+  }
+
+  /// Whether [sessionId]'s row holds no effort in any segment — the shape of
+  /// the row a `session_started` report opens before its first snapshot
+  /// brings the ladder (D-8977, D-8978). A row with no segment at all counts:
+  /// nothing of it is written yet.
+  Future<bool> _isEffortless(String sessionId) async {
+    for (final segment in await _repository.getSessionSegments(sessionId)) {
+      if ((await _repository.getSegmentEfforts(segment.id)).isNotEmpty) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Routes a wrist `session_lifecycle` to the phone's own session (D-5).
@@ -661,7 +901,15 @@ class WatchSessionAdoptionBridge {
   ///
   /// A session this phone already finished is left alone: its end is the phone's
   /// own, and finishing it twice is not a second end (G1).
+  ///
+  /// Independently of the routing, a wrist-origin `completed` also marks the
+  /// plan the session was reported for (plan 130, D-13031).
   Future<void> onLifecycle(Map<String, Object?> envelope) async {
+    await _routeLifecycleToHeld(envelope);
+    await _linkPlanAtEnd(envelope);
+  }
+
+  Future<void> _routeLifecycleToHeld(Map<String, Object?> envelope) async {
     final target = _workoutState;
     if (target == null) return;
 
@@ -670,15 +918,265 @@ class WatchSessionAdoptionBridge {
 
     final held = target.currentSession;
     if (held == null || held.id != sessionId) return;
-    if (held.endedAtMs != null) return;
+    final state = _asObject(envelope['payload'])['state'];
+    if (held.endedAtMs != null) {
+      // D-14604 (O-5): a finished workout is not ended twice — the first
+      // ending keeps its status — but its end time is the latest instant either
+      // side has, so a later `completed` moves the end (and re-settles the
+      // estimate). A discard adds no training time, so `abandoned` moves
+      // nothing, and a session this phone ended itself keeps its own end (G1).
+      //
+      // D-14630: the earlier end instant decides between a discard and a
+      // finish, so a wrist discard stamped before the end the phone holds is
+      // not a second end at all — it is the ending that was always the truth,
+      // and the finished row goes. An equal instant is D-14601's tie-break,
+      // which `completed` wins. D-15403: two clocks stamping one workout's end
+      // land a second or two apart, so only an end earlier by MORE than
+      // `kEndSkewToleranceMs` is that earlier ending — within it the discard is
+      // the same instant as the finish, and the tie-break keeps the finish.
+      if (state == WatchLifecycleState.completed) {
+        final atMs = _instantMs(_asObject(envelope['payload'])['at']);
+        if (atMs != null) {
+          final boundedMs = _boundedEnd(atMs, session: sessionId);
+          await target.catchUpEndedSession(boundedMs);
+          // A catch-up only moves an end that is later than the one the phone
+          // holds; when it does not, no end was applied and nothing is noted.
+          if (boundedMs > held.endedAtMs!) {
+            _note(
+              'end_applied',
+              session: sessionId,
+              detail: 'who=catchup instant=${_isoUtc(boundedMs)} status=completed',
+            );
+          }
+        }
+      } else if (state == WatchLifecycleState.abandoned) {
+        final atMs = _instantMs(_asObject(envelope['payload'])['at']);
+        // Plan 164 (D-16403): the bound is not applied here. This branch writes
+        // no end — it only compares a discard instant with the one the phone
+        // holds, and D-14630's earlier-end rule must read both stamps as the
+        // wrist sent them.
+        if (atMs != null &&
+            endsBeforeHeldMsByMoreThanSkew(atMs, held.endedAtMs!)) {
+          await target.discardCurrentSession();
+          _note(
+            'discard_applied',
+            session: sessionId,
+            detail: 'who=finished',
+          );
+        }
+      }
+      return;
+    }
 
-    switch (_asObject(envelope['payload'])['state']) {
+    switch (state) {
       case WatchLifecycleState.completed:
         await _catchUpSessionRow(sessionId);
-        await target.endSession();
+        // D-15402: the wrist's own end instant, not the arrival one. A workout
+        // finished on the wrist while the phone was away would otherwise be
+        // stored ending when it synced, inflating its duration and its Health
+        // span. No `at` in the frame keeps the phone's clock, as before.
+        final atMs = _instantMs(_asObject(envelope['payload'])['at']);
+        // The watch saved its own workout for this session: the phone's end
+        // must not write a second one (plan 89c1 D-1).
+        final boundedMs = atMs == null
+            ? null
+            : _boundedEnd(atMs, session: sessionId);
+        await target.endSession(
+          writeToHealth: false,
+          atMs: boundedMs,
+        );
+        _note(
+          'end_applied',
+          session: sessionId,
+          detail: 'who=end_session '
+              'instant=${boundedMs == null ? 'none' : _isoUtc(boundedMs)} '
+              'status=completed',
+        );
       case WatchLifecycleState.abandoned:
         await target.discardCurrentSession();
+        _note(
+          'discard_applied',
+          session: sessionId,
+          detail: 'who=held',
+        );
     }
+  }
+
+  /// Marks the plan a wrist session was reported for, when that session ends
+  /// (plan 130, D-13031..D-13033). Independent of whether the phone holds the
+  /// session: the phone may have ended it first, or never held it. `completed`
+  /// links the remembered plan if it still exists and is unstarted and the
+  /// session row still exists; `abandoned` only forgets it.
+  Future<void> _linkPlanAtEnd(Map<String, Object?> envelope) async {
+    try {
+      if (envelope['origin'] != 'watch') return;
+      final sessionId = _namedSession(envelope);
+      if (sessionId == null || sessionId.isEmpty) return;
+      final state = _asObject(envelope['payload'])['state'];
+      if (state == WatchLifecycleState.abandoned) {
+        _plansAwaitingEnd.remove(sessionId);
+        return;
+      }
+      if (state != WatchLifecycleState.completed) return;
+      final plannedSessionId = _plansAwaitingEnd.remove(sessionId);
+      if (plannedSessionId == null) return;
+      if (await _repository.getSession(sessionId) == null) return;
+      final plan = await _plannedSession(plannedSessionId);
+      if (plan == null || plan.isCompleted || plan.linkedSessionId != null) {
+        return;
+      }
+      await _onPlanStarted?.call(plannedSessionId, sessionId);
+    } catch (error, stack) {
+      _onFailure(error, stack);
+    }
+  }
+
+  /// Routes a wrist `session_started` report to the phone's own storage
+  /// (plan 129, D-8966/D-8972/D-8977).
+  ///
+  /// The wrist reports a start the moment it happens — long before its first
+  /// snapshot can carry the ladder — so what the phone does here is opens the
+  /// session row (when it is not held yet) the way the snapshot path writes
+  /// it, and remembers the plan the wrist started for that session. The plan
+  /// is linked at the wrist's `completed` lifecycle, never at the start:
+  /// a discarded workout leaves the plan planned (plan 130, D-13030).
+  ///
+  /// Nothing structural is written with the row: no effort of the routine's,
+  /// no planned row under the `set` efforts. The wrist is already running the
+  /// ladder, and its first snapshot brings it — a structure the phone wrote
+  /// here too would reach the session twice (D-8977).
+  ///
+  /// Idempotent by gate (D-8972): a report whose plan is unknown, completed or
+  /// already linked writes nothing at all, so a redelivered report answers
+  /// itself and the remembered plan is unchanged. A session the phone
+  /// already holds (an adoption got there first) is written nothing either:
+  /// only the remembering of a report with a startable plan still goes through.
+  ///
+  /// A report that starts no plan is still a report: the free session it names
+  /// opens its row and links nothing.
+  ///
+  /// Nothing here throws to the caller: the report is one frame among many,
+  /// and a row it cannot write goes to the graph's failure hook like any
+  /// adoption's.
+  Future<void> onSessionStarted(Map<String, Object?> envelope) async {
+    try {
+      if (envelope['type'] != 'session_started') return;
+      // Judged before anything is written (D-8972), the way the inbox, the
+      // mirror and the water bridge judge theirs: a report this build cannot
+      // read opens no row and links no plan.
+      final decision = SyncProtocolValidator.evaluateOrAccept(
+        _validator,
+        envelope,
+      );
+      if (!decision.accepted) return;
+      // A start the wrist may report back about itself, and only itself: the
+      // origin is what keeps this phone's own frames (or a build's test
+      // doubles) from linking a plan of their own.
+      if (envelope['origin'] != 'watch') return;
+      final sessionId = _namedSession(envelope);
+      if (sessionId == null || sessionId.isEmpty) return;
+
+      final payload = _asObject(envelope['payload']);
+      final routineTemplateId =
+          payload['routineTemplateId'] is String ? payload['routineTemplateId'] as String : null;
+      final plannedSessionId =
+          payload['plannedSessionId'] is String ? payload['plannedSessionId'] as String : null;
+
+      if (plannedSessionId != null) {
+        final plan = await _plannedSession(plannedSessionId);
+        if (plan == null || plan.isCompleted || plan.linkedSessionId != null) {
+          return;
+        }
+      }
+
+      // The snapshot path owns adoption, so the row is written only when there
+      // is none to point the plan at: a row already there is the same session
+      // the phone adopted, and a second one would be two rows for one run.
+      if (await _repository.getSession(sessionId) == null) {
+        await _startSessionRow(
+          sessionId: sessionId,
+          routineTemplateId: routineTemplateId,
+          // D-16703: the report's own instant is the wrist's start; it is the
+          // truth the row is born with, whatever the phone's clock reads.
+          startedAtMs: _instantMs(payload['at']),
+        );
+      }
+
+      if (plannedSessionId == null) return;
+      _plansAwaitingEnd[sessionId] = plannedSessionId;
+    } catch (error, stack) {
+      _onFailure(error, stack);
+    }
+  }
+
+  /// The planned session of [id], or null when the store holds none.
+  Future<PlannedSession?> _plannedSession(String id) async {
+    for (final plan in await _repository.getPlannedSessions()) {
+      if (plan.id == id) return plan;
+    }
+    return null;
+  }
+
+  /// Writes the session row a wrist report opens: the session and its one
+  /// segment, under the protocol's ids (D-3), with no effort and no planned
+  /// row — the wrist's ladder arrives with the first snapshot (D-8977).
+  ///
+  /// [startedAtMs] is the report's own `at` when it reads (D-16703); the row
+  /// and its segment are otherwise stamped with the phone's clock, which stays
+  /// the arrival stamp for `createdAtMs`/`updatedAtMs`.
+  Future<void> _startSessionRow({
+    required String sessionId,
+    required String? routineTemplateId,
+    required int? startedAtMs,
+  }) async {
+    final atMs = _clock().millisecondsSinceEpoch;
+    final startMs = startedAtMs ?? atMs;
+    final template = await _templateOf(routineTemplateId);
+    await _repository.createSession(
+      TrainingSession(
+        id: sessionId,
+        ownerUserId: LoggedEntryRows.ownerUserId,
+        // The report's own instant is the workout's start (D-16703): the zip
+        // began when the wrist started it, not when the phone heard of it. A
+        // report whose `at` cannot be read falls back to the arrival instant.
+        startedAtMs: startMs,
+        createdAtMs: atMs,
+        updatedAtMs: atMs,
+        // A routine run opens as the routine it is, exactly as the snapshot
+        // path opens one: the Routines tile reads it, and a free start stays
+        // free.
+        title: template?.name,
+        intent: template == null ? null : 'routine',
+        routineTemplateId: routineTemplateId,
+        // Plan 122 D-12201(c): the routine's Focus opens as a snapshot here
+        // exactly as the snapshot path stamps it on its own row.
+        modality: template?.focusModality,
+      ),
+    );
+
+    await _repository.createSegment(
+      LoggedEntryRows.defaultSegment(
+        id: WatchSessionImporter.segmentIdFor(sessionId),
+        sessionId: sessionId,
+        atMs: atMs,
+      ),
+    );
+    _note(
+      'session_row_created',
+      session: sessionId,
+      detail: 'path=started start=${_isoUtc(startMs)} end=none',
+    );
+  }
+
+  /// The phone's template [routineTemplateId] names, or null — read from the
+  /// current templates, never cached, so a routine edited while the wrist was
+  /// starting opens with what it says now (I-2).
+  Future<WorkoutTemplate?> _templateOf(String? routineTemplateId) async {
+    if (routineTemplateId == null) return null;
+    for (final template in await _repository.getTemplates()) {
+      if (template.id == routineTemplateId) return template;
+    }
+    return null;
   }
 
   /// Brings the phone's own copy of [sessionId] up to the row before its finish
@@ -698,10 +1196,26 @@ class WatchSessionAdoptionBridge {
     await _workoutState!.updateSessionFeeling(sessionId, rating);
   }
 
-  /// Writes the adopted session: its row, its one segment, and one effort per
-  /// slot — under the protocol's ids (D-3).
-  Future<void> _adopt(String sessionId, Map<String, Object?> converged) async {
+  /// The key itself when the phone can render it (a [ModalityConfig] exists for
+  /// it), else null: a newer wrist cannot plant a modality this app does not know.
+  static String? _knownModality(String? key) {
+    if (key == null || key.isEmpty) return null;
+    return ModalityConfig.forModality(key) == null ? null : key;
+  }
+
+  /// Writes the adopted session: its row and its one segment, under the
+  /// protocol's ids (D-3); the ladder itself goes through [_writeLadder].
+  Future<void> _adopt(
+    String sessionId,
+    Map<String, Object?> converged, {
+    String? wristModality,
+  }) async {
     final atMs = _clock().millisecondsSinceEpoch;
+    final slots = _slots(converged);
+    // D-1: the wrist's slot ids are the phone's own template effort ids, so the
+    // ladder itself says which routine it is a run of — read before anything is
+    // written, and read from the phone's current templates (I-2).
+    final routine = await _routineFor(slots);
     await _repository.createSession(
       TrainingSession(
         id: sessionId,
@@ -712,6 +1226,19 @@ class WatchSessionAdoptionBridge {
         startedAtMs: atMs,
         createdAtMs: atMs,
         updatedAtMs: atMs,
+        // D-2: a routine run opens as the routine it is, exactly as the phone's
+        // own routine start opens one — so the Routines tile and the routine's
+        // history read it, and a free session stays free.
+        title: routine?.template.name,
+        intent: routine == null ? null : 'routine',
+        routineTemplateId: routine?.template.id,
+        // Plan 122 D-12201(c): like a phone-started routine, the adopted
+        // session carries the routine's Focus as a snapshot (null when no
+        // routine matched or the routine has no Focus).
+        // Plan 203 D-20302: the wrist's own key wins, as the importer's
+        // end.modality does (S-12516).
+        modality:
+            _knownModality(wristModality) ?? routine?.template.focusModality,
       ),
     );
 
@@ -722,17 +1249,243 @@ class WatchSessionAdoptionBridge {
     );
     await _repository.createSegment(segment);
 
+    await _writeLadder(sessionId, converged, atMs, routine,
+        segmentId: segment.id);
+    _note(
+      'session_row_created',
+      session: sessionId,
+      detail: 'path=snapshot start=${_isoUtc(atMs)} end=none',
+    );
+  }
+
+  /// Writes the ladder [converged] carries into [sessionId]'s row under
+  /// [segmentId]: one effort per slot, the routine's planned rows beneath a
+  /// `set` effort (D-3, D-6), and the slot ids into the ever-seen set (D-93).
+  ///
+  /// The part of an adoption a placeholder row needs too: a fresh adoption
+  /// writes it after its own row and segment, and `consider` writes it into a
+  /// report-opened row that its first snapshot reaches before the adoption
+  /// path did (D-8978).
+  Future<void> _writeLadder(
+    String sessionId,
+    Map<String, Object?> converged,
+    int atMs,
+    _AdoptedRoutine? routine, {
+    required String segmentId,
+  }) async {
     var orderIndex = 0;
     for (final slot in _slots(converged)) {
       await _repository.createEffort(
-        _effort(slot, segmentId: segment.id, orderIndex: orderIndex, atMs: atMs),
+        _effort(slot, segmentId: segmentId, orderIndex: orderIndex, atMs: atMs),
       );
+      // D-3: the routine's planned efforts start with its own plan, so the
+      // wrist's first set fills a planned row instead of joining the exercise
+      // (D-6). The gate is the same kind the effort itself logs as (I-5), and
+      // D-14906 widens it from sets to every kind the slot declares: a hold,
+      // a timed effort and a round hold their plan as their own records.
+      final slotId = slot['sessionExerciseId'] as String;
+      final kind = _effortKind(slot);
+      if (routine != null && _declaredKinds.contains(kind)) {
+        final exerciseId = slot['exerciseId'];
+        await _createPlannedRows(
+          slotId: slotId,
+          exerciseId: exerciseId is String ? exerciseId : null,
+          kind: kind,
+          targets: routine.targetsBySlot[slotId] ?? const [],
+          atMs: atMs,
+        );
+      }
       orderIndex += 1;
     }
 
     // The ladder the snapshot carries is one the phone now takes as its own, so
     // every slot in it counts as seen (D-93).
     _everSeen[sessionId] = _slotIds(converged);
+  }
+
+  /// The phone's own routine a wrist ladder is a run of, or null (D-1).
+  ///
+  /// A slot id is `sx-` and a template effort id, so a ladder whose every slot
+  /// names an effort of one template is that template's run — the link the
+  /// protocol never carries, read off the ladder itself. The first template
+  /// `getTemplates` lists that covers every slot wins.
+  ///
+  /// Null for a ladder that is not a run of any routine: an empty one, a slot
+  /// id without the prefix or without an effort id after it, an effort id no
+  /// template holds, or a template that holds some but not all of them. Those
+  /// adopt exactly as they always have (A5, I-3).
+  ///
+  /// The plan comes from the phone's CURRENT templates, read here and never
+  /// cached, so a routine edited while the wrist was running adopts with what
+  /// it says now (I-2). Targets are keyed by the ladder's own slot id, which is
+  /// what the planned rows are written against.
+  Future<_AdoptedRoutine?> _routineFor(
+    List<Map<String, Object?>> slots,
+  ) async {
+    final slotIds = <String>[];
+    for (final slot in slots) {
+      final slotId = slot['sessionExerciseId'];
+      if (slotId is! String) return null;
+      slotIds.add(slotId);
+    }
+    final template = await WatchRoutineMatcher(_repository)
+        .templateFor(slotIds);
+    if (template == null) return null;
+
+    final targetsBySlot = <String, List<TemplateTarget>>{};
+    for (final slot in slots) {
+      final slotId = slot['sessionExerciseId'] as String;
+      targetsBySlot[slotId] = await _repository.getTemplateTargets(
+        WatchRoutineMatcher.effortIdOf(slotId)!,
+      );
+    }
+    return (template: template, targetsBySlot: targetsBySlot);
+  }
+
+  /// Writes the routine's planned rows into the effort just created (D-3).
+  ///
+  /// The rows are the ones the phone's own routine start writes, from the same
+  /// builder and with the same defaults (I-6): one per planned set, the
+  /// template's reps and load, the phone's own defaults for a set the template
+  /// has no target for, and the extra-weight row an exercise without `load` —
+  /// or one the library no longer holds — carries. [atMs] is the adoption's own
+  /// stamp, so a planned row reads as one the phone wrote just now.
+  ///
+  /// D-14906: a non-`set` effort holds its plan as one record per planned index
+  /// — a [TimedInstance] for a hold or a timed effort, a [RoundInstance] for a
+  /// round — carrying the template's per-index `duration` (or `round-duration`)
+  /// where it has one and the phone's own default where it does not.
+  Future<void> _createPlannedRows({
+    required String slotId,
+    required String? exerciseId,
+    required String kind,
+    required List<TemplateTarget> targets,
+    required int atMs,
+  }) async {
+    final exercise = exerciseId == null
+        ? null
+        : await _repository.getExerciseById(exerciseId);
+    final plansCount = _plannedSetCount(targets);
+
+    if (kind != BlockTypes.set) {
+      for (var index = 0; index < plansCount; index++) {
+        if (kind == BlockTypes.round) {
+          final plannedSecs =
+              _plannedValue(targets, MetricIds.roundDuration, index)?.toInt() ??
+              exercise?.defaultRoundDurationSecs ??
+              WorkoutConstants.defaultRoundDurationSecs;
+          await _repository.createRoundInstance(
+            RoundInstance(
+              id: 'round-$slotId-$index-$atMs',
+              effortId: slotId,
+              roundIndex: index,
+              plannedDurationSecs: plannedSecs,
+              actualDurationSecs: 0,
+              startedAtMs: 0,
+              finishedAtMs: null,
+              completed: false,
+              state: RoundState.notStarted,
+              pausedAtMs: null,
+              totalPausedDurationMs: 0,
+              createdAtMs: atMs,
+              updatedAtMs: atMs,
+            ),
+          );
+          continue;
+        }
+        await _repository.createTimedInstance(
+          TimedInstance(
+            id: 'timed-$slotId-$index-$atMs',
+            effortId: slotId,
+            entryIndex: index,
+            targetDurationSecs:
+                _plannedValue(targets, MetricIds.duration, index)?.toInt() ?? 0,
+            actualDurationSecs: 0,
+            startedAtMs: 0,
+            finishedAtMs: null,
+            state: TimedState.notStarted,
+            pausedAtMs: null,
+            totalPausedDurationMs: 0,
+            createdAtMs: atMs,
+            updatedAtMs: atMs,
+          ),
+        );
+      }
+      return;
+    }
+
+    final exerciseHasLoad =
+        exercise?.capabilities.contains(ExerciseCapability.load) ?? false;
+
+    for (var entryIndex = 0; entryIndex < plansCount; entryIndex++) {
+      final reps = _plannedValue(targets, MetricIds.reps, entryIndex);
+      final weightKg = _plannedValue(targets, MetricIds.weight, entryIndex);
+      for (final row in LoggedEntryRows.setObservations(
+        effortId: slotId,
+        entryIndex: entryIndex,
+        reps: reps?.toInt() ?? _defaultPlannedReps,
+        weightKg: weightKg?.toDouble() ?? _defaultPlannedWeightKg,
+        exerciseHasLoad: exerciseHasLoad,
+        atMs: atMs,
+      )) {
+        await _repository.createObservation(row);
+      }
+    }
+  }
+
+  /// The value one planned set carries for [metricId], or null when the
+  /// template has no target for it there.
+  ///
+  /// The value itself is the phone's own (`populateSessionFromManifest`): the
+  /// integer target first, then the minimum, then the maximum. Which target
+  /// that value comes from is picked store-independently, so a row never
+  /// depends on the order `getTemplateTargets` lists the targets in: a target
+  /// whose `setIndex` is null means the first set, the same null-as-0 the set
+  /// count uses, so among the targets that match the row an explicit
+  /// `setIndex == entryIndex` is the more specific and beats a null-index one,
+  /// and between two targets of equal specificity the lowest `id` wins. Only
+  /// the winner's own value is read: a winner carrying no integer, minimum or
+  /// maximum means null, and never falls through to another target.
+  static num? _plannedValue(
+    List<TemplateTarget> targets,
+    String metricId,
+    int entryIndex,
+  ) {
+    TemplateTarget? winner;
+    for (final target in targets) {
+      if (target.metricId != metricId) continue;
+      if ((target.setIndex ?? 0) != entryIndex) continue;
+
+      final current = winner;
+      if (current == null) {
+        winner = target;
+        continue;
+      }
+
+      final moreSpecific = target.setIndex != null && current.setIndex == null;
+      final lessSpecific = target.setIndex == null && current.setIndex != null;
+      if (moreSpecific ||
+          (!lessSpecific && target.id.compareTo(current.id) < 0)) {
+        winner = target;
+      }
+    }
+
+    final value = winner;
+    if (value == null) return null;
+    return value.targetInt ?? value.targetMin ?? value.targetMax;
+  }
+
+  /// How many sets the template plans: the highest set index it holds a target
+  /// for, plus one — and one set when it holds no targets at all.
+  static int _plannedSetCount(List<TemplateTarget> targets) {
+    if (targets.isEmpty) return 1;
+
+    var highestSetIndex = 0;
+    for (final target in targets) {
+      final index = target.setIndex ?? 0;
+      if (index > highestSetIndex) highestSetIndex = index;
+    }
+    return highestSetIndex + 1;
   }
 
   /// The efforts [converged] adds to the session [sessionId] the phone holds,
@@ -842,7 +1595,7 @@ class WatchSessionAdoptionBridge {
   /// the first capability it carries that decides. That order is the wrist's
   /// (`watch_logging_state.dart`), repeated here rather than imported: this is
   /// the phone reading a wire slot, and that file is the wrist surface's own
-  /// state. A snapshot carries no modality, so a slot nothing decides logs sets
+  /// state. A wrist snapshot carries no modality, so a slot nothing decides logs sets
   /// — the same default a hand-made free session gets.
   String _effortKind(Map<String, Object?> slot) {
     final declared = slot['effortKind'];
@@ -861,4 +1614,43 @@ class WatchSessionAdoptionBridge {
     }
     return ModalityConfig.forModality(null)?.effortKind ?? BlockTypes.set;
   }
+
+  /// D-16401: an end the wrist claims, bounded by this phone's clock at
+  /// decision time plus [kFutureEndClampMs] — the latest instant a frame may
+  /// end the phone's workout at.
+  ///
+  /// Clamp-and-keep: the frame is applied in full either way, and only the end
+  /// instant moves, so a wrong watch clock or a corrupt frame can no longer
+  /// stretch the phone's workout, its duration and its Health span into the
+  /// future. No lower bound: a past end is a late sync, and the earliest end
+  /// rule (D-14630, D-15403) keeps deciding between two ends.
+  int _boundedEnd(int atMs, {String? session}) {
+    final boundedMs = clampFutureEndMs(
+      atMs,
+      _clock().millisecondsSinceEpoch,
+    );
+    if (boundedMs != atMs) {
+      _reportClampedEnd(atMs, boundedMs);
+      _note(
+        'end_clamped',
+        session: session,
+        detail:
+            'from=${_isoUtc(atMs)} to=${_isoUtc(boundedMs)} who=lifecycle',
+      );
+    }
+    return boundedMs;
+  }
+
+  /// D-16407: the clamp's one debug line, naming what the frame claimed, what
+  /// the phone applied instead, and the bound it applied.
+  static void _reportClampedEnd(int claimedMs, int boundedMs) {
+    debugPrint(
+      'Watch session sync: bounded an end claimed at '
+      '${_isoUtc(claimedMs)} to ${_isoUtc(boundedMs)} (no later than this '
+      'phone\'s clock plus ${kFutureEndClamp.inMinutes} minutes)',
+    );
+  }
+
+  static String _isoUtc(int ms) =>
+      DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
 }

@@ -11,9 +11,11 @@ import '../../state/workout/workout_state.dart';
 import '../../widgets/chart/chart_primitives.dart';
 import '../../widgets/chart/edge_aware_date_label.dart';
 import '../../widgets/chart/scrollable_trend_chart.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
+import 'widgets/load_failure_view.dart';
 import 'widgets/native_value_format.dart';
 import 'widgets/stats_pill.dart';
 
@@ -46,6 +48,7 @@ class ExerciseProgressScreen extends StatefulWidget {
 
 class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
   bool _isLoading = true;
+  bool _loadFailed = false;
   ExerciseMetricSummary? _summary;
 
   @override
@@ -55,9 +58,16 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() {
+      _loadFailed = false;
+      _isLoading = true;
+    });
     try {
       final service = StatsProgressService(widget.workoutState.repository);
-      final summaries = await service.computeExerciseMetrics();
+      final summaries = await service.computeExerciseMetrics(
+        bestSingleSession: true,
+      );
       ExerciseMetricSummary? summary;
       for (final candidate in summaries) {
         if (candidate.exerciseId == widget.exerciseId) {
@@ -73,7 +83,10 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+      });
     }
   }
 
@@ -98,6 +111,11 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
           body: SafeArea(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
+                : _loadFailed
+                ? LoadFailureView(
+                    message: 'Could not load this exercise.',
+                    onRetry: _loadData,
+                  )
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                     children: summary == null
@@ -120,7 +138,7 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
       _buildBestCard(context, themeColors, summary),
     ];
 
-    if (summary.points.isNotEmpty) {
+    if (summary.trendPoints.isNotEmpty) {
       children.add(const SizedBox(height: 24));
       children.add(const OmniCardHeader(title: 'TREND'));
       children.add(
@@ -194,7 +212,7 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
     ExerciseMetricSummary summary,
   ) {
     final metric = summary.best.metric;
-    final points = summary.points;
+    final points = summary.trendPoints;
     final dates = points
         .map((p) => DateTime.fromMillisecondsSinceEpoch(p.dayMs))
         .toList(growable: false);
@@ -218,16 +236,29 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
       );
     }
 
-    final bounds = ChartAxisHelper.computeBounds(values);
+    final isClock = nativeMetricIsClock(metric);
+    final bounds = isClock
+        ? ChartAxisHelper.computeTimeBounds(values)
+        : ChartAxisHelper.computeBounds(values);
+    // Pace is seconds per kilometre, so a faster pace is a smaller number;
+    // the line is drawn reflected in the bounds' midpoint so getting faster
+    // rises, while the bounds and the axis labels keep the true values (plan
+    // 226). The reflection is its own inverse, so it maps a plotted y back to
+    // the value it reads as.
+    final flip = metric == NativeMetric.pace;
+    double plotted(double value) => flip ? bounds.min + bounds.max - value : value;
     final spots = List.generate(
       values.length,
-      (i) => FlSpot(i.toDouble(), values[i]),
+      (i) => FlSpot(i.toDouble(), plotted(values[i])),
     );
 
     return ScrollableTrendChart(
       themeColors: themeColors,
       bounds: bounds,
       unitLabel: nativeMetricUnitLabel(metric, widget.settingsState),
+      yLabelFormatter: isClock
+          ? (value) => ChartAxisHelper.formatClockAxisValue(plotted(value))
+          : null,
       pointCount: points.length,
       chartBuilder: (plotWidth) {
         return LineChart(
@@ -280,6 +311,9 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
             gridData: FlGridData(
               show: true,
               drawVerticalLine: false,
+              // Same interval as the pinned labels, so each gridline sits on
+              // a label instead of fl_chart picking its own spacing.
+              horizontalInterval: bounds.interval,
               getDrawingHorizontalLine: (_) =>
                   FlLine(color: themeColors.divider, strokeWidth: 1),
             ),
@@ -393,35 +427,12 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
   }
 
   Widget _buildEmptyState(BuildContext context, OmniThemeColors themeColors) {
-    final theme = Theme.of(context);
-
     return OmniSurface(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 16),
-          Icon(
-            Icons.show_chart,
-            size: 48,
-            color: themeColors.textMuted.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No history for this exercise',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: OmniTheme.colors.textDominant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Log it in a completed session to see its progress here.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: themeColors.textMuted,
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
+      child: OmniEmptyState(
+        compact: true,
+        icon: Icons.show_chart,
+        title: 'No history for this exercise',
+        hint: 'Log this exercise in a session to see its history.',
       ),
     );
   }

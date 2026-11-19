@@ -47,8 +47,8 @@ class SustainedHighLoadBaseline {
     required this.ratedWeeks,
   });
 
-  /// The baseline's usual: its summed load ÷ the twelve weeks, an empty week
-  /// counting as zero.
+  /// The baseline's usual: its summed load ÷ the twelve weeks less the
+  /// unrated ones, an empty week counting as zero.
   final double usualLoadMinutes;
 
   /// How many of the twelve baseline weeks carry a rated session.
@@ -107,9 +107,11 @@ class SustainedHighLoadCopy {
 /// before [beforeIndex], pooled (D-1705).
 ///
 /// The baseline lies strictly before the candidate, so a run can never inflate
-/// its own baseline. The usual is the twelve weeks' sum ÷ twelve — an empty
-/// week counts as zero, never the mean of the rated weeks only. Returns null
-/// when fewer than twelve weeks precede [beforeIndex].
+/// its own baseline. The usual is the pooled load divided by the twelve weeks
+/// less the unrated ones (plan 157c): an empty week counts as zero, while a
+/// week that held sessions and no rating has an unknown load and is left out
+/// of the divisor. Returns null when fewer than twelve weeks precede
+/// [beforeIndex].
 SustainedHighLoadBaseline? sustainedHighLoadBaseline({
   required List<WeeklyLoad> weeks,
   required int beforeIndex,
@@ -117,12 +119,15 @@ SustainedHighLoadBaseline? sustainedHighLoadBaseline({
   if (beforeIndex < kTrainingLoadBaselineWeeks) return null;
   var total = 0.0;
   var rated = 0;
+  var unrated = 0;
   for (var i = beforeIndex - kTrainingLoadBaselineWeeks; i < beforeIndex; i++) {
     total += weeks[i].loadMinutes;
     if (weeks[i].hasRatedSession) rated++;
+    if (weeks[i].isUnrated) unrated++;
   }
+  final counted = kTrainingLoadBaselineWeeks - unrated;
   return SustainedHighLoadBaseline(
-    usualLoadMinutes: total / kTrainingLoadBaselineWeeks,
+    usualLoadMinutes: counted > 0 ? total / counted : 0.0,
     ratedWeeks: rated,
   );
 }
@@ -194,7 +199,9 @@ SustainedHighLoadStreak sustainedHighLoadStreak({
 ///
 /// An easier week there is a week at or below
 /// [kSustainedHighLoadEasierPercent] of [usual], compared exactly as
-/// `loadMinutes × 100 <= usual × 80`; an empty week is an easier week. The gaps
+/// `loadMinutes × 100 <= usual × 80`; an empty week is an easier week. A week
+/// that held only unrated sessions is neither easier nor harder: it is skipped.
+/// The gaps
 /// are the differences between consecutive easier weeks' indices, oldest first.
 /// The fact needs at least [kSustainedHighLoadMinEasierGaps] gaps, every one
 /// within [kSustainedHighLoadGapMinWeeks]..[kSustainedHighLoadGapMaxWeeks], and
@@ -206,6 +213,7 @@ int? sustainedHighLoadEasierGapWeeks({
 }) {
   final easier = <int>[];
   for (var i = 0; i < beforeIndex && i < weeks.length; i++) {
+    if (weeks[i].isUnrated) continue;
     if (weeks[i].loadMinutes * 100 <= usual * kSustainedHighLoadEasierPercent) {
       easier.add(i);
     }

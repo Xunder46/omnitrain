@@ -51,28 +51,57 @@ abstract final class PhoneEntries {
   /// The wire kind of a phone round entry.
   static const String roundKind = 'round';
 
+  /// The prefix every id this class mints starts with (D-33).
+  static const String entryIdPrefix = 'entry-';
+
+  /// Whether [entryId] is in the id space the phone mints for its own entries —
+  /// `entry-<sessionExerciseId>-<n>` (D-33), whatever the entry's kind.
+  ///
+  /// The wrist never mints this shape (a `UUID` string, or the harness's
+  /// `w-entry-<n>`), so a wrist-sent entry carrying it is the phone's own,
+  /// echoed back: the wrist's snapshot reports the entries the phone sent it as
+  /// well as its own. The receivers refuse it (D-17503…D-17505).
+  ///
+  /// Grammar only, never an existence check: a phone that deleted its newest
+  /// group of a slot and logged nothing new reuses that number later (D-113.3),
+  /// so resolving the id against the session's rows would treat an echo of the
+  /// deleted group as new and bring the set back.
+  static bool isPhoneEntryId(String entryId) {
+    if (!entryId.startsWith(entryIdPrefix)) return false;
+    final body = entryId.substring(entryIdPrefix.length);
+    final cut = body.lastIndexOf('-');
+    if (cut <= 0) return false;
+    return int.tryParse(body.substring(cut + 1)) != null;
+  }
+
   /// [groups] as the wire entries of the slot [sessionExerciseId].
   ///
   /// [exerciseId] is the exercise the slot holds. [wristLoggedAtMs] is the
   /// `loggedAt` of every live watch-inbox row staged for that slot — the wrist's
   /// own entries this phone imported — read in ascending order. A row claims one
   /// group (the first unclaimed group stamped the same); a claimed group is the
-  /// wrist's and is left out. The rest are the phone's own, in ascending entry
-  /// number.
+  /// wrist's and is left out. [loggedNumbers] are the sets this phone logged
+  /// (`EntryRows.loggedSetNumbers`); a group the phone did not log is a planned
+  /// value — a routine's row, or the default row of a new exercise — and is left
+  /// out too. The rest are the phone's own, in ascending entry number.
   static List<Map<String, Object?>> project({
     required String sessionExerciseId,
     required String exerciseId,
     required List<SetRows> groups,
     required List<int> wristLoggedAtMs,
+    required Set<int> loggedNumbers,
+    required bool exerciseHasLoad,
   }) {
     final claimed = claimedBy(groups: groups, wristLoggedAtMs: wristLoggedAtMs);
     final entries = <Map<String, Object?>>[];
     for (final group in groups) {
       if (claimed.contains(group.number)) continue;
+      if (!loggedNumbers.contains(group.number)) continue;
       final entry = _entry(
         sessionExerciseId: sessionExerciseId,
         exerciseId: exerciseId,
         group: group,
+        exerciseHasLoad: exerciseHasLoad,
       );
       if (entry != null) entries.add(entry);
     }
@@ -430,17 +459,22 @@ abstract final class PhoneEntries {
   ///
   /// A weight of zero (or no weight at all) is carried without a `loadKg` key:
   /// the wire keeps "no load" and "load 0" indistinguishable, as it always has.
-  /// A set's added weight is not sent either: the wire's extra load is a hold's.
+  /// On an exercise without `load` the set's load is its added (or, negative,
+  /// assisting) weight, kept in the extra-weight row: that row's value is what
+  /// `loadKg` carries there (plan 52c D-4).
   static Map<String, Object?>? _entry({
     required String sessionExerciseId,
     required String exerciseId,
     required SetRows group,
+    required bool exerciseHasLoad,
   }) {
     final set = group.entry;
     final reps = (set['reps'] as int?) ?? 0;
     if (reps < 1) return null;
 
-    final weightKg = (set['weight'] as double?) ?? 0.0;
+    final weightKg =
+        ((exerciseHasLoad ? set['weight'] : set['extra-weight']) as double?) ??
+        0.0;
     if (weightKg < WireLimits.minLoadKg) return null;
 
     final entryId = 'entry-$sessionExerciseId-${group.number}';

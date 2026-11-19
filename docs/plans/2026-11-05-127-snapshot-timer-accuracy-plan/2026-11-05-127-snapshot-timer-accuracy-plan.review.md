@@ -1,0 +1,51 @@
+# Review: 2026-11-05-127-snapshot-timer-accuracy · D-1..D-8 (per brief questions 1-5) · working tree
+Verdict: APPROVE WITH FIXES
+Counts: blocker 0 · major 1 · minor 0 · tests: 6915 passed / 2 skipped / 4 failed
+Diff vs Predicted Files: conforms (scoped to the 8 files the brief names; the tree carries sibling-plan changes in other files, which were not reviewed)
+
+Full-suite run this run (gateway `test`, .work/gateway/test-20261106-145337-11350.log): `+6915 ~2 -4`. The 4 failures are outside plan 127's files: `test/routine_session_modality_backfill_test.dart` Mock and Hive `S-12207 the calendar breakdown follows the back-fill`, `test/watch_routine_adoption_test.dart` Mock and Hive `S-12204 a focused routine adopts with the routine's Focus`. Log note: the captured log is the compact reporter, so passing per-file lines are absent; the failing and guard lines are visible. Per the brief's established facts, the 127 tests and the 14 related watch files were green (505 tests) before this run.
+
+## Findings (answers to the brief's five questions)
+
+### Q1 — `snapshotTimers()` replacement rule: no wrong naming found
+
+Traced `lib/state/watch/watch_timer_push.dart:151-204` against the ledger lifecycles in the file (`_owe` at 494, `_owed` cleanup at the top of `_pushOnce`, `_delivered` on delivered sends at `_pushOnce`'s tail, removals on delivered clears):
+
+- **Delivered pause, no owed** (`_delivered` holds the paused copy, `_owed` empty): `record = delivered`, the replacement rule is skipped (needs `owed != null`); (iii)/(iv) pass because `current` is that same timer in its newest state; the named value is `{...current}` — the phone's current state. Correct.
+- **Owed pause on the same slot** (`_delivered` holds the delivered running start, `_owed` the refused pause, both slot A and start S): replacement rule's condition requires a different slot or start; both match `delivered`, so it does not skip; (iii)/(iv) are checked against `record = owed` (same slot, same start) and pass; `(v) _wristEnded` is the only skip. Named value is the current paused JSON. Correct.
+- **Both delivered (older slot/start) and owed (newer)**: the replacement rule fires (`current` differs from `delivered` in slot or start) → `continue` → the kind is omitted even though owed. No path names the old ledger copy, because the value is always `current` and (iii)/(iv) are checked against `record`; a kind can only be named with `current` equal or identical to `record`.
+
+There is one residual worth naming for a future plan, not a defect today: `snapshotTimers()` never prunes stale `_owed` entries against `wanted` (that cleanup happens only in a push pass). A kind whose owed record predates the phone's current interval is caught afterwards by (iii)/(iv) (omit), never named with the stale record. Covered by S-127-17.
+
+### Q2 — [Major] `watch_timer_push.dart:399-405` — the D-4 drop can discard a NEWER phone intent, not only the owed start
+
+`next.removeWhere` drops and `_owed.remove(kind)`s whenever `_delivered.containsKey(kind)` is false and `_mirrorKnowsStart` matches the mirror's copy in ANY state. The `if (_delivered.containsKey(kind)) return false;` guard (the code comment: "An owed pause or resume (a delivered kind) is not a start") protects a pause only when the kind's start was live-delivered. When the start rode only the durable snapshot (or the radio lost the answer — the fixture's `lostAnswer` device), `_delivered` has no entry, and `_owe` (line 498) overwrote the owed record with the phone's NEWEST offered state. The drop then discards a refused pause or resume, which plan 98 D-2 would have sent on reachability and D-4 does not exempt (D-4 speaks only of "an owed start").
+
+Concrete failing scenario on the plan's F-A fixture family: H-away; `startTimedEntry` with `radio.lostAnswer = true` (the wrist applies the start; the mirror reports the running copy back, exactly as S-127-12's stopped frame does), so `_delivered['hold']` is empty and the start is owed; the phone pauses → the full pass composes the paused frame, `_send` fails while away, `_owe` records the PAUSED frame (`_owed['hold']` is now the pause), `onOwed` fires and the queued snapshot names the hold paused; now reachable (`emitLink(true)` → flushClears): `_delivered` has no key, the mirror holds slot A at start S running → `_mirrorKnowsStart` true → the owed PAUSE is dropped and removed. The live path says nothing and the durable path composed before the drop is the only carrier; any later snapshot composed while both books are empty for the kind omits it, and omission stops the phone-written running row on the wrist (121a D-1/D-80). A radio flake while reachable (an `undelivered` answer) closes the re-recording path `_owe` would normally provide.
+
+What still heals in practice (why this is Major, not Blocker): the queued paused snapshot from `onOwed` remains queued and newest-wins until some later phone change composes a replacement, and any later full pass re-records the owed state on a refused send (`_owe` again). So the visible damage requires the narrow window where a snapshot is composed after the drop with the kind omitted and no later `_owe`. S-127-13 covers only the reverse roles (wrist-paused copy, phone still wants the start), where the drop is correct. Fix (smallest): make the drop fire only when the owed record is still the START the mirror echoes — e.g. record in `_owe` when the kind's owed entry is overwritten with a different `state` than the previously owed one, and pass that to the drop; or drop only when the mirror's held copy's state is `stopped` (54 D-1a) or the owed record's start is exactly the snapshot-delivered one and the mirror's state agrees with it. Guard: a test mirroring S-127-13 with the phone pausing (the fixture as above) asserting the reachable clears-only pass sends the paused frame (or, if the send fails, that the next composed snapshot still names the hold paused).
+
+### Q3 — `onOwed` wiring: no loop, no re-entrant flush found
+
+`WatchSessionAutoPush` (`lib/state/watch/watch_session_auto_push.dart:206-312`) contains no reference to the timer push (grep `TimerPush` — no matches in the file). Its `flush` joins a running drain (`_draining`/`_again`) and its `_pushOnce` only announces ends, deletes owed entries and sends the composed payload through `_mirror.sendState` — the payload's `timers` are composed by reading `snapshotTimers()` via the wiring's `timerPushForSnapshots`, read-only. `_owe` calls `_onOwed` after the `_owed` entries are written (watch_timer_push.dart:503), the closure is `unawaited(push.flush().catchError(...))` (watch_sync_wiring.dart:321 declares `push` before `timerPush` at 337), and a frame delivery never re-enters `_owe`, so at most one extra auto-push drain per refused send and no recursion into `WatchTimerPush._pushOnce`. S-127-16 locks the reachable-wrist cost (no extra snapshots, `onOwed` never called).
+
+### Q4 — Dart engine guard: `false` is not treated as a failure by any caller
+
+`_applySnapshot` returns `false` at `lib/watch/session/watch_session_engine.dart:525` before any write: the lines between the payload reads and the guard only build locals (`exercises`, `entryMaps`, `sentAt`); `_unhideTheIdTheSnapshotNames` (tombstone), `_appendSessionRow`, `_storeSnapshotEntry`, `confirmObservations` and `_adoptTimers` all run after it. The field is seeded in `restore()` from `snap-` rows whose `recordedAt` is the snapshot's `sentAt` (row built at line 554: `recordedAt: sentAt`), so an equal-stamp re-send applies (M10) and restart refuses (M11).
+
+Callers of the engine's `applyMessage` (grep `applyMessage` in `lib/`): `lib/watch/start/watch_sync_orchestrator.dart:157` returns the bool from `receive`; its other `false` outcomes are documented as "the watch has no use for it" and the rejection path (`WatchEmissionRejected`) is separate. The mirror's `_reconciler.applyMessage` calls are `SessionReconciler.applyMessage` (void, a different class). The debug main ignores the return. No caller retries, reports an error or answers a snapshot on `false`. D-8's refusal is transport-invisible as designed (the phone believes the newest-wins queue consumed the frame — desired: the wrist is newer).
+
+### Q5 — Docs: both edits state what the code does
+
+`docs/state_management/watch_surface.md` (the `WatchTimerPush` paragraph): D-1 (value is the phone's current state), D-2 (owed start rides; withheld when `_delivered` holds a different slot or start, omission stops the old row), D-5 (`onOwed`, never on a delivered frame), D-4 (drop when the mirror holds the slot and start in any state) — each matches the code read above. The only imprecision: D-4's drop also fires when the mirror learned the start through the radio's lost answer, not a snapshot; the doc sentence ("a start the snapshot delivered and the wrist then paused or ended is not sent again") is narrower but states nothing false. `watch_session_sync.md`'s Invariants bullet names both verifying test files (exist: `test/watch_snapshot_timer_accuracy_test.dart`, `test/watch_engine_stale_snapshot_test.dart`) and matches the engine's equal-applies rule. D-4's sentence becomes incomplete for the pause/resume case under finding #1 above; re-check the sentence when the fix lands.
+
+## Assumption Log rulings
+The plan's Assumption Log is empty — nothing to ratify. The brief's established facts (505 tests green, M6 unobservable, mutation pass 10/12) were taken as given, not re-verified.
+
+## Scenario coverage
+- S-127-01, -02, -03, -04, -05 → `test/watch_snapshot_timer_accuracy_test.dart` (flat tests at 487, 546, 580, 646, 699)
+- S-127-10, -11, -12, -13, -14, -15, -16, -17, -20, -21, -22 → same file (730, 776, 814, 922, 990, 1075, 1131, 1181, 1260, 1329, 1372)
+- S-127-30 (+31 inside the group), -32, -33 → `test/watch_engine_stale_snapshot_test.dart` (181, 278, 320); S-127-34 → accuracy file (1424)
+- No S-127 scenario is without a test. The hole in finding #1 (phone pauses after an owed, snapshot/lostAnswer-delivered start) is covered by NO existing scenario — it is new behaviour, not an edit of the planned flows.
+
+None of the findings invalidate any planned acceptance criterion: AC-1..AC-7 each have a passing test for the flows they name; finding #1 is an unlisted state pairing, not a broken named flow.

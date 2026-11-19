@@ -13,6 +13,7 @@ import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
+import 'package:omnitrain/widgets/session/value_stepper_row.dart';
 
 import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/fake_preferences_service.dart';
@@ -280,7 +281,7 @@ Text _metricValueText(WidgetTester tester, {int editorIndex = 0}) {
 void main() {
   group('Timed emphasis redesign', () {
     testWidgets(
-      'free-session timed and drill stopped states keep dominant timer, muted status chrome, and neutral weight chip across all themes',
+      'free-session timed and drill stopped states show dominant digits only: no status chrome, one weight row on an interval and on a hold, across all themes',
       (tester) async {
         for (final themeValue in AppTheme.values) {
           for (final effortKind in const ['timed', 'drill']) {
@@ -294,6 +295,10 @@ void main() {
               _themeWrappedApp(
                 theme: themeValue,
                 home: WorkoutSessionScreen(
+                  // A fresh key per iteration: the screen reads its states in
+                  // initState, so reusing the State would keep showing the
+                  // previous effort kind.
+                  key: ValueKey('$themeValue-$effortKind'),
                   workoutState: deps.workoutState,
                   routineState: deps.routineState,
                   sessionSummaryService: deps.sessionSummaryService,
@@ -305,28 +310,20 @@ void main() {
 
             await _openSessionDetail(tester, deps.exercise.name);
 
-            final theme = Theme.of(
-              tester.element(find.byType(WorkoutSessionScreen)),
-            );
             final timerValue = _metricValueText(tester);
-            final stoppedText = tester.widget<Text>(find.text('STOPPED'));
-            final playIcon = tester.widget<Icon>(
-              find.byIcon(Icons.play_circle_outline),
-            );
-            final weightButton = tester.widget<OutlinedButton>(
-              find.widgetWithText(OutlinedButton, 'Weight adjustment'),
-            );
 
             expect(timerValue.style?.color, OmniTheme.colors.textDominant);
-            expect(stoppedText.style?.color, OmniTheme.colors.textMuted);
-            expect(playIcon.color, OmniTheme.colors.textMuted);
+            // D-3/D-4/D-1/D-2, plan 39 D-5: no status chrome at all, and an
+            // interval and a hold each show their weight row as the load input.
+            expect(find.text('STOPPED'), findsNothing);
+            expect(find.byIcon(Icons.play_circle_outline), findsNothing);
             expect(
-              weightButton.style?.foregroundColor?.resolve(<WidgetState>{}),
-              theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
+              find.widgetWithText(OutlinedButton, 'Weight adjustment'),
+              findsNothing,
             );
             expect(
-              weightButton.style?.side?.resolve(<WidgetState>{})?.color,
-              theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
+              find.byKey(const Key('value-stepper-plus-weight')),
+              findsOneWidget,
             );
             expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
           }
@@ -335,7 +332,7 @@ void main() {
     );
 
     testWidgets(
-      'free-session timed and drill running states keep dominant timer and muted running chrome across all themes',
+      'free-session timed and drill running states keep dominant digits and show no status chrome across all themes',
       (tester) async {
         for (final themeValue in AppTheme.values) {
           for (final effortKind in const ['timed', 'drill']) {
@@ -349,6 +346,10 @@ void main() {
               _themeWrappedApp(
                 theme: themeValue,
                 home: WorkoutSessionScreen(
+                  // A fresh key per iteration: the screen reads its states in
+                  // initState, so reusing the State would keep showing the
+                  // previous effort kind.
+                  key: ValueKey('$themeValue-$effortKind'),
                   workoutState: deps.workoutState,
                   routineState: deps.routineState,
                   sessionSummaryService: deps.sessionSummaryService,
@@ -363,21 +364,18 @@ void main() {
             await tester.pump();
 
             final timerValue = _metricValueText(tester);
-            final runningText = tester.widget<Text>(find.text('RUNNING'));
-            final pauseIcon = tester.widget<Icon>(
-              find.byIcon(Icons.pause_circle_outline),
-            );
 
             expect(timerValue.style?.color, OmniTheme.colors.textDominant);
-            expect(runningText.style?.color, OmniTheme.colors.textMuted);
-            expect(pauseIcon.color, OmniTheme.colors.textMuted);
+            // D-3: running is conveyed by the digits ticking.
+            expect(find.text('RUNNING'), findsNothing);
+            expect(find.byIcon(Icons.pause_circle_outline), findsNothing);
           }
         }
       },
     );
 
     testWidgets(
-      'routine-backed timed and drill session details match the muted-status hierarchy across all themes',
+      'routine-backed timed and drill session details show dominant digits with no status chrome across all themes',
       (tester) async {
         for (final themeValue in AppTheme.values) {
           for (final effortKind in const ['timed', 'drill']) {
@@ -390,6 +388,10 @@ void main() {
               _themeWrappedApp(
                 theme: themeValue,
                 home: WorkoutSessionScreen(
+                  // A fresh key per iteration: the screen reads its states in
+                  // initState, so reusing the State would keep showing the
+                  // previous effort kind.
+                  key: ValueKey('$themeValue-$effortKind'),
                   workoutState: deps.workoutState,
                   routineState: deps.routineState,
                   sessionSummaryService: deps.sessionSummaryService,
@@ -402,21 +404,23 @@ void main() {
             await _openSessionDetail(tester, deps.exercise.name);
 
             final timerValue = _metricValueText(tester);
-            final stoppedText = tester.widget<Text>(find.text('STOPPED'));
-            final playIcon = tester.widget<Icon>(
-              find.byIcon(Icons.play_circle_outline),
-            );
 
             expect(timerValue.style?.color, OmniTheme.colors.textDominant);
-            expect(stoppedText.style?.color, OmniTheme.colors.textMuted);
-            expect(playIcon.color, OmniTheme.colors.textMuted);
+            expect(find.text('STOPPED'), findsNothing);
+            expect(find.byIcon(Icons.play_circle_outline), findsNothing);
+            expect(
+              find.byKey(const Key('value-stepper-plus-weight')),
+              findsOneWidget,
+              reason: 'plan 39, D-5: an interval shows the row too',
+            );
           }
         }
       },
     );
 
     testWidgets(
-      'routine setup timed and drill always show secondary extra-weight editors across all themes',
+      'routine setup shows one weight row for a timed effort and a drill '
+      'across all themes',
       (tester) async {
         for (final themeValue in AppTheme.values) {
           for (final effortKind in const ['timed', 'drill']) {
@@ -439,6 +443,9 @@ void main() {
 
             await _openRoutineDetail(tester, deps.exercise.name);
 
+            // Plan 39 (D-5): a hold and an interval each show their single
+            // boxed weight row, still dominant.
+            expect(find.byType(ValueStepperRow), findsOneWidget);
             expect(find.byType(InlineMetricEditor), findsOneWidget);
             expect(
               _metricValueText(tester).style?.color,

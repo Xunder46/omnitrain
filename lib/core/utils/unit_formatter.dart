@@ -1,3 +1,4 @@
+import '../constants/water_constants.dart';
 import '../../state/settings/settings_state.dart';
 
 class UnitFormatter {
@@ -140,6 +141,65 @@ class UnitFormatter {
   /// same one, inverted once here rather than again per call site.
   static double metresPerUnit(String? unit) {
     return normalizeDistanceUnit(unit) == 'miles' ? 1000 / _kmToMiles : 1000;
+  }
+
+  // ── Volume (water) ──────────────────────────────────────────────────────
+  //
+  // Canonical storage for water is milliliters. The display unit (`ml`
+  // or `floz`) is derived from the user's weight unit — not a separate
+  // setting. These helpers are pure functions of a canonical ml value
+  // and the unit string so they carry no state access.
+
+  static const double _mlPerFlOz = 29.5735295625;
+
+  /// Returns the canonical `'ml'` or `'floz'` for any input. Unknown
+  /// values normalize to `'ml'` so the rest of the code can rely on
+  /// the two valid keys.
+  static String normalizeVolumeUnit(String? unit) {
+    final v = unit?.toLowerCase().trim();
+    return v == 'fl oz' || v == 'floz' || v == 'oz' ? 'floz' : 'ml';
+  }
+
+  /// The water unit that goes with the user's weight unit: `lbs` gives `'floz'`, anything else `'ml'`.
+  static String volumeUnitForWeightUnit(String? weightUnit) =>
+      normalizeWeightUnit(weightUnit) == 'lbs' ? 'floz' : 'ml';
+
+  /// The day's total as shown on the control: `750 ml`, `1.5 L`, `48 oz`.
+  static String formatWaterTotal(int ml, String? unit) {
+    if (normalizeVolumeUnit(unit) == 'floz') {
+      return '${(ml / _mlPerFlOz).round()} oz';
+    }
+    if (ml < 1000) return '$ml ml';
+    return '${_litersText(ml)} L';
+  }
+
+  /// What a screen reader says: `250 milliliters`, `1 liter`,
+  /// `1.5 liters`, `8 fluid ounces`; singular at exactly 1.
+  static String formatWaterSpoken(int ml, String? unit) {
+    if (normalizeVolumeUnit(unit) == 'floz') {
+      final n = (ml / _mlPerFlOz).round();
+      return n == 1 ? '1 fluid ounce' : '$n fluid ounces';
+    }
+    if (ml < 1000) {
+      return ml == 1 ? '1 milliliter' : '$ml milliliters';
+    }
+    final t = _litersText(ml);
+    return t == '1' ? '1 liter' : '$t liters';
+  }
+
+  /// The per-tap amount under the glass icon: `250 ml` or `8 oz`.
+  static String waterStepLabel(String? unit) =>
+      formatWaterTotal(waterStepMlFor(unit), unit);
+
+  /// Litres to at most two decimals, trailing zeros dropped, by integer
+  /// math (no float formatting).
+  static String _litersText(int ml) {
+    final hundredths = (ml / 10).round();
+    final whole = hundredths ~/ 100;
+    final frac = hundredths % 100;
+    if (frac == 0) return '$whole';
+    if (frac % 10 == 0) return '$whole.${frac ~/ 10}';
+    return '$whole.${frac.toString().padLeft(2, '0')}';
   }
 
   // ── Height ───────────────────────────────────────────────────────────────

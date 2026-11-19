@@ -1,0 +1,33 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-exdown-recommended-1",
+  "type": "exercises_down",
+  "origin": "phone",
+  "sentAt": "2026-11-01T09:00:00Z",
+  "payload": {
+    "generatedAt": "2026-11-01T09:00:00Z",
+    "catalogVersion": "v1-3-recommended",
+    "batchIndex": 0,
+    "batchCount": 1,
+    "totalCount": 3,
+    "exercises": [
+      {
+        "exerciseId": "ex-circuit",
+        "name": "Jump Rope Circuit",
+        "capabilities": ["time", "rounds"],
+        "recommendedFor": ["cardio_endurance", "resistance_lifting", "isometric_stretching", "sports"]
+      },
+      {
+        "exerciseId": "ex-tennis",
+        "name": "Tennis Rally Drill",
+        "capabilities": ["time", "rounds"],
+        "recommendedFor": ["sports"]
+      },
+      {
+        "exerciseId": "ex-bench",
+        "name": "Barbell Bench Press",
+        "capabilities": ["reps", "sets", "load", "bilateral"]
+      }
+    ]
+  }
+}

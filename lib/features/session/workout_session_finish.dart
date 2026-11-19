@@ -18,6 +18,32 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
       return;
     }
 
+    final nothingLogged = await widget.workoutState.finishWouldSaveNothing();
+    if (!mounted) return;
+    if (nothingLogged) {
+      final discard = await ConfirmationDialog.showTwoChoice(
+        context: context,
+        title: 'Discard Workout?',
+        body: Text(
+          "Nothing was logged, so this workout won't be saved.",
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        dismissLabel: 'Cancel',
+        confirmLabel: 'Discard',
+        dismissKey: const Key('session-finish-nothing-cancel'),
+        confirmKey: const Key('session-finish-nothing-confirm'),
+        isDestructive: true,
+      );
+      if (discard && mounted) {
+        _leaving = true;
+        await widget.workoutState.discardCurrentSession();
+        if (mounted) Navigator.of(context).pop();
+      }
+      return;
+    }
+
+    final completed = widget.workoutState.completedExerciseCount();
+
     final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
       title: 'Finish Workout?',
@@ -36,7 +62,7 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '• ${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}',
+                  '• $completed exercise${completed != 1 ? 's' : ''}',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 8),
@@ -103,9 +129,8 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to finish workout: $e')));
+      debugPrint('Finish workout: $e');
+      OmniMessage.error(context, 'Could not finish the workout. Try again.');
     } finally {
       if (mounted) {
         _updateUi(() => _isFinishingSession = false);

@@ -317,13 +317,16 @@ void main() {
     double fat = 5,
     String? imagePath,
     String? groupId,
+    FoodUnitType unitType = FoodUnitType.grams,
+    double referenceAmount = 100,
+    String referenceLabel = 'g',
   }) {
     return FoodDraft(
       name: name,
       groupId: groupId,
-      unitType: FoodUnitType.grams,
-      referenceAmount: 100,
-      referenceLabel: 'g',
+      unitType: unitType,
+      referenceAmount: referenceAmount,
+      referenceLabel: referenceLabel,
       protein: protein,
       carbs: carbs,
       fiber: fiber,
@@ -630,6 +633,156 @@ void main() {
         expect(fromRepo!.lastAmountConsumed, 100.0);
         // And the catalog edit itself must have landed.
         expect(libAfter.protein, 99.0);
+      },
+    );
+
+    test(
+      'S-92b.10 a serving-changing catalog edit clears the linked copy\'s '
+      'remembered amount',
+      () async {
+        final repo = await _freshRepo();
+        await repo.seedCatalogFood(
+          catalogFood(id: 'catalog-amount-2', name: 'Remembered Food'),
+        );
+
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+        await state.loadFoods();
+        final libraryId = await state.addCatalogFoodToLibrary(
+          'catalog-amount-2',
+        );
+
+        final before = await repo.getFoodById(libraryId);
+        await repo.updateFood(before!.copyWith(lastAmountConsumed: 100.0));
+        await state.loadFoods();
+
+        // The catalog moves off grams / 100 / `g` to count / 1 / `jar`.
+        final catalogSource = state.catalogFoods.firstWhere(
+          (f) => f.id == 'catalog-amount-2',
+        );
+        await state.updateCatalogFood(
+          catalogSource,
+          catalogDraft(
+            name: 'Remembered Food',
+            unitType: FoodUnitType.count,
+            referenceAmount: 1,
+            referenceLabel: 'jar',
+          ),
+        );
+
+        final libAfter = state.foods.firstWhere((f) => f.id == libraryId);
+        expect(libAfter.referenceLabel, 'jar');
+        expect(libAfter.lastAmountConsumed, isNull);
+        final fromRepo = await repo.getFoodById(libraryId);
+        expect(fromRepo!.lastAmountConsumed, isNull);
+      },
+    );
+
+    test(
+      'S-92b.10 a name-only catalog edit keeps the linked copy\'s '
+      'remembered amount',
+      () async {
+        final repo = await _freshRepo();
+        await repo.seedCatalogFood(
+          catalogFood(id: 'catalog-amount-3', name: 'Renamed Food'),
+        );
+
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+        await state.loadFoods();
+        final libraryId = await state.addCatalogFoodToLibrary(
+          'catalog-amount-3',
+        );
+
+        final before = await repo.getFoodById(libraryId);
+        await repo.updateFood(before!.copyWith(lastAmountConsumed: 100.0));
+        await state.loadFoods();
+
+        final catalogSource = state.catalogFoods.firstWhere(
+          (f) => f.id == 'catalog-amount-3',
+        );
+        await state.updateCatalogFood(
+          catalogSource,
+          catalogDraft(name: 'Renamed Food v2'),
+        );
+
+        final libAfter = state.foods.firstWhere((f) => f.id == libraryId);
+        expect(libAfter.name, 'Renamed Food v2');
+        expect(libAfter.lastAmountConsumed, 100.0);
+      },
+    );
+
+    test(
+      'S-92b.17 the legacy-upgrade propagation clears a changed serving and '
+      'keeps an unchanged one',
+      () async {
+        // Fixture A — the catalog serving changes under a legacy row.
+        final repoA = await _freshRepo();
+        await repoA.seedCatalogFood(
+          catalogFood(id: 'catalog-legacy-amount-1', name: 'Almond butter'),
+        );
+        final stateA = FoodLibraryState(repoA);
+        await stateA.loadCatalogFoods();
+        await stateA.loadFoods();
+        await stateA.createFood(
+          _libraryFood(id: 'legacy-amount-1', name: 'Almond butter'),
+        );
+        final createdA = stateA.foods.firstWhere(
+          (f) => f.id == 'legacy-amount-1',
+        );
+        expect(createdA.catalogId, isNull);
+        await stateA.updateFood(createdA.copyWith(lastAmountConsumed: 200.0));
+
+        final catalogA = stateA.catalogFoods.firstWhere(
+          (f) => f.id == 'catalog-legacy-amount-1',
+        );
+        await stateA.updateCatalogFood(
+          catalogA,
+          catalogDraft(
+            name: 'Almond butter',
+            unitType: FoodUnitType.count,
+            referenceAmount: 1,
+            referenceLabel: 'jar',
+          ),
+        );
+
+        final upgradedA = stateA.foods.firstWhere(
+          (f) => f.id == 'legacy-amount-1',
+        );
+        expect(upgradedA.catalogId, 'catalog-legacy-amount-1');
+        expect(upgradedA.referenceLabel, 'jar');
+        expect(upgradedA.lastAmountConsumed, isNull);
+
+        // Fixture B — a name-only catalog edit on a fresh legacy row.
+        final repoB = await _freshRepo();
+        await repoB.seedCatalogFood(
+          catalogFood(id: 'catalog-legacy-amount-2', name: 'Almond butter'),
+        );
+        final stateB = FoodLibraryState(repoB);
+        await stateB.loadCatalogFoods();
+        await stateB.loadFoods();
+        await stateB.createFood(
+          _libraryFood(id: 'legacy-amount-2', name: 'Almond butter'),
+        );
+        final createdB = stateB.foods.firstWhere(
+          (f) => f.id == 'legacy-amount-2',
+        );
+        await stateB.updateFood(createdB.copyWith(lastAmountConsumed: 200.0));
+
+        final catalogB = stateB.catalogFoods.firstWhere(
+          (f) => f.id == 'catalog-legacy-amount-2',
+        );
+        await stateB.updateCatalogFood(
+          catalogB,
+          catalogDraft(name: 'Almond butter enriched'),
+        );
+
+        final upgradedB = stateB.foods.firstWhere(
+          (f) => f.id == 'legacy-amount-2',
+        );
+        expect(upgradedB.catalogId, 'catalog-legacy-amount-2');
+        expect(upgradedB.name, 'Almond butter enriched');
+        expect(upgradedB.lastAmountConsumed, 200.0);
       },
     );
   });

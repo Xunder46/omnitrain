@@ -3,9 +3,10 @@
 //
 // The wire carries `distanceSource` on a timed entry that also carries
 // `distanceMeters` (D-334). The import stores it, or `entered` when the watch
-// sent none — a watch session never runs GPS, so a distance that arrives
-// without a source was dialled by hand (D-335). A distance the phone wrote is
-// never rewritten by a later sync, in value or in source (D-336).
+// sent none (D-335) — a distance that arrives without a source was dialled by
+// hand (an older or hand-entering wrist names none), while a wrist that
+// measured it names `gps` (plan 2026-10-10-19e, D-2206). A distance the phone
+// wrote is never rewritten by a later sync, in value or in source (D-336).
 //
 // Scenarios S-876, S-877, S-878 and S-880 of
 // `docs/plans/2026-09-27-03b-stats-pr3b-distance-source-import-plan.md`.

@@ -93,6 +93,17 @@ class _RefusingInboxRepository extends MockWorkoutRepository {
   }
 }
 
+/// A repository whose inbox read fails with an exception whose text must never
+/// reach the screen (D-27.2): only `debugPrint` may see it.
+class _ExplodingInboxRepository extends MockWorkoutRepository {
+  @override
+  Future<List<WatchInboxEntry>> getWatchInboxEntriesForSession(
+    String watchSessionId,
+  ) async {
+    throw Exception('boom');
+  }
+}
+
 /// One phone: the repository, the real states the screens are handed, and the
 /// scheduler phase recorded at every notification the state sends after
 /// [recordNotificationPhases] is called.
@@ -431,6 +442,45 @@ void main() {
         reason:
             'D-179 the deferred reaction ran: the end delivered during the build opened the '
             'summary',
+      );
+    },
+  );
+
+  testWidgets(
+    'D-27.2 a failed session load says so in plain words and hides the exception',
+    (WidgetTester tester) async {
+      final phone = await _phone(repository: _ExplodingInboxRepository());
+
+      await tester.pumpWidget(
+        _harness(phone.workoutState, [_sessionScreen(phone, editMode: true)]),
+      );
+      await tester.pump();
+
+      expect(
+        find.text('Could not load your workout. Try again.'),
+        findsOneWidget,
+        reason:
+            'D-27.2 the load failure is a plain sentence with the retry '
+            'instruction in it',
+      );
+      expect(
+        find.text('Retry'),
+        findsOneWidget,
+        reason: 'the error state keeps its retry control',
+      );
+      expect(
+        find.textContaining('Exception'),
+        findsNothing,
+        reason:
+            'D-27.2 the exception text belongs in a `debugPrint`, never on '
+            'the screen',
+      );
+      expect(
+        find.textContaining('boom'),
+        findsNothing,
+        reason:
+            'D-27.2 the exception message belongs in a `debugPrint`, never '
+            'on the screen',
       );
     },
   );

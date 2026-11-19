@@ -1,0 +1,738 @@
+# Wearable App — The Wrist's Own Logging QA Walkthrough
+
+Level 3 (paired devices) of [the Setup and QA guide](watch-app-setup-and-qa.md),
+moved to its own page so neither page nears the 64 KiB indexing ceiling. Steps
+keep their numbers; "What QA passed means" in the main guide counts them.
+
+This walkthrough exercises the wrist logging surface, which has not run on
+hardware yet.
+
+1. **Start a workout on the wrist and pick an exercise.** Tap a cell in the
+   modality grid — **Resistance**, say. The tap creates nothing: the picker comes
+   up over the whole exercise list, and picking one is what starts the session
+   (`WatchModalityStartTests.testS17605ThePickCreatesOneSessionWithTheModalityAndTheExercise`).
+   The logging screen appears with that exercise's value rows. Dial 3
+   reps and tap **Log**: the row is accepted and the rest screen appears counting
+   up, with exactly one control, **Next**
+   (`WatchRestSurfaceTests.testS162NextEndsTheRestAtTheTapInstant`).
+2. **The set is on the phone at the moment it is logged.** Phone app in the
+   foreground and reachable. Without touching the wrist, the phone's session for
+   this wrist session shows the set. The phone must show it before any Sync —
+   only an untouched wrist proves the set is handed over as it is logged.
+   Nothing is sent on a timer.
+3. **End Session and answer once.** Turn Settings → Effort Rating on, on the
+   phone, and sync from the wrist. On the wrist tap the list button, then
+   **End Session**, then **Finish** in the prompt; the question appears alone —
+   no back or swipe, only the small Skip under Confirm. Answer 4. The phone's
+   calendar holds one entry for the session and its Summary shows 4 / 5.
+4. **A workout logged with the phone out of reach catches up by itself — (owner).**
+   Start another wrist workout and log a set with the phone in Airplane Mode.
+   Nothing arrives. Turn Airplane Mode off: with the phone back in reach the wrist
+   catches up on its own — the set lands exactly once without tapping **Sync**
+   (`WatchConnectivityBridgeTests.testS107TheWristCatchesUpOnAReachabilityEdgeOnce`:
+   the owed entries leave once, and a second notification while one is in flight
+   is dropped). The **Sync** button still fetches routines, preferences and the
+   food catalog, and retries by hand.
+5. **A band-assisted set logs a negative load** *(owner)*. Pick a set exercise
+   with a load. Dial the load down past zero: the crown stops at the wire's floor
+   however long you keep turning
+   (`WatchLoggingTimersTests.testS061AnAssistedLoadStopsAtTheWireFloor`, and the
+   phone's own floor in `watch_logging_stepping_test.dart`). Log the set: the
+   phone's session for this wrist session shows the same assisted value, not
+   zero, and its summary counts it
+   (`WatchLoggingSurfacesTests.testS062AnAssistedLoadIsEmittedWithItsSign`;
+   `test/watch_session_import_test.dart`,
+   `S-58 a set logged at −20 kg imports at −20 kg and sums −160`), and the next
+   set opens at that assisted load rather than resetting to zero
+   (`testS063TheNextSetCarriesTheAssist`). A set whose load was never touched
+   still claims no load at all (`testS062AnUntouchedLoadDialSendsNoLoadKg`).
+   Dialling back up to zero leaves a plain `0.0`, never a `-0.0`
+   (`testS064AZeroLoadNeverPrintsASignedZero`).
+6. **A timed effort logs one Start-to-Log window** *(owner)*. Pick a timed
+   exercise: logging shows one clock readout and one **Start** button, with no
+   duration, distance, rounds or length row. Tap **Start** and the readout counts
+   up while the button reads **Log**
+   (`WatchTimedWorkTests.testS1300TimedWorkIsLoggedAsTheWindowFromStartToLog`);
+   log it and the phone's session shows one entry for that window. A round
+   exercise picked with the phone's number counts down from it — 40:00 for a
+   soccer half
+   (`WatchLoggingTimersTests.testS1401TheWristCountsDownFromTheSlotsOwnLength`),
+   while one whose slot carries no number keeps the wrist's preset at 3:00
+   (`…testS1402ASlotWithNoNumberKeepsTheWristsPreset`). **End Session** still ends
+   the session
+   (`…testS1311FinishLeavesTheWorkClockRunningAndTakesTheReadout`).
+7. **End Session asks first — (owner).** On the menu tap **End Session**:
+   a solid screen reads **Finish Workout?** with the phone's own words — "This
+   action will save and close the workout session." — then **Finish** / **Cancel**,
+   and nothing of the menu shows through behind it
+   (`WatchMenuTests.testS3401TheMenuCopyIsTheOwnersWords`). Tap **Cancel**: the
+   menu is still there and the session is still running. Tap **End Session**,
+   then **Finish** in the prompt: the session ends and the effort-rating question
+   follows as in step 3. Also on this pass: a rest screen names itself, with a
+   **Rest** caption above the clock
+   (`WatchTimedWorkTests.testS3409TheRestSurfaceNamesItself`).
+8. **A sports period's length is dialled before Start — (owner).** Pick a sports
+   (round) exercise: logging shows a length row of minus, a value and plus. Its
+   start value is the phone's number for that slot, or 3:00 with none; turn the
+   row down to 1:00 with the minus or the crown
+   (`WatchTimedWorkTests.testS3405TurningTheLengthChangesWhatStartCountsDownFrom`).
+   Tap **Start**: the countdown begins at 1:00 and the length row is gone, so the
+   length cannot be changed while the period runs
+   (`…testS3406ARunningPeriodHasNoLengthRowAndKeepsTheDialledLength`). Tap
+   **Log**: the next period of the same exercise opens at 1:00, while a different
+   exercise's period opens at its own number.
+9. **Every effort ends on the rest screen — (owner).** Log a **Plank** hold, a
+   cardio interval and a sports period on the wrist: each one leaves the rest
+   screen counting up with **Next** as its one control
+   (`WatchTimedWorkTests.testS3502ATimedEntryStartAndLogLeavesTheRestRunning`;
+   the hold and the period,
+   `…testS3503AHoldStartsARestAfterItsLog` and
+   `…testS3503BAPeriodStartsARestAfterItsLog`). Tap **Next**: the wrist is back
+   to logging the same exercise, and the phone's session for this wrist session
+   shows the rest time that just ended
+   (`…testS3505EndingTheRestAfterATimedEntryReportsThatEntry`). Start the next
+   interval instead of tapping Next: the rest ends at the Start instant and only
+   then does the new window open
+   (`…testS3504StartOfTheNextTimedEffortEndsTheRestItWalksInto`).
+10. **End Session sits apart from the exercises — (owner).** Open the list on the
+    wrist: the session's exercises are one group, and **Add Exercise** and
+    **End Session** sit below a divider, so neither reads as one more exercise
+    row. The extra space sits between the line and **Add Exercise**; **Add
+    Exercise** and **End Session** keep the normal row spacing.
+11. **Add an exercise from the watch — (owner).** Sync, open the list, tap
+    **Add Exercise**, pick one: it is the last row, it has no count, the
+    exercise being logged did not change, and the phone's open session shows
+    the new exercise; tap the same one again: a second slot. The list is the
+    phone's whole exercise list, so it only reaches the wrist at **Sync**
+    (`WatchMenuTests.testS3611TheAddListSortsCaseInsensitivelyByName`,
+    `…testS3612AddExerciseAppendsAtTheEndAndKeepsThePosition`,
+    `…testS3613TheSameExerciseTwiceGetsTwoSlots`,
+    `…testS3614TheAddAnnouncesTheLadderChangeToThePhone`), and a phone holding
+    no routine sends it too (D-3601).
+12. **The wrist wears the phone's theme accent — (owner).** On the phone
+    (Settings) pick each of the six themes in turn and **Sync** from the wrist.
+    On the wrist's prominent buttons — **Start** / **Log** on the logging
+    surface, **Next** on the rest surface, the current row of the menu, a
+    routine row on Start — the fill is that theme's accent and the label reads:
+    the accent's own contrast decides whether the label is dark or light, and
+    every theme today takes dark labels
+    (`WatchAccentTests.testS3710EveryRowOfTheSharedTableParsesWithTheTablesLabel`
+    holds every row of `watch/contract/watch_accent_contract.json` to the label
+    it names). The accent arrives with the Sync, like every other phone setting,
+    and picking a new theme shows at the next one. Before any Sync — a fresh
+    install — the buttons wear the phone's default theme accent
+    (`WatchAccent.fallbackHex`, the contract's `abyssalNeon`), and a copy that
+    carries no accent, or one too dark to read on, is worn as that fallback
+    rather than as the last one seen
+    (`WatchAccentTests.testS8601WornWithNoHexIsThePhoneDefaultThemeAccent`,
+    `…testS8602UnusableOrMalformedHexWearsTheFallback`,
+    `…testS3712ANearBlackAccentIsRefusedRatherThanWorn`).
+    Nothing else changes color; the wrist's black stays black.
+13. **The exercise list arrives in batches, and only when it changed —
+    (owner).** On a real pair, tap **Sync** and open **Add Exercise**: the full
+    list is there, custom exercises included, A to Z. Tap **Sync** again with
+    nothing changed on the phone: the list is unchanged — the phone sends the
+    preferences and the routines and no exercise list the second time, which
+    you can only see in the phone's logs. Add a custom exercise on the phone,
+    tap **Sync**: it appears in **Add Exercise** in its A-to-Z place. Turning
+    the phone's Bluetooth off mid-way is not part of this step. The behaviour
+    behind it is pinned off-device by `test/watch_reference_sync_test.dart`
+    (`S-3843 250 exercises arrive as five batches in name order`),
+    `test/watch_sync_request_handler_test.dart` (`S-3850 the wrist names the
+    current version: no batch travels`, `S-3854 a sync with the sent version
+    sends no batch, and a custom exercise stales it`) and
+    `WatchMenuTests.testS3611TheAddListSortsCaseInsensitivelyByName`.
+14. **Recommended exercises first — (owner).** Sync so the wrist holds the
+    full list, then tap **Cardio** on the Start screen: the exercise picker
+    opens with a small **Recommended** header and, under it, the exercises
+    that suit Cardio, A to Z — for example Running, Cycling, Rowing — then an
+    **Other** header and everything else, A to Z. There is no row of letters
+    and no letter headers. Tap **Resistance** instead and the lifting
+    exercises come first. Tap an exercise and the session starts with it, as
+    before. On a Free-style or plan-started session — one with no modality —
+    **Add Exercise** is one plain A-to-Z list; during a Cardio session,
+    **Add Exercise** puts the cardio exercises first. The grouping and its
+    entry points are pinned off-device by
+    `WatchMenuTests.testS19907TheModalityListSplitsIntoRecommendedThenOther`,
+    `…testS19908OneNonEmptyGroupIsOneUntitledGroup`,
+    `…testS19909NoModalityIsOneUntitledGroupEvenWhenExercisesCarryKeys`,
+    `…testS19913BothEntryPointsGroupWithTheRealModality` and
+    `WatchSessionStartPathsTests.testS19911ListModalityFollowsThePendingStartThenTheSession`;
+    that the letter grid and its symbols are gone is pinned by
+    `WatchMenuTests.testS19912TheLetterGridAndItsSymbolsAreGone`.
+15. **The menu is one tap away during a rest — (owner).** Log a set so the rest
+    screen is up: it carries the same top-right list button the logging screen
+    does, and tapping it opens the same menu over the rest. Tap **Add
+    Exercise**, pick one and go back: the wrist is on the rest screen again with
+    the timer still counting and the new exercise last in the ladder. A jump
+    from that menu returns to the rest screen too, and the rest ends only
+    through **Next** or by logging the next set
+    (`WatchMenuTests.testS3103ATheRestScreenCarriesTheMenuButton`,
+    `…testS3101AJumpDuringARestKeepsTheRestRunning`,
+    `…testS3102AAddingAnExerciseDuringARestKeepsTheRestRunning`,
+    `…testS3111ALogClosesTheRunningRestAndStartsTheNext`).
+16. **The Crown turns the armed row — (owner).** Open a set exercise and turn
+    the Crown without touching the screen: Reps changes with each tick — the
+    first row is armed by itself. Tap the Load row (or its − / +): the outline
+    moves to Load and the Crown now steps the load. If the Crown still does
+    nothing, the cause is not focus and plan 46a reopens. The model side is
+    pinned by `WatchCrownArmingTests.swift` (S-6401..S-6406, S-6408).
+17. **Each exercise keeps its own numbers — (owner).** Dial the load to 60 kg
+    (or its equivalent in the phone's unit) on a set exercise, then open
+    another exercise from the menu: it shows its own starting load, not the 60
+    you dialled, and coming back shows the 60 again
+    (`WatchDialledPerExerciseTests.swift` S-6410..S-6412; Dart twin
+    `test/watch_dialled_per_exercise_test.dart`). Log on the second exercise:
+    only its numbers clear; the first exercise keeps its dialled ones (S-6411).
+18. **Swipe between the session's exercises — (owner).** On a session with
+    three exercises, swipe left on the logging screen: the next exercise slides
+    in as a preview card — its name, how many sets are logged on it and the
+    counter — and when the swipe settles it becomes the current exercise with
+    its own rows and numbers; the counter beside the name moves from 1/3 to
+    2/3. The phone's screen does not move. A session with one exercise shows no
+    counter and does not page. The rules are pinned off-device by
+    `WatchPagerModelTests.swift` (S-6601..S-6608) and the shell mount and view
+    shape by `WatchPagerSourceTests.swift` (S-6610..S-6612); the swipe itself,
+    the preview card and the counter on hardware are this step — the Simulator
+    could not be driven.
+19. **A swipe during a timed effort is refused — (owner).** Start a timed
+    effort so its clock runs, then swipe: the exercise does not change, you
+    feel one failure tap, and a one-line notice, "An effort is running"
+    (`WatchPagerCopy.lockedNotice`), shows for about a second and a half
+    (`WatchPagerCopy.noticeSeconds`;
+    `WatchPagerModelTests.testS6603ASwipeDuringAWorkClockIsRefusedAndRaisesTheNotice`
+    holds the refusal, the words and the notice window off-device). The haptic
+    and the notice on hardware are this step. With the effort stopped, swiping
+    works again, and the Crown still steps the outlined value and never changes
+    exercise (`WatchPagerSourceTests.testS6612ThePagerTakesNoCrownAndNoFocus`).
+20. **Plans 56 and 57's four surfaces — (owner).** Four checks in one pass on a real
+    watch. Delete the app and reinstall, open it before any **Sync**: the
+    prominent buttons are cyan with dark labels, not grey
+    (`WatchAccentTests.testS8604ContentViewWearsWornAndTheAssetCarriesTheColor`).
+    On a food's portion row, turn the Crown the way that raises Reps on the
+    logging screen: the portion goes up
+    (`WatchPortionCrownTests` S-8611..S-8616). Log a set so the rest screen
+    shows: its clock is as large as the work clock
+    (`WatchRestSurfaceTests.testS8621TheRestClockMatchesTheWorkReadoutsScale`).
+    Tap a grid cell, then close the picker without picking: the start
+    screen returns with no workout running, and the phone's Home shows no live
+    watch session — a modality tap creates nothing to abandon
+    (`WatchModalityStartTests.testS17606CancelLeavesNoSessionRowAndNoFrame`; the
+    give-back of a session that was left empty is `WatchCancelEmptyFreeWorkoutTests`
+    S-8701..S-8706, the phone side `test/watch_session_import_test.dart` S-265, an
+    abandoned session creates no history).
+21. **The watch says when a start cannot happen — (owner).** Three grey lines on
+    the Start screen, each needing a real pair or a simulator trick. Delete or
+    replace a routine on the phone and do **not** Sync, then tap the stale
+    routine on the watch: a grey line, "That routine is no longer on the watch.
+    Tap Sync."
+    (`WatchSyncNoAnswerTests.testS9003UnknownRoutineThrowsAndLeavesTheSessionUnchanged`
+    holds the throw and the untouched session off-device;
+    `WatchPhoneProblemWiringSourceTests.testS9004TheStartSurfaceSaysWhenARoutineVanished`
+    holds the wiring). Force-quit the phone app with the phone still reachable
+    and tap **Sync**: the spinner runs about 20 s, stops, and a grey line says
+    "No answer from your phone. Open OmniTrain on it and try again." — it goes
+    when you Sync again or any answer from the phone arrives
+    (`WatchSyncNoAnswerTests.testS9001cCapWithNoArrivalsIsTrue` is the 20 s cap,
+    `…testS9001dRoutinesArrivedIsAnsweredSoFalse` the answered case;
+    `WatchPhoneProblemWiringSourceTests.testS9004TheHostRaisesTheNoAnswerAndLinkLines`
+    the wiring). The third line, "Phone link unavailable. Restart the watch
+    app.", needs a watch whose WatchConnectivity activation fails — hard to
+    provoke on hardware, so it is unit-tested only
+    (`WatchPhoneProblemWiringSourceTests.testS9004TheRadioReportsWhenItCannotComeUp`;
+    the sentence `WatchSyncNoAnswerTests.testS9002LinkUnavailableLabelIsExactlyThePlannedSentence`).
+22. **The wrist taps on time with the screen down, and a dimmed rest shows
+    minutes — (owner).** Three checks on a real watch. Rest Ping 30 s on the
+    phone, start a workout on the watch, log a set, lower the wrist so the
+    screen goes dark: a tap at 30 s, 60 s and 90 s. Same with the screen dimmed
+    but on (Always On): the rest shows "N min"; raise the wrist and the m:ss
+    clock is back and correct. Phone locked, watch on the wrist, phone app in
+    the background: at a boundary count the taps — one tap is fine; two close
+    taps mean the phone's own rest notification mirrors to the watch as a
+    second tap, tell the lead. The scheduler, the catch-up and the dimmed
+    minutes clock are held off-device by `WatchRestPingSchedulerTests`
+    (S-9101..S-9108) and `WatchRestPingWiringSourceTests` (S-9109); whether
+    watchOS lets the app tap with the wrist down, and the dimmed redraw
+    cadence, are this step.
+23. **A wrist raise sends nothing when nothing changed — (owner).** Four checks
+    on paired hardware. Raise the wrist twice in a row with the phone in
+    reach: the second raise stores nothing new. Change a phone setting (the
+    accent or Rest Ping), raise the wrist: the watch picks it up; raise again:
+    nothing new. Add a routine on the phone and raise the wrist: it appears.
+    Tap **Sync** on the watch's start screen: it still completes (a full
+    re-send — the way out when the phone's "nothing changed" answer is wrong).
+    On a raise with nothing changed the start screen shows no syncing spinner;
+    a watch with nothing synced yet (a fresh install) still shows it, and
+    tapping **Sync** shows it. The phone's changed-only answer is held
+    off-device by `test/watch_sync_changed_only_test.dart` (S-9201..S-9212),
+    the Sync button's full ask by `WatchManualSyncSourceTests` (S-9220), and
+    the spinner gating by `WatchSyncProgressWiringTests`
+    (`testS8508CatchUpBeginsOnlyWhenReachable`,
+    `testS9221AnIncrementalCatchUpOpensNoWindow`).
+
+29. **The exercise page fits a 40 mm watch — (owner).** On a 40 mm watch start
+    a ride (or any distance exercise) from the grid's **Cardio** cell, then add
+    a lift from the menu. On both
+    pages the "2/3" counter sits to the left of the menu button, the exercise
+    name stops short of the button, and the Start (or Log) button is fully on
+    screen. With Location refused, a distance exercise shows one grey line
+    "No distance, Location access is off" and Start is still on screen.
+    Heart-rate refusal no longer adds a line to exercise pages
+    (`WatchExercisePageFitTests`, plan 70).
+
+30. **Health access off is said on the Start screen and the summary — (owner).**
+    With Health access refused: the Start screen says so (unchanged); finish a
+    workout and the summary shows "No heart rate, Health access is off" below
+    its rows. With access on and a heart rate recorded, no such line shows.
+
+31. **A phone-started workout brings the watch's heart rate to the phone —
+    (owner).** Start a workout on the phone with the watch on the wrist, log a
+    set or two, finish on the phone. The session summary opens at once; within
+    a few seconds the Avg and Max heart-rate row appears without leaving the
+    screen. Delete the session from History before the numbers arrive (watch
+    out of range): when the watch reconnects, no session reappears. A workout
+    started on the watch still shows its heart rate as before
+    (`WatchFollowedSessionEndTests`, `test/watch_followed_end_import_test.dart`,
+    `test/session_summary_late_heart_rate_test.dart`, plans 71 and 72).
+
+32. **A message that arrives while the watch app opens is kept — (owner).**
+    With the watch app closed, finish a workout on the phone (or log a set on
+    the phone during a live workout), wait a minute, then open the watch app:
+    it shows the new state without pressing Sync. The simulators do not
+    deliver queued transfers, so only a real watch can show this
+    (`WatchInboundLaneTests`, S-10301..S-10305, plan 73).
+
+33. **Rides, rows and walks record as themselves, and a run inside a routine
+    keeps its map — (owner).** Finish a Zone 2 Ride: Fitness shows Cycling, not
+    Run; a rowing exercise shows Rowing; Brisk Walk shows Walking; Hike shows
+    Hiking. A custom cardio exercise made with discipline Cycling records as
+    Cycling; with no discipline it records as a Run. A routine that starts with
+    a lift and has an outdoor run in the middle: Health > Workouts > the
+    workout > Route exists afterwards (note whether Fitness draws it for a
+    Strength workout); a lifting-only workout leaves no route
+    (`WatchHealthActivityTests`, `WatchRouteKeeperTests`, plans 75 and 76).
+
+34. **Swiping between exercises and the rest screen's Next — (owner).** In a
+    session with three exercises, swipe left and right on the logging screen:
+    the next exercise's logger replaces the current one at once with a light
+    tap, no screen with only the exercise name appears at any moment, and the
+    counter reads 2/3; swiping past the first or last exercise does nothing.
+    Log the last planned set of exercise 1 and read the rest line
+    "Next exercise: <exercise 2> · Set 1 of N": tap Next and exercise 2's logger
+    opens. With sets remaining ("Next set: Set 2 of 3"), or on an exercise with
+    no plan, Next returns to the same exercise — the line's word is the tell:
+    "Next exercise: " only when Next moves. Swipe back to exercise 1 and log an
+    extra set. Held off-device by `WatchRestAdvanceTests.swift`,
+    `WatchPagerModelTests` S-9110 and `WatchPagerSourceTests` S-9111 (plan 79);
+    the two words by
+    `WatchRestLabelsTests.testS14941AMetHoldPlanMovesUnderTheExercisePrefix`
+    and `…testS14942APlannedSetStaysThenMovesUnderItsOwnPrefix` (plan 149).
+
+35. **New PR banner on the wrist — (owner).** (a) On a watch that has never
+    synced, log any set: no banner, and the usual logged tap. (b) Tap Sync and
+    wait for the spinner to stop, then pick an exercise you have never trained
+    (or log a heavier weight than your best) and log a set: a trophy with
+    "New PR" shows at the top for about four seconds — straight away on the rest
+    screen too, when the set starts a rest — the tap feels different from the
+    usual one, and Log, the rest screen and Next all still work while it shows.
+    (c) Log the same set again: no banner, and the usual tap.
+    (d) Log a heavier one: the banner again. (e) In a workout mirrored to the
+    wrist, log a set on the PHONE: the phone says "Congrats! New PR" and the
+    watch shows nothing. (f) With VoiceOver on, the banner is read as "New
+    personal record", once per record. Held off-device by
+    `WatchPersonalRecordBannerTests.testS87b9ARecordLogPlaysTheRecordTapAndNotTheLoggedOne`,
+    `…testS87b10TheBannerIsVisibleUntilTheWindowEnds`,
+    `…testS87b10ASecondRecordRestartsTheWindow`,
+    `…testS87b8ASnapshotSetRaisesNoBannerAndNoTap`,
+    `WatchPersonalBestsTests.testS87b5TheSameSetTwiceIsOneRecordAndAHeavierOneIsTheNext`,
+    `WatchSpokenTextTests.testS87b14TheRecordBannerSpeaksTheWholeSentence` and
+    `WatchPersonalBestsWiringSourceTests.testS87b14TheBannerCarriesTheLabelAndOneGuardedAnnouncement`,
+    `…testS88_3TheRestSurfaceHostsTheBannerInsideItsTimeline` and
+    `…testS88_1TheAnnouncementIsTakenOncePerRecordAndNeverForANonRecord`
+    (plans 87b, 88).
+
+36. **Syncing twice does not take the bests away — (owner).** (a) Tap Sync and
+    wait for the spinner to stop, then tap Sync again straight away with no
+    workout logged in between: nothing looks different, Sync still completes and
+    its spinner still stops. (b) Log a set that beats your best on the watch: the
+    trophy "New PR" banner still shows — the watch kept its bests, which is the
+    check that the second sync did not take them away. (c) Finish a workout on
+    the phone, tap Sync on the watch, then log a set that beats the phone's new
+    best: the banner fires for the new number, and logging the old best again
+    fires nothing. Held off-device by `test/watch_sync_request_handler_test.dart`
+    (`S-87c-1 a wrist holding the bests, raising again at the same revision, is
+    sent none and reads no history`; `S-87c-2 a completed workout reaches the
+    next request, then goes quiet`) and `test/watch_session_projection_test.dart`
+    (`S-87c-18 a holding wrist is sent no bests until its frame is stale`, plan
+    87c).
+
+37. **Cancelled or abandoned sessions leave nothing in Fitness; a force-quit
+    stops the sensor — (owner, plan 89).** Phone Settings, Write workouts on.
+    (a) Start a workout on the watch and cancel it on the wrist: Fitness shows
+    nothing new. (b) Start a session on the phone, add a set, then Discard
+    session on the phone: Fitness shows nothing new, and the watch's workout
+    for it is discarded too. (c) Finish a short session on the watch: Fitness
+    shows one workout. (d) Start a workout, then force-quit the watch app from
+    the app switcher: the green heart-rate light should stop within about a
+    minute without reopening the app. If it stays on, or comes straight back,
+    report it: the system may not relaunch a force-quit app, or the relaunch may
+    restore the still-active session and open a new workout (plan 89 W-1). Held
+    off-device by `WatchFitnessFollowsSessionTests` and
+    `WatchFitnessFollowsSessionSourceTests`; the real hook is only seen here.
+
+38. **One Fitness workout per session — (owner, plan 89c1).** Phone Settings,
+    Write workouts on, watch app open, phone in reach. (a) On the watch start a
+    Cardio session with Outdoor Walk, walk a minute, finish it on the watch:
+    Fitness shows exactly one new workout, "Outdoor Walk". (b) On the phone
+    start a session with one exercise, let the watch pick it up, raise the wrist
+    once so the watch reports back, then finish it on the phone: Fitness shows
+    exactly one workout, sourced to the watch app. (c) With the watch app closed
+    or the watch out of reach, start and finish a session on the phone: exactly
+    one workout, sourced to the phone app. (d) On an earlier duplicate pair,
+    open Health, Browse, Activity, Workouts, Show All Data and read each
+    entry's Source: the "Other" one should be the phone app. (e) Finish a session
+    on the watch, then delete it from the calendar or Session Summary on the
+    phone (Write workouts on): its workout leaves Fitness (checked on a real
+    watch 2026-10-28, series 89c2). Held off-device by `test/health_platform_test.dart`
+    (group `S-89c1`) and `WatchOneWorkoutPerSessionTests`.
+
+Two known gaps this walkthrough must not be read as failing on: each device owns
+only the timer it started, so a Sync stops a countdown the phone wrote and
+leaves a wrist-started one running (`test/watch_logging_timers_test.dart`,
+`S-79 a snapshot leaves the wrist's countdown running and stops the phone's own`;
+the phone-written case is the reconciliation fixture `timer_cleared.json`,
+replayed by `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`),
+and the load label is always in kg, whatever unit the phone is set to
+(`WatchLoggingTimersTests.testS007APoundPreferenceStepsInPoundsStoredInKilograms`
+holds the kilogram payload underneath). Plan 87b adds two more. A set logged on
+the phone during a workout mirrored to the wrist counts against the wrist's new
+sets only after the watch app restarts: in-process the wrist compares against
+the phone's bests and its own sets alone (step 35 e), and the same phone set
+silences a beating wrist set once the app relaunches
+(`WatchPersonalRecordBannerTests.testS87b8ASnapshotSetRaisesNoBannerAndNoTap`,
+`WatchPersonalBestsTests.testS87b18ASnapshotBroughtPhoneSetFoldsIntoTheRebuild`).
+And a wrist workout the phone has not taken in yet is covered by the wrist's own
+memory of the sets it logged, which leaves a rare repeat only if the stored
+observations that memory is rebuilt from are ever pruned before the phone's next
+frame (plan 87b, open question d;
+`WatchPersonalBestsTests.testS87b17AReceiptedSetStillSilencesItsRepeatAfterARelaunch`).
+
+39. **The effort rating reaches Fitness — (owner, plan 90).** iPhone on iOS 18 or
+    later. Phone Settings, Health: switch Write workouts off, then on; the Health
+    sheet lists Workout Effort, allow it. (a) Finish a session on the watch, rate
+    it 4 on the phone: Fitness shows Workout Effort 8 for that workout (it may
+    take a few minutes to appear). (b) Change the rating to 2: Fitness shows 4.
+    (c) On another finished session, set your own effort in Fitness first, then
+    rate it in OmniTrain: your value stays. (d) Rate a phone-only session: same as
+    (a). (e) Delete a rated session in OmniTrain: the workout and its effort are
+    both gone (Health, Browse, Activity, Workout Effort). (f) Rate a session on
+    the wrist: it appears in Fitness after the phone takes it in. Report which of
+    (a) to (f) fail; (a) failing for a watch session while (d) works means
+    HealthKit refused the link to the watch's workout (plan 90 L-2). Held
+    off-device by `test/health_effort_test.dart` and
+    `test/health_effort_native_test.dart`.
+
+40. **Water on the watch's Nutrition screen — (owner, plan 95).** Watch Home,
+    Nutrition. (a) The water bar (minus, a drop and the count, plus) sits at the
+    bottom, both with foods and with an empty food list; opening a food shows no
+    bar. (b) + and − each move the count by one with a light click; at 0, − is
+    dim and does nothing. (c) Tap + twice on the phone, then Sync on the watch:
+    the watch shows the phone's count. (d) With the phone out of reach, tap +
+    twice and − once on the watch: the count moves at once and Home's line says
+    3 entries are waiting; back in reach, the phone's Nutrition screen shows one
+    glass more. (e) On a 40 mm watch the bar fits on one row. (f) With VoiceOver on,
+    the buttons read "Add one glass" and "Remove one glass", the middle "Water,
+    N glasses". Held off-device by `WatchWaterStateTests`, `WatchWaterSyncTests`
+    and `WatchWaterBarSourceTests`; the phone half by
+    `test/watch_water_log_test.dart`.
+
+41. **A workout the phone finished reaches the watch — (owner, plan 128).** (a)
+    Start a workout on the watch, keep the watch out of reach or asleep, and
+    finish it on the phone, then raise the wrist: the watch is on Start, with
+    no summary and no question. (b) The same with the watch app kept open in
+    front: within about half a minute, the next time anything is logged on the
+    watch it closes the workout by itself. (c) The same as (a) with Discard on
+    the phone instead of Finish. (d) Finish on the phone, then delete and
+    reinstall the watch app: it shows Start, not the old workout. (e) Force-
+    quit the phone app after the finish, then log a set on the watch: the watch
+    closes the workout. Held off-device by
+    `test/watch_session_end_owed_test.dart` and `WatchWorkoutSummaryTests`.
+
+42. **A routine's Focus reaches the watch — (owner, plan 125b).** (a) Give a
+    routine the Focus Stretching, sync the watch (Sync), start that routine on
+    the watch, log one hold and end it: Apple Health shows the workout as
+    Flexibility, not Other, and the OmniTrain calendar shows the Stretching
+    colour and name with the routine's name
+    (`testS12560RoutineFocusCarriesTheTableToTheSession` in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchRoutineFocusTests.swift`;
+    `test/watch_routine_focus_start_test.dart`, group `S-12561 the focus
+    stamps the started session`). (b) A routine with no Focus: still Other in
+    Health and Free Training on the calendar; a Cardio Focus of squats asks for
+    no location, says "Intervals" and registers Running in Health — the Focus
+    names the Health type and the round word; GPS follows the exercise, and the
+    squats carry no distance
+    (`testS12572RoutinesDownWithoutTheFieldKeepsTodaySBehaviour` and
+    `testS12571CardioFocusOverStrengthExercisesStaysRunning` in
+    `WatchRoutineFocusTests.swift`; `test/watch_routine_focus_start_test.dart`,
+    groups `S-12572 a routines_down with no focus anywhere` and `S-12571 a
+    cardio-focus routine of a strength exercise`). (c) Change a routine's
+    Focus on the phone (or choose Mixed / Not set), sync the watch and start
+    it: the new Focus applies (`test/watch_routine_focus_send_test.dart`,
+    group `125b D-12564 the phone emits the routine Focus`, tests `S-12576
+    (Mock arm) a Focus edit re-sends the routines at the wrist's old since,
+    with the Focus aboard` and `S-12577 a Focus clear re-sends the routines
+    without the key`). (d) Start a routine with a Focus on the PHONE while the
+    watch app is open: the watch registers it with the same Focus (plan 125d, step 43). (e) The 40 mm watch: every
+    screen looks unchanged (125b adds no visible change). Held off-device by
+    `WatchRoutineFocusTests` and `test/watch_routine_focus_start_test.dart` as
+    cited per sub-check.
+
+43. **A phone-started workout carries its Focus to the watch — (owner, plan 125d).** (a)
+    Give a routine the Focus Stretching; with the watch app open and no workout
+    running, start it on the phone and finish it: Apple Health shows the
+    workout as Flexibility, not Other. (b) Start a Free workout on the phone and
+    leave the watch on it, then start the same routine on the phone: the
+    watch swaps to the routine's exercises; after finishing, Health shows
+    Flexibility. (c) Start the Sports tile on the phone: the watch says
+    "Periods" and asks for no location (no Sports exercise carries distance); Health shows
+    Other. Cardio tile: "Intervals", Running. (d) A routine without a Focus
+    started on the phone: the watch behaves as before (Health from the
+    exercises). (e) Start a routine on the watch and let the phone adopt it:
+    nothing on the watch changes mid-workout (the watch keeps the Focus it
+    had). (f) If an older watch app is still installed with the new phone: a
+    phone-started session follows exactly as before. (g) The 40 mm watch:
+    nothing looks different (no layout change). Held off-device by
+    `WatchSnapshotFocusTests` in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchSnapshotFocusTests.swift`
+    (S-12592–S-12598), by `test/watch_snapshot_focus_wrist_test.dart`
+    (S-12592–S-12597) and by `test/watch_snapshot_focus_send_test.dart`
+    (S-12599, S-12598 importer half).
+
+44. **Discard a session from the wrist — (owner, plan 171).** (a) Start a Free
+    workout on the wrist, log one set, tap the list button: **Discard Session**
+    is the last row, below **End Session**. (b) Tap it: the prompt says
+    "Discard session?" with a red **Discard** and **Cancel** on a solid screen;
+    Cancel changes nothing and feels nothing. (c) Tap Discard Session and then
+    Discard: the menu closes to the Start surface, nothing for this session
+    appears in Fitness, and the phone's open session row is gone with its sets.
+    (d) The same while a timed effort's clock runs: the row is not dimmed and the
+    discard goes through. (e) The same during a rest: the rest screen and its
+    ping stop, and the phone's discarded session carries the rest that ran.
+    (f) Discard a session with nothing logged, then start one and tap **End
+    Session**: the End asks the discard question instead of "Finish Workout?"
+    and saves nothing. Held off-device by `WatchMenuDiscardTests`
+    (`testS17102DiscardAbandonsAtTheWristsInstantAndTellsThePhone`,
+    `…testS17101TheDiscardRowIsTheMenusLastRow`,
+    `…testS17103DiscardIsReachableMidSet`,
+    `…testS17104DiscardDuringARestStopsTheRest`,
+    `…testS17105ADiscardOwesNoRatingPrompt`,
+    `…testS17107TheFirstEndingIsFinalForDiscard`,
+    `…testS17108TheDiscardedRecordEndsThePlatformWorkoutUnsaved`,
+    `…testS17109AnEmptyEndBehavesAsADiscard`,
+    `…testS17110DiscardKeepsTheLoggedEntriesAndShowsNoSummary`,
+    `…testS17111DiscardLeavesWaterAndFoodUntouched`,
+    `…testS17102TheViewDiscardsOnlyFromTheQuestionsDiscardButton`,
+    `…testS17109TheEmptyEndRaisesTheDiscardAlert` and
+    `…testTheShellPassesTheDiscardClosure`) and
+    `WatchAccessibilitySourceTests.testS17112TheDiscardRowAndItsConfirmationSpeak`.
+
+45. **The modality grid starts the workout, in one tap and one pick — (owner,
+    plan 176).** On the Start screen the grid is the first control: **Cardio**,
+    **Resistance**, **Sports**, **Isometric**, two abreast, in the phone's four
+    colours, each 1.4 times as wide as it is tall, its label inset from both edges, and all four fit a 40 mm watch
+    without a scroll. With
+    VoiceOver on each cell reads "Start Cardio workout" and so on. (a) Tap
+    **Cardio**, then close the picker without picking: no workout runs on the
+    wrist, the Start screen returns, and the phone's Home shows no live watch
+    session — the tap itself starts nothing. (b) Tap **Resistance** and pick a
+    lift: the logging screen opens on it, and the phone's session already holds
+    that one exercise with the modality Resistance; the phone never saw the tap
+    alone. (c) With Write workouts on, do the same with a brisk/Outdoor Walk
+    exercise under **Cardio**: Fitness records one workout, typed Outdoor Walk —
+    the exercise's own Health kind, not the modality's. (d) Pick an exercise the
+    phone gives no Health kind: Cardio records Running, Resistance Strength
+    Training, Isometric Flexibility, Sports Other. (e) The **Free workout**
+    button is gone from the Start screen; the planned button, the routines and
+    Sync below the grid behave as before. Held off-device by
+    `WatchModalityStartTests`
+    (`testS17604ATapRemembersItsModalityAndCreatesNothing`,
+    `…testS17604FourTapsInARowLeaveNoTrace`,
+    `…testS17605ThePickCreatesOneSessionWithTheModalityAndTheExercise`,
+    `…testS17605TheSessionCarriesTheExercisesNamedHealthKind`,
+    `…testS17605EveryCellCreatesItsOwnModalityWithTheSameExercise`,
+    `…testS17605ASecondPickReturnsTheHeldSessionAndAddsThePick`,
+    `…testS17607AWalkThePhoneNamedIsAWalkEvenUnderCardio`,
+    `…testS17607AnUnnamedExerciseTakesItsCellsType`,
+    `…testS17608TheStartModePickerOffersTheWholeListTheFreeWorkoutOffered`,
+    `…testS17606CancelLeavesNoSessionRowAndNoFrame`) and, for the view the
+    package tests cannot compile,
+    `WatchPlannedSurfaceSourceTests.testS17601TheGridStandsAboveThePlanAndTheRoutines`,
+    `…testS17601TheGridsTapStartsNothingAndOpensThePicker`,
+    `…testS17603EachCellWearsItsAccentAtTheFixedHeight`,
+    `…testS17603EveryCellIsSpokenAsTheContractSays`,
+    `…testS17605TheStartModePickersPickIsWhatCreatesTheSession`,
+    `…testS17606ThePickerOpensInTheStartModeAndADismissDropsIt`,
+    `…testS17612TheFreeWorkoutButtonAndItsHelperAreGone`.
+
+46. **The list restarts after the last set — (owner, plan 201).** Start a
+    routine with two or three planned exercises on the watch and log every
+    planned set of every exercise. On the rest screen after the very last set
+    the line above Next reads "Next exercise: <the following exercise>" instead
+    of "Nothing planned next"; tap Next: that exercise's logger opens, an extra
+    set can be logged there (its caption reads as its own last number, e.g.
+    "Set 4 of 3") and Next keeps going on to the following exercise, the last
+    one being followed by the first. A one-exercise workout still says
+    "Nothing planned next". Held off-device by `WatchRestLabelsTests`
+    (`testS9104TheWholeLadderDoneCyclesToTheFollowingExercise`,
+    `…testS20101AfterTheLastExerciseNextGoesBackToTheFirst`,
+    `…testS20103AOneExerciseLadderNeverAnnouncesAMove`,
+    `…testS20104TheFollowingExerciseWinsOverAnUndoneOneElsewhere`,
+    `…testS7603cTheFollowingExerciseIsNamedWhetherOrNotItIsDone`) and
+    `WatchRestNextHoldTests.testS20105TheListStartsOverAfterTheLastExerciseAndKeepsCycling`.
+47. **End Session keeps a running effort and the buttons wear their colours — (owner, plan 201).** (a) Open the
+    session menu: **End Session** is a filled button in the watch's theme
+    colour and **Discard Session** a filled red button. (b) Start a Cardio
+    exercise with a clock, start the clock, never press Log, open the menu and
+    tap **End Session**: it asks "Finish Workout?", not "Discard session?";
+    Finish logs the running effort as one entry, ends the session as completed
+    and the phone shows it. (c) **End Session** on a session with nothing
+    logged and no clock running still asks "Discard session?". (d) With a
+    workout already started from the phone and no exercise on it, tap
+    **Cardio** on the watch and pick an exercise: it is added to the running
+    workout and the logger opens on it. Held off-device by `WatchMenuTests`
+    (`testS20106TheMenuRowsWearTheirColours`,
+    `…testS20111TheEndRowRaisesTheFinishQuestionWhenThereIsWorkToSave`),
+    `WatchMenuEndRunningEffortTests`
+    (`testS20107EndWithARunningEffortLogsItThenFinishes`,
+    `…testS20108ASetExerciseWithNothingLoggedStillDiscards`,
+    `…testS20109AnotherExercisesPhoneClockIsNotThisExercisesRunningEffort`,
+    `…testS20110ATimedExerciseWhoseClockWasNeverStartedStillDiscards`) and
+    `WatchModalityStartTests`
+    (`testS20112AModalityPickOverAHeldEmptySessionAddsTheExercise`,
+    `…testS20113AModalityPickOverAnEndedSessionCreatesANewOne`,
+    `…testS20114TheHeldSessionKeepsItsOwnModality`,
+    `…testS17605ASecondPickReturnsTheHeldSessionAndAddsThePick`).
+48. **No ghost hold and no extra rest ping when phone and watch share a workout — (owner, plan 202).** Run an
+    isometric routine with the phone app in the foreground, logging some holds
+    on the watch and some on the phone, alternating. Rest pings arrive once per
+    interval with no extra taps, and after Next no old hold clock is left
+    running for minutes with nothing logged; the session editor lists exactly
+    the holds that were logged. Not proven on a device (the cause was read from
+    the code): this check is how it is confirmed. Held off-device by
+    `WatchTimerReadoptionTests`
+    (`testS20201AStoppedHoldIsNotRestartedByALaterFrameNamingTheSameInterval`,
+    `…testS20202ASnapshotNamingTheStoppedHoldDoesNotReopenIt`,
+    `…testS20203ARealSecondIntervalAfterAStopIsAdopted`,
+    `…testS20204AStaleHoldForAnotherExerciseDoesNotMoveTheWrist`,
+    `…testS20205ARestAdoptedTwiceKeepsOneRowAndTheSamePingMemory`,
+    `…testS20209ARestTheWristEndedIsNotReopenedByASnapshot`,
+    `…testS20210ALaterPhoneRestStillSupersedesTheWristsRest`,
+    `…testS20211TheToleranceIsOneSecond`,
+    `…testS20212AResumeOfTheSameRestIsStillAdopted`,
+    `…testS20213AStoppedHoldOfAnotherExerciseDoesNotBlockANewInterval`,
+    `…testS20214ARestThatDiffersOnlyByItsAccumulatedPauseIsAdopted`,
+    `…testS20215ARestStopFrameStopsAnIdenticalRunningRest`,
+    `…testS20216APauseOfARunningHoldIsAdopted`,
+    `…testS20206AStopFrameStillStopsTheHold`).
+49. **A Cardio workout from the watch shows as Cardio on the phone — (owner, plans 203 and 204).** On the
+    watch tap **Cardio**, pick an exercise and log something, then open the
+    phone: Home's live session, the session summary and the calendar entry say
+    Cardio, not Free Training; the same for **Resistance**, **Sports** and
+    **Isometric**. A routine started from the watch keeps its routine title and
+    its Focus; a workout started on the phone as Free Training stays Free
+    Training. Held off-device by the phone tests in
+    `test/watch_session_wrist_modality_test.dart`
+    (`S-20301 a wrist snapshot naming cardio_endurance adopts as Cardio`,
+    `S-20302 a snapshot with no modality adopts as Free Training (today's
+    behaviour)`,
+    `S-20303 an unknown, empty or non-string modality is ignored`,
+    `S-20304 the wrist's own modality wins over the routine's Focus and the
+    routine still links`,
+    `S-20305 a session the phone already holds is not rewritten`,
+    `S-20307 source guard: only a snapshot's modality is read`), the watch
+    tests `WatchSnapshotWristModalityTests`
+    (`testS20401ASessionWithAModalityNamesItInItsSnapshot`,
+    `…testS20402AFreeSessionNamesNoModality`,
+    `…testS20403TheOtherKeysAndTheSchemaAreUnchanged`,
+    `…testS20404TheWristEchoesTheModalityItWasToldAndKeepsIt`,
+    `…testS20406TheModalitySurvivesARelaunch`) and the twin
+    `test/watch_snapshot_wrist_modality_send_test.dart` (group `S-20405 the
+    twin names its session's modality in its snapshot`).
+50. **GPS follows the exercise — (owner, plan 205).** The modality alone no
+    longer turns GPS on: the exercise the user is on decides. On the watch,
+    start **Sports** and pick Boxing: the watch asks for no location and
+    Apple Health records the workout as indoor; the same for any Sports
+    exercise (none carries `distance`). Start **Cardio** and pick a walk: the
+    watch asks for location and Health records the workout as outdoor. A
+    stationary bike under Cardio still asks and records outdoor (accepted: it
+    carries `distance`, until a later per-exercise indoor marker). A routine
+    with a Cardio Focus whose exercises are strength lifts asks for no
+    location and still registers as Running. Held off-device by
+    `WatchGpsExerciseOnlyTests`
+    (`testS20501BoxingUnderSportsIsIndoor`,
+    `…testS20502AWalkUnderCardioIsOutdoor`,
+    `…testS20503AStationaryBikeUnderCardioStaysGpsUntilAnIndoorFlagExists`,
+    `…testS20504ACardioFocusRoutineOfSquatsAsksForNoGps`,
+    `…testS20505ASportsExerciseWithoutDistanceIsIndoor`,
+    `…testS20507CardioOnJumpRopeThenTheRunStartsLocationLate`) in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchGpsExerciseOnlyTests.swift`
+    and by `test/watch_sensor_recording_test.dart` (S-20509).
+51. **The watch logs by the modality — (owner, plan 206).** In a workout the
+    watch started from a modality, the screen follows the modality, not the
+    exercise's capabilities: tap **Cardio** and pick an exercise that can be
+    sets or timed — it opens the timed screen (Start, then Log);
+    **Resistance** opens the sets screen; **Isometric** opens the hold
+    screen; **Sports** opens periods. **Add Exercise** inside that same
+    workout does the same for the exercise it adds. A Free workout (no
+    modality) keeps the guess from the exercise's capabilities, and a
+    routine's own slots keep the kinds the routine declared. A workout that
+    was already running before the update keeps its old screens. Held
+    off-device by `WatchModalityKindTests`
+    (`testS20601ACardioPickWithSetsAndTimeDeclaresTimed`,
+    `…testS20602EveryModalityDeclaresItsOwnKind`,
+    `…testS20603AFreeSessionSlotDeclaresNothing`,
+    `…testS20604AnExerciseAddedToAModalitySessionDeclaresTheModalitysKind`,
+    `…testS20605TheRestLabelsAndTheScreenReadTheSameDeclaredKind`,
+    `…testS20608ARoutinesOwnSlotKeepsItsKindAndAnAddedOneTakesTheFocus`) in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchModalityKindTests.swift`
+    and by the phone's `test/watch_wrist_declared_kind_test.dart` (S-20606).
+52. **Old workouts leave the watch's store — (owner, plan 207).** Nothing on
+    screen changes, so the check is that the watch stays fast and keeps what
+    it must: after more than 20 workouts have synced to the phone, relaunch
+    the watch app — it opens as quickly as with 5 workouts, and the current
+    or last workout, the routines, the exercise list, the food list, the
+    water count and the personal bests are all still there; a workout done
+    while the phone was away (not yet synced) is still on the watch and
+    reaches the phone at the next sync; nothing the phone already has is
+    lost. Held off-device by `WatchSettledSessionPruneTests`
+    (`testS20701TheOldestSettledWorkoutsLeaveAndTheNewestTwentyStayWhole`,
+    `…testS20702AnUnsyncedWorkoutIsKeptWhateverItsAge`,
+    `…testS20703AWristWorkoutWhoseEndIsUnacknowledgedIsKept`,
+    `…testS20704AnUnfinishedOldSessionIsNeverRetired`,
+    `…testS20706ANothingToRetirePruneWritesNothing`,
+    `…testS20711AnEngineOverFortySettledWorkoutsKeepsTwentyAfterRelaunch`,
+    `…testS20716InlineReadingsOfARetiredWorkoutLeaveAndItsSideFileToo`) in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchSettledSessionPruneTests.swift`
+    and by the launch pin
+    `WatchStoreGrowthTests.testS15601TheLaunchRestoreAsksForThePrunes`
+    (the retire precedes `engine.restore()`, the readings prune follows it).
+53. **The Start screen's three groups, and the theme on every sheet — (owner).**
+    (a) On the Start screen one gap (10 pt on top of the normal row spacing)
+    sits between the four modality buttons and the list under them (the
+    planned button and the routines), between that list and the **Nutrition**
+    button, and above and below the separator line over **Sync**; the session
+    menu's separator line has the same gap above it as it already had below
+    it, so every separator reads the same. (b) Pick a theme other than the default on the
+    phone (Settings, theme), sync the watch, then open every screen that is a
+    sheet: start a workout and tap the list button (the session menu: the
+    current exercise's row, the End Session button and the exercise list),
+    open **Nutrition**, and open **Diagnostics** if it is shown. Their
+    prominent buttons wear the theme you chose, not the default cyan, and the
+    toolbar's menu and close buttons stay neutral grey (a root-wide tint made
+    them filled circles); before this change those three sheets wore the default
+    theme because they sat outside the place the theme was applied. Held
+    off-device by `WatchAccentTests.testS8605TheAccentWrapsTheRootSheetsAndTheRootSetsNoTint`
+    (the accent comes after the root's sheets in `ContentView.swift`, and the
+    root sets no tint) in
+    `watch/watchos/Tests/WatchSessionEngineTests/WatchAccentTests.swift`; the
+    gap itself is a layout and is checked by eye.

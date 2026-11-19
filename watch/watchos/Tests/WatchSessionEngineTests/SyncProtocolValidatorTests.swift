@@ -131,4 +131,65 @@ final class SyncProtocolValidatorTests: XCTestCase {
             "the wrist's frame for a legacy row must conform"
         )
     }
+
+    // S-3808 and S-3834 of `docs/plans/2026-10-11-23e1-watch-exercise-batches-plan.md`.
+
+    /// A batch carries at most 100 exercises — the `exercises_down` schema's
+    /// `maxItems` — so a 101-exercise slice is refused before any semantic rule
+    /// reads it: a longer list arrives as more batches.
+    func testS3808ABatchOverOneHundredExercisesIsRefused() throws {
+        var fixture = try Fixtures.json("fixtures/valid/exercises_down.json")
+        var payload = fixture["payload"] as? [String: Any] ?? [:]
+        payload["exercises"] = (0..<101).map { index -> [String: Any] in
+            [
+                "exerciseId": "ex-generated-\(index)",
+                "name": "Generated \(index)",
+                "capabilities": ["sets", "reps", "load"],
+            ]
+        }
+        payload["totalCount"] = 101
+        payload["batchCount"] = 2
+        fixture["payload"] = payload
+
+        let rejections = validator.validateEnvelope(fixture)
+
+        XCTAssertEqual(
+            rejections.map(\.code),
+            [SyncRejectionCode.constraintViolation],
+            "expected only the schema's maxItems refusal, got \(rejections)"
+        )
+        XCTAssertEqual(rejections.first?.path, "$.payload.exercises")
+        XCTAssertTrue(
+            rejections.map(\.message).joined(separator: " | ")
+                .contains("expected at most 100 items, found 101")
+        )
+    }
+
+    /// S-3834: relaxing `fallbackExercises` to `minItems: 0` opens no coverage
+    /// hole. A `routines_down` whose routine names an exercise the empty
+    /// fallback list does not carry is still refused: the fallback list is
+    /// every exercise the phone offers the wrist, and a routine's own exercise
+    /// is always one of them (D-3812).
+    func testS3834ARoutinesDownWithAnEmptyFallbackIsStillRefused() throws {
+        var fixture = try Fixtures.json("fixtures/valid/routines_down.json")
+        var payload = fixture["payload"] as? [String: Any] ?? [:]
+        payload["fallbackExercises"] = [Any]()
+        fixture["payload"] = payload
+
+        let rejections = validator.validateEnvelope(fixture)
+
+        XCTAssertFalse(
+            rejections.isEmpty,
+            "a fallback list that drops a routine's own exercise must not conform"
+        )
+        XCTAssertTrue(
+            rejections.map(\.code).contains(SyncRejectionCode.semanticViolation),
+            "expected semantic_violation, got \(rejections.map(\.code))"
+        )
+        XCTAssertEqual(rejections.first?.path, "$.payload.fallbackExercises")
+        XCTAssertTrue(
+            rejections.map(\.message).joined(separator: " | ")
+                .contains("fallbackExercises")
+        )
+    }
 }

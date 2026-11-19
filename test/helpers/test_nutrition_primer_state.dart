@@ -15,10 +15,19 @@ import 'package:omnitrain/state/nutrition/nutrition_primer_state.dart';
 /// `init()` so the persisted seen flag is read before the
 /// first frame. Returns the state ready to be passed to
 /// `HomeScreen(...)` or `NutritionScreen(...)`.
+///
+/// Pass `seen: true` for a test that reaches `NutritionScreen`
+/// directly and does not test the primer: with the default
+/// `seen: false` the primer sheet rises over the screen on
+/// first open and its barrier blocks taps.
 Future<NutritionPrimerState> buildNutritionPrimerState(
-  WorkoutRepository repo,
-) async {
+  WorkoutRepository repo, {
+  bool seen = false,
+}) async {
   final state = NutritionPrimerState(repo);
   await state.init();
+  if (seen) {
+    await state.markSeen();
+  }
   return state;
 }

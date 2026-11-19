@@ -35,7 +35,7 @@ Future<void> _pumpNutritionScreen(
   required NutritionState nutritionState,
   required FoodLibraryState foodLibraryState,
 }) async {
-  final primer = await buildNutritionPrimerState(repo);
+  final primer = await buildNutritionPrimerState(repo, seen: true);
   await tester.pumpWidget(
     MaterialApp(
       home: NutritionScreen(
@@ -121,9 +121,10 @@ void main() {
       await tester.tap(find.byKey(const Key('nutrition_target_button')));
       await tester.pumpAndSettle();
 
-      // The target-setting surface is unchanged.
+      // The target-setting surface is unchanged (plan 80 / D-7 renamed
+      // the title to "Daily Targets").
       expect(find.byType(NutritionTargetScreen), findsOneWidget);
-      expect(find.text('Daily Calorie Target'), findsOneWidget);
+      expect(find.text('Daily Targets'), findsOneWidget);
     });
 
     testWidgets(

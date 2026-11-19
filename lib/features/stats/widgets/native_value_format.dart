@@ -79,24 +79,63 @@ String? nativeSecondaryLabel(NativeMetric? metric) {
   }
 }
 
+/// The name a [NativeValue]'s figure reads under, or null when its metric
+/// states itself (D-4008).
+///
+/// The Instruments row shows the figure with nothing saying what it measures,
+/// so a rep count, a pace and a total time read alike. The metric names its own
+/// figure here, the way [nativeSecondaryLabel] names the second one; both are
+/// tables over the metric rather than over the section, so one exercise's
+/// figure never reads two ways.
+///
+/// The nulls are the metrics whose row already carries a labelled second figure
+/// (`Total hold`, `Total time`) — a hold and a round count state themselves
+/// through it, so the row would otherwise label the same line twice.
+String? nativePrimaryLabel(NativeMetric metric) {
+  switch (metric) {
+    case NativeMetric.estimatedOneRepMax:
+      return 'Est. 1RM';
+    case NativeMetric.reps:
+      return 'Best set';
+    case NativeMetric.duration:
+      return 'Total time';
+    case NativeMetric.pace:
+      return 'Best pace';
+    case NativeMetric.hold:
+    case NativeMetric.rounds:
+    case NativeMetric.roundMinutes:
+      return null;
+  }
+}
+
 /// The change between an exercise's window value and its previous range's
 /// value, as a user reads it: an arrow and the signed magnitude, or an em dash
 /// when there is nothing to compare.
 ///
-/// The sign is the raw numeric sign of [delta] — no per-metric exception, so a
-/// slower pace (a larger seconds-per-kilometre) reads `↑`. The magnitude is
-/// formatted by [formatNativeMetric]'s own per-metric rule, so a change and the
-/// figure above it read in one unit.
+/// For every metric but pace the arrow and the sign follow the raw change of
+/// [delta]; for pace the arrow says better (`↑`, a smaller
+/// seconds-per-kilometre) or worse (`↓`) and the magnitude carries no sign
+/// (plan 209). The magnitude is formatted by [formatNativeMetric]'s own
+/// per-metric rule, so a change and the figure above it read in one unit.
 String formatNativeChange(
   NativeMetric metric,
   double delta,
   SettingsState settings,
 ) {
   if (delta == 0) return '—';
-  final arrow = delta > 0 ? '↑' : '↓';
+  final arrow = nativeChangeGain(metric, delta) > 0 ? '↑' : '↓';
+  if (metric == NativeMetric.pace) {
+    return '$arrow ${formatNativeMetric(metric, delta.abs(), settings)}';
+  }
   final sign = delta > 0 ? '+' : '-';
   return '$arrow $sign${formatNativeMetric(metric, delta.abs(), settings)}';
 }
+
+/// The change as a gain: positive when the exercise improved. Pace is stored as
+/// seconds per kilometre, so a smaller figure is better (plan 209); every other
+/// metric improves when it grows.
+double nativeChangeGain(NativeMetric metric, double delta) =>
+    metric == NativeMetric.pace ? -delta : delta;
 
 /// The number [metric] plots: [value] converted the same way
 /// [formatNativeMetric] converts it, so a chart's axis and the figure above it
@@ -122,20 +161,37 @@ double nativeMetricDisplayValue(
   }
 }
 
+/// Whether [metric]'s chart axis reads as a clock (`15:00`) rather than a bare
+/// number. These are the metrics whose plotted value is seconds, so the axis
+/// carries no unit text — the clock is the unit.
+bool nativeMetricIsClock(NativeMetric metric) {
+  switch (metric) {
+    case NativeMetric.pace:
+    case NativeMetric.duration:
+    case NativeMetric.hold:
+      return true;
+    case NativeMetric.estimatedOneRepMax:
+    case NativeMetric.reps:
+    case NativeMetric.rounds:
+    case NativeMetric.roundMinutes:
+      return false;
+  }
+}
+
 /// The unit a [metric]'s chart axis is read in. Empty for the metrics whose
-/// numbers are unit-free counts.
+/// numbers are unit-free counts and for the clock metrics, whose labels are
+/// times (see [nativeMetricIsClock]).
 String nativeMetricUnitLabel(NativeMetric metric, SettingsState settings) {
   switch (metric) {
     case NativeMetric.estimatedOneRepMax:
       return UnitFormatter.weightLabel(settings);
     case NativeMetric.reps:
       return 'reps';
-    case NativeMetric.pace:
-      return 's/${UnitFormatter.distanceLabel(settings)}';
     case NativeMetric.rounds:
       return 'rounds';
     case NativeMetric.roundMinutes:
       return 'min';
+    case NativeMetric.pace:
     case NativeMetric.duration:
     case NativeMetric.hold:
       return '';
