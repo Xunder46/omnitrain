@@ -20,6 +20,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
 import '../../core/services/stats_progress_service.dart';
 import '../../core/services/active_energy_service.dart';
+import '../../core/services/last_performance_service.dart';
 import '../../data/models/models.dart';
 import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/session/inline_metric_editor.dart';
@@ -27,6 +28,7 @@ import '../../widgets/session/value_stepper_row.dart';
 import '../../widgets/session/timer_ring.dart';
 import '../../widgets/session/set_segment_bar.dart';
 import '../../widgets/session/set_count_stepper.dart';
+import '../../widgets/session/last_sets_line.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
 import '../../widgets/session/pr_toast.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
@@ -160,6 +162,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   /// same or lower reps never re-fires the toast for the same
   /// exercise (D-8 throttle applied symmetrically to both axes).
   final Map<String, int> _sessionRunningBestReps = {};
+
+  /// One "last time" lookup per exercise per screen lifetime (plan 249 D-24904):
+  /// the history it reads cannot change while the logger is open.
+  final Map<String, Future<LastSets?>> _lastSetsByExercise = {};
+
+  Future<LastSets?> _lastSetsFor(String exerciseId) =>
+      _lastSetsByExercise.putIfAbsent(
+        exerciseId,
+        () => widget.workoutState
+            .lastSetsFor(exerciseId)
+            .catchError((Object _) => null),
+      );
 
   @override
   Timer? _ticker;

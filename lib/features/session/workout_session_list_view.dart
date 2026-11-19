@@ -772,6 +772,28 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
   // ── Screen content and header builders ───────────────────────────────────
 
+  /// The muted "Last (Nov 12): ..." line of a reps-and-sets exercise, or nothing
+  /// while the lookup runs, fails or finds no earlier finished workout (plan 249).
+  Widget _lastSetsLine(String? exerciseId) {
+    if (exerciseId == null || exerciseId.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return FutureBuilder<LastSets?>(
+      future: _lastSetsFor(exerciseId),
+      builder: (context, snapshot) {
+        final last = snapshot.data;
+        if (last == null) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: LastSetsLine(
+            lastSets: last,
+            settingsState: widget.settingsState,
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildContent(ThemeData theme) {
     if (_isLoading) {
       return Scaffold(
@@ -949,6 +971,10 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                                           child: Column(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
+                                              _lastSetsLine(
+                                                exercise['exerciseId']
+                                                    as String?,
+                                              ),
                                               metricBody,
                                               const SizedBox(height: 24),
                                               setCountStepper,

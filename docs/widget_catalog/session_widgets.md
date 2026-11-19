@@ -525,6 +525,12 @@ fit guard `S-3215`).
 See [Session Summary](../session_summary.md#distance) for what the section lists and
 [Distance Source & Pairing](../distance_source.md) for what a stored distance means.
 
+### `LastSetsLine`
+
+**File**: `lib/widgets/session/last_sets_line.dart`
+
+One muted line above the reps controls of a reps-and-sets exercise in the logger: when the exercise was last done and what was logged, e.g. `Last (Nov 12): 8×80 · 8×80 · 6×82.5 kg`. Loads follow the weight unit setting; a set with no load shows its reps only, and when no set had a load the line ends `reps`; more than six sets end with `(+N more)`. Presentation only: `LastSetsLine.describe(lastSets, settings)` builds the text and the widget (key `last_sets_line`) renders it. The session screen builds it from `WorkoutState.lastSetsFor` and shows nothing while the lookup runs, when no earlier finished workout holds the exercise, or for a timed, hold, round or drill effort. Verified by `test/last_sets_line_test.dart` (`S-24911`, `S-24912`, `S-24913` for the text and `S-24914`, `S-24915a`, `S-24915b`, `S-24916` for the logger).
+
 ### `PRToast`
 
 **File**: `lib/widgets/session/pr_toast.dart`

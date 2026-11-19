@@ -6,6 +6,7 @@ import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/services/active_energy_service.dart';
 import '../../core/services/health_sync_service.dart';
+import '../../core/services/last_performance_service.dart';
 import '../../core/services/screen_awake_port.dart';
 import '../../core/utils/entry_rows.dart';
 import '../../data/models/models.dart';
@@ -123,6 +124,14 @@ class WorkoutState extends ChangeNotifier {
   SessionScreenAwake get screenAwake => _screenAwake;
   String? get error => _error;
   TrainingSession? get currentSession => _sessionCore.currentSession;
+
+  /// The sets of the newest finished workout that holds [exerciseId] as a
+  /// reps-and-sets exercise, or null (plan 249). The running workout is never
+  /// its own "last time".
+  Future<LastSets?> lastSetsFor(String exerciseId) => LastPerformanceService(
+    _repository,
+  ).lastSetsFor(exerciseId, excludeSessionId: currentSession?.id);
+
   ModalityConfig? get modalityConfig => _sessionCore.modalityConfig;
   List<SessionSegment> get segments => _sessionCore.segments;
   bool get isLoading => _sessionCore.isLoading;
