@@ -438,7 +438,7 @@ Key public methods:
 - compareGroupsToPreviousSession
 - computePRs — records PRs using the **Epley e1RM** formula (`StatsProgressService.epley1RM = weight × (1 + min(reps, 12) / 30)`), the same definition the in-workout toast uses. The screen passes its own session id so the just-finished workout's PRs are not compared against themselves. See `docs/plans/summary-pr-parity-plan.md`.
 
-  The returned list is collapsed to at most one `PRAchievement` per
+  A first-ever exercise (no earlier finished workout) produces no `PRAchievement` (plan 252, `S-25201`), and the strength line reads `New best est. 1RM X (was est. 1RM Y)` while the reps line is unchanged (`prLineText`, `S-25206`). The returned list is collapsed to at most one `PRAchievement` per
   exercise — when the same exercise appears in more than one block
   (e.g. a user clones a block several times), the input list carries
   one `ExerciseSummary` per block and the method groups by `exerciseId`

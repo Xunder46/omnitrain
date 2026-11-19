@@ -400,7 +400,7 @@ void main() {
     // definition here so they assert the behavior the rest of the
     // app already uses (single source of truth).
     group('computePRs', () {
-      test('detects a new PR when no previous best exists', () async {
+      test('S-25201 an exercise with no previous best is not a PR', () async {
         final repo = await _freshRepo();
         final service = SessionSummaryService(repo);
 
@@ -419,10 +419,39 @@ void main() {
           ),
         ]);
 
-        expect(prs, hasLength(1));
-        expect(prs[0].exerciseName, 'Bench Press');
-        expect(prs[0].newBest, closeTo(newE1rm, 0.001));
-        expect(prs[0].previousBest, 0); // no prior record
+        // Plan 252: a first-ever exercise (no earlier finished
+        // workout) is not a record — the list is empty.
+        expect(prs, isEmpty);
+      });
+
+      // S-25201b: the reps arm of the same rule. A bodyweight set
+      // exercise (bestReps > 0, no bestE1RM) with NO earlier finished
+      // workout must not become a reps PR — this guards the
+      // `previousBest > 0 &&` guard in the reps pass of `computePRs`.
+      test('S-25201b a bodyweight exercise with no previous best is not a PR',
+          () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final ex = exercises.first;
+        final service = SessionSummaryService(repo);
+
+        // No sessions at all: getAllTimeBestReps finds no finished
+        // workout, so the standing best is 0.
+        final prs = await service.computePRs([
+          ExerciseSummary(
+            exerciseId: ex.id,
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 3,
+            bestWeight: 0.0,
+            bestReps: 20,
+            bestE1RM: null,
+            executionOrder: 0,
+          ),
+        ]);
+
+        // Plan 252: a first-ever bodyweight exercise is not a record.
+        expect(prs, isEmpty);
       });
 
       test('detects a new PR when exceeding previous best (e1RM)', () async {
@@ -688,8 +717,8 @@ void main() {
         expect(summaryPRs.first.newBest, justLoggedE1rmA);
       });
 
-      // S-T-002: first-ever performance is a PR.
-      test('S-T-002 first-ever performance is a PR', () async {
+      // S-25201 (was S-T-002): first-ever performance is not a PR.
+      test('S-25201 (was S-T-002) first-ever performance is not a PR', () async {
         final repo = await _freshRepo();
         final exercises = await repo.getExercises();
         final ex = exercises.first;
@@ -719,10 +748,97 @@ void main() {
           ),
         ], currentSessionId: session.id);
 
-        expect(prs, hasLength(1));
-        expect(prs.first.previousBest, 0);
-        expect(prs.first.newBest, closeTo(newE1rm, 0.001));
+        // Plan 252: a first-ever exercise is not a record.
+        expect(prs, isEmpty);
       });
+
+      // S-25202: control — with an earlier finished workout holding a
+      // LOWER best, a better set today is still a record, and its
+      // previousBest is above 0.
+      test(
+        'S-25202 a better set over a lower prior best is one PR with previousBest above 0',
+        () async {
+          final repo = await _freshRepo();
+          final exercises = await repo.getExercises();
+          final ex = exercises.first;
+          final service = SessionSummaryService(repo);
+
+          // Earlier finished workout: 60 kg × 5 → e1RM 70.0.
+          await _seedCompletedSetSession(
+            repo,
+            sessionId: 'past',
+            startedAtMs: 1000,
+            endedAtMs: 2000,
+            exerciseId: ex.id,
+            reps: 5,
+            weight: 60.0,
+          );
+
+          const newE1rm = 70.0 * (1 + 5 / 30); // ~81.67
+
+          final prs = await service.computePRs([
+            ExerciseSummary(
+              exerciseId: ex.id,
+              name: ex.name,
+              effortKind: 'set',
+              setsCompleted: 3,
+              bestWeight: 70.0,
+              bestE1RM: newE1rm,
+              executionOrder: 0,
+            ),
+          ]);
+
+          expect(prs, hasLength(1));
+          expect(prs[0].previousBest, 70.0);
+          expect(prs[0].previousBest, greaterThan(0));
+          expect(prs[0].newBest, closeTo(newE1rm, 0.001));
+        },
+      );
+
+      // S-25202b: the reps arm of the same control. A bodyweight
+      // exercise beating an earlier finished workout's lower max-reps
+      // best IS a reps PR — one entry, metricLabel 'reps',
+      // previousBest above 0.
+      test(
+        'S-25202b a bodyweight exercise beating a lower previous best is a reps PR',
+        () async {
+          final repo = await _freshRepo();
+          final exercises = await repo.getExercises();
+          final ex = exercises.first;
+          final service = SessionSummaryService(repo);
+
+          // Earlier finished workout: a bodyweight set of 15 reps
+          // (weight 0). getAllTimeBestReps counts weight-0 sets only.
+          await _seedCompletedSetSession(
+            repo,
+            sessionId: 'past',
+            startedAtMs: 1000,
+            endedAtMs: 2000,
+            exerciseId: ex.id,
+            reps: 15,
+            weight: 0.0,
+          );
+
+          final prs = await service.computePRs([
+            ExerciseSummary(
+              exerciseId: ex.id,
+              name: ex.name,
+              effortKind: 'set',
+              setsCompleted: 3,
+              bestWeight: 0.0,
+              bestReps: 20,
+              bestE1RM: null,
+              executionOrder: 0,
+            ),
+          ]);
+
+          expect(prs, hasLength(1));
+          expect(prs[0].metricLabel, 'reps');
+          expect(prs[0].previousBest, 15.0);
+          expect(prs[0].previousBest, greaterThan(0));
+          expect(prs[0].newBest, 20.0);
+        },
+      );
 
       // S-T-003: rep-driven PR — more reps at a lower weight can
       // produce a higher e1RM. Under the OLD raw-weight definition

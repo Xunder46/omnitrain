@@ -718,41 +718,69 @@ void main() {
       },
     );
   });
-  group('S-001: first-ever strength set fires PR toast', () {
-    testWidgets('S-001a: no prior history → first logged set fires the toast', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1000));
-      final repo = await _freshRepo();
-      final exercises = await repo.getExercises();
-      final exA = exercises.first;
+  group('S-001: first-ever strength set fires no PR toast', () {
+    testWidgets(
+      'S-25203 (was S-001a): no prior history → the first logged set fires NO toast',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final exA = exercises.first;
 
-      final workoutState = WorkoutState(repo);
-      await workoutState.createNewSession(modality: 'resistance_lifting');
+        final workoutState = WorkoutState(repo);
+        await workoutState.markExerciseInfoHintSeen();
+        await workoutState.markExerciseNotesHintSeen();
+        await workoutState.createNewSession(modality: 'resistance_lifting');
 
-      final deps = await pumpLiveSessionScreen(
-        tester,
-        repo: repo,
-        workoutState: workoutState,
-        exerciseId: exA.id,
-        exerciseName: exA.name,
-        reps: 5,
-        weightKg: 60.0,
-      );
+        // One strength effort with two entries: the user's first-ever
+        // set (60 kg × 5 → e1RM 70.0) and a heavier second set of the
+        // same exercise in the same workout (110 kg × 5 → e1RM 128.3).
+        // The standing best excludes the running workout, so the
+        // history still holds nothing when the second set is logged.
+        final effortId = await workoutState.addExerciseToSession(
+          exA,
+          chosenMetric: 'reps',
+        );
+        await workoutState.addEntry(effortId);
+        await workoutState.updateEntryValue(effortId, 0, 'reps', 5);
+        await workoutState.updateEntryValue(effortId, 0, 'weight', 60.0);
+        await workoutState.updateEntryValue(effortId, 1, 'reps', 5);
+        await workoutState.updateEntryValue(effortId, 1, 'weight', 110.0);
 
-      await deps.openDetailView();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: RoutineState(repo),
+              sessionSummaryService: SessionSummaryService(repo),
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo, fakePreferencesService()),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      // 60 kg × 5 reps → e1RM 70.0. No prior history for exA →
-      // standing best is 0.0 → 70.0 > 0.0 → PR.
-      await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+        await tester.tap(find.text(exA.name).first);
+        await tester.pumpAndSettle();
 
-      // The SnackBar's content is reachable via `find.text` because
-      // `ScaffoldMessenger` renders it inside the Overlay.
-      expect(find.text('Congrats! New PR'), findsOneWidget);
-      expect(find.byIcon(Icons.emoji_events), findsOneWidget);
-    });
+        // First-ever set: the standing best is 0.0 → not a record.
+        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.text('Congrats! New PR'), findsNothing);
+
+        // Let set 1's 4 s SnackBar timer fire before logging set 2.
+        await tester.pumpAndSettle(const Duration(seconds: 5));
+
+        // Second, heavier set of the same exercise in the same
+        // workout: still no toast, because the history behind the
+        // running session is empty.
+        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.text('Congrats! New PR'), findsNothing);
+      },
+    );
   });
 
   group('S-002: a set beating the prior best fires the toast', () {
@@ -1017,11 +1045,26 @@ void main() {
     'S-008: multiple beating sets in the same session each fire a toast',
     () {
       testWidgets(
-        'S-008a: three beating sets with no prior history → three SnackBars',
+        'S-008a: three beating sets over a lower prior best → three SnackBars',
         (WidgetTester tester) async {
           await tester.binding.setSurfaceSize(const Size(400, 1000));
           final repo = await _freshRepo();
           final exA = (await repo.getExercises()).first;
+
+          // One earlier finished workout with a LOWER best (50 kg × 5
+          // → e1RM 58.33), so each of the three beating sets below is
+          // a real record, not a first-ever one (plan 252).
+          final sOldStartMs =
+              DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
+          await _seedCompletedSetSession(
+            repo,
+            sessionId: 's-old',
+            startedAtMs: sOldStartMs,
+            endedAtMs: sOldStartMs + 3600000,
+            exerciseId: exA.id,
+            reps: 5,
+            weight: 50.0,
+          );
 
           final workoutState = WorkoutState(repo);
           await workoutState.markExerciseInfoHintSeen();
@@ -1094,12 +1137,25 @@ void main() {
   group(
     'S-010: Free Training (null modality) with a set effort fires a PR',
     () {
-      testWidgets('S-010a: null modality + set effort + no history → toast', (
+      testWidgets('S-010a: null modality + set effort + lower prior best → toast', (
         WidgetTester tester,
       ) async {
         await tester.binding.setSurfaceSize(const Size(400, 1000));
         final repo = await _freshRepo();
         final exA = (await repo.getExercises()).first;
+
+        // A lower earlier best (50 kg × 5 → e1RM 58.33), so the set
+        // below is a real record, not a first-ever one (plan 252).
+        final sOldStartMs = DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
+        await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-old',
+          startedAtMs: sOldStartMs,
+          endedAtMs: sOldStartMs + 3600000,
+          exerciseId: exA.id,
+          reps: 5,
+          weight: 50.0,
+        );
 
         // Free Training: pass no modality to createNewSession so the
         // session.modality is null. The effortKind defaults to 'set'
@@ -1126,6 +1182,106 @@ void main() {
       });
     },
   );
+
+  group('S-25205: bodyweight reps-axis — a first time is not a record', () {
+    testWidgets(
+      'S-25205a: no history → 12 reps then 15 reps fire no toast',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final exA = (await repo.getExercises()).first;
+
+        final workoutState = WorkoutState(repo);
+        await workoutState.markExerciseInfoHintSeen();
+        await workoutState.markExerciseNotesHintSeen();
+        await workoutState.createNewSession(modality: 'resistance_lifting');
+
+        // Two bodyweight entries (weight 0 → the reps axis): 12 reps,
+        // then 15. No earlier finished workout holds this exercise,
+        // so neither rep count is a record (plan 252 D-25201).
+        final effortId = await workoutState.addExerciseToSession(
+          exA,
+          chosenMetric: 'reps',
+        );
+        await workoutState.addEntry(effortId);
+        await workoutState.updateEntryValue(effortId, 0, 'reps', 12);
+        await workoutState.updateEntryValue(effortId, 0, 'weight', 0.0);
+        await workoutState.updateEntryValue(effortId, 1, 'reps', 15);
+        await workoutState.updateEntryValue(effortId, 1, 'weight', 0.0);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: RoutineState(repo),
+              sessionSummaryService: SessionSummaryService(repo),
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo, fakePreferencesService()),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(exA.name).first);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.text('Congrats! New PR'), findsNothing);
+
+        await tester.pumpAndSettle(const Duration(seconds: 5));
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.text('Congrats! New PR'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'S-25205b: prior 18-rep workout → a 20-rep set fires one toast',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final exA = (await repo.getExercises()).first;
+
+        // Earlier finished workout: 18 bodyweight reps (weight 0 → the
+        // reps axis stores the standing rep best).
+        final sOldStartMs = DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
+        await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-old',
+          startedAtMs: sOldStartMs,
+          endedAtMs: sOldStartMs + 3600000,
+          exerciseId: exA.id,
+          reps: 18,
+          weight: 0.0,
+        );
+
+        final workoutState = WorkoutState(repo);
+        await workoutState.createNewSession(modality: 'resistance_lifting');
+
+        final deps = await pumpLiveSessionScreen(
+          tester,
+          repo: repo,
+          workoutState: workoutState,
+          exerciseId: exA.id,
+          exerciseName: exA.name,
+          reps: 20,
+          weightKg: 0.0, // weight 0 → the reps axis
+        );
+
+        await deps.openDetailView();
+        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(find.text('Congrats! New PR'), findsOneWidget);
+        expect(find.byIcon(Icons.emoji_events), findsOneWidget);
+      },
+    );
+  });
 
   group('S-011: a 30-day-old standing best is still the standing best', () {
     testWidgets(

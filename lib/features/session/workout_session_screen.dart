@@ -1139,7 +1139,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
         // D-3: strictly greater. A set equal to the standing best
         // is NOT a PR (matches the Stats screen's ">" comparison).
-        if (newE1rm > standingBest) {
+        // A first-ever exercise (standing best 0) is not a record (plan 252 D-25201).
+        if (standingBest > 0 && newE1rm > standingBest) {
           // D-8 throttle: also beats the session's running best.
           final sessionBest = _sessionRunningBestE1RM[exerciseId] ?? 0.0;
           if (newE1rm > sessionBest) {
@@ -1157,7 +1158,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         widget.workoutState.repository,
       ).getAllTimeBestReps(exerciseId);
 
-      if (reps > standingReps) {
+      if (standingReps > 0 && reps > standingReps) {
         final sessionBest = _sessionRunningBestReps[exerciseId] ?? 0;
         if (reps > sessionBest) {
           if (!mounted) return;

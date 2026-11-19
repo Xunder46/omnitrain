@@ -1263,17 +1263,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
-                  // Reps-axis (bodyweight) PRs read as
-                  // `${pr.exerciseName}: New best ${reps} reps (was ${prev} reps)`.
-                  // Weight-axis PRs read as
-                  // `${pr.exerciseName}: New best ${weight} (was ${prev})`
-                  // — the existing behaviour, preserved verbatim
-                  // for loaded exercises. The two branches
-                  // share the layout so the list reads identically
-                  // regardless of which axis fired.
-                  pr.metricLabel == 'reps'
-                      ? '${pr.exerciseName}: New best ${pr.newBest.toInt()} reps (was ${pr.previousBest.toInt()} reps)'
-                      : '${pr.exerciseName}: New best ${_formatWeight(pr.newBest)} (was ${_formatWeight(pr.previousBest)})',
+                  prLineText(pr, _formatWeight),
                   style: theme.textTheme.bodyMedium,
                 ),
               ),
@@ -1513,3 +1503,12 @@ class _StatPill extends StatelessWidget {
     );
   }
 }
+
+/// The summary's record line (plan 252 D-25203): a reps-axis record reads as
+/// before, a strength record says what the number is (an estimated one-rep
+/// max, not a lifted weight).
+@visibleForTesting
+String prLineText(PRAchievement pr, String Function(double kg) formatWeight) =>
+    pr.metricLabel == 'reps'
+    ? '${pr.exerciseName}: New best ${pr.newBest.toInt()} reps (was ${pr.previousBest.toInt()} reps)'
+    : '${pr.exerciseName}: New best est. 1RM ${formatWeight(pr.newBest)} (was est. 1RM ${formatWeight(pr.previousBest)})';

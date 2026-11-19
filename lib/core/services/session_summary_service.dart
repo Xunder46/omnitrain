@@ -272,7 +272,8 @@ class SessionSummaryService {
             excludeSessionId: currentSessionId,
           );
 
-      if (bestE1RM > previousBest) {
+      // Plan 252 D-25202: an exercise with no earlier finished workout is not a record.
+      if (previousBest > 0 && bestE1RM > previousBest) {
         results.add(
           PRAchievement(
             exerciseName: summary.name,
@@ -312,7 +313,8 @@ class SessionSummaryService {
             excludeSessionId: currentSessionId,
           );
 
-      if (bestReps > previousBest) {
+      // Plan 252 D-25202: an exercise with no earlier finished workout is not a record.
+      if (previousBest > 0 && bestReps > previousBest) {
         results.add(
           PRAchievement(
             exerciseName: summary.name,

@@ -554,7 +554,7 @@ A celebration that interrupts logging would defeat the point of celebrating.
 exactly one PR definition per axis; all three surfaces change together.
 
 Triggered from `WorkoutSessionScreen._logSet()`, gated on `set`-kind efforts, suppressed in edit
-mode, and fired on a strict `>` against both the standing best and the session's running best.
+mode, and fired on a strict `>` against both the standing best and the session's running best, and never for an exercise with no earlier finished workout (a first time is not a record, plan 252; verified by `test/in_session_pr_toast_test.dart` `S-25203` and `S-25205`).
 
 ### `EffortRatingSheet`
 
