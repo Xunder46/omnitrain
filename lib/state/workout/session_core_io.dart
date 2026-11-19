@@ -412,7 +412,7 @@ extension SessionCoreIOMethods on SessionCore {
           }
 
           for (int i = 1; i < entry.setCount; i++) {
-            await addEntry(effortId);
+            await addEntry(effortId, fromHistory: true);
           }
 
           for (final target in entry.targets) {

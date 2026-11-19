@@ -8,6 +8,7 @@ import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/services/active_energy_service.dart';
 import '../../core/services/health_sync_service.dart';
+import '../../core/services/last_performance_service.dart';
 import '../../core/utils/entry_rows.dart';
 import '../../core/utils/logged_entry_rows.dart';
 import '../../data/models/models.dart';
@@ -108,6 +109,11 @@ class SessionCore {
   /// Plan 229: the id of the running workout that a history view replaced in
   /// the shared session slot, so closing the view can put it back.
   String? _suspendedLiveSessionId;
+
+  /// The history lookup of the CURRENT session (plan 250 D-25003): built on the
+  /// first set effort that asks, dropped when the session id changes.
+  LastPerformanceService? _lastPerformance;
+  String? _lastPerformanceSessionId;
 
   bool _isLoading = false;
 

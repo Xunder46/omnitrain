@@ -406,4 +406,78 @@ void main() {
     expect(answer.sets, hasLength(3));
     expect(answer.sets.first.reps, 8);
   });
+
+  // Plan 250 (review finding 2): the cached history is single-flight. Two
+  // callers that arrive before the first read finishes share it.
+  test(
+    'S-25013 a cached service reads the history once for two callers',
+    () async {
+      final repo = _CountingRepo();
+      await repo.initialize();
+      await seedBench(
+        repo,
+        sessionId: 's2',
+        startedAtMs: _s2Start,
+        endedAtMs: _s2End,
+        sets: [(5, 90.0, skipped: false)],
+      );
+      repo.sessionReads = 0;
+
+      final cached = LastPerformanceService(repo, cacheHistory: true);
+      final answers = await Future.wait([
+        cached.lastSetsFor('ex-bench'),
+        cached.lastSetsFor('ex-bench'),
+      ]);
+      await cached.lastSetsFor('ex-bench');
+
+      expect(answers.every((a) => a?.sets.single.reps == 5), isTrue);
+      expect(repo.sessionReads, 1);
+
+      // Control: the default service asks fresh every time.
+      repo.sessionReads = 0;
+      final fresh = LastPerformanceService(repo);
+      await fresh.lastSetsFor('ex-bench');
+      await fresh.lastSetsFor('ex-bench');
+      expect(repo.sessionReads, 2);
+    },
+  );
+
+  // A failed read is not kept: the next call reads again.
+  test('S-25014 a failed history read is retried by the next call', () async {
+    final repo = _CountingRepo();
+    await repo.initialize();
+    await seedBench(
+      repo,
+      sessionId: 's2',
+      startedAtMs: _s2Start,
+      endedAtMs: _s2End,
+      sets: [(5, 90.0, skipped: false)],
+    );
+    repo.sessionReads = 0;
+    repo.failNextRead = true;
+
+    final cached = LastPerformanceService(repo, cacheHistory: true);
+    await expectLater(cached.lastSetsFor('ex-bench'), throwsStateError);
+    final answer = await cached.lastSetsFor('ex-bench');
+
+    expect(answer!.sets.single.reps, 5);
+    expect(repo.sessionReads, 2);
+  });
+}
+
+/// Counts how often the sessions are read and can fail the next read
+/// (plan 250 S-25013, S-25014).
+class _CountingRepo extends MockWorkoutRepository {
+  int sessionReads = 0;
+  bool failNextRead = false;
+
+  @override
+  Future<List<TrainingSession>> getAllSessions() {
+    sessionReads++;
+    if (failNextRead) {
+      failNextRead = false;
+      throw StateError('boom');
+    }
+    return super.getAllSessions();
+  }
 }

@@ -78,7 +78,7 @@ Post-workout analytics.
 **File**: `lib/core/services/last_performance_service.dart`
 **Depends on**: `WorkoutRepository`
 
-`lastSetsFor(exerciseId, {excludeSessionId})` answers "what did I do last time" for a reps-and-sets exercise: the sets of the newest finished workout (by start time, not by store order) that holds at least one non-skipped set with reps above 0 for that exercise, block by block, or null. Only `set` efforts count, so a timed or hold effort of the same exercise is never read. It reads the four bulk repository reads on every call and caches nothing. Verified by `test/last_performance_service_test.dart` (`S-24901` to `S-24906`, each on the Mock and the Hive repository).
+`lastSetsFor(exerciseId, {excludeSessionId})` answers "what did I do last time" for a reps-and-sets exercise: the sets of the newest finished workout (by start time, not by store order) that holds at least one non-skipped set with reps above 0 for that exercise, block by block, or null. Only `set` efforts count, so a timed or hold effort of the same exercise is never read. It reads the four bulk repository reads on every call; a live workout builds it with `cacheHistory` (one instance per session id in `SessionCore`) so a routine reads them once per workout, which is what starts a new set effort from last time (`S-25010`). Verified by `test/last_performance_service_test.dart` (`S-24901` to `S-24906`, each on the Mock and the Hive repository).
 
 ---
 

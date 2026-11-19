@@ -55,7 +55,7 @@ extension SessionCoreEntryMethods on SessionCore {
       await _repository.createEffort(effort);
       _efforts.putIfAbsent(segment.id, () => []).add(effort);
 
-      await addEntry(effortId);
+      await addEntry(effortId, fromHistory: true);
 
       _notify();
       return effortId;
@@ -151,6 +151,7 @@ extension SessionCoreEntryMethods on SessionCore {
     Map<String, dynamic>? previousValues,
     int? atMs,
     bool notify = true,
+    bool fromHistory = false,
   }) async {
     _clearError();
 
@@ -232,6 +233,13 @@ extension SessionCoreEntryMethods on SessionCore {
         return;
       }
 
+      // Plan 250: an entry the caller did not seed from a previous set starts
+      // from the same-numbered set of the last finished workout of the exercise.
+      var seed = previousValues;
+      if (fromHistory && seed == null && effort.effortKind == 'set') {
+        seed = await _lastTimeValues(effort, existingEntryCount);
+      }
+
       final observations = <EffortObservation>[];
 
       switch (effort.effortKind) {
@@ -245,11 +253,10 @@ extension SessionCoreEntryMethods on SessionCore {
             LoggedEntryRows.setObservations(
               effortId: effortId,
               entryIndex: entryNumber,
-              reps: (previousValues?['reps'] as int?) ?? 10,
-              weightKg: (previousValues?['weight'] as double?) ?? 0.0,
+              reps: (seed?['reps'] as int?) ?? 10,
+              weightKg: (seed?['weight'] as double?) ?? 0.0,
               exerciseHasLoad: hasLoad,
-              extraWeightKg:
-                  (previousValues?['extra-weight'] as double?) ?? 0.0,
+              extraWeightKg: (seed?['extra-weight'] as double?) ?? 0.0,
               atMs: now,
             ),
           );
@@ -277,6 +284,40 @@ extension SessionCoreEntryMethods on SessionCore {
       if (notify) _notify();
     } catch (e) {
       _setError('Failed to add entry: $e');
+    }
+  }
+
+  /// Set number [entryIndex] (0-based) of the last finished workout of the
+  /// effort's exercise, clamped to its final set, as `{'reps', 'weight'}` (kg);
+  /// null when there is no earlier workout or the lookup fails: a missing
+  /// history never fails an add (plan 250 D-25001, D-25004).
+  Future<Map<String, dynamic>?> _lastTimeValues(
+    SegmentEffort effort,
+    int entryIndex,
+  ) async {
+    final exerciseId = effort.exerciseId;
+    final session = _currentSession;
+    if (exerciseId == null || session == null) return null;
+    try {
+      if (_lastPerformanceSessionId != session.id) {
+        _lastPerformance = LastPerformanceService(
+          _repository,
+          cacheHistory: true,
+        );
+        _lastPerformanceSessionId = session.id;
+      }
+      final last = await _lastPerformance!.lastSetsFor(
+        exerciseId,
+        excludeSessionId: session.id,
+      );
+      if (last == null || last.sets.isEmpty) return null;
+      final index = entryIndex < last.sets.length
+          ? entryIndex
+          : last.sets.length - 1;
+      final set = last.sets[index];
+      return {'reps': set.reps, 'weight': set.weightKg};
+    } catch (_) {
+      return null;
     }
   }
 
