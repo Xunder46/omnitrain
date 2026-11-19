@@ -157,7 +157,7 @@ Populated during `loadSessionData()` and `loadHistoricalSession()` alongside obs
 | Method | Signature | Purpose |
 |--------|-----------|---------|
 | `getEntryRests` | `(String effortId) → List<EntryRest>` | Returns unmodifiable list of rest records for an effort |
-| `recordRestStart` | `(String effortId, int entryIndex) → Future<void>` | Creates rest record with current epoch time as `restStartMs`; called after an entry is logged |
+| `recordRestStart` | `(String effortId, int entryIndex, {int? atMs}) → Future<void>` | Creates rest record with current epoch time as `restStartMs`; called after an entry is logged. `atMs` is the instant the rest really began (an interval or round that ran out while the app slept is noticed late), and a future `atMs` is ignored (plan 241) |
 | `recordRestEnd` | `(String effortId, int entryIndex) → Future<void>` | Updates `restEndMs` on the open rest record; called when the athlete starts the next set/round |
 | `pauseRest` | `(String effortId, int entryIndex) → Future<void>` | PR 4: Sets `restIsPaused = true` and stamps `restPausedAtMs = now`. No-op when the rest is already paused or closed. |
 | `resumeRest` | `(String effortId, int entryIndex) → Future<void>` | PR 4: Accumulates the paused interval (`now - restPausedAtMs`) into `restPausedDurationMs` and clears `restIsPaused`. No-op when the rest is already running or closed. |

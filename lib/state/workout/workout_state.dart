@@ -407,8 +407,15 @@ class WorkoutState extends ChangeNotifier {
       _timerManager.pauseTimedEntry(effortId, entryIndex);
   Future<void> resumeTimedEntry(String effortId, int entryIndex) =>
       _timerManager.resumeTimedEntry(effortId, entryIndex);
-  Future<void> finishTimedEntry(String effortId, int entryIndex) =>
-      _timerManager.finishTimedEntry(effortId, entryIndex);
+  Future<void> finishTimedEntry(
+    String effortId,
+    int entryIndex, {
+    int? expiredAfterSecs,
+  }) => _timerManager.finishTimedEntry(
+    effortId,
+    entryIndex,
+    expiredAfterSecs: expiredAfterSecs,
+  );
   Future<void> deleteTimedEntry(String effortId, int entryIndex) =>
       _timerManager.deleteTimedEntry(effortId, entryIndex);
   Future<void> updateTimedTargetDuration(
@@ -449,8 +456,8 @@ class WorkoutState extends ChangeNotifier {
   Future<void> normalizeRoundsToFinished() =>
       _timerManager.normalizeAllRoundsToFinished();
 
-  Future<void> recordRestStart(String effortId, int entryIndex) =>
-      _timerManager.recordRestStart(effortId, entryIndex);
+  Future<void> recordRestStart(String effortId, int entryIndex, {int? atMs}) =>
+      _timerManager.recordRestStart(effortId, entryIndex, atMs: atMs);
   Future<void> recordRestEnd(String effortId, int entryIndex) =>
       _timerManager.recordRestEnd(effortId, entryIndex);
 

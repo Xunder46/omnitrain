@@ -273,7 +273,7 @@ Handles all round, timed-entry, and rest state machines (Cluster B of the origin
 | `startTimedEntry(effortId, entryIndex)` | notStarted → active | Back-dates `startedAtMs` by any pre-set `targetDurationSecs` offset; clears target after first start so entry is open-ended; the start closes every open rest of the session in memory and persists each rest it closed (plan 98 D-1). Verified by `test/timer_start_closes_session_rests_test.dart` (groups `Mock` and `Hive`, `S-9921 startTimedEntry on B closes the open rest on A`) |
 | `pauseTimedEntry(effortId, entryIndex)` | active → paused | Stamps `pausedAtMs` |
 | `resumeTimedEntry(effortId, entryIndex)` | paused → active | Folds pause duration into `totalPausedDurationMs`; clears `pausedAtMs` |
-| `finishTimedEntry(effortId, entryIndex)` | active/paused → finished | Derives `actualDurationSecs` from timestamps; folds final pause if paused |
+| `finishTimedEntry(effortId, entryIndex, {expiredAfterSecs})` | active/paused → finished | Derives `actualDurationSecs` from timestamps; folds final pause if paused. An entry that ran out by itself passes `expiredAfterSecs` (its target): it is then finished at its real end (start + pauses + target, never later than now), not at the instant the app noticed (plan 241, `test/expired_interval_records_its_real_end_test.dart`) |
 | `deleteTimedEntry(effortId, entryIndex)` | — | Removes the instance and its own rows — the *k*-th row of each companion metric, found before the instance goes (D-326) — and re-indexes subsequent entries. Verified by `test/entry_identity_test.dart` (`S-855`, `S-860`) |
 | `getTimedInstancesForEffort(effortId)` | — | Returns unmodifiable list of timed instances for an effort |
 
@@ -301,7 +301,7 @@ The facade write `WorkoutState.adoptRemoteWorkTimer(effortId, remote)`
 
 | Method | Signature | Purpose |
 |--------|-----------|--------|
-| `recordRestStart` | `(effortId, entryIndex) → Future<void>` | Creates an `EntryRest` record with `restStartMs = now`; called after a set/round is logged |
+| `recordRestStart` | `(effortId, entryIndex, {atMs}) → Future<void>` | Creates an `EntryRest` record with `restStartMs = now`, or `atMs` (the instant the rest really began when an interval or round was noticed late; never in the future); called after a set/round is logged |
 | `recordRestEnd` | `(effortId, entryIndex) → Future<void>` | Sets `restEndMs = now` on the open rest record; called when the athlete starts the next entry |
 | `persistOpenRests` | `(closeAtMs) → Future<void>` | Closes every open `EntryRest` across all efforts at `closeAtMs`; called by `endSession()` |
 | `getRestElapsedSeconds` | `(effortId, entryIndex) → int` | Returns live elapsed seconds for the rest overlay display |

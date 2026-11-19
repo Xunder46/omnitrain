@@ -149,7 +149,14 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
               final elapsedSecs = (instance.elapsedMs / 1000).round();
               final targetSecs = instance.targetDurationSecs;
               if (targetSecs > 0 && elapsedSecs >= targetSecs) {
-                unawaited(widget.workoutState.finishTimedEntry(effortId, i));
+                // Plan 241: it ended at its target, whenever it is noticed.
+                unawaited(
+                  widget.workoutState.finishTimedEntry(
+                    effortId,
+                    i,
+                    expiredAfterSecs: targetSecs,
+                  ),
+                );
                 _effortElapsed[timerKey] = targetSecs;
                 _effortAlerted[timerKey] = true;
               } else {
@@ -536,12 +543,21 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
       final restStartMs = DateTime.now().millisecondsSinceEpoch;
       widget.workoutState.completeRound(effortId, entryIndex).then((_) {
         if (!mounted) return;
+        // Plan 241: the rest began when the round really ended, which is
+        // earlier than now when the app noticed late (a locked phone).
+        final endMs =
+            _getRoundInstance(effortId, entryIndex)?.finishedAtMs ??
+            restStartMs;
         unawaited(
-          widget.workoutState.recordRestStart(effortId, nextEntryIndex),
+          widget.workoutState.recordRestStart(
+            effortId,
+            nextEntryIndex,
+            atMs: endMs,
+          ),
         );
         unawaited(
           widget.restNotificationService.scheduleRestPings(
-            restStartMs: restStartMs,
+            restStartMs: endMs,
             intervalSecs: widget.settingsState.restPingInterval,
             soundId: widget.settingsState.restPingSound,
             playSound: !_isAppInForeground,
@@ -568,14 +584,29 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
       // no rest indicator for the user to see.
       final nextEntryIndex = entryIndex + 1;
       final restStartMs = DateTime.now().millisecondsSinceEpoch;
-      widget.workoutState.finishTimedEntry(effortId, entryIndex).then((_) {
+      widget.workoutState
+          .finishTimedEntry(
+            effortId,
+            entryIndex,
+            expiredAfterSecs: targetSeconds,
+          )
+          .then((_) {
         if (!mounted) return;
+        // Plan 241: finished and resting from the real end, not from the
+        // instant the app noticed.
+        final endMs =
+            _getTimedInstance(effortId, entryIndex)?.finishedAtMs ??
+            restStartMs;
         unawaited(
-          widget.workoutState.recordRestStart(effortId, nextEntryIndex),
+          widget.workoutState.recordRestStart(
+            effortId,
+            nextEntryIndex,
+            atMs: endMs,
+          ),
         );
         unawaited(
           widget.restNotificationService.scheduleRestPings(
-            restStartMs: restStartMs,
+            restStartMs: endMs,
             intervalSecs: widget.settingsState.restPingInterval,
             soundId: widget.settingsState.restPingSound,
             playSound: !_isAppInForeground,

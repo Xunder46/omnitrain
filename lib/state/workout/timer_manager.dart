@@ -1097,7 +1097,17 @@ class TimerManager {
     }
   }
 
-  Future<void> finishTimedEntry(String effortId, int entryIndex) async {
+  /// Finishes the timed entry. [expiredAfterSecs] is set when the entry ran
+  /// out by itself (plan 241): it is then finished at its real end, the
+  /// instant it ran [expiredAfterSecs] seconds counting its pauses, not at the
+  /// instant the app noticed (a phone asleep through the end noticed minutes
+  /// later and recorded a hold far longer than it was). A manual finish passes
+  /// nothing and ends now, as before.
+  Future<void> finishTimedEntry(
+    String effortId,
+    int entryIndex, {
+    int? expiredAfterSecs,
+  }) async {
     _clearError();
     try {
       final list = _timedInstances[effortId];
@@ -1115,15 +1125,23 @@ class TimerManager {
           ? old.totalPausedDurationMs + (now - old.pausedAtMs!)
           : old.totalPausedDurationMs;
 
+      // Plan 241: an expiry ends at start + pauses + the target, never later
+      // than now (a clock set back falls back to now).
+      final cappedEndMs = expiredAfterSecs == null || old.startedAtMs <= 0
+          ? null
+          : old.startedAtMs + totalPausedMs + expiredAfterSecs * 1000;
+      final endMs = cappedEndMs != null && cappedEndMs <= now
+          ? cappedEndMs
+          : now;
       final elapsedMs = old.startedAtMs > 0
-          ? (now - old.startedAtMs - totalPausedMs)
+          ? (endMs - old.startedAtMs - totalPausedMs)
           : 0;
       final actualDurationSecs = (elapsedMs / 1000).round().clamp(0, 86400);
 
       final updated = old.copyWith(
         state: TimedState.finished,
         actualDurationSecs: actualDurationSecs,
-        finishedAtMs: now,
+        finishedAtMs: endMs,
         totalPausedDurationMs: totalPausedMs,
         pausedAtMs: null,
         updatedAtMs: now,
@@ -1283,7 +1301,15 @@ class TimerManager {
   int _effectiveRestEndMs(EntryRest rest, int nowMs) =>
       rest.restIsPaused ? (rest.restPausedAtMs ?? nowMs) : nowMs;
 
-  Future<void> recordRestStart(String effortId, int entryIndex) async {
+  /// Opens the rest that follows [entryIndex]'s predecessor. [atMs] is the
+  /// instant the rest really began when the app noticed the end of an
+  /// interval or round late (plan 241); it never lies in the future, and
+  /// nothing passed means now.
+  Future<void> recordRestStart(
+    String effortId,
+    int entryIndex, {
+    int? atMs,
+  }) async {
     _clearError();
 
     try {
@@ -1312,7 +1338,7 @@ class TimerManager {
         id: 'rest-$effortId-$entryIndex',
         effortId: effortId,
         entryIndex: entryIndex,
-        restStartMs: now,
+        restStartMs: atMs != null && atMs <= now ? atMs : now,
         restEndMs: null,
         createdAtMs: now,
         updatedAtMs: now,
