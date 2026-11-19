@@ -137,6 +137,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
+  /// Wakes once at the next midnight (plan 272).
+  Timer? _midnightTimer;
+
   static const double _minSheetExtent = 0.0;
   double _maxSheetExtent = 0.9;
 
@@ -177,6 +180,7 @@ class _HomeScreenState extends State<HomeScreen>
     // The future is fire-and-forget; the loads run in the
     // background and notify listeners when complete.
     unawaited(_runInitialLoad());
+    _scheduleMidnightRollover();
 
     // Silent session restoration logic
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -223,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen>
     _sheetExtent.removeListener(_onSheetExtentChanged);
     _sheetExtent.dispose();
     _hintController.dispose();
+    _midnightTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -257,7 +262,24 @@ class _HomeScreenState extends State<HomeScreen>
     // Plan 237: a resume after midnight must show the new day, not yesterday's.
     if (state == AppLifecycleState.resumed && mounted) {
       unawaited(widget.nutritionState.rolloverIfDayChanged());
+      // The clock or time zone may have moved while away.
+      _scheduleMidnightRollover();
     }
+  }
+
+  /// Plan 272: the app left open on Home while midnight passes. One timer
+  /// sleeps until just after the next midnight (it does not poll), asks for the
+  /// rollover, and sets the next one. A phone that was asleep at midnight runs
+  /// it on resume instead (above).
+  void _scheduleMidnightRollover() {
+    _midnightTimer?.cancel();
+    final wait =
+        widget.nutritionState.untilNextDay() + const Duration(seconds: 1);
+    _midnightTimer = Timer(wait, () async {
+      if (!mounted) return;
+      await widget.nutritionState.rolloverIfDayChanged();
+      if (mounted) _scheduleMidnightRollover();
+    });
   }
 
   void _onSheetExtentChanged() {

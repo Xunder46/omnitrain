@@ -170,8 +170,44 @@ void main() {
     expect(nutrition.consumedToday, isEmpty);
   });
 
-  testWidgets('S-23706b resuming on the same day changes nothing',
-      (tester) async {
+  testWidgets(
+    'S-27204 Home left open past midnight shows the new day without a '
+    'resume (plan 272)',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = await _freshRepoCleanConsumed();
+      var now = DateTime(2026, 6, 15, 21);
+      final homeScreen = await _buildHomeScreen(repo, () => now);
+
+      await tester.pumpWidget(MaterialApp(home: homeScreen));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final nutrition = homeScreen.nutritionState;
+      await nutrition.saveNutritionTarget(NutritionTarget(calories: 2000));
+      await tester.pumpAndSettle();
+      final food = await _seedChicken(repo, nutrition);
+      await nutrition.logConsumedFoodAt(food, 200.0);
+      await tester.pumpAndSettle();
+      expect(find.text('302 / 2,000 Cal'), findsOneWidget);
+
+      // An hour later, same day: nothing happens.
+      await tester.pump(const Duration(hours: 1));
+      expect(find.text('302 / 2,000 Cal'), findsOneWidget);
+
+      // Midnight passes while the app stays open on Home.
+      now = DateTime(2026, 6, 16, 0, 0, 30);
+      await tester.pump(const Duration(hours: 2, minutes: 1));
+      await tester.pumpAndSettle();
+
+      expect(find.text('0 / 2,000 Cal'), findsOneWidget);
+      expect(nutrition.consumedToday, isEmpty);
+    },
+  );
+
+  testWidgets('S-23706b resuming on the same day changes nothing', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final repo = await _freshRepoCleanConsumed();
     var now = DateTime(2026, 6, 15, 21);

@@ -363,6 +363,13 @@ class NutritionState extends ChangeNotifier {
     return true;
   }
 
+  /// How long until the local day after this state's today begins (plan 272):
+  /// what a screen left open sleeps for before it asks for a rollover.
+  Duration untilNextDay() {
+    final now = _now();
+    return DateTime(now.year, now.month, now.day + 1).difference(now);
+  }
+
   /// Legacy methods for backwards compatibility - delegate to date-aware methods.
   Future<void> loadNutritionTarget() async {
     await loadNutritionTargetForDate(_todayMs());

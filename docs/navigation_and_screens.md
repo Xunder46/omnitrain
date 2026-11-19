@@ -174,7 +174,9 @@ Day rollover:
 - A rollover empties the day's food, water and target caches and re-loads
   the new day's target (walking back to the most recent ancestor if no
   entry exists for the new day), so the user always sees the current
-  day after midnight.
+  day after midnight. A Home left open on screen as midnight passes does the same: one timer
+  sleeps until just after the next midnight and asks for the rollover (plan 274,
+  `test/home_day_rollover_on_resume_test.dart` `S-27204`).
 
 ---
 
