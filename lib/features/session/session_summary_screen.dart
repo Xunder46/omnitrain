@@ -86,6 +86,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   late TextEditingController _noteController;
   Timer? _noteDebounce;
   bool _isLoading = true;
+
+  /// False until the first load ends: the screen waits for its figures instead
+  /// of showing its cards in two steps (plan 259). Later reloads keep it up.
+  bool _hasLoadedOnce = false;
   bool _hasShownFeelingSheet = false;
 
   /// True only while the automatic post-workout question is on screen
@@ -118,13 +122,23 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// Fixed render order for modality groups on the summary screen.
   static const _groupOrder = ['strength', 'cardio', 'rounds', 'isometric'];
 
-  /// Display labels for each group (per design spec).
+  /// Display labels for each group (per design spec). The rounds group is
+  /// titled by the session's type (plan 259): Sports in a Sports session,
+  /// Rounds in any other.
   static const _groupLabels = {
     'strength': 'Strength',
     'cardio': 'Cardio',
-    'rounds': 'Sports',
     'isometric': 'Isometric',
   };
+
+  String _groupLabel(String groupKey) {
+    if (groupKey == 'rounds') {
+      return widget.workoutState.currentSession?.modality == 'sports'
+          ? 'Sports'
+          : 'Rounds';
+    }
+    return _groupLabels[groupKey] ?? groupKey;
+  }
 
   @override
   void initState() {
@@ -220,7 +234,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _energy = energy;
         _preferredWeightUnit = preferredWeightUnit;
         _isLoading = false;
+        _hasLoadedOnce = true;
       });
+    } else if (mounted) {
+      setState(() => _hasLoadedOnce = true);
     }
   }
 
@@ -769,16 +786,27 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                       // a rolling session the card carries only the
                       // EFFORT row (no Duration/Rest Time row).
                       _buildSessionInfoHeader(theme),
-                      _buildSessionInfoCard(theme),
-                      ..._buildGroupCards(theme),
-                      ..._buildExerciseSection(theme),
-                      ..._buildDistanceSection(),
-                      const SizedBox(height: 16),
-                      const OmniCardHeader(title: 'SESSION NOTE'),
-                      _buildNoteCard(theme),
-                      const SizedBox(height: 16),
-                      Center(child: _buildOpenCalendarButton()),
-                      if (_isLoading)
+                      // First open waits for its figures, then shows
+                      // everything at once (plan 259).
+                      if (!_hasLoadedOnce) ...[
+                        const SizedBox(height: 48),
+                        Center(
+                          child: CircularProgressIndicator(
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ] else ...[
+                        _buildSessionInfoCard(theme),
+                        ..._buildGroupCards(theme),
+                        ..._buildExerciseSection(theme),
+                        ..._buildDistanceSection(),
+                        const SizedBox(height: 16),
+                        const OmniCardHeader(title: 'SESSION NOTE'),
+                        _buildNoteCard(theme),
+                        const SizedBox(height: 16),
+                        Center(child: _buildOpenCalendarButton()),
+                      ],
+                      if (_isLoading && _hasLoadedOnce)
                         Padding(
                           padding: const EdgeInsets.only(top: 24.0),
                           child: Center(
@@ -1211,7 +1239,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     SessionGroupMetrics metrics,
     GroupDelta? delta,
   ) {
-    final label = _groupLabels[groupKey] ?? groupKey;
+    final label = _groupLabel(groupKey);
     final labelColor = ModalityColors.forSummaryGroupLabel(groupKey);
 
     final primaryLabel = metrics.primaryLabel;
@@ -1387,7 +1415,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   String _formatDurationOrZero(int durationMs) {
     if (durationMs <= 0) {
-      return '0';
+      return '0s';
     }
     return _formatDuration(durationMs);
   }
@@ -1430,10 +1458,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   String _formatDateTime(DateTime date) {
-    final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
-    final minute = date.minute.toString().padLeft(2, '0');
-    final suffix = date.hour >= 12 ? 'PM' : 'AM';
-    return '${_formatDate(date)} at $hour:$minute $suffix';
+    // Follows the phone's 12/24-hour setting (plan 259).
+    final time = MaterialLocalizations.of(context).formatTimeOfDay(
+      TimeOfDay.fromDateTime(date),
+      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+    );
+    return '${_formatDate(date)} at $time';
   }
 }
 

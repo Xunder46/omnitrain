@@ -5493,7 +5493,7 @@ void main() {
       expect(find.text('SETS'), findsOneWidget);
     });
 
-    testWidgets('shows Sports group card when at least one round is finished', (
+    testWidgets('shows the rounds group card when at least one round is finished', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -5528,7 +5528,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Sports'), findsOneWidget);
+      // A free session titles the rounds card Rounds (plan 259).
+      expect(find.text('Rounds'), findsOneWidget);
     });
 
     testWidgets('hides Sports group card when rounds are never started', (
@@ -5854,7 +5855,7 @@ void main() {
       expect(find.textContaining('1m 30s'), findsOneWidget);
     });
 
-    testWidgets('top stats render Rest Time as 0 when no rests are closed', (
+    testWidgets('top stats render Rest Time as 0s when no rests are closed', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -5886,7 +5887,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('REST TIME'), findsOneWidget);
-      expect(find.text('0'), findsWidgets);
+      expect(find.text('0s'), findsWidgets);
     });
 
     testWidgets('removes session RPE from summary', (WidgetTester tester) async {
