@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../exercise/exercise_picker_screen.dart';
 import '../../core/navigation/navigation.dart';
@@ -513,6 +515,18 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                         exercise: exercise,
                         setCount: setCount,
                         onDelete: () => _removeExercise(effort.id),
+                        moveTargets: [
+                          for (final other
+                              in widget.routineState.currentSegments)
+                            if (other.id != segment.id)
+                              (id: other.id, name: other.name ?? 'Block'),
+                        ],
+                        onMoveTo: (targetId) => unawaited(
+                          widget.routineState.moveExerciseToSegment(
+                            effort.id,
+                            targetId,
+                          ),
+                        ),
                         onChangeTracking: () =>
                             _changeTracking(context, effort, exercise),
                         onTap: () => _openDetailForEffort(effort.id),
@@ -1078,6 +1092,13 @@ class ExerciseCard extends StatelessWidget {
   final Exercise? exercise;
   final int setCount;
   final VoidCallback onDelete;
+
+  /// The other blocks this exercise can move to (plan 271); empty when the
+  /// routine has only one block, which hides the menu items.
+  final List<({String id, String name})> moveTargets;
+
+  /// Called with the chosen block's id.
+  final ValueChanged<String>? onMoveTo;
   final VoidCallback onChangeTracking;
   final VoidCallback onTap;
 
@@ -1088,6 +1109,8 @@ class ExerciseCard extends StatelessWidget {
     required this.exercise,
     required this.setCount,
     required this.onDelete,
+    this.moveTargets = const [],
+    this.onMoveTo,
     required this.onChangeTracking,
     required this.onTap,
   });
@@ -1166,6 +1189,28 @@ class ExerciseCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (onMoveTo != null)
+                      for (final target in moveTargets)
+                        PopupMenuItem(
+                          key: Key('move_to_block_${target.id}'),
+                          onTap: () => onMoveTo!(target.id),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.drive_file_move_outline,
+                                size: 18,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  'Move to ${target.name}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                     PopupMenuItem(
                       onTap: onDelete,
                       child: Row(

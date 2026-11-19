@@ -661,6 +661,61 @@ class RoutineState extends ChangeNotifier {
     }
   }
 
+  /// Moves an exercise to the end of another block (plan 271). Its sets and
+  /// targets travel with it; both blocks are renumbered. Returns false when
+  /// the exercise or the target block is unknown, or it is already there.
+  Future<bool> moveExerciseToSegment(
+    String effortId,
+    String targetSegmentId,
+  ) async {
+    _clearError();
+
+    try {
+      if (!_currentSegments.any((s) => s.id == targetSegmentId)) return false;
+      String? sourceSegmentId;
+      TemplateEffort? moving;
+      for (final entry in _segmentEfforts.entries) {
+        final found = entry.value.where((e) => e.id == effortId);
+        if (found.isNotEmpty) {
+          sourceSegmentId = entry.key;
+          moving = found.first;
+          break;
+        }
+      }
+      if (moving == null || sourceSegmentId == targetSegmentId) return false;
+
+      final source = [...?_segmentEfforts[sourceSegmentId]]
+        ..removeWhere((e) => e.id == effortId);
+      final target = [...?_segmentEfforts[targetSegmentId]];
+      target.add(
+        TemplateEffort(
+          id: moving.id,
+          templateSegmentId: targetSegmentId,
+          orderIndex: target.length,
+          effortKind: moving.effortKind,
+          modality: moving.modality,
+          exerciseId: moving.exerciseId,
+          note: moving.note,
+          restSeconds: moving.restSeconds,
+          restType: moving.restType,
+          createdAtMs: moving.createdAtMs,
+        ),
+      );
+      for (var i = 0; i < source.length; i++) {
+        source[i] = source[i].copyWith(orderIndex: i);
+      }
+      _segmentEfforts[sourceSegmentId!] = source;
+      _segmentEfforts[targetSegmentId] = target;
+
+      _scheduleAutosave();
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _setError('Failed to move exercise: $e');
+      return false;
+    }
+  }
+
   /// Update tracking method for an effort
   Future<void> updateEffortKind(
     String templateEffortId,

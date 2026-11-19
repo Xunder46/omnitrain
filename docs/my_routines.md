@@ -102,10 +102,12 @@ The template hierarchy cascades on delete: removing a template removes its segme
 | Category | Methods |
 |----------|---------|
 | **CRUD** | `loadRoutines()`, `createNewRoutine(name)`, `updateRoutineName(name)`, `saveRoutine()`, `deleteRoutine(id)`, `loadRoutineForEditing(id)` |
-| **Exercises** | `addExerciseToRoutine(exercise, effortKind)`, `removeExerciseFromRoutine(id)`, `reorderExercises(old, new)`, `updateEffortKind(id, kind)` |
+| **Exercises** | `addExerciseToRoutine(exercise, effortKind)`, `removeExerciseFromRoutine(id)`, `reorderExercises(old, new)`, `moveExerciseToSegment(effortId, blockId)`, `updateEffortKind(id, kind)` |
 | **Targets** | `setTargetValue(...)`, `getEffortTargets(id)`, `addSetForEffort(id, kind)`, `removeLastSetForEffort(id)` |
 
 `saveRoutine()` also deletes the stored blocks, exercises and targets the user removed while editing, so a reopened routine matches what was saved.
+
+Each block is its own reorderable list, so dragging only reorders inside a block. To put an exercise in another block, its `⋮` menu has one `Move to <block name>` item for each other block (none when the routine has a single block): it moves the exercise, with its sets and targets, to the end of that block (plan 271, `test/move_exercise_to_block_test.dart`).
 
 **Note**: Session creation (`startRoutineAsSession`) was removed in Phase 1 refactoring (Feb 15, 2026). This responsibility is now handled by `RoutineSessionService` (see Service Layer section below).
 
