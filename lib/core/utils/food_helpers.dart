@@ -9,28 +9,21 @@ import 'macro_energy.dart';
 /// subtracted: a food's calories count its total carbohydrate, and
 /// only [calculateNetCarbs] applies the fiber adjustment. The food
 /// form's live calories line calls this directly, so the line and
-/// every stored food render the same number.
+/// every stored food WITHOUT a calories override render the same number
+/// (plan 253: an override replaces the sum on the food and its logged rows).
 int caloriesFromMacros({
   required double protein,
   required double carbs,
   required double fat,
 }) => macroKcal(protein: protein, carbs: carbs, fat: fat).round();
 
-/// Calculate calories for a food based on macronutrients.
+/// Calculate calories for a food (what the UI and the watch show).
 ///
-/// Formula: protein * 4 + carbs * 4 + fat * 9
-/// All values in grams per serving. Macros are stored as `double`
-/// (S-001 — see
-/// `docs/plans/food-form-decimals-and-autofocus-plan.md`);
-/// the helper rounds to `int` at the boundary because calorie
-/// displays are always whole numbers. Delegates to
-/// [caloriesFromMacros] so there is one formula (D-92c.1).
+/// Reads [Food.calories]: the macro sum (protein * 4 + carbs * 4 + fat * 9,
+/// rounded to whole kcal, see [caloriesFromMacros]) unless the food carries its
+/// own calories number, which replaces it (plan 253).
 int calculateCalories(Food food) {
-  return caloriesFromMacros(
-    protein: food.protein,
-    carbs: food.carbs,
-    fat: food.fat,
-  );
+  return food.calories;
 }
 
 /// Calculate net carbs for a food.
@@ -128,6 +121,7 @@ Food foodFromConsumedSnapshot(ConsumedFood c) => Food(
   fiber: c.fiber,
   fat: c.fat,
   sodium: c.sodium,
+  caloriesOverride: c.caloriesOverride,
   createdAtMs: c.createdAtMs,
   updatedAtMs: c.updatedAtMs,
 );

@@ -517,6 +517,9 @@ class NutritionState extends ChangeNotifier {
       // log time. Editing the food's sodium later does not change
       // the logged day's sodium total.
       sodium: food.sodium,
+      // Plan 253: freeze the source food's own calories number with the rest of
+      // the snapshot, so editing the food later never changes a logged day.
+      caloriesOverride: food.caloriesOverride,
       amountConsumed: amountConsumed,
       groupIdSnapshot: food.groupId,
       groupNameSnapshot: groupNameSnapshot,

@@ -567,6 +567,15 @@ Verified by `test/nutrition_primer_test.dart`.
 adds is the snapshot rule from the overview: `ConsumedFood` is frozen at log time
 and is never re-derived from its source food.
 
+**Calories override (plan 253).** A `Food` can carry an optional `caloriesOverride` (kcal per its
+reference amount, stored as `calories_override`). When it is set it replaces the macro sum
+(`protein x 4 + carbs x 4 + fat x 9`) in `Food.calories`, `calculateCalories`, the watch food list
+(`caloriesPerServing`) and, frozen into the logged row at log time, in `ConsumedFood.caloriesConsumed`,
+which the day ring, the trend and the Stats nutrition numbers all add up. A row logged before the
+override existed, or from a food without one, keeps the macro sum. Macros, sodium and the macro
+donut never change because of it. The form that sets it follows in a later plan. Verified by
+`test/calories_override_test.dart` (`S-25301` to `S-25310`).
+
 Verified by `test/models_test.dart`, `test/nutrition_data_audit_test.dart`.
 
 ### Foods I Eat ordering

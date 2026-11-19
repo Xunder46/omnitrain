@@ -1969,7 +1969,8 @@ enum FoodUnitType {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Calories are computed (not stored): protein * 4 + carbs * 4 + fat * 9
+// Calories are computed from the macros (protein * 4 + carbs * 4 + fat * 9)
+// unless the food carries its own `caloriesOverride` (plan 253).
 // All macro values are stored as integers (grams serving).
 
 class Food {
@@ -2003,6 +2004,12 @@ class Food {
   final double? fiber;
   final double fat;
   final double? sodium;
+
+  /// The food's own calories per [referenceAmount], when the user typed one:
+  /// it REPLACES the macro sum (`protein x 4 + carbs x 4 + fat x 9`) wherever
+  /// calories are shown or added up. Null (every food before plan 253) means
+  /// "computed from the macros". Macros are never changed by it.
+  final double? caloriesOverride;
   final bool isArchived;
   final String? notes;
 
@@ -2057,6 +2064,7 @@ class Food {
     this.fiber,
     required this.fat,
     this.sodium,
+    this.caloriesOverride,
     this.isArchived = false,
     this.notes,
     this.imagePath,
@@ -2075,7 +2083,11 @@ class Food {
   /// Macros are stored as `double` to support fractional grams
   /// (e.g. `0.5` g of fat); the calorie count is rounded to `int`
   /// at the display boundary because the UI shows whole kcal.
-  int get calories => macroKcal(protein: protein, carbs: carbs, fat: fat).round();
+  /// A [caloriesOverride] replaces the macro sum (plan 253).
+  int get calories =>
+      (caloriesOverride ??
+              macroKcal(protein: protein, carbs: carbs, fat: fat))
+          .round();
 
   /// Computed net carbs: carbs - (fiber ?? 0).
   /// Rounded to `int` for parity with the existing
@@ -2113,6 +2125,7 @@ class Food {
       fiber: (m['fiber'] as num?)?.toDouble(),
       fat: ((m['fat'] as num?) ?? 0.0).toDouble(),
       sodium: (m['sodium'] as num?)?.toDouble(),
+      caloriesOverride: (m['calories_override'] as num?)?.toDouble(),
       isArchived: (m['is_archived'] as int?) == 1,
       notes: m['notes'] as String?,
       imagePath: m['image_path'] as String?,
@@ -2137,6 +2150,7 @@ class Food {
     'fiber': fiber,
     'fat': fat,
     'sodium': sodium,
+    'calories_override': caloriesOverride,
     'is_archived': isArchived ? 1 : 0,
     'notes': notes,
     'image_path': imagePath,
@@ -2159,6 +2173,7 @@ class Food {
     double? fiber,
     double? fat,
     double? sodium,
+    Object? caloriesOverride = _foodCopyWithUnset,
     bool? isArchived,
     String? notes,
     Object? imagePath = _foodCopyWithUnset,
@@ -2184,6 +2199,9 @@ class Food {
       fiber: fiber ?? this.fiber,
       fat: fat ?? this.fat,
       sodium: sodium ?? this.sodium,
+      caloriesOverride: identical(caloriesOverride, _foodCopyWithUnset)
+          ? this.caloriesOverride
+          : caloriesOverride as double?,
       isArchived: isArchived ?? this.isArchived,
       notes: notes ?? this.notes,
       imagePath: identical(imagePath, _foodCopyWithUnset)
@@ -2201,7 +2219,7 @@ class Food {
 // Sentinel used by [Food.copyWith] to distinguish "argument omitted"
 // from "argument was explicitly null". `groupId` and `imagePath` are
 // the two nullable fields on `Food` and callers need to be able to
-// clear them.
+// clear them. [Food.caloriesOverride] and `lastAmountConsumed` use it too.
 const Object _foodCopyWithUnset = Object();
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2241,6 +2259,10 @@ class ConsumedFood {
   final double fat;
   final double? sodium;
 
+  /// The source food's calories override at log time (frozen with the rest of
+  /// the snapshot, plan 253); null means the row's calories are the macro sum.
+  final double? caloriesOverride;
+
   // How much was consumed (in the food's reference unit)
   final double amountConsumed;
 
@@ -2271,6 +2293,7 @@ class ConsumedFood {
     this.fiber,
     required this.fat,
     this.sodium,
+    this.caloriesOverride,
     required this.amountConsumed,
     this.groupIdSnapshot,
     this.groupNameSnapshot,
@@ -2296,8 +2319,10 @@ class ConsumedFood {
   ///     151 * (150 / 100) = 151 * 1.5 = 226.
   ///   - 3 of a per-1-egg food (6P / 1C / 5F = 73 kcal):
   ///     73 * (3 / 1) = 73 * 3 = 219.
+  /// A frozen [caloriesOverride] replaces the macro sum (plan 253).
   int get caloriesConsumed =>
-      (macroKcal(protein: protein, carbs: carbs, fat: fat) *
+      ((caloriesOverride ??
+                  macroKcal(protein: protein, carbs: carbs, fat: fat)) *
               (amountConsumed / referenceAmount))
           .round();
 
@@ -2318,6 +2343,7 @@ class ConsumedFood {
     fiber: (m['fiber'] as num?)?.toDouble(),
     fat: ((m['fat'] as num?) ?? 0.0).toDouble(),
     sodium: (m['sodium'] as num?)?.toDouble(),
+    caloriesOverride: (m['calories_override'] as num?)?.toDouble(),
     amountConsumed: ((m['amount_consumed'] as num?) ?? 1.0).toDouble(),
     groupIdSnapshot: m['group_id_snapshot'] as String?,
     groupNameSnapshot: m['group_name_snapshot'] as String?,
@@ -2343,6 +2369,7 @@ class ConsumedFood {
     'fiber': fiber,
     'fat': fat,
     'sodium': sodium,
+    'calories_override': caloriesOverride,
     'amount_consumed': amountConsumed,
     'group_id_snapshot': groupIdSnapshot,
     'group_name_snapshot': groupNameSnapshot,
@@ -2368,6 +2395,7 @@ class ConsumedFood {
     double? fiber,
     double? fat,
     double? sodium,
+    double? caloriesOverride,
     double? amountConsumed,
     String? groupIdSnapshot,
     String? groupNameSnapshot,
@@ -2392,6 +2420,7 @@ class ConsumedFood {
       fiber: fiber ?? this.fiber,
       fat: fat ?? this.fat,
       sodium: sodium ?? this.sodium,
+      caloriesOverride: caloriesOverride ?? this.caloriesOverride,
       amountConsumed: amountConsumed ?? this.amountConsumed,
       groupIdSnapshot: groupIdSnapshot ?? this.groupIdSnapshot,
       groupNameSnapshot: groupNameSnapshot ?? this.groupNameSnapshot,

@@ -417,7 +417,7 @@ A food item with macronutrient metadata. Foods exist in two collections:
 - **Library** (`isCatalog == false`): user-owned foods, the personal logging library. Catalog copies land here via the **Add** button on a catalog row.
 
 Derived getters:
-- `calories`: computed as `(protein * 4 + carbs * 4 + fat * 9).round()` — the macro math is now `double`-precision (so `0.5 g` of fat survives storage), then rounded to `int` at the display boundary because the calorie UI shows whole kcal.
+- `calories`: computed as `(protein * 4 + carbs * 4 + fat * 9).round()`, or the food's own `caloriesOverride` when it carries one (plan 253) — the macro math is now `double`-precision (so `0.5 g` of fat survives storage), then rounded to `int` at the display boundary because the calorie UI shows whole kcal.
 - `netCarbs`: computed as `(carbs - (fiber ?? 0)).round()` — same display-boundary rationale.
 - `isCatalogFood`: `true` when `isCatalog == true`
 - `isLibraryFood`: `true` when `isCatalog == false`
@@ -460,7 +460,7 @@ A frozen snapshot of a logged food for a specific day. Stores complete state at 
 
 Derived getters:
 - `caloriesConsumed`: computed as
-  `(protein * 4 + carbs * 4 + fat * 9) * (amountConsumed / referenceAmount)`,
+  `(protein * 4 + carbs * 4 + fat * 9) * (amountConsumed / referenceAmount)` (the frozen `caloriesOverride` replaces the macro sum when the row has one),
   then rounded to an int. The macros on the snapshot are stored
   per the food's reference, so the scaling factor is
   `amountConsumed / referenceAmount`. Examples:

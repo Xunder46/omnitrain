@@ -1243,6 +1243,12 @@ CREATE TABLE app_food (
   fiber REAL,
   fat REAL NOT NULL,
   sodium REAL,
+  -- calories_override: the food's own kcal per reference amount. When set it
+  -- replaces the macro sum (protein*4 + carbs*4 + fat*9) wherever calories are
+  -- shown or added up; NULL means "computed from the macros" (plan 253).
+  -- app_consumed_food freezes it with the rest of the log-time snapshot.
+  -- Back-compat: rows without the key read back as NULL.
+  calories_override REAL,
   is_archived INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
   image_path TEXT,
@@ -1326,6 +1332,12 @@ CREATE TABLE app_food_catalog (
   fiber REAL,
   fat REAL NOT NULL,
   sodium REAL,
+  -- calories_override: the food's own kcal per reference amount. When set it
+  -- replaces the macro sum (protein*4 + carbs*4 + fat*9) wherever calories are
+  -- shown or added up; NULL means "computed from the macros" (plan 253).
+  -- app_consumed_food freezes it with the rest of the log-time snapshot.
+  -- Back-compat: rows without the key read back as NULL.
+  calories_override REAL,
   is_archived INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
   image_path TEXT,
@@ -1420,6 +1432,12 @@ CREATE TABLE app_consumed_food (
   fiber REAL,
   fat REAL NOT NULL,
   sodium REAL,
+  -- calories_override: the food's own kcal per reference amount. When set it
+  -- replaces the macro sum (protein*4 + carbs*4 + fat*9) wherever calories are
+  -- shown or added up; NULL means "computed from the macros" (plan 253).
+  -- app_consumed_food freezes it with the rest of the log-time snapshot.
+  -- Back-compat: rows without the key read back as NULL.
+  calories_override REAL,
   amount_consumed REAL NOT NULL,
   group_id_snapshot TEXT,
   group_name_snapshot TEXT,
