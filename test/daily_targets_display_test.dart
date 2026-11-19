@@ -151,10 +151,14 @@ void main() {
       expect(find.text('Protein'), findsOneWidget);
       expect(find.textContaining('80 g · '), findsOneWidget);
 
-      // No carbs target → the slice keeps its "Net Carbs" name.
+      // No carbs target: the slice still names "Carbs" and counts total
+      // carbs (180 g, fibre included), the same label and number as with a
+      // target (plan 265).
       focusSlice(tester, nutrition, 'Net Carbs');
       await tester.pump();
-      expect(find.text('Net Carbs'), findsOneWidget);
+      expect(find.text('Carbs'), findsOneWidget);
+      expect(find.text('Net Carbs'), findsNothing);
+      expect(find.textContaining('180 g'), findsOneWidget);
     });
   });
 

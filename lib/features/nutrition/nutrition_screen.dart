@@ -38,6 +38,11 @@ class NutritionScreen extends StatefulWidget {
 }
 
 class _NutritionScreenState extends State<NutritionScreen> {
+  /// True once the screen has shown its content. Later reloads (coming back
+  /// from Daily Targets) keep the content on screen, so the scroll position and
+  /// any amount typed in a food row survive (plan 265).
+  bool _hasShownContent = false;
+
   @override
   void initState() {
     super.initState();
@@ -190,9 +195,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
       body: ListenableBuilder(
         listenable: widget.nutritionState,
         builder: (context, child) {
-          if (widget.nutritionState.isLoading) {
+          if (widget.nutritionState.isLoading && !_hasShownContent) {
             return const Center(child: CircularProgressIndicator());
           }
+          _hasShownContent = true;
 
           return SingleChildScrollView(
             child: Padding(

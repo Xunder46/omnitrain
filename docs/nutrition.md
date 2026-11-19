@@ -121,6 +121,13 @@ Verified by `test/first_run_path_test.dart` (`S-12910`) and
 Verified by `test/nutrition_test.dart`, `test/nutrition_primer_test.dart`,
 `test/home_nutrition_summary_card_test.dart`.
 
+Coming back from Daily Targets reloads the screen's data without replacing the screen: the scroll position and
+any amount typed in a food row stay (only the first load shows a spinner). Tapping the carbs slice of the ring
+always reads `Carbs` with total carbs (fibre included, the same number the carbs target counts), with or
+without a target. A food row's amount error (`Amount must be greater than 0`, `Enter a number`) shows under the
+row at full width and turns the amount box red (plan 265, `test/nutrition_polish_test.dart`,
+`test/daily_targets_display_test.dart`).
+
 ### Earlier days
 
 The `nutrition_day_prev` / `nutrition_day_next` arrows step back and forward and the title

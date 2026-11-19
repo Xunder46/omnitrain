@@ -175,7 +175,8 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
           final isInformational = s.name == 'Fiber';
           // A macro with a daily target reads "<grams> of <target> g". The
           // carbs target is TOTAL carbs (fibre included), so the Net Carbs
-          // slice then names "Carbs" and counts total carbs.
+          // slice always names "Carbs" and counts total carbs, with or without
+          // a target (plan 265: one label, one number).
           final rawTarget = switch (s.name) {
             'Protein' => target?.protein,
             'Net Carbs' => target?.carbs,
@@ -185,7 +186,7 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
           final focusTarget = (rawTarget != null && rawTarget > 0)
               ? rawTarget.round()
               : null;
-          final showsTotalCarbs = s.name == 'Net Carbs' && focusTarget != null;
+          final showsTotalCarbs = s.name == 'Net Carbs';
           centerOverride = MacroFocusContent(
             name: showsTotalCarbs ? 'Carbs' : s.name,
             grams: showsTotalCarbs ? totals.carbs : s.grams,

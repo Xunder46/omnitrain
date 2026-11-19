@@ -387,103 +387,140 @@ class _LogFoodRowState extends State<LogFoodRow> {
         // for the rationale.
         final macroText =
             '$cal cal · ${formatGrams(food.protein)}P · ${formatGrams(food.carbs)}C · ${formatGrams(food.fat)}F';
+        final amountError = _amountError;
+        final errorColor = theme.colorScheme.error;
+        OutlineInputBorder amountBorder(Color? color) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+          borderSide: color == null
+              ? const BorderSide()
+              : BorderSide(color: color, width: 1.5),
+        );
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── Thumb toggle: primary log/unlog affordance ───────
-              _ThumbToggle(
-                food: food,
-                isLogged: isLogged,
-                imageStorage: widget.foodLibraryState.imageStorageOrNull,
-                onTap: () => _toggle(isLogged ? false : true),
-              ),
-              // ── Food name + macros (takes remaining space) ────────
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Food name (1 line, ellipsis on overflow).
-                    Text(
-                      food.name,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: themeColors.textDominant,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    // Single-line macros (S-007) — format parity
-                    // with `AddFoodScreen` rows.
-                    Text(
-                      macroText,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: themeColors.textSecondary,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              // ── Amount textbox + unit label (right-aligned) ──────
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisSize: MainAxisSize.min,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  SizedBox(
-                    width: 73,
-                    child: SelectAllOnFocus(
-                      controller: _amountController,
-                      builder: (context, focusNode) => TextField(
-                        key: Key('log_food_amount_${food.id}'),
-                        controller: _amountController,
-                        focusNode: focusNode,
-                        textAlign: TextAlign.right,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                          signed: false,
-                        ),
-                        inputFormatters: const [
-                          DecimalInputFormatter(maxFractionDigits: 3),
-                        ],
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: themeColors.textDominant,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
+                  // ── Thumb toggle: primary log/unlog affordance ───────
+                  _ThumbToggle(
+                    food: food,
+                    isLogged: isLogged,
+                    imageStorage: widget.foodLibraryState.imageStorageOrNull,
+                    onTap: () => _toggle(isLogged ? false : true),
+                  ),
+                  // ── Food name + macros (takes remaining space) ────────
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Food name (1 line, ellipsis on overflow).
+                        Text(
+                          food.name,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: themeColors.textDominant,
                           ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(
-                              OmniTheme.buttonUtilityRadius,
-                            ),
-                          ),
-                          errorText: _amountError,
-                          errorMaxLines: 2,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        onSubmitted: (_) => _recommitIfLogged(),
-                        onEditingComplete: _recommitIfLogged,
-                      ),
+                        // Single-line macros (S-007) — format parity
+                        // with `AddFoodScreen` rows.
+                        Text(
+                          macroText,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: themeColors.textSecondary,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  // Unit caption beneath the textbox: the unit the
-                  // box counts (e.g. "g", "ml", "medium"), not the
-                  // reference serving (plan 77d D-1).
-                  Text(
-                    foodUnitCaption(food),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: themeColors.textMuted,
-                    ),
+                  // ── Amount textbox + unit label (right-aligned) ──────
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 73,
+                        child: SelectAllOnFocus(
+                          controller: _amountController,
+                          builder: (context, focusNode) => TextField(
+                            key: Key('log_food_amount_${food.id}'),
+                            controller: _amountController,
+                            focusNode: focusNode,
+                            textAlign: TextAlign.right,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: false,
+                            ),
+                            inputFormatters: const [
+                              DecimalInputFormatter(maxFractionDigits: 3),
+                            ],
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: themeColors.textDominant,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(
+                                  OmniTheme.buttonUtilityRadius,
+                                ),
+                              ),
+                              // The message itself shows under the row at full
+                              // width (plan 265); the box only turns red.
+                              enabledBorder: amountError == null
+                                  ? null
+                                  : amountBorder(errorColor),
+                              focusedBorder: amountError == null
+                                  ? null
+                                  : amountBorder(errorColor),
+                            ),
+                            onSubmitted: (_) => _recommitIfLogged(),
+                            onEditingComplete: _recommitIfLogged,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      // Unit caption beneath the textbox: the unit the
+                      // box counts (e.g. "g", "ml", "medium"), not the
+                      // reference serving (plan 77d D-1).
+                      Text(
+                        foodUnitCaption(food),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: themeColors.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
+              if (amountError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2.0),
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      amountError,
+                      key: Key('log_food_amount_error_${food.id}'),
+                      textAlign: TextAlign.right,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: errorColor,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         );
