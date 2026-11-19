@@ -302,8 +302,14 @@ List<String> _sectionTexts(WidgetTester tester) => tester
     .toList();
 
 Future<void> _tapRow(WidgetTester tester, String label) async {
-  await tester.ensureVisible(find.text(label));
-  await tester.tap(find.text(label));
+  // Scoped to the DISTANCE card: since plan 245 the exercise name also
+  // appears in the EXERCISES card, so a bare find.text is ambiguous.
+  await tester.ensureVisible(
+    find.descendant(of: _distanceCard, matching: find.text(label)),
+  );
+  await tester.tap(
+    find.descendant(of: _distanceCard, matching: find.text(label)),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -787,7 +793,12 @@ void main() {
       SessionDistanceCard.absentValue,
       'KM',
     ]);
-    expect(find.textContaining(_plank), findsNothing);
+    // Scoped to the DISTANCE card: since plan 245 Plank also appears in the
+    // EXERCISES card (its drill entries have logged time).
+    expect(
+      find.descendant(of: _distanceCard, matching: find.textContaining(_plank)),
+      findsNothing,
+    );
   });
 
   testWidgets('S-823 a plank tracked through Cardio gets the field', (
@@ -1012,9 +1023,15 @@ void main() {
         findsOneWidget,
       );
       expect(tester.getSize(icon), const Size.square(48));
+      // Scoped to the DISTANCE card: since plan 245 the exercise name also
+      // appears in the EXERCISES card, so a bare find.text is ambiguous.
+      final rowName = find.descendant(
+        of: _distanceCard,
+        matching: find.text(names[i]),
+      );
       expect(
         tester.getRect(icon).left,
-        greaterThanOrEqualTo(tester.getRect(find.text(names[i])).right),
+        greaterThanOrEqualTo(tester.getRect(rowName).right),
         reason: 'D-3210: row $i ends with the pencil',
       );
     }

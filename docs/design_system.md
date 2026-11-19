@@ -180,7 +180,7 @@ Every section / card header in the app routes through `OmniCardHeader`. The widg
 | Screen | Headers |
 |--------|---------|
 | **Settings** | `PREFERENCES`, `SOUNDS & ALERTS`, `WORKOUT`, `APPEARANCE` |
-| **Session Summary** | Date (with the modality chip in actions), `DISTANCE`, `SESSION NOTE` (note card), month label (with `Open Calendar` in actions) |
+| **Session Summary** | Date (with the modality chip in actions), `DISTANCE`, `EXERCISES`, `SESSION NOTE` (note card) |
 | **Daily Nutrition** | `TODAY` (with `nutrition_target_button` labelled `OutlinedButton.icon` in actions), `Foods I Eat` (with `food_library_manage_pencil` in actions) |
 | **Records & Trends** | `ALL TIME`; `RECENT PRS` (via `RecentPRList`); `NUTRITION`; the per-kind list labels in uppercase (`RESISTANCE`, `CARDIO`, `ISOMETRIC`, `SPORTS`). Verified by `test/stats_heading_consistency_screen_test.dart` (group `S-18713 R&T headings are uppercase in the enum order`), `test/records_and_trends_screen_test.dart` (group `Records & Trends / Exercise Progress — ${harness.name}`) and `test/ui_standards_widget_test.dart` (group `Mock S-2605a RecentPRList`). |
 | **Exercise Progress** | `ALL TIME`, `TREND`, `RECENT SESSIONS`. Verified by `test/records_and_trends_screen_test.dart` (group `Records & Trends / Exercise Progress — ${harness.name}`). |

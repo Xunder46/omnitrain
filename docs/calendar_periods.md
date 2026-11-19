@@ -93,12 +93,11 @@ past-day cell on the month grid), the screen is constructed with
 `openedFromCalendar: true` and the originating `CalendarState`. This
 unlocks four pieces of historical-aware behavior:
 
-1. The embedded calendar card (the monthly grid + "workout days / rest
-   days" totals) renders the **session's start month**, not today.
-   Highlighting (the "today" border) follows the session's
-   day-of-month. Rest days are counted only for days that have started: up to and
-   including today for the current month, every day for a past month (plan 239).
-2. The "Open Calendar" header button acts like the system back button:
+1. The summary shows no calendar grid; the summary screen instead lists each
+   exercise with the work logged in it (S-24514 in
+   `test/summary_exercise_list_screen_test.dart`; see
+   [Session Summary](session_summary.md)).
+2. The "Open Calendar" button acts like the system back button:
    one `Navigator.pop()` returns to the day list (and a subsequent back
    to the calendar), instead of stacking a fresh `CalendarScreen` on
    top of the summary.

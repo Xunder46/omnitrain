@@ -1329,15 +1329,15 @@ void main() {
     ) async {
       await pumpSessionSummary(tester, isRolling: false);
 
-      // After Phase 2.1, the always-rendered cards are:
+      // After Phase 2.1 (and plan 245's removal of the calendar card),
+      // the always-rendered cards are:
       //   1. combined session info card (date + Duration + Rest Time)
       //   2. note card
-      //   3. calendar card
+      // This fixture has no logged work, so no EXERCISES card renders.
       // The page title and modality chip live in OmniBackHeader
       // (above the cards, not as a card). The "Session note" title
-      // and the calendar month label live in OmniCardHeader widgets
-      // above their respective cards (not inside).
-      expect(find.byType(OmniSurface), findsNWidgets(3));
+      // lives in an OmniCardHeader above its card (not inside).
+      expect(find.byType(OmniSurface), findsNWidgets(2));
 
       // The combined card is the only source of Duration + Rest Time
       // pills in non-rolling mode. _StatPill uppercases its label,
@@ -1351,28 +1351,40 @@ void main() {
     });
 
     testWidgets(
-      'S-007: calendar card is OmniSurface; "Open Calendar" lives in the OmniCardHeader above',
+      'S-007: Open Calendar sits alone under the note card (plan 245)',
       (WidgetTester tester) async {
         await pumpSessionSummary(tester, isRolling: false);
 
-        expect(find.byType(OmniSurface), findsNWidgets(3));
+        expect(find.byType(OmniSurface), findsNWidgets(2));
         expect(find.text('Open Calendar'), findsOneWidget);
 
-        // The "Open Calendar" button is a descendant of an
-        // OmniCardHeader's actions cluster — not inside any
-        // OmniSurface. Phase 2.1 moved the button out of the card and
-        // into the header per the D-2 contract (controls pertinent to
-        // a card live in its header on the same row).
+        // Plan 245 removed the calendar card and its header: the
+        // "Open Calendar" button is a single centred button on its own
+        // row under the SESSION NOTE card — not inside any
+        // OmniCardHeader actions cluster, not inside any OmniSurface.
         final actionsCluster = find.descendant(
           of: find.byKey(const Key('omniCardHeader_actions')),
           matching: find.text('Open Calendar'),
         );
         expect(
           actionsCluster,
-          findsOneWidget,
+          findsNothing,
           reason:
-              '"Open Calendar" must live inside an OmniCardHeader '
-              'actions cluster (D-2), not inside the calendar card.',
+              '"Open Calendar" must NOT live inside an OmniCardHeader '
+              'actions cluster (plan 245 removed the calendar header).',
+        );
+
+        // The button sits below the SESSION NOTE header.
+        final noteHeaderTop = tester.getTopLeft(
+          find.text('SESSION NOTE'),
+        ).dy;
+        final openCalendarTop = tester.getTopLeft(
+          find.text('Open Calendar'),
+        ).dy;
+        expect(
+          openCalendarTop,
+          greaterThan(noteHeaderTop),
+          reason: '"Open Calendar" must sit below the SESSION NOTE header.',
         );
 
         // The button must NOT be a descendant of any OmniSurface.
@@ -1425,10 +1437,12 @@ void main() {
           reason: 'Change rating button must be visible when a rating exists',
         );
 
-        // The combined info card is still rendered (3 OmniSurface: info + note + calendar)
-        expect(find.byType(OmniSurface), findsNWidgets(3));
+        // The combined info card is still rendered (2 OmniSurface: info + note;
+        // plan 245 removed the calendar card and this fixture has no logged
+        // work, so no EXERCISES card)
+        expect(find.byType(OmniSurface), findsNWidgets(2));
 
-        // Calendar card chrome + extracted header are intact.
+        // The Open Calendar button row and the note header are intact.
         expect(find.text('Open Calendar'), findsOneWidget);
         expect(find.text('SESSION NOTE'), findsOneWidget);
 
@@ -1446,9 +1460,9 @@ void main() {
           reason: 'The modality chip must remain visible with the date header.',
         );
 
-        // Three OmniCardHeaders are rendered for a rolling session:
-        // date (always), note, and calendar.
-        expect(find.byType(OmniCardHeader), findsNWidgets(3));
+        // Two OmniCardHeaders are rendered for a rolling session:
+        // date (always) and note (plan 245 removed the calendar header).
+        expect(find.byType(OmniCardHeader), findsNWidgets(2));
       },
     );
 
@@ -1507,14 +1521,15 @@ void main() {
     );
 
     testWidgets(
-      'Phase 2.2: date, note, and calendar headers are OmniCardHeader above their cards',
+      'Phase 2.2: date and note headers are OmniCardHeader above their cards',
       (WidgetTester tester) async {
         await pumpSessionSummary(tester, isRolling: false);
 
-        // Three OmniCardHeaders are rendered: date (first card), note,
-        // and calendar.
+        // Two OmniCardHeaders are rendered: date (first card) and note
+        // (plan 245 removed the calendar header; this fixture has no
+        // logged work, so no EXERCISES header).
         final headers = find.byType(OmniCardHeader);
-        expect(headers, findsNWidgets(3));
+        expect(headers, findsNWidgets(2));
 
         // The note header's title.
         expect(
@@ -1525,18 +1540,18 @@ void main() {
           findsOneWidget,
         );
 
-        // The date header and calendar header titles are dynamic
-        // (date string + month label). Verify three
+        // The date header title is dynamic (date string). Verify two
         // `omniCardHeader_title` keys exist (one per header).
-        expect(find.byKey(const Key('omniCardHeader_title')), findsNWidgets(3));
+        expect(find.byKey(const Key('omniCardHeader_title')), findsNWidgets(2));
 
-        // The "Open Calendar" button is in the calendar header's
-        // actions slot.
+        // The "Open Calendar" button is NOT in any header: plan 245
+        // removed the calendar header and the button now sits on its
+        // own row under the note card.
         final openCalendarInHeaders = find.descendant(
           of: find.byType(OmniCardHeader),
           matching: find.text('Open Calendar'),
         );
-        expect(openCalendarInHeaders, findsOneWidget);
+        expect(openCalendarInHeaders, findsNothing);
 
         // The modality chip is in the date header's actions slot.
         final chipInHeaders = find.descendant(

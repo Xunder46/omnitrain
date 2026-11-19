@@ -2,15 +2,16 @@
 
 ## Overview
 
-The Session Summary screen appears after workout completion and focuses on session-level outcomes instead of per-exercise detail.
+The Session Summary screen appears after workout completion and shows each exercise with the work logged in it, under the session-level outcomes (plan 245, `test/summary_exercise_list_screen_test.dart` `S-24511 a post-workout style summary lists each exercise with its logged work`).
 
 Current hierarchy:
 
 1. Header
 2. Session info card (Duration and Rest Time for standard sessions; the EFFORT row with its Calories pill for every session)
 3. Context-aware modality group cards (Strength, Cardio, Sports, Isometric)
-4. Session note
-5. Calendar card
+4. Exercise list (the `EXERCISES` card), then the `DISTANCE` card when an entry holds a distance
+5. Session note
+6. Open Calendar button
 
 The screen keeps existing summary navigation actions (edit, save as routine, discard) and the bottom Done action.
 
@@ -62,14 +63,73 @@ The screen renders a CustomScrollView over OmniGradientBackground with this orde
 | Header | Session title only (the app bar shows no date or modality badge) |
 | Session info card | Duration and Rest Time, then the heart-rate row when the session has one ([Heart rate](#heart-rate)), then the EFFORT row with its Calories pill (rolling sessions: no Duration / Rest Time row — see [Effort Rating Capture](#effort-rating-capture)); the formatted start date/time and the modality chip sit in this card's header |
 | Group Cards | One card per group that has data in this session |
+| Exercise list | One row per exercise with logged work, then the Open Calendar button |
 | Session Note | Inline TextField with debounce save (a note still pending when Done or Back is pressed is written first) |
-| Calendar | Month grid and Open Calendar navigation button |
 
 What is not rendered in the active layout:
 
 - Session RPE card
-- Per-exercise rows
 - Standalone PR card
+
+## Exercise list
+
+Between the group cards and the distance section the screen renders an
+`EXERCISES` card (key `omni_session_exercise_card`): one row per exercise that
+has logged work, in the session's order, each row carrying the exercise's name
+and then one short text per logged item. The rows come from
+`buildSummaryExerciseRows` in `lib/core/utils/summary_exercise_rows.dart` over
+`WorkoutState.getExercisesWithEntries()`; the function reads no state and no
+settings, so the post-workout and calendar-opened summaries build the same
+rows (`test/summary_exercise_list_screen_test.dart`: `S-24511 a post-workout
+style summary lists each exercise with its logged work`,
+`S-24512 a calendar-opened summary lists the same rows in the same order`,
+`S-24515 a rolling session lists its logged exercise`). The card sits below
+the first card and above `SESSION NOTE` (S-24511), and a rolling session lists
+its logged work like any other (S-24515).
+
+- **A set reads its reps and weight.** A logged set reads `reps×weight unit`
+  (`10×60 kg`), with the Weight unit setting's label and `UnitFormatter`'s
+  converted value both applied, so the rows follow the Weight unit setting.
+  Verified by `test/summary_exercise_rows_test.dart` (group `Summary exercise
+  rows (plan 245)`: `S-24501 sets read reps x weight`, `S-24509 the unit label
+  and the formatter are both used`) and by
+  `test/summary_exercise_list_screen_test.dart` (`S-24516 weights follow the
+  Weight unit setting`).
+- **A bodyweight set reads its reps**, `12 reps`, or `12 reps +10 kg` when it
+  carries added weight. Verified by `test/summary_exercise_rows_test.dart`
+  (group `Summary exercise rows (plan 245)`: `S-24503 bodyweight sets read
+  reps, with added weight when given`).
+- **A timed, drill or round entry reads its time.** A hold or drill reads its
+  elapsed time in `OmniDateUtils.formatTimerDigits` form (`10:00`, hours form
+  `1:02:05`); a round reads its actual duration. Verified by
+  `test/summary_exercise_rows_test.dart` (group `Summary exercise rows (plan
+  245)`: `S-24504 timed entries read their elapsed time, zero gives nothing`,
+  `S-24505 drill entries read their elapsed time in hours form`,
+  `S-24506 rounds read their actual duration, zero gives nothing`).
+- **Nothing logged gives nothing.** A skipped set, a set with no reps, a timed
+  or round entry that never started or recorded no time, and an effort kind
+  other than `set`, `timed`, `drill` and `round` give no item; an exercise
+  with no item left gives no row, and the rows keep the input order. Verified
+  by `test/summary_exercise_rows_test.dart` (group `Summary exercise rows
+  (plan 245)`: `S-24502 a skipped set gives no item`,
+  `S-24510 a set with no reps gives no item`,
+  `S-24507 an exercise with no logged work gives no row`,
+  `S-24508 rows keep input order and unknown kinds give no row`).
+- **A session with nothing logged shows no card.** The section is omitted
+  rather than rendering an empty card. Verified by
+  `test/summary_exercise_list_screen_test.dart` (`S-24513 a session with no
+  logged work shows no EXERCISES card`).
+- **The month grid is gone from this screen.** The summary no longer renders
+  a month grid, a month-label header or the `N workout days / M rest days`
+  totals line. The `Open Calendar` button stays, on its own row under the
+  SESSION NOTE card, and keeps its behaviour: a post-workout summary pushes a
+  fresh `CalendarScreen`, a summary opened from the calendar pops back.
+  Verified by `test/summary_exercise_list_screen_test.dart` (`S-24514 the
+  month grid and the rest-day line are gone, Open Calendar stays`) and by
+  `test/calendar_summary_screen_bugs_test.dart` (group `S-002 — Open Calendar
+  pops back on historical summary`, and the test whose comment says S-003:
+  `tapping "Open Calendar" with openedFromCalendar=false (default) pushes a
+  new CalendarScreen on top`).
 
 ### Heart rate
 
@@ -333,8 +393,8 @@ Two entry points feed this screen:
 
 | Entry | `openedFromCalendar` | Behaviour |
 |-------|----------------------|-----------|
-| `WorkoutSessionScreen` finish → `pushReplacement` (post-workout) | `false` (default) | Calendar card renders today's month; "Open Calendar" pushes a fresh `CalendarScreen`; "Done" ends + clears + `popUntil(isFirst)`; "Discard" deletes + `popUntil(isFirst)`. |
-| `CalendarScreen` past-day tap with a single completed entry, or `DaySessionListScreen` completed-row tap (historical) | `true` | Calendar card renders the **session's month**; "Open Calendar" pops back like the system back button; "Done" just clears in-memory state and pops back; "Discard" permanently deletes the historical session and pops back to the originating calendar or day list (the originating `CalendarState.refresh()` is awaited so the deleted indicator disappears from the grid). |
+| `WorkoutSessionScreen` finish → `pushReplacement` (post-workout) | `false` (default) | "Open Calendar" pushes a fresh `CalendarScreen`; "Done" ends + clears + `popUntil(isFirst)`; "Discard" deletes + `popUntil(isFirst)`. |
+| `CalendarScreen` past-day tap with a single completed entry, or `DaySessionListScreen` completed-row tap (historical) | `true` | "Open Calendar" pops back like the system back button; "Done" just clears in-memory state and pops back; "Discard" permanently deletes the historical session and pops back to the originating calendar or day list (the originating `CalendarState.refresh()` is awaited so the deleted indicator disappears from the grid). |
 
 Summary data loaded on entry:
 
@@ -348,7 +408,6 @@ Summary data loaded on entry:
    session's window, and an end stored before the start contributes no rest
    (`test/session_summary_inverted_window_test.dart`, `S-153`)
 8. getPreferredWeightUnit from SessionSummaryService
-9. calendar-day data for current month
 
 Effort rating sheet: see [Effort Rating Capture](#effort-rating-capture).
 

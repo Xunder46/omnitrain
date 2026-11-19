@@ -298,7 +298,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    // Scroll down to ensure the calendar card (and Open Calendar button) is built.
+    // Scroll down to ensure the Open Calendar button is built.
     await tester.scrollUntilVisible(
       find.text('Open Calendar'),
       500,

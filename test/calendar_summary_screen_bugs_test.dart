@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/modality.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
-import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/calendar/calendar_screen.dart';
@@ -62,92 +61,13 @@ Future<String> _seedCompletedSession(
   return id;
 }
 
-/// Pumps `SessionSummaryScreen` with the historical session already loaded
-/// into [workoutState]. Returns the widget tree's `BuildContext` for the
-/// summary screen so callers can drive navigation.
-Future<NavigatorState> _pumpHistoricalSummary(
-  WidgetTester tester, {
-  required MockWorkoutRepository repo,
-  required WorkoutState workoutState,
-  required bool openedFromCalendar,
-}) async {
-  await tester.binding.setSurfaceSize(const Size(400, 1100));
-  final routineState = RoutineState(repo);
-  final sessionSummaryService = SessionSummaryService(repo);
-  final settingsState = await _settingsWithoutFeelingSheet(repo);
-
-  await tester.pumpWidget(
-    MaterialApp(
-      home: SessionSummaryScreen(
-        workoutState: workoutState,
-        routineState: routineState,
-        sessionSummaryService: sessionSummaryService,
-        settingsState: settingsState,
-        timerAlertService: FakeTimerAlertService(),
-        openedFromCalendar: openedFromCalendar,
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  return tester.state<NavigatorState>(find.byType(Navigator).first);
-}
-
 // ════════════════════════════════════════════════════════════════════════════════
-// S-001: Historical session summary calendar shows the session's month
+// S-001 (deleted, plan 245): the summary month grid and month label no longer
+// exist; the new exercise card is covered by S-24511..S-24514 in
+// test/summary_exercise_list_screen_test.dart.
 // ════════════════════════════════════════════════════════════════════════════════
 
 void main() {
-  group('S-001 — historical summary calendar shows the session month', () {
-    testWidgets(
-      'calendar header label uses the historical session month + year',
-      (WidgetTester tester) async {
-        // Pick a historical date that is GUARANTEED to be in a different
-        // month and year from "today" (test runs at any wall-clock time).
-        final today = DateTime.now();
-        final historical = DateTime(today.year - 3, 3, 15); // March, 3 yrs ago
-
-        final repo = await _freshRepo();
-        final sessionId = await _seedCompletedSession(
-          repo,
-          startDate: historical,
-        );
-
-        final workoutState = WorkoutState(repo);
-        await workoutState.loadHistoricalSession(sessionId);
-
-        await _pumpHistoricalSummary(
-          tester,
-          repo: repo,
-          workoutState: workoutState,
-          openedFromCalendar: true,
-        );
-
-        // The calendar header label is built from the session's start month
-        // (long-form: "March 2022"). The CURRENT month is today.month and
-        // today.year; they must NOT appear in the header.
-        final sessionDate = OmniDateUtils.fromMs(
-          workoutState.currentSession!.startedAtMs,
-        );
-        final expectedLabel =
-            '${OmniDateUtils.fullMonthName(sessionDate.month)} ${sessionDate.year}';
-
-        // Scroll until the calendar card is visible.
-        await tester.scrollUntilVisible(
-          find.text(expectedLabel),
-          300,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.pumpAndSettle();
-
-        expect(find.text(expectedLabel), findsOneWidget);
-        // The current month label must not appear in the calendar header.
-        final currentLabel =
-            '${OmniDateUtils.fullMonthName(today.month)} ${today.year}';
-        expect(find.text(currentLabel), findsNothing);
-      },
-    );
-  });
-
   // ════════════════════════════════════════════════════════════════════════════
   // S-002: Open Calendar on historical summary pops back
   // ════════════════════════════════════════════════════════════════════════════

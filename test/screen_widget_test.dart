@@ -5594,7 +5594,9 @@ void main() {
 
       expect(find.text('DURATION'), findsNothing);
       expect(find.text('REST TIME'), findsNothing);
-      expect(find.text('EXERCISES'), findsNothing);
+      // Plan 245: the added exercise (one entry) is listed in the new
+      // EXERCISES card.
+      expect(find.text('EXERCISES'), findsOneWidget);
     });
 
     testWidgets('non-rolling session stats include Duration', (
@@ -5655,7 +5657,7 @@ void main() {
     });
 
     testWidgets(
-      'rolling session still shows group card, note, and calendar sections',
+      'rolling session still shows group card, note, and the Open Calendar button',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final repo = await _freshRepo();
@@ -5696,7 +5698,7 @@ void main() {
     );
 
     testWidgets(
-      'rolling summary does not render block headers or exercise rows',
+      'rolling summary does not render block headers',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final repo = await _freshRepo();
@@ -5741,7 +5743,9 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Main Work'), findsNothing);
-        expect(find.text(exercises.first.name), findsNothing);
+        // Plan 245: the exercise itself is listed in the EXERCISES card;
+        // only the block header stays hidden.
+        expect(find.text(exercises.first.name), findsOneWidget);
       },
     );
 
@@ -5773,7 +5777,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Other'), findsNothing);
-      expect(find.text(exercises.first.name), findsNothing);
+      // Plan 245: the exercise is listed in the EXERCISES card; only the
+      // Other fallback section stays hidden.
+      expect(find.text(exercises.first.name), findsOneWidget);
     });
 
     testWidgets('top stats show only Duration and Rest Time', (
@@ -5842,7 +5848,9 @@ void main() {
 
       expect(find.text('DURATION'), findsOneWidget);
       expect(find.text('REST TIME'), findsOneWidget);
-      expect(find.text('EXERCISES'), findsNothing);
+      // Plan 245: the added exercise (one reps entry) is listed in the new
+      // EXERCISES card.
+      expect(find.text('EXERCISES'), findsOneWidget);
       expect(find.textContaining('1m 30s'), findsOneWidget);
     });
 
@@ -5881,9 +5889,7 @@ void main() {
       expect(find.text('0'), findsWidgets);
     });
 
-    testWidgets('removes session RPE and per-exercise rows from summary', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('removes session RPE from summary', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final repo = await _freshRepo();
       final workoutState = await workoutStateWithActiveSession(repo);
@@ -5914,7 +5920,9 @@ void main() {
 
       expect(find.text('Session RPE'), findsNothing);
       expect(find.text('PRs achieved'), findsNothing);
-      expect(find.text(exercises.first.name), findsNothing);
+      // Plan 245: the exercise is listed in the EXERCISES card; only the
+      // session-level RPE rows stay hidden.
+      expect(find.text(exercises.first.name), findsOneWidget);
     });
 
     testWidgets('session note appears before calendar section', (
@@ -5942,8 +5950,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Phase 2.1: the note title is rendered by an OmniCardHeader
-      // above the card; the calendar's "Open Calendar" button is
-      // rendered in the calendar card's OmniCardHeader's actions slot.
+      // above the card; the "Open Calendar" button sits on its own row
+      // under the note card (plan 245 removed the calendar card).
       final noteTopLeft = tester.getTopLeft(find.text('SESSION NOTE'));
       final calendarTopLeft = tester.getTopLeft(find.text('Open Calendar'));
       expect(noteTopLeft.dy, lessThan(calendarTopLeft.dy));

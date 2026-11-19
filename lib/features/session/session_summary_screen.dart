@@ -11,6 +11,7 @@ import '../../core/constants/effort_defaults.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/utils/session_feeling_utils.dart';
 import '../../core/utils/unit_formatter.dart';
+import '../../core/utils/summary_exercise_rows.dart';
 import '../../core/utils/distance_source.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -47,7 +48,6 @@ class SessionSummaryScreen extends StatefulWidget {
 
   /// True when this summary was reached from the calendar / day-list
   /// flow (i.e. viewing a historical session). Drives:
-  ///   • The calendar grid to show the session's month, not today.
   ///   • "Open Calendar" to pop back (one route) instead of pushing a
   ///     fresh `CalendarScreen`.
   ///   • "Discard" to pop back to the originating calendar or day
@@ -102,37 +102,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// The active-energy row for the loaded session, if one is stored.
   ({int kcal, bool measured})? _energy;
   String _preferredWeightUnit = 'kg';
-  Set<int> _workoutDays = {};
-  int _daysInMonth = 30;
   late final CalendarState _calendarState;
   late final PeriodState _periodState;
   late final RoutineSessionService _routineSessionService;
 
-  /// The month the embedded calendar grid is currently displaying.
-  /// For a historical summary this is the session's start month; for a
-  /// post-workout summary it is the current month.
-  DateTime get _viewMonth {
-    final ms = widget.workoutState.currentSession?.startedAtMs;
-    if (ms != null) {
-      final d = OmniDateUtils.fromMs(ms);
-      return DateTime(d.year, d.month, 1);
-    }
-    final now = DateTime.now();
-    return DateTime(now.year, now.month, 1);
-  }
-
-  /// The day-of-month to highlight as "today" in the embedded grid.
-  /// For a historical summary this is the session's day-of-month; for a
-  /// post-workout summary it is the current day-of-month.
-  int get _viewTodayDay {
-    final ms = widget.workoutState.currentSession?.startedAtMs;
-    if (ms != null) return OmniDateUtils.fromMs(ms).day;
-    return DateTime.now().day;
-  }
-
-  /// True when the summary was reached from the calendar flow (so the
-  /// embedded calendar shows a historical month and Discard / Open
-  /// Calendar should navigate back, not exit to the hub).
+  /// True when the summary was reached from the calendar flow (so
+  /// Discard / Open Calendar should navigate back, not exit to the hub).
   bool get _isHistoricalView => widget.openedFromCalendar;
 
   List<SessionTemplateExercise> _draftExercises = [];
@@ -231,7 +206,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       final preferredWeightUnit = await widget.sessionSummaryService
           .getPreferredWeightUnit();
-      await _loadCalendarData();
 
       if (!mounted) return;
 
@@ -268,43 +242,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _heartRate = heartRate;
       _energy = energy;
     });
-  }
-
-  Future<void> _loadCalendarData() async {
-    // The displayed month is anchored to the loaded session's start
-    // date so a historical session shows its own month (not today's).
-    final monthAnchor = _viewMonth;
-    final monthEnd = DateTime(
-      monthAnchor.year,
-      monthAnchor.month + 1,
-      0,
-      23,
-      59,
-      59,
-    );
-    _daysInMonth = DateTime(monthAnchor.year, monthAnchor.month + 1, 0).day;
-
-    final sessions = await widget.workoutState.getSessionsByDateRange(
-      monthAnchor.millisecondsSinceEpoch,
-      monthEnd.millisecondsSinceEpoch,
-    );
-
-    final days = <int>{};
-    for (final session in sessions) {
-      if (session.endedAtMs == null) continue;
-      final day = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs).day;
-      days.add(day);
-    }
-
-    final currentSession = widget.workoutState.currentSession;
-    if (currentSession != null) {
-      final currentDay = DateTime.fromMillisecondsSinceEpoch(
-        currentSession.startedAtMs,
-      ).day;
-      days.add(currentDay);
-    }
-
-    _workoutDays = days;
   }
 
   /// Plan 238: a note still waiting in the 600 ms pause is written now, so a
@@ -823,13 +760,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                       _buildSessionInfoHeader(theme),
                       _buildSessionInfoCard(theme),
                       ..._buildGroupCards(theme),
+                      ..._buildExerciseSection(theme),
                       ..._buildDistanceSection(),
                       const SizedBox(height: 16),
                       const OmniCardHeader(title: 'SESSION NOTE'),
                       _buildNoteCard(theme),
                       const SizedBox(height: 16),
-                      _buildCalendarHeader(theme),
-                      _buildCalendarCard(theme),
+                      Center(child: _buildOpenCalendarButton()),
                       if (_isLoading)
                         Padding(
                           padding: const EdgeInsets.only(top: 24.0),
@@ -1026,22 +963,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  /// Calendar card header: month label on the left, "Open Calendar"
-  /// button on the right. Lives above the calendar [OmniSurface].
-  Widget _buildCalendarHeader(ThemeData theme) {
-    // Use the historical session's month when viewing one, so the
-    // header label matches the grid below it.
-    final monthLabel = '${_monthName(_viewMonth.month)} ${_viewMonth.year}';
-    return OmniCardHeader(
-      title: monthLabel,
-      actions: [_buildOpenCalendarButton()],
-    );
-  }
-
-  /// Compact `Open Calendar` button used in the calendar card's
-  /// [OmniCardHeader] actions slot. Extracted so the body composition
-  /// site stays compact and so the button lives outside the card
-  /// (D-2: controls pertinent to a card live in its header).
+  /// Compact `Open Calendar` button on its own centred row directly
+  /// under the SESSION NOTE card, no longer inside a card header.
+  /// Extracted so the body composition site stays compact.
   Widget _buildOpenCalendarButton() {
     return FilledButton.tonalIcon(
       onPressed: _openCalendarScreen,
@@ -1059,6 +983,63 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       icon: const Icon(Icons.open_in_new, size: 16),
       label: const Text('Open Calendar'),
     );
+  }
+
+  // ── EXERCISES section (plan 245) ─────────────────────────────────────────
+
+  /// The EXERCISES header and card, or nothing at all when no exercise has
+  /// logged work. One row per exercise in the session's order: its name and,
+  /// under it, each set / hold / round that was logged.
+  List<Widget> _buildExerciseSection(ThemeData theme) {
+    final rows = buildSummaryExerciseRows(
+      widget.workoutState.getExercisesWithEntries(),
+      weightUnitLabel: UnitFormatter.weightLabel(widget.settingsState),
+      formatWeight: (kg) =>
+          UnitFormatter.formatWeightValue(kg, widget.settingsState),
+    );
+    if (rows.isEmpty) return const [];
+
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+    return [
+      const SizedBox(height: 16),
+      const OmniCardHeader(title: 'EXERCISES'),
+      OmniSurface(
+        key: const Key('omni_session_exercise_card'),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < rows.length; i++) ...[
+              if (i > 0) Divider(color: themeColors.surfaceBorder, height: 1),
+              Padding(
+                key: Key('summary_exercise_row_$i'),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(rows[i].name, style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
+                      children: [
+                        for (final item in rows[i].items)
+                          Text(
+                            item,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ];
   }
 
   // ── DISTANCE section (D-315, D-319) ──────────────────────────────────────
@@ -1363,90 +1344,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  Widget _buildCalendarCard(ThemeData theme) {
-    // Month label + "Open Calendar" button live in the
-    // `OmniCardHeader` above this card (see `_buildCalendarHeader`
-    // and the body composition site). The card body is content-only.
-    final workoutDays = _workoutDays.length;
-    // Plan 239: a day that has not started is not a rest day.
-    final elapsed = OmniDateUtils.daysElapsedInMonth(
-      _viewMonth,
-      DateTime.now(),
-    );
-    final restDays = (elapsed - workoutDays).clamp(0, elapsed);
-
-    return OmniSurface(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildCalendarGrid(theme),
-          const SizedBox(height: 12),
-          Text(
-            '$workoutDays workout days / $restDays rest days',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.7),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCalendarGrid(ThemeData theme) {
-    // The grid renders the session's start month for historical
-    // summaries and the current month for post-workout summaries.
-    final viewMonth = _viewMonth;
-    final startOfWeek = widget.settingsState.startOfWeek;
-    final firstDay = DateTime(viewMonth.year, viewMonth.month, 1);
-    // Dart weekday: 1=Mon … 7=Sun
-    final int leadingBlanks = startOfWeek == 'sunday'
-        ? firstDay.weekday %
-              7 // Sun=0, Mon=1, … Sat=6
-        : firstDay.weekday - 1; // Mon=0, Tue=1, … Sun=6
-    final daysInMonth = _daysInMonth;
-    final totalSlots = daysInMonth + leadingBlanks;
-    final rows = (totalSlots / 7).ceil();
-
-    final cells = <Widget>[];
-    final todayDay = _viewTodayDay;
-
-    for (int i = 0; i < rows * 7; i++) {
-      final dayNumber = i - leadingBlanks + 1;
-      if (dayNumber < 1 || dayNumber > daysInMonth) {
-        cells.add(const SizedBox.shrink());
-        continue;
-      }
-
-      final isWorkout = _workoutDays.contains(dayNumber);
-      final isToday = dayNumber == todayDay;
-
-      cells.add(
-        Container(
-          margin: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: isWorkout
-                ? theme.colorScheme.primary.withOpacity(0.2)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: isToday
-                ? Border.all(color: theme.colorScheme.primary)
-                : null,
-          ),
-          alignment: Alignment.center,
-          child: Text(dayNumber.toString(), style: theme.textTheme.bodySmall),
-        ),
-      );
-    }
-
-    return GridView.count(
-      crossAxisCount: 7,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: cells,
-    );
-  }
-
   String _formatDuration(int durationMs) {
     final totalSeconds = (durationMs / 1000).floor();
     final hours = totalSeconds ~/ 3600;
@@ -1511,24 +1408,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final minute = date.minute.toString().padLeft(2, '0');
     final suffix = date.hour >= 12 ? 'PM' : 'AM';
     return '${_formatDate(date)} at $hour:$minute $suffix';
-  }
-
-  String _monthName(int month) {
-    const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    return months[month - 1];
   }
 }
 
