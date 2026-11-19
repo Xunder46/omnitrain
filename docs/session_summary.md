@@ -252,7 +252,7 @@ Cards are shown in fixed order when data exists:
 Each card contains:
 
 - Group title
-- Existing comparison delta chip from GroupDelta
+- Comparison delta chip from GroupDelta, against the last like session
 - Two metrics
 - Inline PR rows for that group (if any)
 
@@ -270,6 +270,24 @@ Behavior details:
 - Strength volume is formatted using preferred weight unit (kg or lbs).
 - A set marked skipped was not done: it is not counted in Sets, and its planned weight and reps feed no volume, best weight or e1RM (plan 227, `test/skipped_set_counts_for_nothing_test.dart`).
 - Saving an edited workout (Edit Session, Save Changes) finishes the rounds that were running or paused at their planned length, but a round that was never started stays never started: the summary's round count and time do not grow (plan 232, `test/edit_save_keeps_unstarted_rounds_test.dart`).
+
+---
+
+## Comparison basis
+
+The per-group figures compare with the last finished session that is like this one, not with the last session of any kind (plan 246, `test/summary_comparison_basis_test.dart`, group `Summary comparison basis (plan 246)`):
+
+- A session started from a routine compares with the last finished session of the same routine (`S-24601 routine current compares with the same routine, not a free session`).
+- Any other session compares with the last finished session of the same type: one with no routine and the same modality, and a session with no modality (Free Training) matches only other sessions with no routine and no modality (`S-24604 free null-modality current compares with the last free null-modality session, not a routine session`, `S-24605 type match excludes other modalities and routine sessions`).
+- Unfinished sessions and sessions started after the current one are skipped (`S-24607 unfinished and started-after-current sessions are skipped`).
+- A group the like session does not have gets no figure — `—` where other sessions show a delta — while a group it has gets its delta (`S-24606 a group the like session lacks gets no figure, a group it has gets the delta`).
+- With no like session at all — only a free session before a routine one (`S-24602 routine current with only a free session before it has no figure and no basis`), or only a different routine (`S-24603 routine current with only a different routine before it has no figure and no basis`) — every figure is hidden and there is no basis.
+
+One muted line above the group cards names the basis when a like session exists and at least one figure is shown (key `summary_comparison_basis`):
+
+- A routine session reads `Compared with your last <routine title> (<date>)`, and a free session reads `Compared with your last <type name> session (<date>)` (`S-24611 a routine summary says it compares with the last run of that routine`, `S-24613 a free session says it compares with the last session of its type`).
+- The routine's label is the current session's title, or `this routine` when that title is blank or missing (`S-24608 blank title falls back to this routine`, `S-24608 null title falls back to this routine`); the type's label is the modality's display name, as in the label checks of the two type tests above.
+- No like session (`S-24612 no like session means no line`) or no figure shown, such as a like session with no effort (`S-24614 a like session with no group shows no line`) means no line.
 
 ---
 

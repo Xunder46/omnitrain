@@ -153,6 +153,35 @@ class GroupDelta {
   const GroupDelta({this.delta, required this.unit, required this.hasPrevious});
 }
 
+/// What a Summary's per-group figures were compared with (plan 246).
+class ComparisonBasis {
+  /// True when the like session is a run of the same routine; false when it is
+  /// the last session of the same type.
+  final bool isRoutine;
+
+  /// The routine's name, or the type's display name.
+  final String label;
+
+  /// When the like session started (epoch ms).
+  final int previousStartedAtMs;
+
+  const ComparisonBasis({
+    required this.isRoutine,
+    required this.label,
+    required this.previousStartedAtMs,
+  });
+}
+
+/// The per-group deltas of a Summary and what they were measured against.
+class GroupComparison {
+  final Map<String, GroupDelta> deltas;
+
+  /// Null when no like session exists.
+  final ComparisonBasis? basis;
+
+  const GroupComparison({required this.deltas, this.basis});
+}
+
 class SessionTemplateDraft {
   final String name;
   final String? focusModality;

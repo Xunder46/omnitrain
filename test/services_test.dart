@@ -1799,9 +1799,9 @@ void main() {
           current,
           summary,
         );
-        expect(result.containsKey('strength'), true);
-        expect(result['strength']!.hasPrevious, false);
-        expect(result['strength']!.delta, isNull);
+        expect(result.deltas.containsKey('strength'), true);
+        expect(result.deltas['strength']!.hasPrevious, false);
+        expect(result.deltas['strength']!.delta, isNull);
       });
 
       test('computes delta for strength group with previous session', () async {
@@ -1849,9 +1849,9 @@ void main() {
           current,
           summary,
         );
-        expect(result['strength']!.hasPrevious, true);
-        expect(result['strength']!.delta, 100.0); // 500 - 400
-        expect(result['strength']!.unit, 'kg');
+        expect(result.deltas['strength']!.hasPrevious, true);
+        expect(result.deltas['strength']!.delta, 100.0); // 500 - 400
+        expect(result.deltas['strength']!.unit, 'kg');
       });
 
       test('only includes groups with non-zero values', () async {
@@ -1888,10 +1888,10 @@ void main() {
           summary,
         );
         // Only 'strength' should be present (totalVolume > 0)
-        expect(result.containsKey('strength'), true);
-        expect(result.containsKey('cardio'), false);
-        expect(result.containsKey('rounds'), false);
-        expect(result.containsKey('isometric'), false);
+        expect(result.deltas.containsKey('strength'), true);
+        expect(result.deltas.containsKey('cardio'), false);
+        expect(result.deltas.containsKey('rounds'), false);
+        expect(result.deltas.containsKey('isometric'), false);
       });
 
       test('uses duration delta and ms unit for rounds group', () async {
@@ -1938,9 +1938,9 @@ void main() {
           summary,
         );
 
-        expect(result['rounds']!.hasPrevious, true);
-        expect(result['rounds']!.unit, 'ms');
-        expect(result['rounds']!.delta, 6000.0);
+        expect(result.deltas['rounds']!.hasPrevious, true);
+        expect(result.deltas['rounds']!.unit, 'ms');
+        expect(result.deltas['rounds']!.delta, 6000.0);
       });
     });
   });

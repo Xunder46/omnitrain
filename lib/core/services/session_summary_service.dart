@@ -453,9 +453,11 @@ class SessionSummaryService {
     return stats;
   }
 
-  /// Returns a [GroupDelta] for every modality group that has data in [currentSummary].
-  /// Uses [currentSession] only to identify and exclude it from the previous-session search.
-  Future<Map<String, GroupDelta>> compareGroupsToPreviousSession(
+  /// Compares each group of [currentSummary] with the last finished session
+  /// that is like [currentSession] (plan 246): the same routine for a session
+  /// started from one, otherwise the same type (no routine and the same
+  /// modality). A group the like session lacks has no figure.
+  Future<GroupComparison> compareGroupsToPreviousSession(
     TrainingSession currentSession,
     SessionSummary currentSummary,
   ) async {
@@ -483,22 +485,27 @@ class SessionSummaryService {
           .toDouble();
     }
 
-    // Find the most recent completed session before this one.
+    // The last finished session before this one that is like it.
     final sessions = await _repository.getAllSessions();
-    final previous =
+    final currentRoutine = _routineIdOf(currentSession);
+    final like =
         sessions
             .where(
               (s) =>
                   s.endedAtMs != null &&
                   s.id != currentSession.id &&
-                  s.startedAtMs < currentSession.startedAtMs,
+                  s.startedAtMs < currentSession.startedAtMs &&
+                  (currentRoutine != null
+                      ? _routineIdOf(s) == currentRoutine
+                      : _routineIdOf(s) == null &&
+                            s.modality == currentSession.modality),
             )
             .toList()
           ..sort((a, b) => b.startedAtMs.compareTo(a.startedAtMs));
 
     final result = <String, GroupDelta>{};
 
-    if (previous.isEmpty) {
+    if (like.isEmpty) {
       for (final entry in currentValues.entries) {
         result[entry.key] = GroupDelta(
           delta: null,
@@ -506,23 +513,40 @@ class SessionSummaryService {
           hasPrevious: false,
         );
       }
-      return result;
+      return GroupComparison(deltas: result);
     }
 
-    final prevStats = await _computeGroupStats(previous.first.id);
+    final prevStats = await _computeGroupStats(like.first.id);
 
     for (final entry in currentValues.entries) {
       final key = entry.key;
-      final currentVal = entry.value;
-      final prevVal = prevStats[key] ?? 0.0;
-      result[key] = GroupDelta(
-        delta: currentVal - prevVal,
-        unit: units[key]!,
-        hasPrevious: true,
-      );
+      final prevVal = prevStats[key];
+      result[key] = prevVal == null
+          ? GroupDelta(delta: null, unit: units[key]!, hasPrevious: false)
+          : GroupDelta(
+              delta: entry.value - prevVal,
+              unit: units[key]!,
+              hasPrevious: true,
+            );
     }
 
-    return result;
+    final title = currentSession.title?.trim();
+    return GroupComparison(
+      deltas: result,
+      basis: ComparisonBasis(
+        isRoutine: currentRoutine != null,
+        label: currentRoutine != null
+            ? (title == null || title.isEmpty ? 'this routine' : title)
+            : ModalityDisplay.getName(currentSession.modality),
+        previousStartedAtMs: like.first.startedAtMs,
+      ),
+    );
+  }
+
+  /// The routine a session was started from; an empty id counts as none.
+  static String? _routineIdOf(TrainingSession s) {
+    final id = s.routineTemplateId;
+    return id == null || id.isEmpty ? null : id;
   }
 
   Future<double> _computeSessionVolume(String sessionId) async {

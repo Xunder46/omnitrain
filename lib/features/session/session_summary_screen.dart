@@ -94,6 +94,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _autoFeelingSheetOpen = false;
 
   Map<String, GroupDelta> _groupDeltas = {};
+  ComparisonBasis? _comparisonBasis;
   Map<String, List<PRAchievement>> _prsByGroup = {};
   Map<String, SessionGroupMetrics> _groupMetrics = {};
   int _restTimeMs = 0;
@@ -176,7 +177,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     final currentSession = widget.workoutState.currentSession;
     if (currentSession != null) {
-      final groupDeltas = await widget.sessionSummaryService
+      final comparison = await widget.sessionSummaryService
           .compareGroupsToPreviousSession(currentSession, _summary);
       // Exclude the current session so the just-finished workout's
       // own PRs are not compared against themselves (D-3 in
@@ -210,7 +211,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (!mounted) return;
 
       setState(() {
-        _groupDeltas = groupDeltas;
+        _groupDeltas = comparison.deltas;
+        _comparisonBasis = comparison.basis;
         _prsByGroup = groupedPrs;
         _groupMetrics = groupMetrics;
         _restTimeMs = restTimeMs;
@@ -1154,12 +1156,37 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     setState(() {});
   }
 
+  /// The one line that says what the group figures were compared with, or null
+  /// when no figure is shown (plan 246).
+  Widget? _buildComparisonBasisLine(ThemeData theme) {
+    final basis = _comparisonBasis;
+    if (basis == null) return null;
+    final anyFigure = _groupDeltas.values.any((d) => d.delta != null);
+    if (!anyFigure) return null;
+    final date = _formatDate(
+      DateTime.fromMillisecondsSinceEpoch(basis.previousStartedAtMs),
+    );
+    final what = basis.isRoutine ? basis.label : '${basis.label} session';
+    return Text(
+      'Compared with your last $what ($date)',
+      key: const Key('summary_comparison_basis'),
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+
   List<Widget> _buildGroupCards(ThemeData theme) {
     if (_groupMetrics.isEmpty) {
       return const [];
     }
 
     final widgets = <Widget>[const SizedBox(height: 16)];
+    final basisLine = _buildComparisonBasisLine(theme);
+    if (basisLine != null) {
+      widgets.add(basisLine);
+      widgets.add(const SizedBox(height: 8));
+    }
     for (final key in _groupOrder) {
       final metrics = _groupMetrics[key];
       if (metrics == null) continue;
