@@ -72,5 +72,10 @@ class ImageStorageService {
     String extension = '.png',
   }) async => _unsupported();
 
+  /// Mirror of `ImageStorageService.copyManagedFileToNewBasename`
+  /// in the IO variant. Always throws on web (D-8).
+  Future<String> copyManagedFileToNewBasename(String reference) async =>
+      _unsupported();
+
   Future<void> deleteIfManaged(String? path) async => _unsupported();
 }

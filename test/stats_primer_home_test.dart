@@ -143,6 +143,8 @@ void main() {
         // it is open (D-2022).
         expect(state.hasSeen, isFalse);
 
+        await tester.ensureVisible(find.byKey(const Key('stats_primer_dismiss')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('stats_primer_dismiss')));
         await tester.pumpAndSettle();
 
@@ -205,7 +207,8 @@ void main() {
       testWidgets(
         'the flag is false while the sheet shows and true after an outside tap',
         (tester) async {
-          await tester.binding.setSurfaceSize(const Size(400, 900));
+          // Tall enough that the primer sheet leaves a modal barrier above it.
+          await tester.binding.setSurfaceSize(const Size(400, 1100));
           addTearDown(() => tester.binding.setSurfaceSize(null));
           final repo = await _freshRepo();
           final state = await buildStatsPrimerState(repo);

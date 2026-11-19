@@ -1,0 +1,43 @@
+# Review: 50a + 50b (rest across devices) · P1 each · working tree (base HEAD)
+Verdict: APPROVE WITH FIXES
+Counts: blocker 0 · major 1 · minor 3 · tests: not run (governor-run: Swift 687/0, Flutter +5408, analyze 181, mutation 12/12 red)
+Diff vs Predicted Files: conforms for 50a+50b, with two plan-sanctioned deviations: `test/watch_timer_push_rest_test.dart` was not created (50a P1 allowed keeping the scenarios in `test/watch_timer_push_test.dart`, evidence confirms) and `test/watch_session_rest_timer_append_test.dart` is unchanged (50b P1 allowed the new private-harness file instead). Other changed files in the working tree (49a/49b food plans, `watch_sync_request_handler.dart`, `watch_sync_wiring.dart` snapshot projection, iOS/Swift, `watch_surface*.md`) belong to the sibling plans, outside this brief's scope.
+
+## Findings
+1. [Major] `lib/state/watch/watch_timer_push.dart:357` (`_restStartWithinTolerance`, used in `_wristHolds`, `_mirrorHolds` and the retired loop) — the 2000 ms tolerance is absolute (both directions), so two REAL consecutive rests whose sets are logged less than 2 s apart merge. Trace: set 2 logged at T2 closes rest 1 (T1) and opens rest 2 in one state change; one pass composes `rest` = rest 2. The retired loop sees `sameInterval` true (tolerance(T2, T1)), so no clear; `_wristHolds` sees the mirror's rest 1 (T1+δ) within tolerance of T2 with equal state → `identical` → nothing is sent and `_adopted` is re-pointed at T2. The wrist never restarts: it keeps one continuous rest counting from T1, showing up to 2 s more than the phone's chip, until the next clear. The plan's D-3 rationale ("the wrist starts its own a few milliseconds later") only ever needs the LATER direction. Fix: make the tolerance directional — the mirror's rest is the same rest only when its start is not before ours and within 2000 ms (`held >= ours && held - ours <= 2000ms`); rest is exempt from the wrist's earlier-start rule (engine `watch_session_engine.dart:753`), so a later phone rest is then sent directly and supersedes, and the retired loop produces the clear when the mirror still holds the old copy. All shipping scenarios keep passing: S-7304 (wrist +800 ms → held > ours ✓), S-7301 (wrist copy starts exactly at T from the frame ✓), S-7306 (5 s earlier → still `no` ✓). Guard: a test with two phone rests T1, T2 = T1+1.5 s asserting the second frame carries startedAt T2 (today nothing is asserted sent). Not in the mutation list, so unproven by the 12/12 pass.
+2. [Minor] `lib/state/watch/watch_timer_push.dart:361` — the `_stale` guard compares `_sameInstant(stale.startedAt, held['startedAt'])` exactly, but an ADOPTED rest stores the phone's start T while the mirror holds the wrist's own copy at T+δ, so the guard never recognises the cleared copy for a rest. In the window before the mirror reflects a retire-clear, a new phone rest within tolerance of the stale copy reads as `identical` and is not sent. The directional fix in finding 1 covers the common case (new start later than the stale copy); if the tolerance stays two-way, compare with `_restStartWithinTolerance` for kind `rest`. Guard: S-6326's shape replayed with kind `rest` and a δ offset.
+3. [Minor] `lib/core/services/watch_session_importer.dart:1187` — `await` on `EntryRows.setGroups`, which is synchronous (`static List<SetRows> setGroups(...)` at `lib/core/utils/entry_rows.dart:158`); the analyzer info the governor counts. Brief says it is being fixed; listed for completeness. Fix: drop the `await`.
+4. [Minor] `docs/rest_tracking.md:316-319` — the closing "Across the two devices, then" paragraph's ping sentence ("both devices ping per the one Rest Ping setting") names no test, against the docs rule that every behaviour sentence names one; and the kept clause "A rest's timer is device-local" now reads against the next sentence ("the rest itself travels both ways") even though it is technically true (no length/countdown travels). Fix: cite the ping contract test (`test/rest_ping_contract_test.dart`) on the ping sentence, and reword "device-local" to "no message carries a rest length or countdown".
+
+## Answers to the brief's questions (traced, no finding unless listed)
+1. Set logged on the watch: the phone's rest opens at the logged instant; the mirror's wrist copy (T+δ) answers `identical` (same state, null pauses, within tolerance) → nothing sent (S-7304). Wrist taps Next first: the mirror's rest goes stopped → the retired loop's `_mirrorHolds` is false → `_adopted` entry removed, no clear; when the importer then closes the phone's rest, `wanted` has no `rest` and `_delivered` has no `rest` → no frame. No stray clear. The only blemish is the `_stale` δ mismatch (finding 2).
+2. Work timer + rest travel as one frame (S-7309). D-2b never mis-clears a rest: the clear only fires when `_delivered['rest']` exists with a different start, and a new rest within tolerance of the delivered one is short-circuited earlier as `identical` — which is exactly the merge in finding 1; beyond 2000 ms the clear+next pair is correct, and the wrist engine exempts `rest` from the earlier-start rule (`watch_session_engine.dart:753-765`), so the direct send lands.
+3. Yes: `lib/state/watch/watch_sync_wiring.dart:253-259` — the mirror's `projection` sets `projected['timers'] = timerPushForSnapshots?.deliveredTimers()`, and `deliveredTimers()` (`watch_timer_push.dart:122`) copies every `_delivered` entry including `rest`, so the first snapshot after the push carries the delivered rest (S-7310 asserts it). A rest the wrist holds on its own (adopted, never delivered) is rightly absent: a snapshot stops only timers the phone started.
+4. `_phoneEntry` semantics check out against the minting sites: sets `entry-<slot>-<group.number>` (`phone_entries.dart:450`, compared via `group.number`), timed/hold `entry-<slot>-<instance.entryIndex>` (`phone_entries.dart:126/231`, compared via `getTimedInstances` `entryIndex`), rounds `entry-<slot>-<roundIndex>` 0-based (`phone_entries.dart:175-179`, compared via `roundIndex`). `efforts` is the imported session's own efforts by id (`watch_session_importer.dart:295-301`), so another session's effort cannot match; a `lastIndexOf('-')` split survives effort ids containing dashes, and a wrist uuid-style `entry-<uuid>` id fails the `int.tryParse`/effort-membership gates. The `await` on `setGroups` is the one blemish (finding 3).
+5. `docs/rest_tracking.md`: no sentence still says the rest stays on one device — the old "device-local ... but the rest itself travels" sentence was kept only for the timer shape and reworded to "travels both ways while it runs"; every cited symbol (`WatchTimerPush`, `WorkoutState.inProgressRest()`, both test files, groups S-7301..S-7310, S-7401..S-7405) exists — all seen this run. The uncited ping sentence is finding 4.
+
+## Assumption Log rulings
+Neither plan carries an Assumption Log; nothing to rule on.
+
+## Scenario coverage
+S-7301 → `test/watch_timer_push_test.dart` · both S-7301 tests (frame shape + newest-open-rest) | ok
+S-7302 → same file · `S-7302 pausing sends the rest's paused stamp...` | ok
+S-7303 → same file · `S-7303 the next set closes the rest...` (also asserts no double clear) | ok
+S-7304 → same file · both S-7304 tests (identical silence + retire clear) | ok
+S-7305 → same file · `S-7305 a mirror rest that is already stopped...` | ok
+S-7306 → same file · `S-7306 the mirror's rest started 5 s earlier...` | ok (frame asserted sent; wrist application covered by the engine's rest exemption, S-336)
+S-7307 → same file · `S-7307 an undelivered rest frame...` | ok
+S-7308 → same file · `S-7308 after the frame the engine is resting...` | ok
+S-7309 → same file · `S-7309 an elapsed timer and a rest in one pass...` | ok
+S-7310 → same file · `S-7310 the rest the phone delivered rides the next projected snapshot` | ok
+S-7401 → `test/watch_session_rest_phone_entries_test.dart` · `S-7401 a wrist rest after a phone-logged set...` (Mock + Hive) | ok
+S-7402 → same file · timed + round tests (Mock + Hive) | ok
+S-7403 → same file · `S-7403 a rest naming an unknown effort or an index beyond...` | ok
+S-7404 → same file · `S-7404 a finished phone rest stands` | ok
+S-7405 → same file · `S-7405 a redelivered rest event writes nothing...` | ok
+Missing: two consecutive phone rests under 2 s apart (finding 1's guard).
+
+## Disposition (governor, 2026-10-21)
+
+- Major 1 (tolerance merged consecutive rests): fixed, tolerance 500 ms, S-7311 (two frames: clear then the new rest; boundary 500/501 ms); mutation back to 2000 red.
+- Minors 2-4: fixed (stale-copy tolerance S-7312; await removed; docs sentences cite tests).

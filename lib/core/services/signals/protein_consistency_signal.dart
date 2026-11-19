@@ -34,6 +34,24 @@ class ProteinConsistencySignal implements Signal {
   int get priority => kProteinConsistencyPriority;
 
   @override
+  bool get needsRatedWeeks => false;
+
+  @override
+  Future<String?> waitingFor(SignalContext context) async {
+    final now = context.now;
+    final windowStart = DateTime(
+      now.year,
+      now.month,
+      now.day - (kProteinConsistencyWindowDays - 1),
+    );
+    final points = await context.progressService.nutritionSeries(
+      fromMs: windowStart,
+      toMs: now,
+    );
+    return proteinConsistencyWaitingLine(points.length);
+  }
+
+  @override
   Future<SignalCard?> evaluate(SignalContext context) async {
     // D-1502: the 14 local calendar days ending with today, and the eight
     // 7-day blocks immediately before them. Calendar arithmetic, so a DST

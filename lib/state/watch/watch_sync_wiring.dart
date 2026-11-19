@@ -21,19 +21,35 @@
 /// the phone had not run when it last stopped.
 library;
 
+import 'dart:async';
+
 import '../../core/platform/no_watch_transport.dart';
+import '../../core/platform/watch_delivery.dart';
+import '../../core/platform/watch_link_source.dart';
 import '../../core/platform/watch_transport.dart';
+import '../../core/services/active_energy_service.dart';
+import '../../core/services/diagnostics_log.dart';
+import '../../core/services/health_sync_service.dart';
+import '../../core/sync_protocol/message_validator.dart';
 import '../../core/utils/platform_watch_transport_factory.dart';
 import '../../data/repositories/workout_repository.dart';
+import '../../watch/session/watch_records.dart' show WatchLifecycleState;
 import '../food_library_state.dart';
 import '../nutrition_state.dart';
 import '../settings/settings_state.dart';
+import '../workout/workout_state.dart';
 import 'live_session_mirror_state.dart';
 import 'watch_incoming_router.dart';
+import 'watch_link_state.dart';
+import 'watch_live_energy.dart';
 import 'watch_nutrition_log_bridge.dart';
 import 'watch_session_adoption_bridge.dart';
+import 'watch_session_auto_push.dart';
 import 'watch_session_inbox.dart';
 import 'watch_sync_request_handler.dart';
+import 'watch_timer_adoption.dart';
+import 'watch_timer_push.dart';
+import 'watch_water_log_bridge.dart';
 
 /// A phone with no session running: no ladder, nothing logged, nobody waiting.
 ///
@@ -47,7 +63,7 @@ import 'watch_sync_request_handler.dart';
 /// The status is `abandoned` so nothing offers this not-a-session as live: the
 /// home panel appears only while a session is active.
 const Map<String, Object?> watchSessionPlaceholder = {
-  'sessionId': 's-phone-unjoined',
+  'sessionId': watchSessionPlaceholderId,
   'status': 'abandoned',
   'revision': 0,
   'currentExerciseIndex': 0,
@@ -63,6 +79,12 @@ class WatchSyncGraph {
     required this.ratings,
     required this.lateEntryRecovery,
     required this.adoption,
+    required this.autoPush,
+    required this.timerPush,
+    required this.timerAdoption,
+    required this.liveEnergy,
+    required this.afterPendingImports,
+    this.link,
   });
 
   /// The session running on the wrist, as the phone mirrors it.
@@ -81,6 +103,106 @@ class WatchSyncGraph {
   /// Where the session the wrist is running becomes the phone's own: the app
   /// binds its `WorkoutState` to this once it has built it (D-2).
   final WatchSessionAdoptionBridge adoption;
+
+  /// The one object that pushes the phone's own session to the watch: the app
+  /// binds the same `WorkoutState` to it (D-75).
+  final WatchSessionAutoPush autoPush;
+
+  /// The push that keeps the wrist's work timers in step with the phone's
+  /// in-progress intervals, pauses and resumes (plan 43b3 D-2). The app binds
+  /// the same `WorkoutState` to it.
+  final WatchTimerPush timerPush;
+
+  /// The adoption that applies a timer the wrist started to the phone's own
+  /// interval (plan 43b2 D-3). The app binds the same `WorkoutState` to it.
+  final WatchTimerAdoption timerAdoption;
+
+  /// The wrist's running active-energy total, as its last `energy_live` frame
+  /// said (plan 135 D-13521); the session screen's Calories chip prefers it.
+  final WatchLiveEnergy liveEnergy;
+
+  /// Where the phone's own end of a workout the watch took part in waits for
+  /// the import passes already queued (plan 218 D-3): the inbox's chain.
+  final Future<void> Function(Future<void> Function() action)
+  afterPendingImports;
+
+  /// The status state Settings shows: where the watch stands and when the
+  /// phone last heard from it (plan 47c D-3). Null when the transport cannot
+  /// report a link — or when its stored status cannot be read, which the wiring
+  /// reports and drops — and Settings then carries no APPLE WATCH section.
+  final WatchLinkState? link;
+
+  /// Asks the wrist for its session once — the phone's half of catching up
+  /// after being out of reach (D-96).
+  ///
+  /// The frame it sends is the phone's **own** session, composed on the spot
+  /// from the projection (D-11), and none at all when the phone holds no
+  /// session: the mirror's own copy is what this phone converged with the
+  /// wrist, not what it is working through, and a phone with nothing running
+  /// must not assert the placeholder. The request follows either way.
+  ///
+  /// When the mirror still holds a *different* wrist session `W`, that session
+  /// is ended by name before this phone's own is asserted (D-176): the wrist
+  /// holds W actively, so it would refuse a foreign snapshot, and W's unsynced
+  /// work is discarded rather than rescued. The wrist's answer to the request
+  /// below is what moves the mirror onto the phone's session.
+  ///
+  /// A snapshot the radio did not carry is owed like any other: the push's
+  /// baseline is forgotten, so the next trigger offers this projection again
+  /// (D-191 site 4).
+  ///
+  /// Verified by `test/watch_session_projection_test.dart` (`S-109 case A one
+  /// resume is one catch-up: the phone's OWN session and then the request for
+  /// the wrist's, once per resume`, `S-109 case B a phone holding no session
+  /// sends no snapshot at all`, `S-109 case C the phone asserts its own session,
+  /// never the wrist's copy`).
+  Future<void> sync() async {
+    final composed = await mirror.projectedSession();
+    if (composed != null) {
+      if (mirror.owesResetFor(composed['sessionId'] as String?)) {
+        await mirror.reportLifecycleFor(
+          mirror.sessionId!,
+          WatchLifecycleState.abandoned,
+        );
+      }
+      final delivery = await mirror.sendState(composed);
+      if (delivery == WatchDelivery.undelivered) autoPush.forgetBaseline();
+    }
+    await mirror.requestSnapshot();
+  }
+}
+
+/// The adoption bridge this graph builds: it remembers the [WorkoutState] the
+/// app binds, so a rating the import wrote can reach it (D-1).
+///
+/// The bridge keeps that reference private; this subclass is how the wiring
+/// reaches it without widening the bridge's own surface.
+class _WiringAdoptionBridge extends WatchSessionAdoptionBridge {
+  _WiringAdoptionBridge({
+    required super.repository,
+    super.clock,
+    super.onFailure,
+    super.onSkipped,
+    super.onPlanStarted,
+    super.validator,
+    super.diagnostics,
+  });
+
+  WorkoutState? _boundState;
+
+  @override
+  void bindWorkoutState(WorkoutState workoutState) {
+    _boundState = workoutState;
+    super.bindWorkoutState(workoutState);
+  }
+
+  Future<void> adoptRating(String sessionId, int rating) async {
+    await _boundState?.adoptSessionFeeling(sessionId, rating);
+  }
+
+  Future<void> noteSensorSummary(String sessionId) async {
+    _boundState?.noteWristSummary(sessionId);
+  }
 }
 
 /// Builds the phone's watch graph and answers the handles the app keeps on it,
@@ -96,8 +218,11 @@ class WatchSyncGraph {
 /// without a wrist — see `createPlatformWatchTransport`.
 ///
 /// [clock] is the phone's wall clock for everything the graph stamps; tests
-/// pin it. [onHistoryChanged] runs once whenever a wrist session changes the
-/// phone's history — the calendar's refresh in the shipping app (D-142).
+/// pin it. [frameClock] is the mirror's frame-stamp clock alone (`sentAt`,
+/// lifecycle `at`, rating `loggedAt`); null keeps today's behaviour — the real
+/// clock (D-16102). [onHistoryChanged] runs once whenever a wrist session
+/// changes the phone's history — the calendar's refresh in the shipping app
+/// (D-142).
 /// [onSkipped] observes a refused adoption (D-10) — the phone kept the session
 /// it was already running — which is not a failure: left out, the bridge logs
 /// it once in debug.
@@ -108,23 +233,45 @@ Future<WatchSyncGraph?> createWatchSync({
   required SettingsState settingsState,
   WatchTransport? transport,
   DateTime Function()? clock,
+  DateTime Function()? frameClock,
   Future<void> Function()? onHistoryChanged,
   void Function(Object error, StackTrace stack)? onFailure,
   void Function(String heldSessionId, String offeredSessionId)? onSkipped,
+  Future<void> Function(String plannedSessionId, String sessionId)?
+      onPlanStarted,
+  HealthSyncService? healthSync,
+  ActiveEnergyService? activeEnergy,
+  SyncProtocolValidator? validator,
+
+  /// The phone's diagnostics log; null records nothing (plan 143).
+  DiagnosticsLog? diagnostics,
 }) async {
   final resolved =
       transport ??
-      await createPlatformWatchTransport(onFailure: onFailure);
+      await createPlatformWatchTransport(
+        onFailure: onFailure,
+        diagnostics: diagnostics,
+      );
   if (resolved == null || resolved is NoWatchTransport) return null;
 
   // Built first: the inbox asks the bridge whether a session is the phone's own
   // (G3), and the bridge answers from the `WorkoutState` the app binds once it
   // has built it.
-  final adoption = WatchSessionAdoptionBridge(
+  final adoption = _WiringAdoptionBridge(
     repository: repository,
     clock: clock,
     onFailure: onFailure,
     onSkipped: onSkipped,
+    // The plan a wrist start reports is marked started on the app's own
+    // calendar (plan 129, D-8973); a graph built without the callback links
+    // nothing.
+    onPlanStarted: onPlanStarted,
+    // The graph's protocol gate, shared with the inbox, the mirror and the
+    // bridges below; production passes none and the frames are read as before.
+    validator: validator,
+    // Plan 174 (D-17401): the log records what the bridge decided about a
+    // wrist session; null records nothing.
+    diagnostics: diagnostics,
   );
   final inbox = WatchSessionInbox(
     repository: repository,
@@ -139,14 +286,47 @@ Future<WatchSyncGraph?> createWatchSync({
     // session state, so the session screen shows the set without reloading the
     // session — a running timer survives (D-17).
     onSessionRowsChanged: adoption.refreshHeldEfforts,
+    // A rating the import wrote reaches the live session, so an open Summary
+    // shows it without reloading and cannot overwrite it (D-1).
+    onSessionRated: adoption.adoptRating,
+    // The wrist's heart rate landing after the summary opened reaches that
+    // screen (plan 72).
+    onSensorSummaryAttached: adoption.noteSensorSummary,
+    // A pass that created the session finished or landed the wrist's timed and
+    // round instances re-settles the estimate (plan 134 D-13420).
+    onSessionHistoryChanged: activeEnergy?.settle,
+    // A rating the import wrote reaches the session's Fitness workout as its
+    // effort (plan 90 D-4).
+    healthSync: healthSync,
+    // Plan 174 (D-17401): the importer's own decisions reach the log.
+    diagnostics: diagnostics,
   );
+  // Built after the mirror, but the projection below reads it.
+  WatchTimerPush? timerPushForSnapshots;
   final mirror = LiveSessionMirrorState(
     transport: WatchInboxStagingTransport(inner: resolved, inbox: inbox),
     snapshot: watchSessionPlaceholder,
+    // The graph's clock drives the ledger's `since`, repeat window and 24 h
+    // bound only (plan 128 D-1/D-2a). Frame stamps read `frameClock` alone
+    // (D-16102): production passes none, so the mirror keeps its own `_utcNow`,
+    // and the guard against a graph clock that stands still defeating plan 127's
+    // snapshot order lives in that default and in `ledgerClock`'s separate seam.
+    // Tests that hold one clock for both halves pin `frameClock` too (D-16103).
+    clock: frameClock,
+    ledgerClock: clock,
     // Every ladder this phone asserts — a request answered or a wrist snapshot
     // re-asserted — is composed from the phone's own session, never from the
-    // copy this mirror converged with the wrist (D-11).
-    projection: adoption.projectSession,
+    // copy this mirror converged with the wrist (D-11). A snapshot is
+    // authoritative for the wrist's timers: it names the work timers and the
+    // rest the phone still runs (and delivered), never one it no longer runs.
+    projection: (incoming) async {
+      final projected = await adoption.projectSession(incoming);
+      final timers = timerPushForSnapshots?.snapshotTimers();
+      if (projected != null && timers != null && timers.isNotEmpty) {
+        projected['timers'] = timers;
+      }
+      return projected;
+    },
   );
   final router = WatchIncomingRouter(
     inbox: inbox,
@@ -155,31 +335,165 @@ Future<WatchSyncGraph?> createWatchSync({
       nutrition: nutritionState,
       library: foodLibraryState,
       transport: resolved,
+      clock: clock,
     ),
     adoption: adoption,
+    // Plan 128 D-3: whether a session's stored row is ended — the ledger
+    // restarts empty, and the row is what answers then. The interface's own
+    // read, like `WatchSessionAutoPush`'s seam below; no session-relevant
+    // storage beyond it.
+    isSessionEnded: (id) async =>
+        (await repository.getSession(id))?.endedAtMs != null,
+    // A glass of water tapped on the wrist: applied once to the day it was
+    // tapped, acknowledged, answered with the day's count (plan 94 D-13).
+    water: WatchWaterLogBridge(
+      nutrition: nutritionState,
+      repository: repository,
+      transport: resolved,
+      clock: clock,
+    ),
   );
   final requests = WatchSyncRequestHandler(
     mirror: mirror,
     transport: resolved,
     repository: repository,
     settings: settingsState,
+    foodLibrary: foodLibraryState,
     clock: clock,
   );
+  // Built after the mirror, from the same repository the graph already holds:
+  // the push reads the mirrored session's own row — never the current-session
+  // pointer — to decide whether that session has ended (D-75, D-81). The
+  // graph's failure hook is the push's too: a pass it cannot make, or one that
+  // times out, is reported rather than swallowed (D-98, D-99).
+  final push = WatchSessionAutoPush(
+    mirror: mirror,
+    getSession: repository.getSession,
+    // The wrist's own imported ids come from the bridge, which owns the claim
+    // rule in one place (D-112). Nothing of the phone's own needs it: those ids
+    // travel inside the composed payload this push already has.
+    heldWristEntryIds: adoption.heldWristEntryIds,
+    // The graph's clock stamps a deletion frame's change id (F2), so tests pin
+    // it the way they pin every other stamp this graph makes.
+    clock: clock,
+    onFailure: onFailure,
+  );
+  // The timers ride the same mirror and transport: a phone that starts, pauses
+  // or ends an interval tells the wrist as soon as the window closes (43b3).
+  // A start the radio refused asks the auto push for a snapshot pass, so the
+  // durable path can carry it to a wrist that is away (plan 127 D-5).
+  final timerPush = WatchTimerPush(
+    mirror: mirror,
+    onFailure: onFailure,
+    onOwed: () => unawaited(
+      push.flush().catchError((Object e, StackTrace s) {
+        onFailure?.call(e, s);
+      }),
+    ),
+  );
+  timerPushForSnapshots = timerPush;
+  // And the other direction: a timer the wrist starts becomes the phone's.
+  final timerAdoption = WatchTimerAdoption(
+    mirror: mirror,
+    onFailure: onFailure,
+    diagnostics: diagnostics,
+  );
 
+  // The wrist's running energy total (plan 135 D-13521): routed right here,
+  // before every other wrist frame's work, so a heartbeat of energy frames
+  // never reaches the router, the inbox, the mirror or the push-side flushes.
+  final liveEnergy = WatchLiveEnergy();
   resolved.onIncoming((frame) async {
-    final request = WatchTransportRequest.nameOf(frame);
-    if (request != null) {
-      await requests.handle(request);
+    if (frame['type'] == 'energy_live') {
+      liveEnergy.receive(frame);
+      await router.onLiveEnergyFrame(frame);
       return;
     }
-    await router.receive(frame);
+    final owedBefore = await push.hasUnsentChange();
+    final request = WatchTransportRequest.nameOf(frame);
+    var answeredReset = false;
+    if (request != null) {
+      // The version the wrist holds rides the request frame; a wrist that
+      // named none is sent the whole exercise list (D-3834). So does whether
+      // it holds the bests: one that does is answered only when they moved
+      // (87c, D-5). And whether it wants the day's water count (plan 94, D-9).
+      await requests.handle(
+        request,
+        exercisesVersion: WatchTransportRequest.exercisesVersionOf(frame),
+        since: WatchTransportRequest.sinceOf(frame),
+        holdsBests: WatchTransportRequest.holdsBestsOf(frame),
+        wantsWater: WatchTransportRequest.wantsWaterOf(frame),
+      );
+    } else {
+      answeredReset = (await router.receive(frame)).answeredReset;
+    }
+    // A frame the phone applied from the wrist is not news to push back (D-82):
+    // the rows it just brought in become the baseline rather than a send —
+    // unless the phone owed a change before the frame (plan 64 D-2), in which
+    // case the baseline is left alone and the owed edit goes out below.
+    if (!owedBefore) await push.rebaseline();
+    // D-192(c): the frame proves the radio works, so what is owed goes out now.
+    // The one exception is a snapshot the router has already answered with
+    // D-176's reset: those frames have just gone out, and a pass here would
+    // send the same step a second time. The debt is untouched either way, so a
+    // step the radio did not carry is re-offered at the next trigger (D-202).
+    // The same goes for the timers (54 D-1): a clear the wrist never received
+    // releases its clock only when the phone's state next changes, so the frame
+    // the wrist sends is the trigger that reaches it.
+    if (!answeredReset) {
+      await push.flush();
+      await timerPush.flushClears();
+    }
   });
 
   await inbox.resume();
+
+  // The status Settings shows, when the transport can report a link (47c D-3):
+  // initialized here so the stored last-heard value and the first pairing
+  // answer are there before the screen is ever opened. A status that cannot be
+  // read is reported and dropped: the rest of the graph is the wrist's work,
+  // and losing it over a read-only label would cost the phone the watch.
+  WatchLinkState? link;
+  if (resolved is WatchLinkSource) {
+    final source = resolved as WatchLinkSource;
+    try {
+      link = WatchLinkState(source: source, repository: repository);
+      await link.initialize();
+    } catch (error, stack) {
+      onFailure?.call(error, stack);
+      link = null;
+    }
+    // Plan 98 D-3: the wrist coming back into reach is when the starts and
+    // clears it missed can travel; a failure is reported, never thrown.
+    source.linkChanges.listen((info) {
+      if (!info.reachable) return;
+      unawaited(
+        timerPush.flushClears().catchError((Object error, StackTrace stack) {
+          onFailure?.call(error, stack);
+        }),
+      );
+      // Plan 128 D-2b: the wrist coming back into reach is also when every
+      // end still unconfirmed is offered again, oldest first — the same
+      // trigger plan 98 D-3 uses for the starts and clears it missed. A
+      // failure is reported, never thrown.
+      unawaited(
+        mirror.offerAllOwedEnds().catchError((Object error, StackTrace stack) {
+          onFailure?.call(error, stack);
+        }),
+      );
+    });
+  }
+
   return WatchSyncGraph(
     mirror: mirror,
     ratings: inbox,
     lateEntryRecovery: inbox,
     adoption: adoption,
+    autoPush: push,
+    timerPush: timerPush,
+    timerAdoption: timerAdoption,
+    liveEnergy: liveEnergy,
+    afterPendingImports: inbox.afterPendingImports,
+    link: link,
   );
 }

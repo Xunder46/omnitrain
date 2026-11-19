@@ -334,6 +334,7 @@ void main() {
         );
         await state.updateEntryValue(effortA, 0, 'reps', 8);
         await state.updateEntryValue(effortA, 0, 'weight', 60.0);
+        await state.recordRestStart(effortA, 1);
 
         // Exercise B: 1 set × 5 reps × 100 kg = 500
         final effortB = await state.addExerciseToSession(
@@ -342,6 +343,7 @@ void main() {
         );
         await state.updateEntryValue(effortB, 0, 'reps', 5);
         await state.updateEntryValue(effortB, 0, 'weight', 100.0);
+        await state.recordRestStart(effortB, 1);
 
         await state.endSession();
         final summary = state.computeSessionSummary();
@@ -374,6 +376,7 @@ void main() {
         // 1 set × 10 reps × 20 kg = 200 kg (NOT 400 kg).
         await state.updateEntryValue(effortId, 0, 'reps', 10);
         await state.updateEntryValue(effortId, 0, 'weight', 20.0);
+        await state.recordRestStart(effortId, 1);
 
         await state.endSession();
         final summary = state.computeSessionSummary();

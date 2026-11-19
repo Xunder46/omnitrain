@@ -12,7 +12,7 @@ class CalendarEntry {
   /// Epoch-ms of the day this entry belongs to (start-of-day midnight).
   final int dayMs;
 
-  /// Modality key (may be null for Free Training).
+  /// Modality key (may be null for Free Training). For a planned routine it is the routine's current Focus Modality, resolved on each month load.
   final String? modality;
 
   /// True = filled circle (completed / finished session).
@@ -40,9 +40,15 @@ class CalendarEntry {
     session: s,
   );
 
-  factory CalendarEntry.fromPlannedSession(PlannedSession p) => CalendarEntry._(
+  /// [routineFocus] is the Focus Modality of the routine this plan schedules,
+  /// resolved by the caller at display time (a routine plan stores a null
+  /// `modality`). It wins over [PlannedSession.modality] when non-null.
+  factory CalendarEntry.fromPlannedSession(
+    PlannedSession p, {
+    String? routineFocus,
+  }) => CalendarEntry._(
     dayMs: OmniDateUtils.startOfDayMs(OmniDateUtils.fromMs(p.scheduledDateMs)),
-    modality: p.modality,
+    modality: routineFocus ?? p.modality,
     isCompleted: p.isCompleted,
     plannedSession: p,
   );
@@ -56,11 +62,16 @@ class CalendarEntry {
 class CalendarState extends ChangeNotifier {
   final WorkoutRepository _repository;
 
-  CalendarState(this._repository) {
-    final now = DateTime.now();
-    _year = now.year;
-    _month = now.month;
+  CalendarState(this._repository, {DateTime Function()? now})
+    : _now = now ?? DateTime.now {
+    final today = _now();
+    _year = today.year;
+    _month = today.month;
   }
+
+  /// The clock. Injected so a test can stand on any date (the day after a
+  /// clock change, the first of a month); production reads the device clock.
+  final DateTime Function() _now;
 
   // ─── Current month ────────────────────────────────────────────────────────
 
@@ -93,7 +104,7 @@ class CalendarState extends ChangeNotifier {
 
   /// Reset to the current local month and load entries.
   Future<void> init() async {
-    final now = DateTime.now();
+    final now = _now();
     _year = now.year;
     _month = now.month;
     await _loadMonth();
@@ -153,9 +164,27 @@ class CalendarState extends ChangeNotifier {
           .where((p) => p.linkedSessionId == null)
           .toList();
 
+      // A routine plan stores a null modality; resolve the routine's current
+      // Focus at display time (one read per load, none without a routine plan).
+      // An empty Focus counts as no Focus; a missing routine falls back.
+      final focusByTemplateId = <String, String>{};
+      if (unlinkedPlannedSessions.any((p) => p.routineTemplateId != null)) {
+        for (final t in await _repository.getTemplates()) {
+          final f = t.focusModality;
+          if (f != null && f.isNotEmpty) focusByTemplateId[t.id] = f;
+        }
+      }
+
       final entries = <CalendarEntry>[
         ...completedSessions.map(CalendarEntry.fromSession),
-        ...unlinkedPlannedSessions.map(CalendarEntry.fromPlannedSession),
+        ...unlinkedPlannedSessions.map(
+          (p) => CalendarEntry.fromPlannedSession(
+            p,
+            routineFocus: p.routineTemplateId == null
+                ? null
+                : focusByTemplateId[p.routineTemplateId],
+          ),
+        ),
       ];
 
       // Sort ascending by day.
@@ -316,18 +345,26 @@ class CalendarState extends ChangeNotifier {
   int _streakDays = 0;
   int get streakDays => _streakDays;
 
+  /// True when the last compute found a session today or yesterday (a live streak).
+  bool _streakIsLive = false;
+
   /// True when the displayed month is before the current calendar month.
   bool get isHistoricalMonth {
-    final now = DateTime.now();
+    final now = _now();
     return _year < now.year || (_year == now.year && _month < now.month);
   }
 
-  /// True when [streakDays] represents an active consecutive streak anchored
-  /// on today or yesterday (i.e. current month with a live streak > 0).
+  /// True when [streakDays] is a live streak: the displayed month is the current
+  /// month and the last compute anchored on today or yesterday. With no live
+  /// streak [streakDays] holds the month's longest run, which is not a streak.
   bool get isActiveStreak {
-    final now = DateTime.now();
-    return _year == now.year && _month == now.month && _streakDays > 0;
+    final now = _now();
+    return _streakIsLive && _year == now.year && _month == now.month;
   }
+
+  /// The live streak, or 0 once it has lapsed. [streakDays] alone cannot tell
+  /// the two apart.
+  int get liveStreakDays => isActiveStreak ? _streakDays : 0;
 
   /// For the current month: active consecutive-day streak anchored on
   /// today / yesterday (may span prior months, looks back 90 days).
@@ -337,8 +374,9 @@ class CalendarState extends ChangeNotifier {
   ///
   /// Non-fatal: defaults to 0 on errors.
   Future<void> _computeStreak() async {
+    _streakIsLive = false;
     try {
-      final now = DateTime.now();
+      final now = _now();
       final isCurrentMonth = _year == now.year && _month == now.month;
 
       if (isCurrentMonth) {
@@ -359,7 +397,8 @@ class CalendarState extends ChangeNotifier {
         }
 
         final today = DateTime(now.year, now.month, now.day);
-        final yesterday = today.subtract(const Duration(days: 1));
+        // Calendar arithmetic: a 24 h step misses midnight after a DST change.
+        final yesterday = DateTime(today.year, today.month, today.day - 1);
         final todayMs = today.millisecondsSinceEpoch;
         final yesterdayMs = yesterday.millisecondsSinceEpoch;
 
@@ -382,9 +421,10 @@ class CalendarState extends ChangeNotifier {
           final ms = day.millisecondsSinceEpoch;
           if (!completedDays.contains(ms)) break;
           streak++;
-          day = day.subtract(const Duration(days: 1));
+          day = DateTime(day.year, day.month, day.day - 1);
         }
         _streakDays = streak;
+        _streakIsLive = true;
       } else {
         // Historical month: longest consecutive-day run within _entriesByDay.
         _streakDays = _longestRunInMonth();
@@ -410,7 +450,12 @@ class CalendarState extends ChangeNotifier {
     for (int i = 1; i < completedDayMs.length; i++) {
       final prev = DateTime.fromMillisecondsSinceEpoch(completedDayMs[i - 1]);
       final curr = DateTime.fromMillisecondsSinceEpoch(completedDayMs[i]);
-      if (curr.difference(prev).inDays == 1) {
+      // Calendar days apart, not 24 h blocks: the day after a spring-forward
+      // change is 23 h later, which Duration.inDays rounds down to 0.
+      final apart = DateTime.utc(curr.year, curr.month, curr.day)
+          .difference(DateTime.utc(prev.year, prev.month, prev.day))
+          .inDays;
+      if (apart == 1) {
         current++;
         if (current > longest) longest = current;
       } else {

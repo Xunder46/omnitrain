@@ -840,19 +840,21 @@ CREATE INDEX IF NOT EXISTS IX_timed_instance_effort ON app_timed_instance(effort
 CREATE TABLE app_muscle_group (
   id TEXT NOT NULL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
+  parent_id TEXT REFERENCES app_muscle_group(id),      -- Region of a muscle; NULL for a region and for a standalone entry
   created_at_ms INTEGER NOT NULL
 );
 
 CREATE TABLE app_exercise_muscle_group (
   exercise_id TEXT NOT NULL,
   muscle_group_id TEXT NOT NULL,
-  is_primary INTEGER NOT NULL DEFAULT 0,
+  is_primary INTEGER NOT NULL DEFAULT 0,               -- 1 = primary link, 0 = secondary link
   PRIMARY KEY (exercise_id, muscle_group_id),
   FOREIGN KEY(exercise_id) REFERENCES app_exercise(id),
   FOREIGN KEY(muscle_group_id) REFERENCES app_muscle_group(id)
 );
--- SqliteWorkoutRepository.setExerciseMuscleGroups(exerciseId, ids)
--- should replace existing rows for exercise_id and insert the new set.
+-- SqliteWorkoutRepository.setExerciseMuscleLinks(exerciseId, links)
+-- should replace the exercise's existing rows with the given links, one row per link,
+-- with is_primary 1 for a primary link and 0 for a secondary link.
 
 CREATE TABLE app_sync_event (
   event_id TEXT NOT NULL PRIMARY KEY,
@@ -932,7 +934,7 @@ CREATE TABLE app_sync_op_local_example (
 CREATE TABLE app_planned_session (
   id TEXT NOT NULL PRIMARY KEY,
   owner_user_id TEXT NOT NULL,
-  scheduled_date_ms INTEGER NOT NULL,     -- Epoch ms of the intended training day
+  scheduled_date_ms INTEGER NOT NULL,     -- Intended training day (midnight local, stored as that wall-clock time read as UTC)
   modality TEXT,                          -- Modality key or NULL for Free Training
   title TEXT,                             -- Optional short title
   note TEXT,                              -- Optional notes
@@ -1004,8 +1006,8 @@ CREATE TABLE app_training_period (
   id TEXT NOT NULL PRIMARY KEY,
   owner_user_id TEXT,
   name TEXT NOT NULL,
-  start_date_ms INTEGER NOT NULL,          -- Epoch ms of first day (midnight local)
-  end_date_ms INTEGER NOT NULL,            -- Epoch ms of last day  (end-of-day local)
+  start_date_ms INTEGER NOT NULL,          -- First day (midnight local, stored as that wall-clock time read as UTC)
+  end_date_ms INTEGER NOT NULL,            -- Last day  (end-of-day local, stored as that wall-clock time read as UTC)
   focus_modalities_csv TEXT NOT NULL DEFAULT '', -- ''-separated modality keys; '' = all
   notes TEXT,
   color_hex TEXT,                          -- Hex color string (e.g. '#4CAF50') for calendar highlight; NULL = theme default
@@ -1106,7 +1108,7 @@ CREATE INDEX IF NOT EXISTS IX_effort_block_order
 --
 -- Fields:
 --   id: Unique identifier (UUID)
---   date_ms: Start-of-day timestamp (ms since epoch, midnight local time), UNIQUE per date
+--   date_ms: Day key (ms since epoch: the calendar date's UTC midnight, zone-independent), UNIQUE per date
 --   calories, protein, carbs, fat: Target macronutrients (0.0 = unset/"no goal")
 --   created_at_ms, updated_at_ms: Wall-clock timestamps
 --
@@ -1435,7 +1437,7 @@ CREATE INDEX IF NOT EXISTS IX_consumed_food_logged ON app_consumed_food(logged_a
 -- app_water_log — Per-day water volume (milliliters).
 -- ─────────────────────────────────────────────────────────────────────────────
 --
--- One row per calendar day, keyed by `date_ms` (local midnight ms). The
+-- One row per calendar day, keyed by `date_ms` (the date's UTC midnight, the zone-independent day key). The
 -- day's water volume is stored as a real volume in milliliters so the
 -- historical record stays unit-clean; the on-screen "glass count" is
 -- derived at the display boundary (`volume_ml / 250`), never stored.
@@ -1445,7 +1447,7 @@ CREATE INDEX IF NOT EXISTS IX_consumed_food_logged ON app_consumed_food(logged_a
 -- effect immediately and survives closing and reopening the app on the
 -- same day. Prior days are never modified automatically.
 --
--- SqliteWorkoutRepository implementation notes:
+-- Contract notes (WorkoutRepository):
 --   getWaterVolumeForDate(dateMs):
 --     SELECT volume_ml FROM app_water_log WHERE date_ms = ?;
 --     (returns 0 when no row matches)
@@ -1455,17 +1457,29 @@ CREATE INDEX IF NOT EXISTS IX_consumed_food_logged ON app_consumed_food(logged_a
 --       ON CONFLICT(date_ms) DO UPDATE SET
 --         volume_ml = excluded.volume_ml,
 --         updated_at_ms = excluded.updated_at_ms;
+--     (applied_tap_ids is carried through unchanged)
+--   applyWaterTap(dateMs, tapId, deltaMl)  — plan 94 D-3 / D-5:
+--     one write per watch tap, at most once: when tapId is not yet in the
+--     day's applied_tap_ids and it holds fewer than 500 ids
+--     (kWatchWaterTapsPerDay), volume_ml becomes MAX(0, volume_ml + deltaMl)
+--     and tapId is appended, in the same row update; otherwise nothing
+--     changes. A remove at 0 ml still writes the row and records the id.
+--   getAppliedWaterTapIds(dateMs):
+--     SELECT applied_tap_ids FROM app_water_log WHERE date_ms = ?;
+--     (the JSON array in append order; [] when no row matches)
 --
 -- The `id` column is the deterministic storage key (`'water-<dateMs>'`),
 -- matching WaterLogEntry.idForDate. `volume_ml` is non-negative (the state
--- layer floors at 0 ml before persisting).
+-- layer floors at 0 ml before persisting). `applied_tap_ids` is a JSON array
+-- of watch tap ids (strings); a row written before plan 94 reads as `[]`.
 --
 CREATE TABLE app_water_log (
   id TEXT NOT NULL PRIMARY KEY,
   date_ms INTEGER NOT NULL UNIQUE,
   volume_ml INTEGER NOT NULL CHECK (volume_ml >= 0),
   created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
+  updated_at_ms INTEGER NOT NULL,
+  applied_tap_ids TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS IX_water_log_date ON app_water_log(date_ms DESC);
 
@@ -1612,10 +1626,60 @@ CREATE INDEX IF NOT EXISTS IX_watch_inbox_unapplied_end
   WHERE kind = 'session_end' AND applied_at_ms IS NULL;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- SESSION ENERGY — THE ACTIVE ENERGY A SESSION BURNED (November 2026)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Plan 134a, D-13401 and D-13402 in
+-- `docs/plans/2026-11-08-134-calories-burned-plan/`.
+-- Model: `SessionEnergy` in `lib/data/models/models.dart`.
+-- Hive box: `session_energy` (key = session_id). The table is new and starts
+-- empty on every install, so it needs no data migration.
+--
+-- app_session_energy: one row per finished session — the active energy (above
+-- resting) that session burned. source 'measured' is the watch's own number;
+-- source 'estimated' is the phone's, computed from the session's duration, its
+-- modality and the body weight it stores in body_weight_kg. A measured row
+-- carries no body weight, and a measured row is never replaced by an estimate.
+--
+-- The CHECK constraints mirror what `SessionEnergy` refuses at construction:
+-- source is one of the two; active_kcal is >= 0; a measured row has no body
+-- weight; an estimated row has one, above 0.
+--
+-- Cascades: session_id carries ON DELETE CASCADE, so deleting the session
+-- removes its row.
+--
+-- Repository → SQL contract (WorkoutRepository method: equivalent SQL):
+--   putSessionEnergy(energy):  -- upsert; stored = (changes() = 1)
+--     INSERT INTO app_session_energy (...) VALUES (...)
+--       ON CONFLICT(session_id) DO UPDATE SET
+--         active_kcal = excluded.active_kcal,
+--         source = excluded.source,
+--         body_weight_kg = excluded.body_weight_kg,
+--         updated_at_ms = excluded.updated_at_ms
+--       WHERE NOT (app_session_energy.source = 'measured'
+--                  AND excluded.source = 'estimated');
+--   getSessionEnergy(sessionId):
+--     SELECT * FROM app_session_energy WHERE session_id = ?;
+--   deleteSession(id):
+--     DELETE FROM app_session_energy WHERE session_id = ?;  (the FK cascades)
+CREATE TABLE IF NOT EXISTS app_session_energy (
+  session_id     TEXT    NOT NULL PRIMARY KEY,
+  active_kcal    REAL    NOT NULL,
+  source         TEXT    NOT NULL CHECK (source IN ('estimated', 'measured')),
+  body_weight_kg REAL,
+  updated_at_ms  INTEGER NOT NULL,
+  CHECK (active_kcal >= 0),
+  CHECK (source <> 'measured' OR body_weight_kg IS NULL),
+  CHECK (source <> 'estimated' OR (body_weight_kg IS NOT NULL AND body_weight_kg > 0)),
+  FOREIGN KEY(session_id) REFERENCES app_training_session(id) ON DELETE CASCADE
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- CATALOG VERSION + SEED-ENTRY TOMBSTONES (July 2026)
 -- ─────────────────────────────────────────────────────────────────────────────
--- The bundled app-authored catalog (exercises + capability / muscle-group /
--- equipment relationships + the food catalog) carries an integer version
+-- The bundled app-authored catalog (sport categories, disciplines, units,
+-- metrics and their effort kinds, tags, exercises + capability / muscle-group
+-- relationships + the food catalog; equipment and food groups are written at
+-- first install only) carries an integer version
 -- (see `lib/core/constants/catalog_version.dart`). At app start,
 -- `CatalogRefreshService` compares the device's stored version against
 -- the bundled version and re-applies any new or changed seed entries in

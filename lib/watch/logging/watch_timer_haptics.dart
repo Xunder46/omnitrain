@@ -54,6 +54,10 @@ class WatchTimerHaptics {
     final milestones = <WatchTimerMilestone>[];
 
     for (final kind in WatchTimerKind.all) {
+      // No rest alarm whatever the row holds: a rest is a count-up, and a row
+      // an older build wrote may still carry its old plan, which [remainingMs]
+      // would clamp to zero (D-160, D-163).
+      if (kind == WatchTimerKind.rest) continue;
       final timer = _engine.timerFor(kind);
       if (timer == null) continue;
       if (remainingMs(timer, now) != 0) continue;

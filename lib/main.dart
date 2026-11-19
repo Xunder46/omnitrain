@@ -6,9 +6,14 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'app.dart';
 import 'app/startup_root.dart';
 import 'core/models/app_version_info.dart';
+import 'core/platform/screen_awake_channel.dart';
 import 'core/services/bundled_catalog_source.dart';
 import 'core/services/catalog_refresh_service.dart';
 import 'core/services/exercise_library_service.dart';
+import 'core/services/active_energy_service.dart';
+import 'core/services/diagnostics_lifecycle_observer.dart';
+import 'core/services/diagnostics_log.dart';
+import 'core/services/diagnostics_storage_default.dart';
 import 'core/services/health_platform_gateway.dart';
 import 'core/services/health_platform_service.dart';
 import 'core/services/health_sync_service.dart';
@@ -17,6 +22,7 @@ import 'core/services/preferences_service.dart';
 import 'core/services/routine_session_service.dart';
 import 'core/services/session_summary_service.dart';
 import 'core/services/startup_failure_diagnostic_writer.dart';
+import 'core/services/stats_progress_service.dart';
 import 'data/repositories/hive_workout_repository.dart';
 import 'data/repositories/workout_repository.dart';
 import 'state/workout/workout_state.dart';
@@ -25,6 +31,7 @@ import 'state/routine/routine_state.dart';
 import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
+import 'core/constants/diagnostics_entry.dart';
 import 'core/constants/health_constants.dart';
 import 'core/constants/omni_theme.dart';
 import 'core/constants/profile_measurements.dart';
@@ -35,6 +42,7 @@ import 'state/nutrition/nutrition_primer_state.dart';
 import 'state/stats/stats_primer_state.dart';
 import 'state/exercise/exercise_library_state.dart';
 import 'state/watch/watch_sync_wiring.dart';
+import 'state/watch/watch_rest_ping_wiring.dart';
 import 'core/utils/timer_alert_service.dart';
 import 'core/services/crash_reporting_service.dart';
 import 'core/utils/rest_notification_service.dart';
@@ -307,6 +315,9 @@ Future<Widget> runStartup({
     repository,
     preferencesService,
     healthPlatform: healthPlatform,
+    activeEnergySource: healthPlatform is HealthActiveEnergySource
+        ? healthPlatform as HealthActiveEnergySource
+        : null,
   );
   await settingsState.initialize();
   final profileState = ProfileState(
@@ -334,7 +345,7 @@ Future<Widget> runStartup({
   final routineState = RoutineState(repository);
   final calendarState = CalendarState(repository);
   final periodState = PeriodState(repository);
-  final nutritionState = NutritionState(repository);
+  final nutritionState = NutritionState(repository, settings: settingsState);
   await nutritionState.loadNutritionTarget();
   final foodLibraryState = FoodLibraryState(
     repository,
@@ -357,6 +368,16 @@ Future<Widget> runStartup({
         createRestNotificationService: createRestNotificationService,
         onNonFatalStartupIssue: onNonFatalStartupIssue,
       );
+  // Plan 134: one estimate store for the phone's own end and the watch import.
+  final activeEnergy = ActiveEnergyService(repository, () => StatsProgressService(repository));
+
+  // Plan 143: the phone's own record of the watch link. Built once, noted at
+  // launch, handed to the watch transport below.
+  final diagnostics = DiagnosticsLog(storage: await openDefaultDiagnosticsStorage());
+  final received = await openWatchReceivedStorage();
+  diagnostics.attachWatchReceived(received.storage, received.receivedAt);
+  diagnostics.noteLaunch();
+  WidgetsBinding.instance.addObserver(DiagnosticsLifecycleObserver(diagnostics));
 
   // Create service with repository
   final routineSessionService = RoutineSessionService(repository);
@@ -374,6 +395,13 @@ Future<Widget> runStartup({
     settingsState: settingsState,
     // A wrist session that lands in history shows in the calendar's month.
     onHistoryChanged: calendarState.refresh,
+    // The plan a wrist started is marked started on the calendar (plan 129,
+    // D-8973).
+    onPlanStarted: calendarState.completePlannedSession,
+    // A wrist rating becomes the Fitness workout's effort (plan 90 D-4).
+    healthSync: healthSyncService,
+    activeEnergy: activeEnergy,
+    diagnostics: diagnostics,
     onFailure: (error, stackTrace) {
       debugPrint('Watch transport unavailable: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -387,12 +415,38 @@ Future<Widget> runStartup({
     repository,
     healthSync: healthSyncService,
     watchLateEntryRecovery: watchSync?.lateEntryRecovery,
+    // Plan 89c1 D-2: a session the wrist is running gets its Fitness workout
+    // from the watch, so the phone's own end does not write a second one.
+    wristRunsSession: watchSync?.mirror.wristRunsSession,
+    // Plan 218: the phone's end of a wrist-linked workout drops its planned
+    // sets behind the inbox's queued import passes.
+    afterPendingWristImports: watchSync?.afterPendingImports,
+    activeEnergy: activeEnergy,
+    // Plan 135 (D-13522): the wrist's running energy total fills the open
+    // session screen's Calories chip while the wrist reports it.
+    wristEnergy: watchSync?.liveEnergy.latest,
+    // Plan 120: the phone screen stays awake while a live session runs.
+    screenAwake: createScreenAwakePort(),
   );
 
   // The session the wrist is running becomes this phone's own (D-2): the graph
   // adopts a snapshot into the state built just above, once the mirror has
   // reconciled it.
   watchSync?.adoption.bindWorkoutState(workoutState);
+  // The phone's own session reaches the wrist by itself (D-75): the graph's one
+  // push listens to the same state.
+  watchSync?.autoPush.bindWorkoutState(workoutState);
+  watchSync?.timerPush.bindWorkoutState(workoutState);
+  watchSync?.timerAdoption.bindWorkoutState(workoutState);
+  // Plan 86 D-3/D-8: while the wrist is connected and mirroring this phone's
+  // session it owns the rest pings; the wiring listens for the flips. With no
+  // watch graph both states are null and the gate stays null.
+  bindRestPingGate(
+    service: restNotificationService,
+    link: watchSync?.link,
+    mirror: watchSync?.mirror,
+    workoutState: workoutState,
+  );
   final exerciseLibraryState = ExerciseLibraryState(
     service: exerciseLibraryService,
     workoutState: workoutState,
@@ -430,5 +484,14 @@ Future<Widget> runStartup({
     timerAlertService: timerAlertService,
     restNotificationService: restNotificationService,
     appVersionInfo: appVersionInfo,
+    // D-96: the phone asks the wrist for its session once per resume. Null
+    // without a watch graph, so no observer is mounted at all.
+    onWatchResume: watchSync?.sync,
+    // 47c D-3: the Settings row's status, null without a watch graph.
+    watchLinkState: watchSync?.link,
+    // Plan 177 D-17702/D-17707: a debugging tool, so the row is there only in
+    // a debug or profile build, or with the owner override. The log built above
+    // keeps recording either way.
+    diagnostics: kDiagnosticsEntryVisible ? diagnostics : null,
   );
 }

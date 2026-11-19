@@ -416,7 +416,8 @@ void main() {
 
       expect(
         copy.observation,
-        'Resistance progression rate is 80% over the last 4 weeks, up from 65%.',
+        'In the last 4 weeks, 80% of your lifting sessions matched or beat '
+        'your previous one for that lift, up from 65% before.',
       );
       expect(copy.suggestion, 'The current approach is working.');
     });

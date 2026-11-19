@@ -1,0 +1,10 @@
+{
+  "description": "F-176: the watch Start surface's 2x2 modality grid, as one table both stacks read. `gridOrder` is the grid's cells in phone home-tile order: `key` is the modality the tapped session carries, `label` is the short word the cell shows (the phone's home-tile label, not the long `ModalityDisplay` name, which does not fit a 40 mm cell), and `hex` is the phone's own `ModalityColors` constant for that modality. The watch holds the four rows as constants in `WatchModalityStart.cells` and is held to them by `WatchModalityStartContractTests`; the phone's `ModalityColors` and `HomeTiles` are held to the same rows by `test/watch_modality_start_contract_test.dart`, so a phone token change fails the Dart suite until this row moves with it. `startSurfaceSentence` is the pattern each cell's accessibility label is built from: '<Label> workout' prefixed with 'Start'. No flag for label darkness: the wrist computes it from the hex, as it does for the theme accent.",
+  "gridOrder": [
+    { "key": "cardio_endurance", "label": "Cardio",         "hex": "#43A047" },
+    { "key": "resistance_lifting", "label": "Resistance", "hex": "#5B9BD5" },
+    { "key": "sports", "label": "Sports", "hex": "#E63946" },
+    { "key": "isometric_stretching", "label": "Isometric", "hex": "#FFA726" }
+  ],
+  "startSurfaceSentence": "Start <Label> workout"
+}

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/foods_i_eat_order.dart';
@@ -6,6 +8,7 @@ import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
 import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../core/navigation/navigation.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
 import 'add_food_screen.dart';
@@ -42,6 +45,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
     _loadConsumedToday();
     _loadWaterForToday();
     _loadLibrary();
+    // The one-shot primer rises over this screen the first time it opens.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.nutritionPrimerState.shouldShowPrimer) {
+        _showPrimer(markSeen: true);
+      }
+    });
   }
 
   Future<void> _loadTodayTarget() async {
@@ -104,11 +114,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
     );
   }
 
-  /// Reopen the one-shot primer sheet at any time. The seen state is
-  /// NOT mutated — the primer can be reopened as many times as the
-  /// user wants (it just won't auto-show on the next home-strip tap
-  /// unless the seen flag is still false). Sheet host: this method.
-  Future<void> _reopenPrimer() async {
+  /// Show the primer sheet. On first open ([markSeen] true) the seen flag
+  /// is marked when the sheet is dismissed; the header "?" reopens it with
+  /// [markSeen] false, which never changes the flag.
+  Future<void> _showPrimer({required bool markSeen}) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -119,11 +128,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
             bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
           ),
           child: NutritionPrimerSheet(
-            // onDismiss intentionally null — reopening never marks
-            // seen, so the next home-strip tap can still auto-show
-            // if the seen flag is still false. The header "?" is the
-            // way to read the primer without committing.
-            onDismiss: null,
+            onDismiss: markSeen
+                ? () => unawaited(widget.nutritionPrimerState.markSeen())
+                : null,
           ),
         );
       },
@@ -148,7 +155,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               color: theme.colorScheme.primary,
             ),
             tooltip: 'About Daily Nutrition',
-            onPressed: _reopenPrimer,
+            onPressed: () => _showPrimer(markSeen: false),
           ),
         ],
       ),
@@ -239,9 +246,17 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       ),
                     ],
                   ),
-                  CalorieRingCard(
-                    nutritionState: widget.nutritionState,
-                    onEditTap: _navigateToTargets,
+                  ListenableBuilder(
+                    listenable: widget.foodLibraryState,
+                    builder: (context, _) => CalorieRingCard(
+                      nutritionState: widget.nutritionState,
+                      onEditTap: _navigateToTargets,
+                      emptyHint:
+                          !widget.foodLibraryState.isLoadingFoods &&
+                              widget.foodLibraryState.foods.isEmpty
+                          ? 'Pick your foods to get started'
+                          : null,
+                    ),
                   ),
                   const SizedBox(height: 24),
                   // Food Library header with edit icon — OmniCardHeader
@@ -269,6 +284,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                     child: _FoodLibraryBrowseSection(
                       foodLibraryState: widget.foodLibraryState,
                       nutritionState: widget.nutritionState,
+                      onChooseFoods: _openManageLibrary,
                     ),
                   ),
                 ],
@@ -289,10 +305,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
 class _FoodLibraryBrowseSection extends StatelessWidget {
   final FoodLibraryState foodLibraryState;
   final NutritionState nutritionState;
+  final VoidCallback onChooseFoods;
 
   const _FoodLibraryBrowseSection({
     required this.foodLibraryState,
     required this.nutritionState,
+    required this.onChooseFoods,
   });
 
   @override
@@ -312,18 +330,25 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
 
         // Empty state: show whenever the user's Foods I Eat list is empty,
         // regardless of category count. The presence of 0, 9, or any number of
-        // default/custom categories has no effect on this condition.
+        // default/custom categories has no effect on this condition. The
+        // Choose foods button leads to the picker (the Library) via
+        // [onChooseFoods].
         if (foods.isEmpty) {
-          return SizedBox(
-            height: 48,
-            child: Center(
-              child: Text(
-                'Your Foods I Eat list is empty. Tap the pencil to add foods.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: OmniTheme.colors.textMuted,
+          return OmniEmptyState(
+            icon: Icons.restaurant_menu_outlined,
+            title: 'Pick the foods you eat',
+            hint: 'Choose them from the library, then tick them off each day.',
+            action: FilledButton(
+              key: const Key('foods_i_eat_choose_button'),
+              onPressed: onChooseFoods,
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonBorderRadius,
+                  ),
                 ),
               ),
+              child: const Text('Choose foods'),
             ),
           );
         }

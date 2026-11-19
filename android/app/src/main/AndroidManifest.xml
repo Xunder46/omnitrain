@@ -23,13 +23,15 @@
     <!--
       Health Connect (platform health store on Android 14+, and the app on
       earlier versions). WRITE_EXERCISE covers the finished-workout
-      write-back; READ_WEIGHT covers the body-weight import. Both toggles
-      are off by default and prompt at runtime only when the user enables
-      them. The <queries> entry is required so the app can see whether
-      Health Connect is installed.
+      write-back; READ_WEIGHT covers the body-weight import;
+      READ_ACTIVE_CALORIES_BURNED covers the Stats Fuel card's "Burned per
+      day" line. All three toggles are off by default and prompt at runtime
+      only when the user enables them. The <queries> entry is required so
+      the app can see whether Health Connect is installed.
     -->
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
         <intent>

@@ -25,7 +25,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/capability.dart';
 import 'package:omnitrain/core/constants/modality.dart';
-import 'package:omnitrain/core/constants/modality_config.dart';
 import 'package:omnitrain/core/utils/unit_formatter.dart';
 import 'package:omnitrain/watch/logging/watch_logging_screen.dart';
 import 'package:omnitrain/watch/logging/watch_logging_state.dart';
@@ -55,6 +54,14 @@ Map<String, Object?> _slot(String id, List<String> capabilities) => {
   'capabilities': capabilities,
 };
 
+/// One protocol slot carrying the Health kind the phone named for it — the
+/// shape `watch_session_adoption_bridge.dart` writes for a Brisk Walk.
+Map<String, Object?> _namedSlot(
+  String id,
+  List<String> capabilities,
+  String healthActivity,
+) => {..._slot(id, capabilities), 'healthActivity': healthActivity};
+
 /// The sensor hardware, with the permissions the user granted and two streams
 /// the test drives. Every subscription is counted, so "was the radio woken for
 /// work that has no distance" is an assertion rather than an assumption.
@@ -64,6 +71,7 @@ class _FakeSensorSource implements WatchSensorSource {
 
   int heartRateSubscriptions = 0;
   int locationSubscriptions = 0;
+  int locationPermissionRequests = 0;
 
   final _beats = StreamController<double>.broadcast();
   final _fixes = StreamController<WatchLocationFix>.broadcast();
@@ -72,7 +80,10 @@ class _FakeSensorSource implements WatchSensorSource {
   Future<WatchSensorPermission> heartRatePermission() async => heartRateGrant;
 
   @override
-  Future<WatchSensorPermission> locationPermission() async => locationGrant;
+  Future<WatchSensorPermission> locationPermission() async {
+    locationPermissionRequests++;
+    return locationGrant;
+  }
 
   @override
   Stream<double> heartRate() {
@@ -264,7 +275,13 @@ void main() {
       'S-002 stopping settles the session distance at the measured total',
       () async {
         final sensors = await sensorsFor();
-        final session = await sessionFor(Modality.cardioEndurance);
+        final session = await sessionFor(
+          Modality.cardioEndurance,
+          slot: _slot('sx-run', [
+            ExerciseCapability.time,
+            ExerciseCapability.distance,
+          ]),
+        );
 
         await sensors.start(session);
         await source.fix(400);
@@ -484,7 +501,13 @@ void main() {
       () async {
         source.locationGrant = WatchSensorPermission.denied;
         final sensors = await sensorsFor();
-        final session = await sessionFor(Modality.cardioEndurance);
+        final session = await sessionFor(
+          Modality.cardioEndurance,
+          slot: _slot('sx-run', [
+            ExerciseCapability.time,
+            ExerciseCapability.distance,
+          ]),
+        );
 
         await sensors.start(session);
 
@@ -501,7 +524,13 @@ void main() {
       source.heartRateGrant = WatchSensorPermission.unavailable;
       source.locationGrant = WatchSensorPermission.unavailable;
       final sensors = await sensorsFor();
-      final session = await sessionFor(Modality.cardioEndurance);
+      final session = await sessionFor(
+        Modality.cardioEndurance,
+        slot: _slot('sx-run', [
+          ExerciseCapability.time,
+          ExerciseCapability.distance,
+        ]),
+      );
 
       await sensors.start(session);
       await sensors.stop();
@@ -570,72 +599,77 @@ void main() {
     });
   });
 
-  group('S-008 the GPS decision reads capabilities, not names', () {
-    test('S-008 the decision follows the capability profile', () {
-      for (final entry in ModalityConfig.configs.entries) {
-        final config = entry.value;
-        final carriesDistance = [
-          ...config.primaryCapabilities,
-          ...config.secondaryCapabilities,
-        ].contains(ExerciseCapability.distance);
+  group('S-008 the GPS decision reads the exercise\'s capabilities, not names '
+      'or the modality', () {
+    test('S-4810 the exercise rule answers the contract\'s cases', () {
+      final cases = (_contract()['exerciseGpsCases']! as List)
+          .map((entry) => (entry as Map).cast<String, Object?>())
+          .toList();
 
+      expect(cases, hasLength(7));
+      for (final entry in cases) {
         expect(
-          WatchGpsPolicy.isRequired(entry.key),
-          carriesDistance,
-          reason: '${entry.key} diverged from its capability profile',
+          WatchGpsPolicy.coversDistance(
+            (entry['capabilities']! as List).cast<String>(),
+          ),
+          entry['gps'],
+          reason: 'the shared case $entry diverged from the Dart rule',
         );
       }
     });
 
-    test(
-      'S-008 a modality that names distance but cannot cover it stays off',
-      () {
-        // Both carry the word in their profile, in the anti-capability list: the
-        // decision has to read what the modality *can* do.
-        expect(
-          ModalityConfig.forModality(
-            Modality.isometricStretching,
-          )!.antiCapabilities,
-          contains(ExerciseCapability.distance),
-        );
-        expect(
-          WatchGpsPolicy.isRequired(Modality.isometricStretching),
-          isFalse,
-        );
-        expect(WatchGpsPolicy.isRequired(Modality.resistanceLifting), isFalse);
-      },
-    );
-
-    test('S-008 the contract\'s expectation list is the derived answer', () {
-      final expected = (_contract()['gpsModalities']! as List).cast<String>();
-      final derived = [
-        for (final modality in ModalityConfig.configs.keys)
-          if (WatchGpsPolicy.isRequired(modality)) modality!,
-      ];
-
-      expect(derived, unorderedEquals(expected));
-    });
-    test('S-008 the contract carries the capability profile Swift reads', () {
-      final profiles = (_contract()['modalityCapabilities']! as List).map(
-        (entry) => (entry as Map).cast<String, Object?>(),
+    test('S-20509 a cardio session on an exercise without distance requests '
+        'no location permission; on a run it does', () async {
+      final sensors = await sensorsFor();
+      await sensors.start(
+        await sessionFor(
+          Modality.cardioEndurance,
+          slot: _slot('sx-jump-rope', [ExerciseCapability.time]),
+        ),
       );
-      final byModality = {
-        for (final profile in profiles)
-          profile['modality'] as String?: (profile['capabilities']! as List)
-              .cast<String>(),
-      };
 
-      for (final entry in ModalityConfig.configs.entries) {
-        final config = entry.value;
-        expect(
-          byModality[entry.key]?.toSet(),
-          {...config.primaryCapabilities, ...config.secondaryCapabilities},
-          reason:
-              'the shared capability profile for ${entry.key} no longer '
-              'matches ModalityConfig, so the two clients would decide GPS '
-              'differently',
-        );
-      }
+      expect(source.locationPermissionRequests, 0);
+      expect(sensors.recorder.isMeasuringDistance, isFalse);
+      expect(source.locationSubscriptions, 0);
+
+      await sensors.stop();
+      await engine.finishSession();
+
+      final run = await sensorsFor();
+      await run.start(
+        await sessionFor(
+          Modality.cardioEndurance,
+          slot: _slot('sx-run', [
+            ExerciseCapability.time,
+            ExerciseCapability.distance,
+          ]),
+        ),
+      );
+
+      expect(source.locationPermissionRequests, 1);
+      expect(run.recorder.isMeasuringDistance, isTrue);
+      expect(source.locationSubscriptions, 1);
+
+      await run.stop();
+      await engine.finishSession();
+
+      final sports = await sensorsFor();
+      await sports.start(
+        await sessionFor(
+          Modality.sports,
+          slot: _slot('sx-rounds', [
+            ExerciseCapability.time,
+            ExerciseCapability.rounds,
+          ]),
+        ),
+      );
+
+      expect(
+        source.locationPermissionRequests,
+        1,
+        reason: 'the sports case asks no more than the run already did',
+      );
+      expect(sports.recorder.isMeasuringDistance, isFalse);
     });
   });
 
@@ -721,10 +755,16 @@ void main() {
         );
         await engine.confirmObservations(['e-1']);
         await engine.finishSession();
+        // Plan 160 D-16002: the end is an observation the phone confirms like
+        // any other; until it does, the session still holds its log back (the
+        // next test).
+        await engine.confirmObservations([
+          for (final row in engine.observations) row.entryId,
+        ]);
 
         expect(await engine.pruneSettledSensorSamples(), hasLength(1));
         expect(engine.sensorSamples, isEmpty);
-        expect(engine.observations, hasLength(1));
+        expect(engine.observations, hasLength(2));
       },
     );
 
@@ -759,6 +799,9 @@ void main() {
       () async {
         final sensors = await sensorsFor();
         await sensors.start(await sessionFor(Modality.resistanceLifting));
+        // The wrist runs one session at a time (D-171): a second workout is
+        // only reachable once the first one has ended.
+        await engine.finishSession();
         await sensors.start(await sessionFor(null));
 
         expect(health.begun, [
@@ -790,8 +833,10 @@ void main() {
       );
       expect(
         emitted,
-        hasLength(1),
-        reason: 'starting a session tells the phone',
+        hasLength(2),
+        reason:
+            'starting a session tells the phone, with its lifecycle frame and '
+            'the snapshot that follows it (D-91)',
       );
 
       await watched.appendSensorSample(
@@ -801,7 +846,7 @@ void main() {
       expect(watched.sensorSamples, hasLength(1));
       expect(
         emitted,
-        hasLength(1),
+        hasLength(2),
         reason:
             'a reading adds nothing to the outbound stream: the sync protocol '
             'carries the logged effort, and the distance in it is the reading '
@@ -933,6 +978,177 @@ void main() {
       expect(state.liveDistanceLabel, '1.0');
       expect(state.paceLabel, '8:00 /mi');
       expect(UnitFormatter.metresPerUnit('miles'), closeTo(1609.34, 0.01));
+    });
+  });
+
+  group('S-16810 the mirror types a session like the wrist', () {
+    /// The platform type one fresh session of `modality` with `slot` registers
+    /// as, through the real platform workout and the fake health store. A fresh
+    /// engine per case: one wrist holds one live session, so a second
+    /// `createSession` would answer the first.
+    Future<String> begun(
+      String? modality,
+      Map<String, Object?> slot,
+    ) async {
+      final fresh = WatchSessionEngine(
+        InMemoryWatchSessionStore(),
+        clock: clock.call,
+      );
+      final session = await fresh.createSession(
+        modality: modality,
+        exercises: [slot],
+      );
+      return (await WatchPlatformWorkout(store: health).start(session)).watchOs;
+    }
+
+    /// The contract's own answer for a Health kind (`healthActivityTypes`), so
+    /// this group cannot drift from the Swift client's table.
+    Object? contractWatchOs(String kind) =>
+        ((_contract()['healthActivityTypes']! as Map)[kind] as Map)['watchos'];
+
+    Map<String, Object?> walkSlot() => _namedSlot(
+      'sx-walk',
+      [ExerciseCapability.time, ExerciseCapability.distance],
+      'walking',
+    );
+
+    Map<String, Object?> liftSlot() => _slot('sx-lift', [
+      ExerciseCapability.reps,
+      ExerciseCapability.sets,
+      ExerciseCapability.load,
+    ]);
+
+    Map<String, Object?> runSlot() => _slot('sx-run', [
+      ExerciseCapability.time,
+      ExerciseCapability.distance,
+    ]);
+
+    test('S-16810 a named walk beats the cardio modality', () async {
+      expect(
+        await begun(Modality.cardioEndurance, walkSlot()),
+        contractWatchOs('walking'),
+      );
+    });
+
+    test('S-16810 unnamed exercises keep the modality', () async {
+      expect(
+        await begun(Modality.cardioEndurance, liftSlot()),
+        contractWatchOs('running'),
+      );
+      expect(
+        await begun(Modality.sports, liftSlot()),
+        WatchActivityTypes.generic.watchOs,
+      );
+    });
+
+    test('S-16810 a free workout keeps its exercise answer', () async {
+      expect(await begun(null, walkSlot()), contractWatchOs('walking'));
+      expect(await begun(null, runSlot()), contractWatchOs('running'));
+    });
+  });
+
+  // Plan 170: the Dart mirror of the wrist's kind table, pinned row for row
+  // against the shared contract.
+  group('S-17009 the mirror maps every Health kind like the wrist', () {
+    Map<String, Object?> rows() =>
+        (_contract()['healthActivityTypes']! as Map).cast<String, Object?>();
+
+    test('S-17009 every contract kind resolves to its own row', () {
+      expect(
+        rows(),
+        hasLength(32),
+        reason: 'S-17009 the contract carries one row per Health kind',
+      );
+      for (final entry in rows().entries) {
+        final row = (entry.value as Map).cast<String, Object?>();
+        expect(
+          WatchActivityTypes.forExercise(
+            capabilities: const [],
+            healthActivity: entry.key,
+          ),
+          WatchActivityType(
+            watchOs: row['watchos']! as String,
+            wear: row['wear']! as String,
+          ),
+          reason: 'S-17009 ${entry.key}',
+        );
+      }
+    });
+
+    test('S-17009 the kind outranks the capabilities', () {
+      expect(
+        WatchActivityTypes.forExercise(
+          capabilities: const [
+            ExerciseCapability.hold,
+            ExerciseCapability.time,
+          ],
+          healthActivity: 'yoga',
+        ),
+        WatchActivityType(watchOs: 'yoga', wear: 'exercise_type_yoga'),
+        reason: 'S-17009 a yoga hold is yoga, not flexibility',
+      );
+      expect(
+        WatchActivityTypes.forExercise(
+          capabilities: const [
+            ExerciseCapability.reps,
+            ExerciseCapability.sets,
+          ],
+          healthActivity: 'boxing',
+        ),
+        WatchActivityType(watchOs: 'boxing', wear: 'exercise_type_boxing'),
+        reason: 'S-17009 a boxing round is boxing, not a lift',
+      );
+    });
+
+    test('S-17009 a named kind opens the workout the wrist opens', () async {
+      Future<String> begun(String? modality, Map<String, Object?> slot) async {
+        final fresh = WatchSessionEngine(
+          InMemoryWatchSessionStore(),
+          clock: clock.call,
+        );
+        final session = await fresh.createSession(
+          modality: modality,
+          exercises: [slot],
+        );
+        return (await WatchPlatformWorkout(store: health).start(session)).watchOs;
+      }
+
+      expect(
+        await begun(
+          Modality.mobilityFlexibility,
+          _namedSlot(
+            'sx-yoga',
+            [ExerciseCapability.hold, ExerciseCapability.time],
+            'yoga',
+          ),
+        ),
+        'yoga',
+        reason: 'S-17009 a yoga hold records as yoga, not the modality',
+      );
+      expect(
+        await begun(
+          Modality.sports,
+          _namedSlot('sx-soccer', [ExerciseCapability.time], 'soccer'),
+        ),
+        'soccer',
+        reason: 'S-17009 a sports session naming soccer records as soccer',
+      );
+    });
+
+    test('S-17009 an unknown kind is inert', () {
+      const capabilities = [
+        ExerciseCapability.time,
+        ExerciseCapability.distance,
+      ];
+      expect(
+        WatchActivityTypes.forExercise(
+          capabilities: capabilities,
+          healthActivity: 'unreal-kind',
+        ),
+        WatchActivityTypes.forExercise(capabilities: capabilities),
+        reason: 'S-17009 a kind from a newer phone falls through to the '
+            'capability answer',
+      );
     });
   });
 }

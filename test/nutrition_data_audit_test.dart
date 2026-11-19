@@ -2,6 +2,7 @@
 // Tests the contract compliance: frozen snapshots, catalog/library separation, unit types.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 
@@ -170,7 +171,11 @@ void main() {
 
       expect(restored.id, consumed.id);
       expect(restored.loggedAtMs, consumed.loggedAtMs);
-      expect(restored.dateMs, consumed.dateMs);
+      // Plan 235: a stored day comes back as that date's local midnight.
+      expect(
+        restored.dateMs,
+        OmniDateUtils.startOfDayMs(OmniDateUtils.fromMs(consumed.dateMs)),
+      );
       expect(restored.sourceFoodId, consumed.sourceFoodId);
       expect(restored.name, consumed.name);
       expect(restored.unitType, consumed.unitType);

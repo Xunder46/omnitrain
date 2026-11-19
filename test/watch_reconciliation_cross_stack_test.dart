@@ -26,12 +26,26 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/sync_protocol/session_reconciler.dart';
+import 'package:omnitrain/watch/logging/watch_logging_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
+import 'package:omnitrain/watch/session/watch_records.dart';
 import 'package:omnitrain/watch/session/watch_session_engine.dart';
 
 const String _fixtures = 'watch/sync_protocol/fixtures/reconciliation';
 
 final DateTime _now = DateTime.utc(2026, 9, 21, 12);
+
+/// Deterministic clock: both engines read time only through an injected clock,
+/// so the scripted five-step run is a list of instants, not a wait.
+class _Clock {
+  _Clock(this.now);
+
+  DateTime now;
+
+  DateTime call() => now;
+
+  void advance(Duration delta) => now = now.add(delta);
+}
 
 Map<String, Object?> _asObject(Object? value) =>
     (value as Map).cast<String, Object?>();
@@ -185,6 +199,127 @@ void main() {
     expect(phoneEntryIds.length, phoneEntryIds.toSet().length);
   });
 
+  test('S-35 a held id the phone edited is re-stated on the wrist, not resaved',
+      () async {
+    // The shared fixture re-carries `entry-slot-bench-0` with the same values,
+    // so its single `expected` block — the phone's converged state, which keeps
+    // the first value it stored for a held id — cannot show the divergence a
+    // real edit produces. The edit is made here, on the fixture as it is read:
+    // same id, same row group, a new weight.
+    final fixture = fixtures.firstWhere(
+      (fixture) => (fixture['name']! as String).contains('adds the entries'),
+    );
+    final stream = jsonDecode(jsonEncode(_streamOf(fixture)))! as List;
+    for (final message in stream.cast<Map<String, Object?>>()) {
+      if (message['type'] != 'session_snapshot') continue;
+      for (final entry in _objectsIn(_payloadOf(message)['entries'])) {
+        if (entry['entryId'] == 'entry-slot-bench-0') entry['loadKg'] = 65;
+      }
+    }
+
+    final snapshot = _asObject(fixture['snapshot']);
+    final phone = SyncSessionReconciler.fromSnapshot(_payloadOf(snapshot));
+    final engine = WatchSessionEngine(
+      InMemoryWatchSessionStore(),
+      clock: () => _now,
+    );
+    await engine.applyMessage(snapshot);
+
+    for (final message in stream.cast<Map<String, Object?>>()) {
+      phone.applyMessage(message);
+      if (message['type'] == 'observations_up') continue;
+      await engine.applyMessage(message);
+    }
+
+    Map<String, Object?> entryOf(String id) => _objectsIn(
+      phone.convergedState()['entries'],
+    ).firstWhere((entry) => entry['entryId'] == id);
+
+    final wrist = {
+      for (final entry in engine.entries) entry.entryId: entry.payload,
+    };
+
+    expect(
+      wrist['entry-slot-bench-0']!['loadKg'],
+      65,
+      reason:
+          'S-35 the wrist holds the id, so the answer re-states it: the wrist '
+          'shows the weight the phone has now',
+    );
+    expect(
+      entryOf('entry-slot-bench-0')['loadKg'],
+      60,
+      reason:
+          'D-35 the phone keeps the first value it stored for a held id; only '
+          'the wrist re-states, which is why the two stacks diverge here',
+    );
+    expect(
+      wrist.keys.toList()..sort(),
+      ['entry-slot-bench-0', 'entry-slot-bench-1'],
+      reason: 'S-35 a re-statement neither appends a row nor drops one',
+    );
+    expect(wrist['entry-slot-bench-1']!['loadKg'], 62.5);
+    expect(
+      engine.observations.map((observation) => observation.entryId).toList(),
+      ['entry-slot-bench-0', 'entry-slot-bench-1'],
+      reason: 'S-35 the store is append-only: exactly one row per held id',
+    );
+  });
+
+  test('S-67 a re-stated assist is neither duplicated nor zeroed', () async {
+    final fixture = _asObject(
+      jsonDecode(
+        File(
+          '${Directory.current.path}/$_fixtures/band_assist_carried.json',
+        ).readAsStringSync(),
+      ),
+    );
+    final snapshot = _asObject(fixture['snapshot']);
+    final phone = SyncSessionReconciler.fromSnapshot(_payloadOf(snapshot));
+    final engine = WatchSessionEngine(
+      InMemoryWatchSessionStore(),
+      clock: () => _now,
+    );
+    await engine.applyMessage(snapshot);
+
+    for (final message in _streamOf(fixture)) {
+      phone.applyMessage(message);
+      // The wrist's own product: it logged that assist, and a device does not
+      // apply its own observations back onto itself.
+      if (message['type'] == 'observations_up') continue;
+      await engine.applyMessage(message);
+    }
+
+    const expectedLoads = <String, Object?>{
+      'entry-slot-bench-0': -20,
+      'B7D3E1F2-9A4C-4D6E-8F10-2A3B4C5D6E7F': -22.5,
+      'entry-slot-bench-1': -200,
+    };
+
+    expect(
+      {
+        for (final entry in _objectsIn(phone.convergedState()['entries']))
+          entry['entryId']! as String: entry['loadKg'],
+      },
+      equals(expectedLoads),
+      reason: 'S-67 the phone converges on the assist it held, the assist the '
+          'wrist logged and the new floor set — none zeroed, none re-signed',
+    );
+    expect(
+      {
+        for (final entry in engine.entries)
+          entry.entryId: entry.payload['loadKg'],
+      },
+      equals(expectedLoads),
+      reason: 'S-67 the wrist shows the same three ids with the same loads',
+    );
+    expect(
+      engine.entries.map((entry) => entry.entryId).toSet().length,
+      engine.entries.length,
+      reason: 'S-67 a re-statement stores no second row',
+    );
+  });
+
   test('S-009 removing the current exercise leaves both stacks on the next one',
       () async {
     final fixture = fixtures.firstWhere(
@@ -221,5 +356,363 @@ void main() {
     );
     expect(engine.session!.currentExerciseIndex, after['currentExerciseIndex']);
     expect(engine.session!.currentExerciseIndex, lessThan(ladderAfter.length));
+  });
+
+  test('S-335 the scripted run leaves three rests, the same in both stacks',
+      () async {
+    final clock = _Clock(_now);
+    final emitted = <Map<String, Object?>>[];
+    final store = InMemoryWatchSessionStore();
+    final engine = WatchSessionEngine(
+      store,
+      clock: clock.call,
+      onEmit: emitted.add,
+    );
+    await engine.createSession(
+      modality: 'resistance_lifting',
+      exercises: [
+        {
+          'sessionExerciseId': 'sx-bench',
+          'exerciseId': 'ex-bench',
+          'name': 'Bench Press',
+          'capabilities': const ['reps', 'sets', 'load'],
+        },
+      ],
+    );
+    final surface = WatchLoggingState(engine: engine, clock: clock.call);
+
+    await surface.log(); // A at T0
+    clock.advance(const Duration(seconds: 45));
+    await surface.log(); // B at T0+45s, which ends R1
+    clock.advance(const Duration(seconds: 15));
+    await surface.log(); // C at T0+60s, which ends R2
+    clock.advance(const Duration(seconds: 30));
+    await surface.endRest(); // Next at T0+90s, which ends R3
+    clock.advance(const Duration(seconds: 30));
+    await engine.finishSession(); // End at T0+120s, no rest running
+
+    final events = [
+      for (final envelope in emitted)
+        if (envelope['type'] == 'observations_up')
+          for (final event in _objectsIn(_payloadOf(envelope)['events'])) event,
+    ];
+    expect(
+      [for (final event in events) event['kind']],
+      // Plan 160 D-16002: the end adds an observation of its own, and no rest
+      // — the rest list below is what proves the latter.
+      ['set', 'rest', 'set', 'rest', 'set', 'rest', 'session_end'],
+      reason:
+          'S-335 rest(R1) < B < rest(R2) < C < rest(R3), and End adds no rest '
+          'of its own',
+    );
+
+    final sets = [
+      for (final event in events)
+        if (event['kind'] == 'set') event,
+    ];
+    final rests = [
+      for (final event in events)
+        if (event['kind'] == 'rest') event,
+    ];
+    expect(
+      [for (final rest in rests) rest['afterEntryId']],
+      [for (final set in sets) set['entryId']],
+      reason: 'S-335 each rest follows the set that ended it',
+    );
+    expect(
+      [for (final rest in rests) rest['startedAt']],
+      [
+        utcIso(_now),
+        utcIso(_now.add(const Duration(seconds: 45))),
+        utcIso(_now.add(const Duration(seconds: 60))),
+      ],
+      reason: 'S-335 each rest starts at the instant its set was logged',
+    );
+    expect(
+      [for (final rest in rests) rest['endedAt']],
+      [
+        utcIso(_now.add(const Duration(seconds: 45))),
+        utcIso(_now.add(const Duration(seconds: 60))),
+        utcIso(_now.add(const Duration(seconds: 90))),
+      ],
+      reason: 'S-335 the windows are 45 s, 15 s and 30 s',
+    );
+
+    expect(
+      [
+        for (final row in (await store.readAll()).observations)
+          if (row.kind == WatchObservationKind.rest)
+            [row.payload['startedAt'], row.payload['endedAt']],
+      ],
+      [
+        for (final rest in rests) [rest['startedAt'], rest['endedAt']],
+      ],
+      reason: 'S-335 emitted state is stored state',
+    );
+  });
+
+  // D-14601 as amended by the Phase 1 review: two endings at the *same* instant
+  // are not ordered by time, so both stacks apply one tie-break instead of
+  // letting arrival order decide. `completed` wins over `abandoned`; between two
+  // different endings of the same kind, the smaller messageId wins.
+  group('D-14601 an equal end instant resolves the same on both stacks', () {
+    const String sessionId = 's-tie';
+    final String at = utcIso(_now.add(const Duration(minutes: 30)));
+
+    Map<String, Object?> snapshot({String? status, String? messageId}) => {
+          'protocolVersion': 1,
+          'messageId': messageId ?? 'msg-tie-snapshot',
+          'sessionId': sessionId,
+          'type': 'session_snapshot',
+          'origin': 'phone',
+          'sentAt': status == null ? utcIso(_now) : at,
+          'payload': {
+            'sessionId': sessionId,
+            'revision': 10,
+            'status': status ?? 'active',
+            'currentExerciseIndex': 0,
+            'exercises': [
+              {
+                'sessionExerciseId': 'sx-bench',
+                'exerciseId': 'ex-barbell-bench-press',
+                'name': 'Barbell Bench Press',
+                'capabilities': ['sets', 'reps', 'load'],
+              },
+            ],
+            'entries': [],
+            'timers': {},
+          },
+        };
+
+    Map<String, Object?> ending(String state, String messageId) => {
+          'protocolVersion': 1,
+          'messageId': messageId,
+          'sessionId': sessionId,
+          'type': 'session_lifecycle',
+          'origin': 'watch',
+          'sentAt': at,
+          'payload': {'state': state, 'at': at},
+        };
+
+    /// The status the phone and the wrist each end up on after [stream].
+    Future<List<String?>> statusesAfter(
+      List<Map<String, Object?>> stream,
+    ) async {
+      final phone = SyncSessionReconciler.fromSnapshot(
+        _payloadOf(snapshot()),
+      );
+      final engine = WatchSessionEngine(
+        InMemoryWatchSessionStore(),
+        clock: () => _now,
+      );
+      await engine.applyMessage(snapshot());
+      for (final message in stream) {
+        phone.applyMessage(message);
+        await engine.applyMessage(message);
+      }
+      return [phone.convergedState()['status'] as String?, engine.session!.status];
+    }
+
+    test('D-14601 completed ends the session whichever ending arrives first',
+        () async {
+      expect(
+        await statusesAfter([ending('completed', 'msg-a'), ending('abandoned', 'msg-b')]),
+        ['completed', 'completed'],
+        reason: 'D-14601 completed arrived first and stands',
+      );
+      expect(
+        await statusesAfter([ending('abandoned', 'msg-b'), ending('completed', 'msg-a')]),
+        ['completed', 'completed'],
+        reason: 'D-14601 the later completion supersedes the abandonment at the '
+            'same instant, on both stacks',
+      );
+    });
+
+    test('D-14601 the smaller messageId breaks a tie between like endings',
+        () async {
+      // Two `abandoned` endings at one instant are the same fate, so nothing is
+      // observable in the status; the tie-break is proven by the row both stacks
+      // keep, which is the one the smaller messageId names.
+      final phone = SyncSessionReconciler.fromSnapshot(
+        _payloadOf(snapshot()),
+      );
+      final engine = WatchSessionEngine(
+        InMemoryWatchSessionStore(),
+        clock: () => _now,
+      );
+      await engine.applyMessage(snapshot());
+      for (final message in [
+        ending('abandoned', 'msg-b'),
+        ending('abandoned', 'msg-a'),
+      ]) {
+        phone.applyMessage(message);
+        await engine.applyMessage(message);
+      }
+
+      expect(phone.convergedState()['status'], 'abandoned');
+      expect(engine.session!.status, 'abandoned');
+      expect(engine.session!.recordId, 'life-msg-a',
+          reason: 'D-14601 msg-a < msg-b, so the wrist keeps the msg-a ending');
+    });
+
+    test('D-14601 a snapshot-carried abandonment loses the tie to a completion',
+        () async {
+      final abandoned = snapshot(status: 'abandoned', messageId: 'msg-snap');
+
+      expect(
+        await statusesAfter([ending('completed', 'msg-a'), abandoned]),
+        ['completed', 'completed'],
+        reason: 'D-14601 an equal-instant snapshot cannot un-end a completed '
+            'session on either stack',
+      );
+      expect(
+        await statusesAfter([abandoned, ending('completed', 'msg-a')]),
+        ['completed', 'completed'],
+        reason: 'D-14601 the completion arriving second at the same instant '
+            'still supersedes the snapshot-carried abandonment',
+      );
+    });
+  });
+
+  group('S-14643 an earlier discard wins on both stacks', () {
+    const String sessionId = 's-sw-b';
+    final DateTime discardAt = _now.add(const Duration(minutes: 10));
+    final DateTime finishAt = _now.add(const Duration(minutes: 11));
+
+    Map<String, Object?> snapshot() => {
+          'protocolVersion': 1,
+          'messageId': 'msg-b-snapshot',
+          'sessionId': sessionId,
+          'type': 'session_snapshot',
+          'origin': 'phone',
+          'sentAt': utcIso(_now),
+          'payload': {
+            'sessionId': sessionId,
+            'revision': 3,
+            'status': 'active',
+            'currentExerciseIndex': 0,
+            'exercises': [
+              {
+                'sessionExerciseId': 'sx-bench',
+                'exerciseId': 'ex-barbell-bench-press',
+                'name': 'Barbell Bench Press',
+                'capabilities': ['sets', 'reps', 'load'],
+              },
+            ],
+            'entries': [],
+            'timers': {},
+          },
+        };
+
+    Map<String, Object?> ending(
+      String state,
+      String messageId,
+      DateTime at, {
+      required String origin,
+    }) =>
+        {
+          'protocolVersion': 1,
+          'messageId': messageId,
+          'sessionId': sessionId,
+          'type': 'session_lifecycle',
+          'origin': origin,
+          'sentAt': utcIso(at),
+          'payload': {'state': state, 'at': utcIso(at)},
+        };
+
+    /// The phone's and the wrist's status after [stream], in that order, with
+    /// the wrist's winning record so a caller can see which ending it kept.
+    Future<List<String?>> statusesAfter(
+      List<Map<String, Object?>> stream, {
+      void Function(WatchSessionEngine engine)? inspect,
+    }) async {
+      final phone = SyncSessionReconciler.fromSnapshot(
+        _payloadOf(snapshot()),
+      );
+      final engine = WatchSessionEngine(
+        InMemoryWatchSessionStore(),
+        clock: () => _now,
+      );
+      await engine.applyMessage(snapshot());
+      for (final message in stream) {
+        phone.applyMessage(message);
+        await engine.applyMessage(message);
+      }
+      inspect?.call(engine);
+      return [phone.convergedState()['status'] as String?, engine.session!.status];
+    }
+
+    test('S-14643 an earlier discard beats a later completion in either order',
+        () async {
+      final discard = ending('abandoned', 'msg-d', discardAt, origin: 'watch');
+      final finish = ending('completed', 'msg-c', finishAt, origin: 'phone');
+
+      String? keptRecord;
+      expect(
+        await statusesAfter(
+          [finish, discard],
+          inspect: (engine) => keptRecord = engine.session!.recordId,
+        ),
+        ['abandoned', 'abandoned'],
+        reason: 'S-14643 the discard was the earlier end, so the later '
+            'completion cannot store the workout on either stack',
+      );
+      expect(keptRecord, 'life-msg-d',
+          reason: 'S-14643 the wrist keeps the discard it was right about');
+      expect(
+        await statusesAfter([discard, finish]),
+        ['abandoned', 'abandoned'],
+        reason: 'S-14643 the same two endings in the other order agree',
+      );
+    });
+
+    test('S-14643 a later discard loses to an earlier completion in either order',
+        () async {
+      final finish = ending('completed', 'msg-c', discardAt, origin: 'phone');
+      final discard =
+          ending('abandoned', 'msg-d', finishAt, origin: 'watch');
+
+      expect(
+        await statusesAfter([finish, discard]),
+        ['completed', 'completed'],
+        reason: 'S-14643 the rule is the earlier instant, not a preference for '
+            'abandoned: a finish already recorded stands',
+      );
+      expect(
+        await statusesAfter([discard, finish]),
+        ['completed', 'completed'],
+        reason: 'S-14643 the same two endings in the other order agree',
+      );
+    });
+
+    test('S-14643 the shared fixture reads abandoned on both stacks', () async {
+      final fixture = fixtures.firstWhere(
+        (fixture) => (fixture['name']! as String)
+            .toLowerCase()
+            .contains('an earlier discard wins'),
+        orElse: () => throw StateError(
+          'fixtures/reconciliation/discard_before_finish.json is missing',
+        ),
+      );
+      final phone = SyncSessionReconciler.fromSnapshot(
+        _payloadOf(_asObject(fixture['snapshot'])),
+      );
+      final engine = WatchSessionEngine(
+        InMemoryWatchSessionStore(),
+        clock: () => _now,
+      );
+      await engine.applyMessage(_asObject(fixture['snapshot']));
+      for (final message in _streamOf(fixture)) {
+        phone.applyMessage(message);
+        await engine.applyMessage(message);
+      }
+
+      expect(phone.convergedState()['status'], 'abandoned');
+      expect(engine.session!.status, 'abandoned');
+      expect(
+        _structureOf(engine.session!.exercises, _payloadOf(engine.sessionSnapshot()!)),
+        _structureOf(_objectsIn(phone.convergedState()['exercises']), phone.convergedState()),
+      );
+    });
   });
 }

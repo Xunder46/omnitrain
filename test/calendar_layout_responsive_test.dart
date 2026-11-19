@@ -232,8 +232,10 @@ void main() {
       );
 
       expect(dotFinder, findsWidgets);
+      // S-9157 (plan 91): only the `+N` badge text matches, so a "+" in the
+      // header can no longer satisfy this check.
       expect(
-        find.textContaining('+'),
+        find.textContaining(RegExp(r'^\+\d+$')),
         findsWidgets,
         reason: 'five sessions cannot fit a short cell, so +N must appear',
       );

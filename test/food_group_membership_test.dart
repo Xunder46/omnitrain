@@ -176,20 +176,21 @@ void main() {
     });
   });
 
-  group('Delete guard — cold catalog cache', () {
+  group('Shipped categories — lock with a cold catalog cache', () {
     test(
-      'refuses to delete a category the bundled catalog still uses',
+      'refuses to delete a category the app ships with, even with a cold '
+      'catalog cache (plan 137)',
       () async {
         final repo = await _freshRepo();
         final state = FoodLibraryState(repo);
         await state.loadFoodGroups();
-        // Deliberately NOT loading the catalog: the guard reads the
-        // in-memory catalog cache, and a cold cache used to make it
-        // wave the deletion through and strand every bundled drink.
+        // Deliberately NOT loading the catalog: the shipped lock
+        // fires before anything is read, so even a cold cache
+        // cannot wave the deletion through.
 
         await expectLater(
           state.deleteFoodGroupReassigningFoods('food-group-drinks', null),
-          throwsA(isA<FoodGroupHasBundledFoodsError>()),
+          throwsA(isA<ShippedFoodGroupError>()),
         );
 
         final groups = await repo.getFoodGroups(includeArchived: true);

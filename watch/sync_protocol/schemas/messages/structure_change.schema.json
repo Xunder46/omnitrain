@@ -32,7 +32,7 @@
       "additionalProperties": false,
       "properties": {
         "reps": { "type": "integer", "minimum": 1 },
-        "loadKg": { "type": "number", "minimum": 0 },
+        "loadKg": { "type": "number", "minimum": -200 },
         "startedAt": { "$ref": "envelope.schema.json#/$defs/timestamp" },
         "endedAt": { "$ref": "envelope.schema.json#/$defs/timestamp" },
         "roundNumber": { "type": "integer", "minimum": 1 },

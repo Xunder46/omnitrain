@@ -67,13 +67,30 @@ public enum WatchObservationKind {
     /// (`WatchSessionCapture.sessionEndId`).
     public static let sessionEnd = "session_end"
 
+    /// The window between two efforts, hung on the entry it followed. It
+    /// records no work in a slot, so it is not an effort: it never joins
+    /// `efforts`, and the set block's span and the effort debt do not see it.
+    public static let rest = "rest"
+
+    /// One glass of water added or removed on the wrist (`WatchGlassChange`).
+    /// Not tied to a session: it always travels under the day's nutrition id,
+    /// even while a workout runs, and it is never an effort (plan 95 D-22).
+    public static let waterGlass = "water_glass"
+
     public static let all = [
-        set, timed, round, hold, nutritionQuickLog, effortRating, sessionEnd,
+        set, timed, round, hold, nutritionQuickLog, effortRating, sessionEnd, rest, waterGlass,
     ]
 
     /// The kinds that record work done in a slot — what "an effort entry" means
     /// to a set block's span and to whether an effort rating is owed.
     public static let efforts = [set, timed, round, hold]
+}
+
+/// The `glassChange` of a `water_glass` tap: one glass added or one removed.
+/// A string on the wire, never a signed number (plan 94 D-2).
+public enum WatchGlassChange: String {
+    case add
+    case remove
 }
 
 /// The ids of the two session-scoped observations. Derived from the session
@@ -135,7 +152,12 @@ public enum WatchSensorKind {
     /// predecessor means the counter restarted.
     public static let steps = "steps"
 
-    public static let all = [heartRate, gps, distance, steps]
+    /// The platform workout's active energy since it began, in kilocalories,
+    /// cumulative: each sample supersedes the one before, and a smaller value
+    /// than its predecessor means the counter restarted.
+    public static let activeEnergy = "energy"
+
+    public static let all = [heartRate, gps, distance, steps, activeEnergy]
 }
 
 /// A UTC timestamp in the protocol's wire shape: `YYYY-MM-DDTHH:MM:SS(.sss)Z`.
@@ -197,6 +219,12 @@ public struct WatchSessionRecord {
     /// at the same session shape. Zero until a snapshot says otherwise.
     public let revision: Int
 
+    /// The entry ids the phone deleted, as the newest row knows them: the
+    /// durable half of the deletion lens (plan D-113), so a relaunch rebuilds
+    /// it from storage instead of forgetting it. Ids the newest snapshot
+    /// carries are not in it — an entry the phone still sends exists.
+    public let deletedEntryIds: [String]
+
     public init(
         recordId: String,
         sessionId: String,
@@ -208,6 +236,7 @@ public struct WatchSessionRecord {
         currentExerciseIndex: Int,
         exercises: [[String: Any]] = [],
         revision: Int = 0,
+        deletedEntryIds: [String] = [],
         sequence: Int = 0
     ) {
         self.recordId = recordId
@@ -221,6 +250,7 @@ public struct WatchSessionRecord {
         self.currentExerciseIndex = currentExerciseIndex
         self.exercises = exercises
         self.revision = revision
+        self.deletedEntryIds = deletedEntryIds
     }
 
     public var currentExercise: [String: Any]? {
@@ -240,6 +270,25 @@ public struct WatchSessionRecord {
             currentExerciseIndex: currentExerciseIndex,
             exercises: exercises,
             revision: revision,
+            deletedEntryIds: deletedEntryIds,
+            sequence: sequence
+        )
+    }
+
+    /// The same row carrying `deletedEntryIds` as its deletion lens.
+    public func withDeletedEntryIds(_ deletedEntryIds: [String]) -> WatchSessionRecord {
+        WatchSessionRecord(
+            recordId: recordId,
+            sessionId: sessionId,
+            recordedAt: recordedAt,
+            startedAt: startedAt,
+            modality: modality,
+            source: source,
+            status: status,
+            currentExerciseIndex: currentExerciseIndex,
+            exercises: exercises,
+            revision: revision,
+            deletedEntryIds: deletedEntryIds,
             sequence: sequence
         )
     }
@@ -258,6 +307,7 @@ public struct WatchSessionRecord {
             "currentExerciseIndex": currentExerciseIndex,
             "exercises": exercises,
             "revision": revision,
+            "deletedEntryIds": deletedEntryIds,
         ]
     }
 
@@ -273,6 +323,7 @@ public struct WatchSessionRecord {
             currentExerciseIndex: (json["currentExerciseIndex"] as? NSNumber)?.intValue ?? 0,
             exercises: (json["exercises"] as? [[String: Any]]) ?? [],
             revision: (json["revision"] as? NSNumber)?.intValue ?? 0,
+            deletedEntryIds: (json["deletedEntryIds"] as? [String]) ?? [],
             sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
         )
     }
@@ -391,6 +442,7 @@ public struct WatchTimerRecord {
     public let stoppedAt: Date?
     public let accumulatedPauseMs: Int
     public let plannedDurationMs: Int?
+    public let sessionExerciseId: String?
 
     public init(
         recordId: String,
@@ -402,6 +454,7 @@ public struct WatchTimerRecord {
         stoppedAt: Date? = nil,
         accumulatedPauseMs: Int = 0,
         plannedDurationMs: Int? = nil,
+        sessionExerciseId: String? = nil,
         sequence: Int = 0
     ) {
         self.recordId = recordId
@@ -414,6 +467,7 @@ public struct WatchTimerRecord {
         self.stoppedAt = stoppedAt
         self.accumulatedPauseMs = accumulatedPauseMs
         self.plannedDurationMs = plannedDurationMs
+        self.sessionExerciseId = sessionExerciseId
     }
 
     /// Derived from which timestamps are present.
@@ -434,6 +488,7 @@ public struct WatchTimerRecord {
             stoppedAt: stoppedAt,
             accumulatedPauseMs: accumulatedPauseMs,
             plannedDurationMs: plannedDurationMs,
+            sessionExerciseId: sessionExerciseId,
             sequence: sequence
         )
     }
@@ -448,7 +503,17 @@ public struct WatchTimerRecord {
         ]
         if let pausedAt { json["pausedAt"] = utcIso(pausedAt) }
         if let stoppedAt { json["stoppedAt"] = utcIso(stoppedAt) }
-        if let plannedDurationMs { json["plannedDurationMs"] = plannedDurationMs }
+        // A rest is a count-up (docs/global_conventions.md, rest rule): a row
+        // written before that had a length still stores one, and the wire
+        // refuses it, so the frame never carries it.
+        if kind != "rest", let plannedDurationMs {
+            json["plannedDurationMs"] = plannedDurationMs
+        }
+        // A rest belongs to no slot, and the wire's timer allows the field on
+        // every kind but carries it only where it means something.
+        if kind != "rest", let sessionExerciseId {
+            json["sessionExerciseId"] = sessionExerciseId
+        }
         return json
     }
 
@@ -465,6 +530,7 @@ public struct WatchTimerRecord {
             "stoppedAt": stoppedAt.map(utcIso) ?? NSNull(),
             "accumulatedPauseMs": accumulatedPauseMs,
             "plannedDurationMs": plannedDurationMs ?? NSNull(),
+            "sessionExerciseId": sessionExerciseId ?? NSNull(),
         ]
     }
 
@@ -479,6 +545,7 @@ public struct WatchTimerRecord {
             stoppedAt: try parseOptionalUtcIso(json["stoppedAt"]),
             accumulatedPauseMs: (json["accumulatedPauseMs"] as? NSNumber)?.intValue ?? 0,
             plannedDurationMs: (json["plannedDurationMs"] as? NSNumber)?.intValue,
+            sessionExerciseId: json["sessionExerciseId"] as? String,
             sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
         )
     }
@@ -640,9 +707,13 @@ public enum StoredWatchRecord {
     public static let sensorSampleType = "sensor_sample"
     public static let confirmationType = "confirmation"
     public static let routineCatalogType = "routine_catalog"
+    public static let plannedCatalogType = "planned_catalog"
     public static let foodCatalogType = "food_catalog"
     public static let preferencesType = "preferences"
     public static let ratingPromptType = "rating_prompt"
+    public static let exerciseBatchType = "exercise_batch"
+    public static let bestsType = "bests"
+    public static let waterType = "water"
 
     case session(WatchSessionRecord)
     case observation(WatchObservationRecord)
@@ -650,9 +721,13 @@ public enum StoredWatchRecord {
     case sensorSample(WatchSensorSampleRecord)
     case confirmation(WatchConfirmationRecord)
     case routineCatalog(WatchRoutineCatalogRecord)
+    case plannedCatalog(WatchPlannedCatalogRecord)
     case foodCatalog(WatchFoodCatalogRecord)
     case preferences(WatchPreferencesRecord)
     case ratingPrompt(WatchRatingPromptRecord)
+    case exerciseBatch(WatchExerciseBatchRecord)
+    case bests(WatchBestsRecord)
+    case water(WatchWaterRecord)
 
     public var recordType: String {
         switch self {
@@ -662,9 +737,13 @@ public enum StoredWatchRecord {
         case .sensorSample: return Self.sensorSampleType
         case .confirmation: return Self.confirmationType
         case .routineCatalog: return Self.routineCatalogType
+        case .plannedCatalog: return Self.plannedCatalogType
         case .foodCatalog: return Self.foodCatalogType
         case .preferences: return Self.preferencesType
         case .ratingPrompt: return Self.ratingPromptType
+        case .exerciseBatch: return Self.exerciseBatchType
+        case .bests: return Self.bestsType
+        case .water: return Self.waterType
         }
     }
 
@@ -676,9 +755,13 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.recordId
         case .confirmation(let row): return row.recordId
         case .routineCatalog(let row): return row.recordId
+        case .plannedCatalog(let row): return row.recordId
         case .foodCatalog(let row): return row.recordId
         case .preferences(let row): return row.recordId
         case .ratingPrompt(let row): return row.recordId
+        case .exerciseBatch(let row): return row.recordId
+        case .bests(let row): return row.recordId
+        case .water(let row): return row.recordId
         }
     }
 
@@ -690,9 +773,13 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.sessionId
         case .confirmation(let row): return row.sessionId
         case .routineCatalog(let row): return row.sessionId
+        case .plannedCatalog(let row): return row.sessionId
         case .foodCatalog(let row): return row.sessionId
         case .preferences(let row): return row.sessionId
         case .ratingPrompt(let row): return row.sessionId
+        case .exerciseBatch(let row): return row.sessionId
+        case .bests(let row): return row.sessionId
+        case .water(let row): return row.sessionId
         }
     }
 
@@ -704,9 +791,13 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.recordedAt
         case .confirmation(let row): return row.recordedAt
         case .routineCatalog(let row): return row.recordedAt
+        case .plannedCatalog(let row): return row.recordedAt
         case .foodCatalog(let row): return row.recordedAt
         case .preferences(let row): return row.recordedAt
         case .ratingPrompt(let row): return row.recordedAt
+        case .exerciseBatch(let row): return row.recordedAt
+        case .bests(let row): return row.recordedAt
+        case .water(let row): return row.recordedAt
         }
     }
 
@@ -718,9 +809,13 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.sequence
         case .confirmation(let row): return row.sequence
         case .routineCatalog(let row): return row.sequence
+        case .plannedCatalog(let row): return row.sequence
         case .foodCatalog(let row): return row.sequence
         case .preferences(let row): return row.sequence
         case .ratingPrompt(let row): return row.sequence
+        case .exerciseBatch(let row): return row.sequence
+        case .bests(let row): return row.sequence
+        case .water(let row): return row.sequence
         }
     }
 
@@ -732,9 +827,13 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return .sensorSample(row.withSequence(sequence))
         case .confirmation(let row): return .confirmation(row.withSequence(sequence))
         case .routineCatalog(let row): return .routineCatalog(row.withSequence(sequence))
+        case .plannedCatalog(let row): return .plannedCatalog(row.withSequence(sequence))
         case .foodCatalog(let row): return .foodCatalog(row.withSequence(sequence))
         case .preferences(let row): return .preferences(row.withSequence(sequence))
         case .ratingPrompt(let row): return .ratingPrompt(row.withSequence(sequence))
+        case .exerciseBatch(let row): return .exerciseBatch(row.withSequence(sequence))
+        case .bests(let row): return .bests(row.withSequence(sequence))
+        case .water(let row): return .water(row.withSequence(sequence))
         }
     }
 
@@ -746,9 +845,13 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.toJson()
         case .confirmation(let row): return row.toJson()
         case .routineCatalog(let row): return row.toJson()
+        case .plannedCatalog(let row): return row.toJson()
         case .foodCatalog(let row): return row.toJson()
         case .preferences(let row): return row.toJson()
         case .ratingPrompt(let row): return row.toJson()
+        case .exerciseBatch(let row): return row.toJson()
+        case .bests(let row): return row.toJson()
+        case .water(let row): return row.toJson()
         }
     }
 
@@ -763,9 +866,13 @@ public enum StoredWatchRecord {
         case sensorSampleType: return .sensorSample(try WatchSensorSampleRecord.fromJson(json))
         case confirmationType: return .confirmation(try WatchConfirmationRecord.fromJson(json))
         case routineCatalogType: return .routineCatalog(try WatchRoutineCatalogRecord.fromJson(json))
+        case plannedCatalogType: return .plannedCatalog(try WatchPlannedCatalogRecord.fromJson(json))
         case foodCatalogType: return .foodCatalog(try WatchFoodCatalogRecord.fromJson(json))
         case preferencesType: return .preferences(try WatchPreferencesRecord.fromJson(json))
         case ratingPromptType: return .ratingPrompt(try WatchRatingPromptRecord.fromJson(json))
+        case exerciseBatchType: return .exerciseBatch(try WatchExerciseBatchRecord.fromJson(json))
+        case bestsType: return .bests(try WatchBestsRecord.fromJson(json))
+        case waterType: return .water(try WatchWaterRecord.fromJson(json))
         default: throw WatchRecordError.unknownRecordType(type)
         }
     }

@@ -4,12 +4,15 @@ import '../../core/constants/modality_config.dart';
 import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
+import '../../core/services/active_energy_service.dart';
 import '../../core/services/health_sync_service.dart';
+import '../../core/services/screen_awake_port.dart';
 import '../../core/utils/entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import 'exercise_library.dart';
 import 'session_core.dart';
+import 'session_screen_awake.dart';
 import 'timer_manager.dart';
 import '../watch/watch_session_inbox.dart';
 
@@ -20,6 +23,15 @@ class WorkoutState extends ChangeNotifier {
   late final SessionCore _sessionCore;
   late final TimerManager _timerManager;
   late final ExerciseLibrary _exerciseLibrary;
+  late final SessionScreenAwake _screenAwake;
+
+  /// plan 134d: kept for the open session screen's live estimate.
+  final ActiveEnergyService? _activeEnergy;
+
+  /// plan 135 (D-13522): the wrist's running active-energy total, as the last
+  /// `energy_live` frame said. Null without a watch.
+  final ValueListenable<({String sessionId, double kcal, DateTime at})?>?
+  _wristEnergy;
 
   String? _error;
 
@@ -29,16 +41,45 @@ class WorkoutState extends ChangeNotifier {
   /// [watchLateEntryRecovery] is optional for the same reason: a build with
   /// no watch, and every test that does not exercise the recovery, passes
   /// nothing and the restore behaves exactly as it did before (D-803).
+  ///
+  /// [clock] is the workout state's clock seam — the timer's stamps AND the
+  /// session core's persisted stamps; the default is the real clock.
+  ///
+  /// [wristRunsSession] answers whether the wrist is running a session, and so
+  /// saves its own Fitness workout for it (plan 89c1 D-2). Null without a
+  /// watch: the phone's end then writes as it always has.
+  ///
+  /// [screenAwake] is plan 120: null means no-op.
+  ///
+  /// [activeEnergy] is plan 134: the estimate of a finished session is stored
+  /// when it ends or its duration is edited. Null means no energy is stored.
+  ///
+  /// [wristEnergy] is plan 135: the wrist's running active-energy total while
+  /// it runs a session. Null means the chip stays the phone's own estimate.
   WorkoutState(
     this._repository, {
     HealthSyncService? healthSync,
     WatchLateEntryRecovery? watchLateEntryRecovery,
-  }) {
+    DateTime Function()? clock,
+    bool Function(String sessionId)? wristRunsSession,
+
+    /// Plan 218: runs the finish's drop of a watch-linked workout behind the
+    /// inbox's queued import passes. Null in tests and builds without a
+    /// watch: the drop then runs directly.
+    Future<void> Function(Future<void> Function() action)?
+    afterPendingWristImports,
+    ScreenAwakePort? screenAwake,
+    ActiveEnergyService? activeEnergy,
+    ValueListenable<({String sessionId, double kcal, DateTime at})?>?
+    wristEnergy,
+  }) : _activeEnergy = activeEnergy,
+       _wristEnergy = wristEnergy {
     _timerManager = TimerManager(
       _repository,
       notify: notifyListeners,
       setError: _setError,
       clearError: _clearError,
+      clock: clock,
     );
     _exerciseLibrary = ExerciseLibrary(
       _repository,
@@ -56,11 +97,30 @@ class WorkoutState extends ChangeNotifier {
       exerciseLibrary: _exerciseLibrary,
       healthSync: healthSync,
       lateEntryRecovery: watchLateEntryRecovery,
+      wristRunsSession: wristRunsSession,
+      afterPendingWristImports: afterPendingWristImports,
+      activeEnergy: activeEnergy,
+      clock: clock,
     );
     _timerManager.bindObservations(_sessionCore.observationsMap);
+    _screenAwake = SessionScreenAwake(
+      port: screenAwake ?? const ScreenAwakePort.noop(),
+      source: this,
+      hasWorkTimer: () => inProgressWorkTimers().isNotEmpty,
+    );
   }
 
   WorkoutRepository get repository => _repository;
+
+  /// plan 134d: the open session screen reads the weight through here.
+  Future<double?> latestBodyWeightKg() async => _activeEnergy?.latestWeightKg();
+
+  /// plan 135 (D-13522): the wrist's running active-energy total for the
+  /// session it runs, or null once nothing is held.
+  ValueListenable<({String sessionId, double kcal, DateTime at})?>?
+  get wristEnergy => _wristEnergy;
+
+  SessionScreenAwake get screenAwake => _screenAwake;
   String? get error => _error;
   TrainingSession? get currentSession => _sessionCore.currentSession;
   ModalityConfig? get modalityConfig => _sessionCore.modalityConfig;
@@ -69,6 +129,7 @@ class WorkoutState extends ChangeNotifier {
   bool get hasSession => _sessionCore.hasSession;
   bool get hasActiveSession => _sessionCore.hasActiveSession;
   bool get isRollingSession => _sessionCore.isRollingSession;
+  int get watchRefreshRevision => _sessionCore.watchRefreshRevision;
   List<Exercise> get allExercises => _exerciseLibrary.allExercises;
   List<MuscleGroup> get muscleGroups => _exerciseLibrary.muscleGroups;
   List<Discipline> get disciplines => _exerciseLibrary.disciplines;
@@ -89,11 +150,37 @@ class WorkoutState extends ChangeNotifier {
       _timerManager.getTimedInstancesForEffort(effortId);
   List<EntryRest> getEntryRests(String effortId) =>
       _timerManager.getEntryRests(effortId);
+
+  /// The held session's in-progress work timers, one per wire kind (43b3
+  /// D-1). Empty when no session is active.
+  List<InProgressWorkTimer> inProgressWorkTimers() {
+    if (!hasActiveSession) return const <InProgressWorkTimer>[];
+    return _timerManager.inProgressWorkTimers([
+      for (final segment in segments) ...getEffortsForSegment(segment.id),
+    ]);
+  }
+
+  /// The held session's open rest, if it has one (plan 50a D-1). Null when no
+  /// session is active or nothing is resting.
+  InProgressRest? inProgressRest() {
+    if (!hasActiveSession) return null;
+    return _timerManager.inProgressRest([
+      for (final segment in segments) ...getEffortsForSegment(segment.id),
+    ]);
+  }
+
   Exercise? getExercise(String? exerciseId) =>
       _sessionCore.getExercise(exerciseId);
   List<SessionBlock> getSessionBlocks() => _sessionCore.getSessionBlocks();
   List<Map<String, dynamic>> getExercisesWithEntries() =>
       _sessionCore.getExercisesWithEntries();
+
+  /// Plan 217: exercises the user did, for the Finish confirmation.
+  int completedExerciseCount() => _sessionCore.completedExerciseCount();
+
+  /// Plan 220: Finish would store a workout with nothing done in it.
+  Future<bool> finishWouldSaveNothing() =>
+      _sessionCore.finishWouldSaveNothing();
   SessionSummary computeSessionSummary() =>
       _sessionCore.computeSessionSummary();
   List<SessionTemplateExercise> buildTemplateDraftExercises() =>
@@ -134,6 +221,16 @@ class WorkoutState extends ChangeNotifier {
   );
   Future<void> loadHistoricalSession(String sessionId) =>
       _sessionCore.loadHistoricalSession(sessionId);
+
+  /// Plan 229: loads a finished session without losing the running workout;
+  /// [resumeSuspendedLiveSession] puts it back.
+  Future<void> viewHistoricalSession(String sessionId) =>
+      _sessionCore.viewHistoricalSession(sessionId);
+
+  /// Plan 229: puts the running workout a history view replaced back in the
+  /// session slot.
+  Future<void> resumeSuspendedLiveSession() =>
+      _sessionCore.resumeSuspendedLiveSession();
   Future<void> loadSessionData() => _sessionCore.loadSessionData();
 
   /// Re-reads the named efforts' rows into the live session, notifying once.
@@ -142,16 +239,67 @@ class WorkoutState extends ChangeNotifier {
   /// clears both timer managers; this does not).
   Future<void> refreshEfforts(Iterable<String> effortIds) =>
       _sessionCore.refreshEfforts(effortIds);
+
+  /// Adopts a running timer the watch sent into the target interval of
+  /// [effortId], bumping the watch refresh revision and notifying once when
+  /// something was written (43b2 D-1, D-2). Returns whether anything was
+  /// written.
+  Future<bool> adoptRemoteWorkTimer(String effortId, RemoteWorkTimer remote) =>
+      _sessionCore.adoptRemoteWorkTimer(effortId, remote);
+
+  /// Gives back the interval of [effortId] that a watch timer started at
+  /// [startedAtMs] had taken, when the wrist no longer runs it and it is
+  /// still running here (plan 244 D-24401). Bumps the watch refresh revision
+  /// and notifies once when something changed; returns whether it did.
+  Future<bool> releaseRemoteWorkTimer(String effortId, int startedAtMs) =>
+      _sessionCore.releaseRemoteWorkTimer(effortId, startedAtMs);
+
   Future<void> populateSessionFromManifest(RoutineSessionManifest manifest) =>
       _sessionCore.populateSessionFromManifest(manifest);
-  Future<void> endSession() => _sessionCore.endSession();
+  /// Ends the session. [writeToHealth] false skips the Health write-back: the
+  /// wrist's own end, whose workout the watch already saved (plan 89c1 D-1).
+  Future<void> endSession({bool writeToHealth = true, int? atMs}) =>
+      _sessionCore.endSession(writeToHealth: writeToHealth, atMs: atMs);
+
+  /// D-14604: a session this phone already ended takes the wrist's later end as
+  /// its own, and the estimate is settled again; its status does not change.
+  Future<void> catchUpEndedSession(int atMs) =>
+      _sessionCore.catchUpEndedSession(atMs);
   Future<void> discardCurrentSession() => _sessionCore.discardCurrentSession();
+
+  /// Plan 230: a confirmed "Start New Session?" really discards a running
+  /// workout; a finished session in the slot is only released.
+  Future<void> discardUnfinishedSession() =>
+      _sessionCore.discardUnfinishedSession();
   Future<void> updateSessionNote(String note) =>
       _sessionCore.updateSessionNote(note);
   Future<void> updateSessionEndTime(int durationSecs) =>
       _sessionCore.updateSessionEndTime(durationSecs);
-  Future<void> updateSessionFeeling(String sessionId, int feeling) =>
-      _sessionCore.updateSessionFeeling(sessionId, feeling);
+  Future<void> updateSessionFeeling(
+    String sessionId,
+    int feeling, {
+    bool onlyIfUnrated = false,
+  }) => _sessionCore.updateSessionFeeling(
+    sessionId,
+    feeling,
+    onlyIfUnrated: onlyIfUnrated,
+  );
+  Future<void> adoptSessionFeeling(String sessionId, int feeling) =>
+      _sessionCore.adoptSessionFeeling(sessionId, feeling);
+
+  /// The wrist's heart-rate summary for a session just landed (plan 72): the
+  /// session it is for and a running count, so a second arrival for the same
+  /// session is a new value. A screen showing that session listens to this
+  /// alone; it does not notify the whole state.
+  final ValueNotifier<({String sessionId, int count})?> wristSummary =
+      ValueNotifier(null);
+
+  void noteWristSummary(String sessionId) {
+    wristSummary.value = (
+      sessionId: sessionId,
+      count: (wristSummary.value?.count ?? 0) + 1,
+    );
+  }
   Future<void> updateSessionRpe(String sessionId, double rpe) =>
       _sessionCore.updateSessionRpe(sessionId, rpe);
   Future<void> restoreSessionSnapshot(SessionEditSnapshot snapshot) =>
@@ -169,6 +317,16 @@ class WorkoutState extends ChangeNotifier {
     effortKindOverride: effortKindOverride,
     segmentId: segmentId,
   );
+
+  /// Appends the wrist's added slots to the held session [sessionId], notifying
+  /// once. Touches no timer and moves no position (D-94).
+  Future<void> appendSessionSlots(
+    List<SegmentEffort> efforts, {
+    required String sessionId,
+  }) => _sessionCore.appendSessionSlots(efforts, sessionId: sessionId);
+  /// Gives an effort its first entry (set or interval) when it has none.
+  Future<void> seedFirstEntry(String effortId, {int? atMs}) =>
+      _sessionCore.seedFirstEntry(effortId, atMs: atMs);
   Future<void> addEntry(
     String effortId, {
     Map<String, dynamic>? previousValues,
@@ -233,6 +391,18 @@ class WorkoutState extends ChangeNotifier {
     newDurationSecs,
   );
 
+  /// Applies [newDurationSecs] to the round at [fromIndex] and to every later
+  /// round that has not started yet. Returns the written indexes, ascending.
+  Future<List<int>> updatePlannedDurationFrom(
+    String effortId,
+    int fromIndex,
+    int newDurationSecs,
+  ) => _timerManager.updatePlannedDurationFrom(
+    effortId,
+    fromIndex,
+    newDurationSecs,
+  );
+
   Future<void> addTimedEntry(String effortId, {int targetDurationSecs = 0}) =>
       _timerManager.addTimedEntry(
         effortId,
@@ -244,8 +414,15 @@ class WorkoutState extends ChangeNotifier {
       _timerManager.pauseTimedEntry(effortId, entryIndex);
   Future<void> resumeTimedEntry(String effortId, int entryIndex) =>
       _timerManager.resumeTimedEntry(effortId, entryIndex);
-  Future<void> finishTimedEntry(String effortId, int entryIndex) =>
-      _timerManager.finishTimedEntry(effortId, entryIndex);
+  Future<void> finishTimedEntry(
+    String effortId,
+    int entryIndex, {
+    int? expiredAfterSecs,
+  }) => _timerManager.finishTimedEntry(
+    effortId,
+    entryIndex,
+    expiredAfterSecs: expiredAfterSecs,
+  );
   Future<void> deleteTimedEntry(String effortId, int entryIndex) =>
       _timerManager.deleteTimedEntry(effortId, entryIndex);
   Future<void> updateTimedTargetDuration(
@@ -280,13 +457,14 @@ class WorkoutState extends ChangeNotifier {
     int durationSecs,
   ) => _timerManager.setRoundFinished(effortId, roundIndex, durationSecs);
 
-  /// Normalises every non-finished round in the current session to `finished`.
+  /// Normalises every started (running or paused) round in the current session
+  /// to `finished`; a round that was never started is left alone (plan 232).
   /// Called at the end of edit-mode save to ensure no stale round states remain.
   Future<void> normalizeRoundsToFinished() =>
       _timerManager.normalizeAllRoundsToFinished();
 
-  Future<void> recordRestStart(String effortId, int entryIndex) =>
-      _timerManager.recordRestStart(effortId, entryIndex);
+  Future<void> recordRestStart(String effortId, int entryIndex, {int? atMs}) =>
+      _timerManager.recordRestStart(effortId, entryIndex, atMs: atMs);
   Future<void> recordRestEnd(String effortId, int entryIndex) =>
       _timerManager.recordRestEnd(effortId, entryIndex);
 
@@ -350,8 +528,8 @@ class WorkoutState extends ChangeNotifier {
     disciplineId: disciplineId,
     muscleGroupIds: muscleGroupIds,
   );
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) =>
-      _exerciseLibrary.getExerciseMuscleGroups(exerciseId);
+  Future<List<ExerciseMuscleLink>?> getExerciseMuscleLinks(String exerciseId) =>
+      _exerciseLibrary.getExerciseMuscleLinks(exerciseId);
 
   Future<Exercise?> createCustomExercise({
     required String name,
@@ -359,7 +537,7 @@ class WorkoutState extends ChangeNotifier {
     String? description,
     String? disciplineId,
     List<String> capabilities = const [],
-    List<String> muscleGroupIds = const [],
+    List<ExerciseMuscleLink> muscleLinks = const [],
   }) async {
     final exercise = await _exerciseLibrary.createCustomExercise(
       name: name,
@@ -367,7 +545,7 @@ class WorkoutState extends ChangeNotifier {
       description: description,
       disciplineId: disciplineId,
       capabilities: capabilities,
-      muscleGroupIds: muscleGroupIds,
+      muscleLinks: muscleLinks,
     );
     if (exercise != null) _sessionCore.cacheExercise(exercise);
     return exercise;
@@ -376,12 +554,12 @@ class WorkoutState extends ChangeNotifier {
   Future<Exercise?> updateCustomExercise({
     required Exercise exercise,
     List<String> capabilities = const [],
-    List<String> muscleGroupIds = const [],
+    List<ExerciseMuscleLink> muscleLinks = const [],
   }) async {
     final updated = await _exerciseLibrary.updateCustomExercise(
       exercise: exercise,
       capabilities: capabilities,
-      muscleGroupIds: muscleGroupIds,
+      muscleLinks: muscleLinks,
     );
     if (updated != null) _sessionCore.cacheExercise(updated);
     return updated;

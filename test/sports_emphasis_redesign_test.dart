@@ -12,6 +12,8 @@ import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
+import 'package:omnitrain/widgets/session/timer_ring.dart';
+import 'package:omnitrain/widgets/session/value_stepper_row.dart';
 
 import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/fake_preferences_service.dart';
@@ -226,33 +228,39 @@ Future<void> _openRoutineDetail(
   await tester.pumpAndSettle();
 }
 
-Text _statusLineText(
-  WidgetTester tester, {
-  required IconData icon,
-  required String label,
-}) {
-  final iconFinder = find.byIcon(icon);
-  expect(iconFinder, findsOneWidget);
-  final statusRow = find.ancestor(of: iconFinder, matching: find.byType(Row));
-  final labelFinder = find.descendant(
-    of: statusRow.first,
-    matching: find.text(label),
+/// The digits the ring centres — the round's remaining time, `mm:ss`.
+///
+/// Scoped to the ring: before Start the round-length row below repeats the
+/// same number, so a tree-wide `find.text('03:00')` is ambiguous.
+Text _ringDigits(WidgetTester tester) {
+  final finder = find.descendant(
+    of: find.byType(TimerRing),
+    matching: find.textContaining(':'),
   );
-  expect(labelFinder, findsOneWidget);
-  return tester.widget<Text>(labelFinder);
+  expect(finder, findsOneWidget);
+  return tester.widget<Text>(finder);
 }
 
-Finder _sessionProgressDots() {
-  return find.byWidgetPredicate((widget) {
-    if (widget is! Container) return false;
-    final decoration = widget.decoration;
-    if (decoration is! BoxDecoration || decoration.shape != BoxShape.circle) {
-      return false;
-    }
-    final margin = widget.margin;
-    if (margin is! EdgeInsets) return false;
-    return margin.horizontal == 12;
-  });
+/// The caption under the ring's digits (`REMAINING`, or `COMPLETED` once the
+/// round is over).
+Text _ringCaption(WidgetTester tester, String label) {
+  final finder = find.descendant(
+    of: find.byType(TimerRing),
+    matching: find.text(label),
+  );
+  expect(finder, findsOneWidget);
+  return tester.widget<Text>(finder);
+}
+
+/// The removed round chrome (38d): heading, play/pause icon and status word.
+void _expectNoRoundChrome(WidgetTester tester) {
+  expect(find.text('PERIOD 1'), findsNothing);
+  expect(find.text('ROUND 1'), findsNothing);
+  expect(find.text('STOPPED'), findsNothing);
+  expect(find.text('RUNNING'), findsNothing);
+  expect(find.text('PAUSED'), findsNothing);
+  expect(find.byIcon(Icons.play_circle_outline), findsNothing);
+  expect(find.byIcon(Icons.pause_circle_outline), findsNothing);
 }
 
 void main() {
@@ -278,28 +286,17 @@ void main() {
 
       await _openSessionDetail(tester, deps.exercise.name);
 
-      final periodText = tester.widget<Text>(find.text('PERIOD 1'));
-      expect(periodText.style?.color, colors.textSecondary);
+      // 38d: the ring replaces the heading + status row. Before Start it is
+      // full, the digits read the planned 03:00 and the caption REMAINING.
+      final ring = tester.widget<TimerRing>(find.byType(TimerRing));
+      expect(ring.progress, 1.0);
+      expect(ring.running, isFalse);
+      expect(_ringDigits(tester).data, '03:00');
+      expect(_ringDigits(tester).style?.color, colors.textDominant);
+      expect(_ringCaption(tester, 'REMAINING').data, 'REMAINING');
+      expect(find.text('ROUND LENGTH'), findsOneWidget);
 
-      final durationEditor = tester.widget<InlineMetricEditor>(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is InlineMetricEditor && widget.metricType == 'duration',
-        ),
-      );
-      expect(durationEditor.emphasisTier, MetricEmphasisTier.dominant);
-
-      final stoppedText = _statusLineText(
-        tester,
-        icon: Icons.play_circle_outline,
-        label: 'STOPPED',
-      );
-      expect(stoppedText.style?.color, colors.textMuted);
-
-      final playIcon = tester.widget<Icon>(
-        find.byIcon(Icons.play_circle_outline),
-      );
-      expect(playIcon.color, colors.textMuted);
+      _expectNoRoundChrome(tester);
 
       final periodCount = tester.widget<Text>(find.text('Period 1 of 1'));
       expect(periodCount.style?.color, colors.textSecondary);
@@ -330,25 +327,14 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Start'));
       await tester.pump();
 
-      final durationEditor = tester.widget<InlineMetricEditor>(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is InlineMetricEditor && widget.metricType == 'duration',
-        ),
-      );
-      expect(durationEditor.emphasisTier, MetricEmphasisTier.dominant);
+      // Running: the ring sweeps and the digits tick, with the same caption
+      // and no status row.
+      final ring = tester.widget<TimerRing>(find.byType(TimerRing));
+      expect(ring.running, isTrue);
+      expect(_ringDigits(tester).style?.color, colors.textDominant);
+      expect(_ringCaption(tester, 'REMAINING').data, 'REMAINING');
 
-      final runningText = _statusLineText(
-        tester,
-        icon: Icons.pause_circle_outline,
-        label: 'RUNNING',
-      );
-      expect(runningText.style?.color, colors.textMuted);
-
-      final pauseIcon = tester.widget<Icon>(
-        find.byIcon(Icons.pause_circle_outline),
-      );
-      expect(pauseIcon.color, colors.textMuted);
+      _expectNoRoundChrome(tester);
     });
 
     testWidgets(
@@ -374,25 +360,24 @@ void main() {
 
         await _openSessionDetail(tester, deps.exercise.name);
 
-        final periodText = tester.widget<Text>(find.text('PERIOD 1'));
-        expect(periodText.style?.color, colors.textSecondary);
-
-        final stoppedText = _statusLineText(
-          tester,
-          icon: Icons.play_circle_outline,
-          label: 'STOPPED',
-        );
-        expect(stoppedText.style?.color, colors.textMuted);
+        final stoppedRing = tester.widget<TimerRing>(find.byType(TimerRing));
+        expect(stoppedRing.progress, 1.0);
+        expect(_ringDigits(tester).style?.color, colors.textDominant);
+        _ringCaption(tester, 'REMAINING');
+        _expectNoRoundChrome(tester);
 
         await tester.tap(find.widgetWithText(FilledButton, 'Start'));
         await tester.pump();
 
-        final runningText = _statusLineText(
-          tester,
-          icon: Icons.pause_circle_outline,
-          label: 'RUNNING',
+        // Same shape while running: the routine-backed session adds no
+        // heading or status row of its own.
+        expect(
+          tester.widget<TimerRing>(find.byType(TimerRing)).running,
+          isTrue,
         );
-        expect(runningText.style?.color, colors.textMuted);
+        expect(_ringDigits(tester).style?.color, colors.textDominant);
+        _ringCaption(tester, 'REMAINING');
+        _expectNoRoundChrome(tester);
       },
     );
 
@@ -416,8 +401,17 @@ void main() {
 
       await _openRoutineDetail(tester, deps.exercise.name);
 
-      final periodText = tester.widget<Text>(find.text('PERIOD 1'));
-      expect(periodText.style?.color, colors.textSecondary);
+      // A6: the big `PERIOD n` heading is gone; the round length is the
+      // shared boxed row and its caption is ROUND LENGTH.
+      expect(find.text('PERIOD 1'), findsNothing);
+      expect(find.text('ROUND LENGTH'), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.text('ROUND LENGTH'),
+          matching: find.byType(ValueStepperRow),
+        ),
+        findsOneWidget,
+      );
 
       final durationEditor = tester.widget<InlineMetricEditor>(
         find.byWidgetPredicate(
@@ -427,11 +421,12 @@ void main() {
       );
       expect(durationEditor.emphasisTier, MetricEmphasisTier.dominant);
 
+      // A7: the sets control carries the routine's count line.
       final periodCount = tester.widget<Text>(find.text('Period 1 of 1'));
       expect(periodCount.style?.color, colors.textSecondary);
     });
 
-    testWidgets('accent appears only on current dot and primary action', (
+    testWidgets('accent appears only on the current segment and primary action', (
       tester,
     ) async {
       final deps = await _buildFreeSessionDeps(theme: AppTheme.abyssalNeon);
@@ -453,18 +448,22 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
 
       final theme = Theme.of(tester.element(find.byType(WorkoutSessionScreen)));
-      final dots = _sessionProgressDots();
-      expect(dots, findsAtLeastNWidgets(1));
 
-      var accentedDots = 0;
-      for (final element in dots.evaluate()) {
-        final dot = element.widget as Container;
-        final decoration = dot.decoration as BoxDecoration;
-        if (decoration.color == theme.colorScheme.primary) {
-          accentedDots += 1;
+      // The logger shell's segment bar replaced the per-set dots: exactly one
+      // segment is the focused, unlogged accent.
+      var accentedSegments = 0;
+      for (var i = 0; ; i++) {
+        final segment = find.byKey(Key('set-segment-$i'));
+        if (segment.evaluate().isEmpty) break;
+        final container = tester.widget<Container>(
+          find.descendant(of: segment, matching: find.byType(Container)),
+        );
+        final decoration = container.decoration as BoxDecoration;
+        if (decoration.color == theme.colorScheme.primary.withAlpha(115)) {
+          accentedSegments += 1;
         }
       }
-      expect(accentedDots, 1);
+      expect(accentedSegments, 1);
     });
 
     testWidgets(
@@ -487,30 +486,12 @@ void main() {
             ),
           );
           await _openSessionDetail(tester, freeDeps.exercise.name);
-          expect(
-            tester.widget<Text>(find.text('PERIOD 1')).style?.color,
-            colors.textSecondary,
-          );
-          expect(
-            tester
-                .widget<InlineMetricEditor>(
-                  find.byWidgetPredicate(
-                    (widget) =>
-                        widget is InlineMetricEditor &&
-                        widget.metricType == 'duration',
-                  ),
-                )
-                .emphasisTier,
-            MetricEmphasisTier.dominant,
-          );
-          expect(
-            _statusLineText(
-              tester,
-              icon: Icons.play_circle_outline,
-              label: 'STOPPED',
-            ).style?.color,
-            colors.textMuted,
-          );
+          // 38d live shape: ring + `REMAINING`, digits dominant, no chrome.
+          expect(find.byType(TimerRing), findsOneWidget);
+          expect(_ringDigits(tester).data, '03:00');
+          expect(_ringDigits(tester).style?.color, colors.textDominant);
+          _ringCaption(tester, 'REMAINING');
+          _expectNoRoundChrome(tester);
 
           final routineSessionDeps = await _buildRoutineSessionDeps(
             theme: themeValue,
@@ -528,18 +509,10 @@ void main() {
             ),
           );
           await _openSessionDetail(tester, routineSessionDeps.exercise.name);
-          expect(
-            tester.widget<Text>(find.text('PERIOD 1')).style?.color,
-            colors.textSecondary,
-          );
-          expect(
-            _statusLineText(
-              tester,
-              icon: Icons.play_circle_outline,
-              label: 'STOPPED',
-            ).style?.color,
-            colors.textMuted,
-          );
+          expect(find.byType(TimerRing), findsOneWidget);
+          expect(_ringDigits(tester).style?.color, colors.textDominant);
+          _ringCaption(tester, 'REMAINING');
+          _expectNoRoundChrome(tester);
 
           final setupDeps = await _buildRoutineSetupDeps(theme: themeValue);
           await tester.pumpWidget(
@@ -554,10 +527,11 @@ void main() {
             ),
           );
           await _openRoutineDetail(tester, setupDeps.exercise.name);
-          expect(
-            tester.widget<Text>(find.text('PERIOD 1')).style?.color,
-            colors.textSecondary,
-          );
+          // A6/A7: the routine detail shows the shared round-length row and
+          // the shared sets control — no `PERIOD 1` heading any more.
+          expect(find.text('PERIOD 1'), findsNothing);
+          expect(find.text('ROUND LENGTH'), findsOneWidget);
+          expect(find.text('Period 1 of 1'), findsOneWidget);
           expect(
             tester
                 .widget<InlineMetricEditor>(

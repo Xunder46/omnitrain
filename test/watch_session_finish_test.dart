@@ -6,10 +6,22 @@
 // Phase 4 — D-5, D-8, G1, G2, G3.
 // Scenario mapping:
 //   S-4 the wrist ends its own session        → `S-4 ...` (both arrival orders)
-//   S-5 the phone's finish, rewritten by G2   → `S-5 ...`
+//   S-5 the phone's finish is pushed (D-81)   → `S-5 ...`
 //   G1 never resurrect a finished session     → `G1 ...`, `G1 counter-case ...`
 //   the wrist's sets merge into the session   → `a set logged on the watch ...`
 //     the phone holds, once (PR 2a)
+//
+// Plan 19a Phase 5a — D-182, the phone's answer to a wrist announcement:
+//   S-189 the wrist's own announcement is reset → `S-189 ...`
+//   S-190 an ended session is not re-adopted     → `S-190 ...`
+//   S-190b a fate outlives the mirror that wrote it → `S-190b ...`
+//   S-191 a session the phone does not know is adopted → `S-191 ...`
+//   S-192 agreeing and history are both answered → `S-192 ...` (two cases)
+//   S-193 a dropped answer returns at the next announcement → `S-193 ...`
+//
+// Plan: `docs/plans/2026-10-08-18d-watch-rest-emit-and-docs-plan/2026-10-08-18d-watch-rest-emit-and-docs-plan.md`,
+// Phase 1 — D-220, D-223. Scenarios: S-322, S-331 (the wrist's own finish is a
+// rest's end too; the last group here is the wrist's engine, not the phone's).
 //
 // Every frame arrives through the real `LiveSessionMirrorState` behind the real
 // `WatchIncomingRouter`, the inbox is wired the way `createWatchSync` wires it
@@ -26,13 +38,16 @@ import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
+import 'package:omnitrain/state/watch/watch_session_auto_push.dart';
 import 'package:omnitrain/state/watch/watch_incoming_router.dart';
 import 'package:omnitrain/state/watch/watch_nutrition_log_bridge.dart';
 import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
 import 'package:omnitrain/state/watch/watch_session_inbox.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
+import 'package:omnitrain/watch/session/watch_session_engine.dart';
 
 import 'helpers/sync_protocol_harness.dart';
 import 'helpers/watch_capture_import_harness.dart'
@@ -75,6 +90,34 @@ Future<WorkoutRepository> _repository() async {
   return repository;
 }
 
+/// A repository that also reads the phone's open rests at the moment the
+/// session row is deleted — the last instant a discard's in-memory stop is
+/// observable, because `clearSession` empties the cache right after (S-14604a).
+class _DeleteWatcher extends MockWorkoutRepository {
+  WorkoutState? phone;
+
+  /// The number of rests still open over the whole session, once per delete.
+  final List<int> atDelete = [];
+
+  int openRestsOf(WorkoutState state, String effortId) =>
+      state.getEntryRests(effortId).where((rest) => rest.restEndMs == null).length;
+
+  @override
+  Future<void> deleteSession(String id) async {
+    final state = phone;
+    if (state != null) {
+      var open = 0;
+      for (final segment in state.segments) {
+        for (final effort in state.getEffortsForSegment(segment.id)) {
+          open += openRestsOf(state, effort.id);
+        }
+      }
+      atDelete.add(open);
+    }
+    await super.deleteSession(id);
+  }
+}
+
 /// One phone, wired the way `createWatchSync` wires it: the adoption bridge
 /// first, the inbox that asks it whether a session is the phone's own, the
 /// mirror behind the entry-staging transport, and the router that drives them.
@@ -107,13 +150,16 @@ class _Phone {
       transport.ofType('session_lifecycle');
 }
 
-Future<_Phone> _phone(WorkoutRepository repository) async {
+Future<_Phone> _phone(
+  WorkoutRepository repository, {
+  DateTime Function()? bridgeClock,
+}) async {
   final failures = <Object>[];
   final skipped = <({String held, String offered})>[];
   final transport = CaptureTransport();
   final bridge = WatchSessionAdoptionBridge(
     repository: repository,
-    clock: () => _phoneNow,
+    clock: bridgeClock ?? () => _phoneNow,
     onFailure: (error, stack) => failures.add(error),
     onSkipped: (held, offered) => skipped.add((held: held, offered: offered)),
   );
@@ -197,15 +243,40 @@ Map<String, Object?> _lifecycle(
   String sessionId, {
   String state = WatchLifecycleState.completed,
   String messageId = 'msg-wrist-lifecycle',
+  String at = '2026-10-05T10:30:00Z',
 }) => {
   'protocolVersion': SyncProtocolValidator.protocolVersion,
   'messageId': messageId,
   'sessionId': sessionId,
   'type': 'session_lifecycle',
   'origin': 'watch',
-  'sentAt': '2026-10-05T10:30:00Z',
-  'payload': {'state': state, 'at': '2026-10-05T10:30:00Z'},
+  'sentAt': at,
+  'payload': {'state': state, 'at': at},
 };
+
+/// The `state` of every `session_lifecycle` sent since index [from] — the
+/// fates this phone has announced, in order.
+List<String> _sentFates(_Phone phone, int from) => [
+  for (final frame in phone.transport.sent.skip(from))
+    if (frame['type'] == 'session_lifecycle')
+      (frame['payload']! as Map)['state']! as String,
+];
+
+/// Starts the phone's own session `P` with one effort per id in
+/// [exerciseIds], and answers with its id: the ladder a wrist announcement is
+/// answered from (S-189).
+Future<String> _startPhoneSession(
+  _Phone phone,
+  WorkoutRepository repository, {
+  List<String> exerciseIds = const ['ex-bench', 'ex-squat'],
+}) async {
+  await phone.state.createNewSession(modality: null);
+  for (final exerciseId in exerciseIds) {
+    final exercise = (await repository.getExerciseById(exerciseId))!;
+    await phone.state.addExerciseToSession(exercise);
+  }
+  return phone.state.currentSession!.id;
+}
 
 /// A set the wrist logged, naming the slot it belongs to.
 Map<String, Object?> _set(String entryId, {required String slot}) => {
@@ -317,6 +388,38 @@ Future<void> _expectOneEndedSession(
   expect(phone.failures, isEmpty);
 }
 
+/// Deterministic clock for the wrist's engine: a rest's window is asserted
+/// against instants, never against a real clock.
+class _WristClock {
+  _WristClock(this.now);
+
+  DateTime now;
+
+  DateTime call() => now;
+
+  void advance(Duration delta) => now = now.add(delta);
+}
+
+/// The one ladder slot the wrist's own session holds.
+Map<String, Object?> _wristSlot() => {
+  'sessionExerciseId': 'sl-1',
+  'exerciseId': 'ex-bench',
+  'name': 'ex-bench',
+  'capabilities': ['reps', 'sets', 'load'],
+};
+
+/// The set the wrist logs, as the logging surface hands it to the engine.
+Map<String, Object?> _wristSet(DateTime at) => {
+  'entryId': 'entry-1',
+  'eventId': 'entry-1',
+  'kind': 'set',
+  'loggedAt': utcIso(at),
+  'sessionExerciseId': 'sl-1',
+  'exerciseId': 'ex-bench',
+  'reps': 8,
+  'loadKg': 40,
+};
+
 void main() {
   test('S-4 the wrist ends its session, roster of logged sets first', () async {
     final repository = await _repository();
@@ -368,6 +471,57 @@ void main() {
     );
   });
 
+  test('S-16707 an old wrist whose end never arrived never writes an inverted '
+      'row', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+
+    // The adoption opens the row when the phone hears of the workout.
+    await phone.router.receive(_snapshot());
+    final adopted = (await repository.getSession('s-w1'))!;
+    expect(
+      adopted.startedAtMs,
+      _phoneNow.millisecondsSinceEpoch,
+      reason: 'the fixture: the adoption stamps the row with its arrival',
+    );
+    expect(adopted.endedAtMs, isNull, reason: 'the row opens open');
+
+    // The legacy shape: the wrist ended 40 minutes *before* the phone woke and
+    // adopted it, and no `session_end` will ever arrive (nothing to correct
+    // the start with), so the terminal lifecycle is the only word left.
+    await phone.router.receive(
+      _lifecycle('s-w1', at: '2026-10-05T11:20:00Z'),
+    );
+
+    final row = (await repository.getSession('s-w1'))!;
+    expect(
+      row.startedAtMs,
+      _phoneNow.millisecondsSinceEpoch,
+      reason:
+          'S-16707 nothing corrects the start without a wrist end, so the '
+          'adoption stamp stands (D-16706)',
+    );
+    expect(
+      row.endedAtMs,
+      _phoneNow.millisecondsSinceEpoch,
+      reason:
+          'S-16707 the end floors at the start rather than inverting the row '
+          '(D-153)',
+    );
+    expect(
+      row.endedAtMs! - row.startedAtMs,
+      0,
+      reason:
+          'S-16707 the accepted un-repaired picture: Duration 0s, the header '
+          'at the adoption instant (D-16706/D-16707)',
+    );
+    expect(
+      row.isRolling,
+      isFalse,
+      reason: 'S-16707 the workout is finished, if zero-length',
+    );
+  });
+
   test('S-4 the wrist ends its session, end before the logged sets', () async {
     final repository = await _repository();
     final phone = await _phone(repository);
@@ -410,23 +564,45 @@ void main() {
     );
   });
 
-  test('S-5 the phone\'s own finish is not reported, and the wrist is answered '
+  test('S-5 the phone\'s own finish is reported, and the wrist is answered '
       'at its next sync', () async {
     final repository = await _repository();
     final phone = await _phone(repository);
+    final push = WatchSessionAutoPush(
+      mirror: phone.mirror,
+      getSession: repository.getSession,
+    )..bindWorkoutState(phone.state);
+    addTearDown(push.dispose);
+
     await phone.router.receive(_snapshot());
     expect(phone.state.hasActiveSession, isTrue);
+    // The graph's post-frame step (D-82), which this harness drives by hand:
+    // the frame the phone just applied becomes the push's baseline, so the
+    // session it names is the phone's own from here on.
+    await push.rebaseline();
 
     // The owner ends the session on the phone, through the ordinary finish.
     await phone.state.endSession();
     expect(phone.state.currentSession?.endedAtMs, isNotNull);
 
+    // The window closes: the phone reports its own finish (D-81).
+    await push.flush();
+
+    final reported = phone.lifecycles;
     expect(
-      phone.transport.sent,
-      isEmpty,
-      reason:
-          'G2 the phone never reports its own finish: sync is manual, and the '
-          'wrist learns the session is over from its next snapshot answer',
+      [for (final envelope in reported) envelope['sessionId']],
+      ['s-w1'],
+      reason: 'S-5 the push names the session the mirror holds',
+    );
+    expect(
+      [(reported.single['payload']! as Map)['state']],
+      [WatchLifecycleState.completed],
+      reason: 'S-5 the phone\'s finish ends the wrist\'s copy',
+    );
+    expect(
+      phone.mirror.status,
+      WatchSessionStatus.completed,
+      reason: 'S-5 the mirror converges with the lifecycle it sent',
     );
 
     // The wrist, still running its copy, syncs again.
@@ -438,18 +614,26 @@ void main() {
     final answered = phone.lifecycles;
     expect(
       [for (final envelope in answered) envelope['sessionId']],
-      ['s-w1'],
-      reason: 'G1/S-5 the answer names the session the wrist is still in',
+      ['s-w1', 's-w1'],
+      reason:
+          'G1/S-5 the wrist\'s next sync is answered with the end as well, on '
+          'top of the one the push already sent',
     );
     expect(
-      [(answered.single['payload']! as Map)['state']],
+      [(answered.last['payload']! as Map)['state']],
       [WatchLifecycleState.completed],
       reason: 'S-5 the wrist\'s copy is ended for it',
     );
     expect(
-      phone.transport.ofType('session_snapshot'),
-      isEmpty,
-      reason: 'S-5 the phone asserts no ladder for a session it has finished',
+      [
+        for (final envelope in phone.transport.ofType('session_snapshot'))
+          (envelope['payload']! as Map)['status'],
+      ],
+      [WatchSessionStatus.completed],
+      reason:
+          'S-5 the phone asserts no ladder of its own for a session it has '
+          'finished: the one snapshot is the mirror\'s own copy, re-asserted '
+          'because the wrist still reports it as active',
     );
 
     expect(
@@ -545,14 +729,35 @@ void main() {
     expect(phone.state.currentSession?.endedAtMs, isNull);
 
     // A snapshot of a session this phone is not in is not adoptable while it
-    // holds one (D-10), and is not an end either.
+    // holds one (D-10). D-182's second row answers it: the announced session is
+    // ended under its own name, and the phone's held session follows — the end
+    // never names the session the phone is running.
+    final sentBefore = phone.transport.sent.length;
     await phone.router.receive(
       _snapshot(sessionId: 's-other', messageId: 'msg-other'),
     );
+    final answer = phone.transport.sent.sublist(sentBefore);
+    final ends = [
+      for (final frame in answer)
+        if (frame['type'] == 'session_lifecycle') frame,
+    ];
     expect(
-      phone.lifecycles,
-      isEmpty,
-      reason: 'G1 an unadopted session is not a finished one',
+      [for (final frame in ends) frame['sessionId']],
+      ['s-other'],
+      reason: 'D-182 the end names the announced session, never s-w1',
+    );
+    expect(
+      [for (final frame in ends) (frame['payload']! as Map)['state']],
+      [WatchLifecycleState.abandoned],
+      reason: 'G1/D-182 the wrist\'s own session is the one that ends',
+    );
+    expect(
+      [
+        for (final frame in answer)
+          if (frame['type'] == 'session_snapshot') frame['sessionId'],
+      ],
+      everyElement(phone.state.currentSession!.id),
+      reason: 'D-182 the rest of the answer is the phone\'s own session',
     );
     expect(
       phone.state.currentSession?.id,
@@ -745,5 +950,627 @@ void main() {
       reason: 'the discard deletes the row the adoption created',
     );
     expect(phone.failures, isEmpty);
+  });
+
+  test('S-189 the wrist\'s own announcement is answered with the reset', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+    final p1 = await _startPhoneSession(phone, repository);
+    final sentBefore = phone.transport.sent.length;
+
+    await phone.router.receive(_snapshot(sessionId: 'w1'));
+
+    final answer = phone.transport.sent.sublist(sentBefore);
+    expect(
+      [for (final frame in answer) frame['type']],
+      ['session_lifecycle', 'session_snapshot'],
+      reason: 'D-182 the reset is the end first, then the phone\'s session',
+    );
+    expect(answer.first['sessionId'], 'w1');
+    expect(
+      (answer.first['payload']! as Map)['state'],
+      WatchLifecycleState.abandoned,
+      reason: 'the wrist\'s session is not the one this phone is running',
+    );
+    expect(answer.last['sessionId'], p1, reason: 'P, not W, is sent');
+    final projected = answer.last['payload']! as Map;
+    final ownLadder = [
+      for (final effort in phone.state.getEffortsForSegment(
+        phone.state.segments.first.id,
+      ))
+        effort.id,
+    ];
+    expect(ownLadder, hasLength(2));
+    expect(
+      [
+        for (final slot in (projected['exercises']! as List).cast<Map>())
+          slot['sessionExerciseId'],
+      ],
+      ownLadder,
+      reason: 'the answer carries the phone\'s own ladder, not the wrist\'s',
+    );
+    expect(
+      projected['currentExerciseIndex'],
+      0,
+      reason: 'D-182 the answer is composed before W\'s index is applied here',
+    );
+    expect(
+      phone.skipped,
+      [(held: p1, offered: 'w1')],
+      reason: 'D-10 the conflict is reported, once',
+    );
+    expect(
+      phone.state.currentSession?.id,
+      p1,
+      reason: 'the phone keeps the session it holds (D-10)',
+    );
+    expect(
+      phone.mirror.state['sessionId'],
+      'w1',
+      reason: 'D-176 the mirror is still on the wrist\'s session',
+    );
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-190 a wrist session the phone has ended is not adopted back', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+    final p1 = await _startPhoneSession(phone, repository);
+    // W announces a session this phone is not in: D-182's second row ends it
+    // under its own name. The phone then lets its own session go, so from here
+    // on only its memory of that end can answer W.
+    await phone.router.receive(_snapshot(sessionId: 'w1'));
+    expect(phone.skipped, [(held: p1, offered: 'w1')]);
+    await phone.state.discardCurrentSession();
+    expect(phone.state.currentSession, isNull);
+    expect(
+      await phone.mirror.projectedSession(),
+      isNull,
+      reason: 'the phone has nothing to offer, so the fate is the whole answer',
+    );
+
+    final first = phone.transport.sent.length;
+    await phone.router.receive(
+      _snapshot(sessionId: 'w1', messageId: 'msg-again-1'),
+    );
+    expect(
+      _sentFates(phone, first),
+      [WatchLifecycleState.abandoned],
+      reason: 'D-182 row three: the announced fate is the whole answer',
+    );
+    expect(
+      phone.state.currentSession,
+      isNull,
+      reason: 'the phone does not adopt the session it has just ended',
+    );
+
+    // The memory survives the announcement that consumed it: the same frame
+    // again is answered the same way, not adopted.
+    final second = phone.transport.sent.length;
+    await phone.router.receive(
+      _snapshot(sessionId: 'w1', messageId: 'msg-again-2'),
+    );
+    expect(_sentFates(phone, second), [WatchLifecycleState.abandoned]);
+    expect(phone.state.currentSession, isNull);
+
+    // And it tracks the fate the phone announced, not that it announced one.
+    await phone.mirror.reportLifecycleFor('w1', WatchLifecycleState.completed);
+    final third = phone.transport.sent.length;
+    await phone.router.receive(
+      _snapshot(sessionId: 'w1', messageId: 'msg-again-3'),
+    );
+    expect(_sentFates(phone, third), [WatchLifecycleState.completed]);
+    expect(phone.state.currentSession, isNull);
+    expect(
+      await phone.mirror.projectedSession(),
+      isNull,
+      reason: 'the announcements never loaded the ended session back',
+    );
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-190b a fate outlives the mirror that wrote it', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+
+    // The phone adopts the wrist's session W and ends it by name, so the end
+    // is the phone's own announcement and the mirror still holds W when it
+    // records how W ended.
+    await phone.router.receive(
+      _snapshot(sessionId: 'w1', messageId: 'msg-w1-first'),
+    );
+    expect(phone.state.currentSession?.id, 'w1');
+    await phone.mirror.reportLifecycleFor('w1', WatchLifecycleState.completed);
+    expect(
+      phone.mirror.status,
+      WatchSessionStatus.completed,
+      reason: 'the fixture: the mirror holds w1, so the end applies here too',
+    );
+
+    // The mirror then moves on — off W entirely — and the phone holds nothing:
+    // from here on nothing but the memory can say how W ended.
+    await phone.state.discardCurrentSession();
+    expect(
+      await repository.getSession('w1'),
+      isNull,
+      reason:
+          'S-190b the ended session leaves no row: the memory, not history, '
+          'is what this phone has to answer W with',
+    );
+    await phone.router.receive(
+      _snapshot(sessionId: 'x1', messageId: 'msg-x1-next'),
+    );
+    await phone.state.discardCurrentSession();
+    expect(phone.state.currentSession, isNull);
+    expect(phone.mirror.state['sessionId'], 'x1');
+
+    final sentBefore = phone.transport.sent.length;
+    await phone.router.receive(
+      _snapshot(sessionId: 'w1', messageId: 'msg-w1-again'),
+    );
+
+    expect(
+      [
+        for (final frame in phone.transport.sent.skip(sentBefore))
+          '${frame['type']}:${frame['sessionId']}',
+      ],
+      ['session_lifecycle:w1'],
+      reason:
+          'S-190b the remembered fate is the whole answer: one frame, naming '
+          'the wrist\'s own session, and no state to send',
+    );
+    expect(
+      _sentFates(phone, sentBefore),
+      [WatchLifecycleState.completed],
+      reason:
+          'S-190b how this phone ended W is remembered past the mirror that '
+          'wrote it — the row is gone, so without the memory W would be '
+          'adopted back and left `active`',
+    );
+    expect(
+      phone.state.currentSession,
+      isNull,
+      reason: 'D-182 row three: the session the phone ended is not adopted back',
+    );
+    expect(phone.skipped, isEmpty);
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-191 a wrist session the phone does not know is adopted', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+    final sentBefore = phone.transport.sent.length;
+
+    final receipt = await phone.router.receive(_snapshot(sessionId: 'w2'));
+
+    expect(receipt.session, MirrorOutcome.applied);
+    expect(
+      phone.transport.sent.length,
+      sentBefore,
+      reason: 'the phone ADOPTS a wrist session when it has none (owner rule)',
+    );
+    expect(phone.lifecycles, isEmpty, reason: 'nothing is ended');
+    expect(phone.skipped, isEmpty, reason: 'D-10 there is no conflict to report');
+    expect(
+      await phone.bridge.consider({
+        'sessionId': 'w2',
+        'status': WatchSessionStatus.active,
+      }),
+      WatchSessionAdoption.alreadyHeld,
+      reason: 'S-191 the verdict was `adopted`: W is the phone\'s own now',
+    );
+    expect(phone.state.currentSession?.id, 'w2');
+    expect(
+      [
+        for (final effort in phone.state.getEffortsForSegment(
+          phone.state.segments.first.id,
+        ))
+          effort.id,
+      ],
+      ['sl-1', 'sl-2'],
+      reason: 'D-2 the wrist\'s ladder is loaded as the phone\'s own',
+    );
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-192 a wrist snapshot the phone already holds is answered with '
+      'nothing', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+    await phone.router.receive(_snapshot(sessionId: 'w1'));
+    // What a converged pair looks like on the wire: the wrist echoes the state
+    // the phone last sent it.
+    final echo = phone.mirror.snapshotEnvelope(
+      state: (await phone.mirror.projectedSession())!,
+      messageId: 'msg-converged',
+    );
+    final sentBefore = phone.transport.sent.length;
+
+    final receipt = await phone.router.receive(echo);
+
+    expect(receipt.session, MirrorOutcome.applied);
+    expect(
+      phone.transport.sent.length,
+      sentBefore,
+      reason: 'D-182 row one: a pair that agrees is answered with nothing',
+    );
+    expect(
+      phone.lifecycles,
+      isEmpty,
+      reason: 'no end is announced for a session the phone is in',
+    );
+    expect(phone.state.currentSession?.id, 'w1');
+    expect(phone.skipped, isEmpty);
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-192 a wrist snapshot of a phone row that is history is answered '
+      'with its end', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+    await phone.router.receive(_snapshot(sessionId: 'w1'));
+    // The phone finishes the session and has announced no fate for it: the row
+    // is history, and this phone does not remember why.
+    await phone.state.endSession();
+    final sentBefore = phone.transport.sent.length;
+
+    await phone.router.receive(
+      _snapshot(sessionId: 'w1', messageId: 'msg-after-own-end'),
+    );
+
+    expect(
+      _sentFates(phone, sentBefore),
+      [WatchLifecycleState.completed],
+      reason: 'G1/D-182 row four: history is answered with the phone\'s end',
+    );
+    expect(
+      phone.state.currentSession?.endedAtMs,
+      isNotNull,
+      reason: 'G1 nothing is loaded back into the phone\'s live state',
+    );
+    expect(
+      phone.mirror.state['status'],
+      WatchSessionStatus.completed,
+      reason: 'the answer is the phone\'s own end, applied here first',
+    );
+    expect(phone.skipped, isEmpty);
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-193 an answer the transport dropped returns at the wrist\'s next '
+      'announcement', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+    final p1 = await _startPhoneSession(phone, repository);
+    var failing = true;
+    phone.transport.onSend = (envelope) async {
+      if (failing && envelope['type'] == 'session_lifecycle') {
+        failing = false;
+        throw StateError('the phone\'s radio is down');
+      }
+    };
+
+    await expectLater(
+      phone.router.receive(_snapshot(sessionId: 'w1')),
+      throwsA(isA<StateError>()),
+    );
+    expect(
+      phone.transport.sent,
+      isEmpty,
+      reason: 'D-183 a failed answer is not queued and not retried in place',
+    );
+
+    final sentBefore = phone.transport.sent.length;
+    await phone.router.receive(
+      _snapshot(sessionId: 'w1', messageId: 'msg-next-activation'),
+    );
+
+    expect(
+      _sentFates(phone, sentBefore),
+      [WatchLifecycleState.abandoned],
+      reason: 'D-183 the next announcement earns the full answer',
+    );
+    final delta = phone.transport.sent.sublist(sentBefore);
+    expect(
+      [
+        for (final frame in delta)
+          if (frame['type'] == 'session_lifecycle') frame['sessionId'],
+      ],
+      ['w1'],
+      reason: 'the end names the announced session, never the phone\'s own',
+    );
+    final snapshots = [
+      for (final frame in delta)
+        if (frame['type'] == 'session_snapshot') frame,
+    ];
+    expect(snapshots, isNotEmpty, reason: 'the answer ends W, then sends P');
+    expect(
+      snapshots.last['sessionId'],
+      p1,
+      reason: 'D-182 the answer closes with P, the phone\'s own session',
+    );
+    expect(
+      phone.skipped,
+      [(held: p1, offered: 'w1')],
+      reason: 'D-10 the conflict is reported once, across the retry',
+    );
+    expect(phone.state.currentSession?.id, p1);
+    expect(phone.mirror.state['sessionId'], 'w1');
+    expect(phone.failures, isEmpty);
+  });
+
+  // The wrist's own End is a rest's ending too (D-220, D-223): the rest left
+  // running is stopped at the instant the terminal row records, and reported,
+  // so the phone's total has both of its ends. The real engine over a real
+  // store — no phone graph is involved here.
+  group('S-14609 / S-14610 the first ending keeps its status and the latest '
+      'instant becomes the end', () {
+    test(
+      "S-14609 the wrist's later abandon leaves the phone's finished session "
+      'completed at its own end',
+      () async {
+        final repository = await _repository();
+        final phone = await _phone(repository);
+        final sessionId = await _startPhoneSession(phone, repository);
+        final t1 =
+            phone.state.currentSession!.startedAtMs + 20 * 60 * 1000;
+        final wristAt = utcIso(
+          DateTime.fromMillisecondsSinceEpoch(t1 + 10 * 60 * 1000, isUtc: true),
+        );
+
+        await phone.state.endSession(atMs: t1);
+        expect(
+          phone.state.currentSession!.endedAtMs,
+          t1,
+          reason: 'the fixture: the phone ended p1 at the instant it names',
+        );
+
+        await phone.router.receive(
+          _lifecycle(
+            sessionId,
+            state: WatchLifecycleState.abandoned,
+            messageId: 'msg-wrist-abandon',
+            at: wristAt,
+          ),
+        );
+
+        expect(
+          phone.state.currentSession!.endedAtMs,
+          t1,
+          reason: 'S-14609 a later discard adds no training time',
+        );
+        expect(
+          (await repository.getSession(sessionId))!.endedAtMs,
+          t1,
+          reason: 'S-14609 the stored row keeps the phone end',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-14609 a later completed moves the end to the later instant, and the '
+      'session stays over',
+      () async {
+        final repository = await _repository();
+        // The session starts on the real clock, so the bridge's clock must read
+        // after the 45-minute end too: plan 164 bounds a later end at the
+        // receiving device's now plus five minutes (S-16401).
+        final phone = await _phone(
+          repository,
+          bridgeClock: () => DateTime.now().toUtc().add(const Duration(hours: 2)),
+        );
+        final sessionId = await _startPhoneSession(phone, repository);
+        final started = phone.state.currentSession!.startedAtMs;
+        final t1 = started + 20 * 60 * 1000;
+        final later = started + 45 * 60 * 1000;
+
+        await phone.state.endSession(atMs: t1);
+
+        await phone.router.receive(
+          _lifecycle(
+            sessionId,
+            messageId: 'msg-wrist-later',
+            at: utcIso(DateTime.fromMillisecondsSinceEpoch(later, isUtc: true)),
+          ),
+        );
+
+        expect(
+          phone.state.currentSession!.endedAtMs,
+          later,
+          reason: 'S-14610 the end is the latest instant either side has',
+        );
+        expect(
+          (await repository.getSession(sessionId))!.endedAtMs,
+          later,
+          reason: 'S-14610 the stored row took the move',
+        );
+        expect(
+          phone.state.hasActiveSession,
+          isFalse,
+          reason: 'S-14609 the moved end does not reopen the session',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-14610 an end instant before the start is clamped to the start',
+      () async {
+        final repository = await _repository();
+        final phone = await _phone(repository);
+        await _startPhoneSession(phone, repository);
+        final started = phone.state.currentSession!.startedAtMs;
+
+        await phone.state.endSession(atMs: started - 3600000);
+
+        expect(
+          phone.state.currentSession!.endedAtMs,
+          started,
+          reason: 'D-153 an end is never stored before the start',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-14604a a discard stops the phone\'s own rest', () {
+    test(
+      'S-14604a the open rest is closed in memory before the session row is '
+      'deleted',
+      () async {
+        final repository = _DeleteWatcher();
+        await repository.initialize();
+        await seedExercise(
+          repository,
+          id: 'ex-bench',
+          name: 'Barbell Bench Press',
+          capabilities: [
+            ExerciseCapability.sets,
+            ExerciseCapability.reps,
+            ExerciseCapability.load,
+          ],
+        );
+        await seedExercise(
+          repository,
+          id: 'ex-squat',
+          name: 'Barbell Back Squat',
+          capabilities: [
+            ExerciseCapability.sets,
+            ExerciseCapability.reps,
+            ExerciseCapability.load,
+          ],
+        );
+        final phone = await _phone(repository);
+        repository.phone = phone.state;
+
+        await _startPhoneSession(phone, repository);
+        final effort = phone.state
+            .getEffortsForSegment(phone.state.segments.single.id)
+            .first;
+        await phone.state.recordRestStart(effort.id, 0);
+        expect(
+          repository.openRestsOf(phone.state, effort.id),
+          1,
+          reason: 'the fixture: the phone is resting',
+        );
+
+        await phone.state.discardCurrentSession();
+
+        expect(
+          repository.atDelete,
+          [0],
+          reason: 'S-14604a the discard closes the rest before the row goes',
+        );
+        expect(
+          await repository.getAllSessions(),
+          isEmpty,
+          reason: 'S-14604a the discard still deletes the session',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-322 / S-331 a rest cannot outlive the workout', () {
+    late _WristClock clock;
+    late InMemoryWatchSessionStore store;
+    late WatchSessionEngine engine;
+    late String setEntryId;
+
+    setUp(() async {
+      clock = _WristClock(DateTime.utc(2026, 10, 8, 12));
+      store = InMemoryWatchSessionStore();
+      engine = WatchSessionEngine(
+        store,
+        clock: clock.call,
+        sessionIdFactory: () => 's-w1',
+      );
+      await engine.createSession(
+        modality: 'resistance_lifting',
+        exercises: [_wristSlot()],
+      );
+      await engine.appendObservation(_wristSet(clock.now));
+      setEntryId = engine.observations.single.entryId;
+      await engine.startTimer(WatchTimerKind.rest);
+    });
+
+    test('S-322 End stops the rest, reports it, and the end comes last', () async {
+      final restStartedAt = clock.now;
+      clock.advance(const Duration(seconds: 30));
+      await engine.finishSession();
+
+      final rest = engine.observations.singleWhere(
+        (row) => row.kind == WatchObservationKind.rest,
+      );
+      expect(rest.payload['afterEntryId'], setEntryId);
+      expect(rest.payload['sessionExerciseId'], 'sl-1');
+      expect(rest.payload['startedAt'], utcIso(restStartedAt));
+      expect(
+        rest.payload['endedAt'],
+        utcIso(clock.now),
+        reason: 'S-322 the rest ends where the workout did',
+      );
+      expect(
+        engine.observations.map((row) => row.kind),
+        // Plan 160 D-16002: the end is captured after the stop it reports and
+        // before the terminal row is built.
+        ['set', 'rest', WatchObservationKind.sessionEnd],
+        reason: 'S-322 the rest is written before the terminal row is built',
+      );
+
+      final stopped = engine.timerFor(WatchTimerKind.rest)!;
+      expect(stopped.state, WatchTimerState.stopped);
+      expect(stopped.stoppedAt, clock.now);
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(
+        engine.session!.exercises.map((slot) => slot['sessionExerciseId']),
+        ['sl-1'],
+        reason: 'the terminal row was built after the stop, so it kept the slot',
+      );
+
+      final written = engine.observations.length;
+      engine.replaySessionEnd();
+      expect(
+        engine.observations.length,
+        written,
+        reason: 'S-322 a replayed end adds nothing: the rest is already over',
+      );
+    });
+
+    test('S-331 the rebuilt engine holds no running rest', () async {
+      clock.advance(const Duration(seconds: 30));
+      await engine.finishSession();
+
+      final relaunched = WatchSessionEngine(
+        store,
+        clock: clock.call,
+        sessionIdFactory: () => 's-w1',
+      );
+      await relaunched.restore();
+
+      expect(relaunched.session!.status, WatchSessionStatus.completed);
+      expect(
+        relaunched.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.stopped,
+        reason: 'S-331 no rest survives the workout it was running in',
+      );
+      expect(
+        relaunched.observations.map((row) => row.kind),
+        // Plan 160 D-16002: the end the finish recorded survives the restart
+        // with the observations it was captured behind.
+        ['set', 'rest', WatchObservationKind.sessionEnd],
+        reason:
+            'S-331 the rest the end reported is stored, so the phone still '
+            'owes it a receipt',
+      );
+      expect(
+        relaunched.observations
+            .singleWhere((row) => row.kind == WatchObservationKind.rest)
+            .payload['afterEntryId'],
+        setEntryId,
+        reason: 'S-331 and it still names the set it followed',
+      );
+    });
   });
 }

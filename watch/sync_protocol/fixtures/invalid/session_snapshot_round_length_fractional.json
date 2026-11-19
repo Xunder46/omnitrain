@@ -1,0 +1,26 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-round-length-fractional",
+  "sessionId": "s-2026-10-09-1",
+  "type": "session_snapshot",
+  "origin": "phone",
+  "sentAt": "2026-10-09T18:00:00Z",
+  "payload": {
+    "sessionId": "s-2026-10-09-1",
+    "revision": 1,
+    "status": "active",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-soccer",
+        "exerciseId": "ex-soccer",
+        "name": "Soccer",
+        "capabilities": ["time", "rounds"],
+        "effortKind": "round",
+        "roundDurationSecs": 12.5
+      }
+    ],
+    "entries": [],
+    "timers": {}
+  }
+}

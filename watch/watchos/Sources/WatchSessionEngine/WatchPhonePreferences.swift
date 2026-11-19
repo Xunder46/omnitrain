@@ -9,8 +9,9 @@
 //  Reference data, like the routines and the food list: the wrist learns it when
 //  it syncs, keeps every copy it accepts, and reads the newest. Sync is the
 //  wrist's to start, so a setting changed on the phone arrives at the wrist's
-//  next sync and not before. Today the message carries one setting: whether a
-//  session the wrist ends asks for the session effort rating.
+//  next sync and not before. Today the message carries three settings: whether a
+//  session the wrist ends asks for the session effort rating, how often a rest
+//  pings, and the theme accent the wrist wears.
 //
 
 import Foundation
@@ -33,11 +34,34 @@ public struct WatchPreferencesRecord {
     /// Whether a session the wrist ends asks for the session effort rating.
     public let effortRatingPrompt: Bool
 
+    /// How often a rest pings, in whole seconds; 0 is Off. The phone's one
+    /// setting for this, carried on every copy (D-242).
+    public let restPingSeconds: Int
+
+    /// The phone's theme accent as `#RRGGBB`, or nil when the phone had none to
+    /// send (D-3709). Read through `WatchAccent.worn(hex:)`: the wrist wears this
+    /// accent when it parses and clears the contrast floor, and the phone's
+    /// default theme accent otherwise (plan 56, D-1).
+    public let accentColorHex: String?
+
+    /// The phone's weight unit, `kg` or `lbs`, or nil when the phone sent none.
+    /// Read through `WatchPhonePreferences.units`, which falls back to the
+    /// wrist's defaults.
+    public let weightUnit: String?
+
+    /// The phone's distance unit, `km` or `miles`, or nil when the phone sent
+    /// none.
+    public let distanceUnit: String?
+
     public init(
         recordId: String,
         recordedAt: Date,
         generatedAt: Date,
         effortRatingPrompt: Bool,
+        restPingSeconds: Int = 0,
+        accentColorHex: String? = nil,
+        weightUnit: String? = nil,
+        distanceUnit: String? = nil,
         sequence: Int = 0
     ) {
         self.recordId = recordId
@@ -46,6 +70,10 @@ public struct WatchPreferencesRecord {
         self.sequence = sequence
         self.generatedAt = generatedAt
         self.effortRatingPrompt = effortRatingPrompt
+        self.restPingSeconds = restPingSeconds
+        self.accentColorHex = accentColorHex
+        self.weightUnit = weightUnit
+        self.distanceUnit = distanceUnit
     }
 
     public func withSequence(_ sequence: Int) -> WatchPreferencesRecord {
@@ -54,12 +82,16 @@ public struct WatchPreferencesRecord {
             recordedAt: recordedAt,
             generatedAt: generatedAt,
             effortRatingPrompt: effortRatingPrompt,
+            restPingSeconds: restPingSeconds,
+            accentColorHex: accentColorHex,
+            weightUnit: weightUnit,
+            distanceUnit: distanceUnit,
             sequence: sequence
         )
     }
 
     public func toJson() -> [String: Any] {
-        [
+        var json: [String: Any] = [
             "recordType": StoredWatchRecord.preferencesType,
             "recordId": recordId,
             "sessionId": sessionId,
@@ -67,7 +99,20 @@ public struct WatchPreferencesRecord {
             "sequence": sequence,
             "generatedAt": utcIso(generatedAt),
             "effortRatingPrompt": effortRatingPrompt,
+            "restPingSeconds": restPingSeconds,
         ]
+        // A copy the phone sent no accent on writes no key, so a wrist that
+        // reads it back keeps its default look instead of an earlier accent.
+        if let accentColorHex {
+            json["accentColorHex"] = accentColorHex
+        }
+        if let weightUnit {
+            json["weightUnit"] = weightUnit
+        }
+        if let distanceUnit {
+            json["distanceUnit"] = distanceUnit
+        }
+        return json
     }
 
     public static func fromJson(_ json: [String: Any]) throws -> WatchPreferencesRecord {
@@ -76,6 +121,16 @@ public struct WatchPreferencesRecord {
             recordedAt: try parseUtcIso(json["recordedAt"]),
             generatedAt: try parseUtcIso(json["generatedAt"]),
             effortRatingPrompt: (json["effortRatingPrompt"] as? Bool) ?? false,
+            // A row written before the wrist knew this setting carries no key,
+            // and reads as Off (D-242).
+            restPingSeconds: (json["restPingSeconds"] as? NSNumber)?.intValue ?? 0,
+            // A row written before the wrist knew the accent carries no key,
+            // and a key that is not a string reads as no accent (D-3709).
+            accentColorHex: json["accentColorHex"] as? String,
+            // A row written before the wrist knew the units carries no keys,
+            // and reads as kilograms and kilometres.
+            weightUnit: json["weightUnit"] as? String,
+            distanceUnit: json["distanceUnit"] as? String,
             sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
         )
     }
@@ -112,9 +167,34 @@ public final class WatchPhonePreferences {
         current?.effortRatingPrompt ?? WatchEffortRatingCopy.promptBeforeFirstSync
     }
 
+    /// How often a rest pings, in seconds, as the copy that applies carries it.
+    /// A wrist that has never heard from the phone reads 0, which is Off: it
+    /// does not invent a rest ping (S-242).
+    public var restPingSeconds: Int {
+        current?.restPingSeconds ?? 0
+    }
+
+    /// The phone's theme accent, `#RRGGBB`, as the copy that applies carries it
+    /// — nil when that copy carries none, and so nil for a wrist that has never
+    /// heard from the phone. Render it through `WatchAccent.worn(hex:)` rather
+    /// than trusting it (D-3704; plan 56, D-1).
+    public var accentColorHex: String? {
+        current?.accentColorHex
+    }
+
+    /// The units the phone reads weight and distance in, as the copy that
+    /// applies carries them. A wrist that has never heard from the phone — or a
+    /// copy that carried no unit — reads kilograms and kilometres.
+    public var units: WatchUnitPreferences {
+        WatchUnitPreferences(
+            weightUnit: current?.weightUnit ?? "kg",
+            distanceUnit: current?.distanceUnit ?? "km"
+        )
+    }
+
     /// Reads every accepted copy back out of storage. Call on launch.
     public func restore() async {
-        copies = await store.readAll().preferences
+        copies = await store.readLaunch().preferences
     }
 
     /// Applies a `preferences_down` message.
@@ -134,12 +214,27 @@ public final class WatchPhonePreferences {
               let payload = envelope["payload"] as? [String: Any],
               let generatedAt = try? parseUtcIso(payload["generatedAt"]),
               isBoolean(payload["effortRatingPrompt"]),
-              let asks = payload["effortRatingPrompt"] as? Bool
+              let asks = payload["effortRatingPrompt"] as? Bool,
+              let restPingSeconds = wholeSeconds(payload["restPingSeconds"])
         else { return WatchCatalogSyncResult(applied: false, rejections: []) }
 
         if let current, generatedAt < current.generatedAt {
             return WatchCatalogSyncResult(applied: false, rejections: [])
         }
+
+        // The accent is optional, so it is read rather than demanded. A copy
+        // without the key — and a key that is not a string, which the payload's
+        // closed shape and pattern made the validator refuse first — reads as no
+        // accent: the wrist stores the absence and keeps its default look
+        // instead of the accent the previous copy carried (D-3704).
+        let accentColorHex = payload["accentColorHex"] as? String
+
+        // The units are optional too, and the closed enum the validator holds
+        // them to means a value that reaches here is one of the two spellings.
+        // A copy without them stores the absence: the wrist reads kilograms and
+        // kilometres, not the units the previous copy carried.
+        let weightUnit = payload["weightUnit"] as? String
+        let distanceUnit = payload["distanceUnit"] as? String
 
         let recordId = "prefs-\(messageId)"
         let stored = await store.append(
@@ -148,7 +243,11 @@ public final class WatchPhonePreferences {
                     recordId: recordId,
                     recordedAt: clock(),
                     generatedAt: generatedAt,
-                    effortRatingPrompt: asks
+                    effortRatingPrompt: asks,
+                    restPingSeconds: restPingSeconds,
+                    accentColorHex: accentColorHex,
+                    weightUnit: weightUnit,
+                    distanceUnit: distanceUnit
                 )
             )
         )
@@ -159,4 +258,18 @@ public final class WatchPhonePreferences {
 
         return WatchCatalogSyncResult(applied: current?.recordId == recordId, rejections: [])
     }
+}
+
+/// A payload's field as a non-negative whole number of seconds, or nil for
+/// anything else — an absent key, a boolean, a negative, and a JSON `90.0`,
+/// which the phone's validator refuses as an integer too (F-10). A copy that
+/// does not carry a readable interval is refused rather than read as Off
+/// (D-242).
+private func wholeSeconds(_ value: Any?) -> Int? {
+    guard let number = value as? NSNumber,
+          !isBoolean(number),
+          !CFNumberIsFloatType(number),
+          number.intValue >= 0
+    else { return nil }
+    return number.intValue
 }

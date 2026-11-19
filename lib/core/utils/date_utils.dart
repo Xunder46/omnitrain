@@ -12,6 +12,67 @@ class OmniDateUtils {
   /// Convenience wrapper over [startOfDayMs] using [DateTime.now].
   static int todayMidnightMs() => startOfDayMs(DateTime.now());
 
+  /// How many days of [month]'s calendar month have started by [today]: every
+  /// day of a past month, [today]'s day number within the same month, none of a
+  /// later month (plan 239).
+  static int daysElapsedInMonth(DateTime month, DateTime today) {
+    final monthIndex = month.year * 12 + month.month;
+    final todayIndex = today.year * 12 + today.month;
+    if (monthIndex < todayIndex) {
+      return DateTime(month.year, month.month + 1, 0).day;
+    }
+    if (monthIndex == todayIndex) return today.day;
+    return 0;
+  }
+
+  /// The zone-independent key of [date]'s local calendar date: that date's
+  /// UTC midnight. The same year-month-day gives the same key in every time
+  /// zone, which is what a stored day (food, water, target) needs after the
+  /// phone changes zone. Storage-boundary use only; the app passes local
+  /// midnights ([startOfDayMs]) everywhere else (plan 235).
+  static int dayKeyMs(DateTime date) =>
+      DateTime.utc(date.year, date.month, date.day).millisecondsSinceEpoch;
+
+  /// The zone-independent key of the local date-time [localMs]: its wall-clock
+  /// components (date, hour, minute, second, millisecond) read as UTC. The same
+  /// wall-clock time gives the same key in every zone, so a stored planned day
+  /// or period bound (midnight, or 23:59:59.999) keeps its date after a zone
+  /// change (plan 236). Storage-boundary use only.
+  static int wallClockKeyMs(int localMs) {
+    final d = fromMs(localMs);
+    return DateTime.utc(
+      d.year,
+      d.month,
+      d.day,
+      d.hour,
+      d.minute,
+      d.second,
+      d.millisecond,
+    ).millisecondsSinceEpoch;
+  }
+
+  /// The local instant, in the current zone, of the wall-clock time a stored
+  /// [key] names (the inverse of [wallClockKeyMs]).
+  static int localMsOfWallClockKeyMs(int key) {
+    final u = DateTime.fromMillisecondsSinceEpoch(key, isUtc: true);
+    return DateTime(
+      u.year,
+      u.month,
+      u.day,
+      u.hour,
+      u.minute,
+      u.second,
+      u.millisecond,
+    ).millisecondsSinceEpoch;
+  }
+
+  /// Local midnight, in the current zone, of the calendar date a stored day
+  /// [key] names (the inverse of [dayKeyMs] for a date's local midnight).
+  static int localMidnightOfDayKeyMs(int key) {
+    final d = DateTime.fromMillisecondsSinceEpoch(key, isUtc: true);
+    return DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
+  }
+
   /// Returns the epoch-ms of the end of the given day (23:59:59.999 local time).
   static int endOfDayMs(DateTime date) => DateTime(
     date.year,
@@ -181,5 +242,18 @@ class OmniDateUtils {
     if (minutes < 60) return '$minutes:$seconds';
     final hours = minutes ~/ 60;
     return '$hours:${(minutes % 60).toString().padLeft(2, '0')}:$seconds';
+  }
+
+  /// Formats a duration in seconds as timer digits: "mm:ss" (both padded)
+  /// below an hour, "h:mm:ss" (hour unpadded, minutes and seconds padded)
+  /// from one hour on. The readout a running or entered timer shows, where
+  /// the width must not jump as the value crosses the hour.
+  static String formatTimerDigits(int seconds) {
+    final total = seconds < 0 ? 0 : seconds;
+    final secs = (total % 60).toString().padLeft(2, '0');
+    final minutes = total ~/ 60;
+    if (minutes < 60) return '${minutes.toString().padLeft(2, '0')}:$secs';
+    final hours = minutes ~/ 60;
+    return '$hours:${(minutes % 60).toString().padLeft(2, '0')}:$secs';
   }
 }

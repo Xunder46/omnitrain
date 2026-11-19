@@ -9,9 +9,9 @@ import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import 'widgets/nutrition_trend_card.dart';
 
-/// The full-history nutrition trend.
-///
-/// Both hosts pass the same card the same repository data.
+/// The full-history nutrition trend: a Calories card stacked above a Macros
+/// card, both plotted from the same repository read. With no logged day the
+/// screen shows one empty-state card under a NUTRITION header instead.
 class NutritionTrendScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final SettingsState settingsState;
@@ -79,14 +79,33 @@ class _NutritionTrendScreenState extends State<NutritionTrendScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-                    children: [
-                      const OmniCardHeader(title: 'NUTRITION'),
-                      NutritionTrendCard(
-                        trend: _trend,
-                        adherence: _adherence,
-                        themeColors: themeColors,
-                      ),
-                    ],
+                    children: _trend.isEmpty
+                        ? [
+                            const OmniCardHeader(title: 'NUTRITION'),
+                            NutritionTrendCard(
+                              trend: _trend,
+                              adherence: _adherence,
+                              themeColors: themeColors,
+                              view: NutritionTrendView.calories,
+                            ),
+                          ]
+                        : [
+                            const OmniCardHeader(title: 'CALORIES'),
+                            NutritionTrendCard(
+                              trend: _trend,
+                              adherence: _adherence,
+                              themeColors: themeColors,
+                              view: NutritionTrendView.calories,
+                            ),
+                            const SizedBox(height: 24),
+                            const OmniCardHeader(title: 'MACROS'),
+                            NutritionTrendCard(
+                              trend: _trend,
+                              adherence: _adherence,
+                              themeColors: themeColors,
+                              view: NutritionTrendView.macros,
+                            ),
+                          ],
                   ),
           ),
         );

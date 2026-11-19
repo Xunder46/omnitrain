@@ -1,0 +1,62 @@
+{
+  "formatVersion": 1,
+  "source": {"kind":"seed","name":"seed-111"},
+  "gridStartMs": 1794301200000,
+  "events": [
+    {"t":"action","clockMs":1794301200000,"name":"start","exercises":[{"sessionExerciseId":"sx-ex-run-1","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"]}]},
+    {"t":"action","clockMs":1794301283000,"name":"finish"},
+    {"t":"action","clockMs":1794301357000,"name":"start","exercises":[{"sessionExerciseId":"sx-ex-run-2","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"]}]},
+    {"t":"action","clockMs":1794301357000,"name":"finish"},
+    {"t":"frame","clockMs":1794301357000,"envelope":{"protocolVersion":1,"messageId":"x-1","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:02:37.000Z","payload":{"entryIds":["end-s-w-2"]}}},
+    {"t":"action","clockMs":1794301357000,"name":"start","exercises":[{"sessionExerciseId":"sx-ex-run-3","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"]}]},
+    {"t":"action","clockMs":1794301357000,"name":"discard"},
+    {"t":"action","clockMs":1794301357000,"name":"start","exercises":[{"sessionExerciseId":"sx-ex-run-4","exerciseId":"ex-run","name":"Run","effortKind":"timed","capabilities":["time","distance"]}]},
+    {"t":"frame","clockMs":1794301357000,"envelope":{"protocolVersion":1,"messageId":"x-2","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:02:37.000Z","payload":{"entryIds":["end-s-w-1"]}}},
+    {"t":"frame","clockMs":1794301357000,"envelope":{"protocolVersion":1,"messageId":"x-3","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:02:37.000Z","payload":{"entryIds":["end-s-w-3"]}}},
+    {"t":"action","clockMs":1794301357000,"name":"finish"},
+    {"t":"frame","clockMs":1794301357000,"envelope":{"protocolVersion":1,"messageId":"x-4","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:02:37.000Z","payload":{"entryIds":["end-s-w-4"]}}},
+    {"t":"action","clockMs":1794301357000,"name":"restStart","kind":"rest"},
+    {"t":"action","clockMs":1794301357000,"name":"finish"},
+    {"t":"frame","clockMs":1794301388000,"envelope":{"protocolVersion":1,"messageId":"x-5","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:03:08.000Z","payload":{"entryIds":["end-s-w-4"]}}},
+    {"t":"frame","clockMs":1794301388000,"envelope":{"protocolVersion":1,"messageId":"x-6","sessionId":"s-w-4","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:03:08.000Z","payload":{"state":"completed","at":"2026-11-10T09:03:08.000Z"}}},
+    {"t":"frame","clockMs":1794301388000,"envelope":{"protocolVersion":1,"messageId":"x-7","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:03:08.000Z","payload":{"entryIds":["end-s-w-4"]}}},
+    {"t":"frame","clockMs":1794301388000,"envelope":{"protocolVersion":1,"messageId":"x-8","sessionId":"s-w-4","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:03:08.000Z","payload":{"state":"completed","at":"2026-11-10T09:03:08.000Z"}}},
+    {"t":"frame","clockMs":1794301419000,"envelope":{"protocolVersion":1,"messageId":"x-9","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:03:39.000Z","payload":{"entryIds":["end-s-w-4"]}}},
+    {"t":"frame","clockMs":1794301419000,"envelope":{"protocolVersion":1,"messageId":"x-10","sessionId":"s-w-4","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:03:39.000Z","payload":{"state":"completed","at":"2026-11-10T09:03:39.000Z"}}},
+    {"t":"frame","clockMs":1794301419000,"envelope":{"protocolVersion":1,"messageId":"x-11","type":"receipt","origin":"phone","sentAt":"2026-11-10T09:03:39.000Z","payload":{"entryIds":["end-s-w-4"]}}},
+    {"t":"frame","clockMs":1794301419000,"envelope":{"protocolVersion":1,"messageId":"x-12","sessionId":"s-w-4","type":"session_lifecycle","origin":"phone","sentAt":"2026-11-10T09:03:39.000Z","payload":{"state":"completed","at":"2026-11-10T09:03:39.000Z"}}}
+  ],
+  "expected": {
+    "current": "s-w-4",
+    "sessions": {
+      "s-w-1": {
+        "status": "completed",
+        "entries": [
+          "end-s-w-1"
+        ],
+        "timers": {}
+      },
+      "s-w-2": {
+        "status": "completed",
+        "entries": [
+          "end-s-w-2"
+        ],
+        "timers": {}
+      },
+      "s-w-3": {
+        "status": "abandoned",
+        "entries": [
+          "end-s-w-3"
+        ],
+        "timers": {}
+      },
+      "s-w-4": {
+        "status": "completed",
+        "entries": [
+          "end-s-w-4"
+        ],
+        "timers": {}
+      }
+    }
+  }
+}

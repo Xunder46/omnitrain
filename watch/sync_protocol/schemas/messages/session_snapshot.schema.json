@@ -24,6 +24,11 @@
             "sessionId": { "type": "string", "minLength": 1 },
             "revision": { "type": "integer", "minimum": 0 },
             "status": { "enum": ["active", "completed", "abandoned"] },
+            "modality": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The session's modality key as the sender holds it: the phone names its own session's (the wrist applies it only when it first hears of the session), and the wrist names the one its own session row holds (the phone applies it only when it first adopts the session). Omitted when the session has none; never null, never empty. No enum: a receiver keeps only the keys it knows, so a new modality needs no schema change."
+            },
             "currentExerciseIndex": { "type": "integer", "minimum": 0 },
             "exercises": {
               "type": "array",

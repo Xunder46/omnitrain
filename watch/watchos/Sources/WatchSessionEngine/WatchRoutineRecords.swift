@@ -15,25 +15,79 @@
 
 import Foundation
 
+/// The per-session suffix the wrist appends to every slot id it mints (plan 81
+/// D-1): the first 8 characters of the source id, or the whole id when it is
+/// shorter. Production session ids are UUIDs, so the token never contains `~`
+/// and a slot id's last `~` segment is always the token.
+public func sessionToken(from id: String) -> String {
+    String(id.prefix(8))
+}
+
 /// A catalog exercise: what it is, not where it sits in a session.
 public struct WatchCatalogExercise: Equatable {
+    /// The protocol key the phone's period length travels under, shared by the
+    /// catalog entry and the slot so the two can never drift (D-1400).
+    public static let roundDurationKey = "roundDurationSecs"
+
+    /// The protocol key the phone's Health kind for an exercise travels under,
+    /// shared by the catalog entry and the slot.
+    public static let healthActivityKey = "healthActivity"
+
+    /// The protocol key the phone's primary-modality recommendation travels
+    /// under (plan 199, D-19904). It rides the catalog entry alone: a slot
+    /// never carries it.
+    public static let recommendedForKey = "recommendedFor"
+
     public let exerciseId: String
     public let name: String
 
     /// The capability flags the effort kind and the metric rows are derived from.
     public let capabilities: [String]
 
-    public init(exerciseId: String, name: String, capabilities: [String]) {
+    /// How long one round of this exercise is prescribed to run, in whole
+    /// seconds, or nil when the phone prescribed no length for it.
+    ///
+    /// It rides with the exercise, not the slot: the catalog declares no effort
+    /// kind (PROTOCOL.md, "Exercise identity"), so only the pick knows which
+    /// kind the slot will take, and only a round kind carries a length
+    /// (D-1404, D-1413).
+    public let roundDurationSecs: Int?
+
+    /// The Health kind the phone named for an exercise, nil when it named none.
+    /// Any exercise whose discipline names a kind carries one (plan 170
+    /// D-17001), and only the phone chooses it: the wrist reads it, it never
+    /// decides (D-2).
+    public let healthActivity: String?
+
+    /// The primary modalities the phone's own picker recommends the exercise
+    /// for; empty when it named none. The wrist never scores, it compares
+    /// (plan 199, D-19903).
+    public let recommendedFor: [String]
+
+    public init(
+        exerciseId: String,
+        name: String,
+        capabilities: [String],
+        roundDurationSecs: Int? = nil,
+        healthActivity: String? = nil,
+        recommendedFor: [String] = []
+    ) {
         self.exerciseId = exerciseId
         self.name = name
         self.capabilities = capabilities
+        self.roundDurationSecs = roundDurationSecs
+        self.healthActivity = healthActivity
+        self.recommendedFor = recommendedFor
     }
 
     public init(json: [String: Any]) throws {
         self.init(
             exerciseId: try requiredString(json, "exerciseId"),
             name: try requiredString(json, "name"),
-            capabilities: (json["capabilities"] as? [String]) ?? []
+            capabilities: (json["capabilities"] as? [String]) ?? [],
+            roundDurationSecs: Self.roundSeconds(json[Self.roundDurationKey]),
+            healthActivity: json[Self.healthActivityKey] as? String,
+            recommendedFor: (json[Self.recommendedForKey] as? [String]) ?? []
         )
     }
 
@@ -45,8 +99,27 @@ public struct WatchCatalogExercise: Equatable {
         self.init(
             exerciseId: exerciseId,
             name: name,
-            capabilities: (slot["capabilities"] as? [String]) ?? []
+            capabilities: (slot["capabilities"] as? [String]) ?? [],
+            roundDurationSecs: Self.roundSeconds(slot[Self.roundDurationKey]),
+            healthActivity: slot[Self.healthActivityKey] as? String
         )
+    }
+
+    /// A wire number as a length in whole seconds, or nil when it is missing or
+    /// below the one second the schema accepts: a length the phone did not write
+    /// is not one the wrist reads (D-1400).
+    public static func roundSeconds(_ value: Any?) -> Int? {
+        guard let seconds = (value as? NSNumber)?.intValue, seconds >= 1 else { return nil }
+        return seconds
+    }
+
+    /// A `targets.durationMs` value as a length in whole seconds, or nil when the
+    /// target is missing, not numeric or not positive. The wire carries
+    /// milliseconds and the slot carries seconds, rounded to the nearest one and
+    /// never below a second (D-1402).
+    public static func roundSeconds(fromMillis value: Any?) -> Int? {
+        guard let milliseconds = (value as? NSNumber)?.doubleValue, milliseconds > 0 else { return nil }
+        return max(1, Int((milliseconds / 1000).rounded()))
     }
 
     /// The slot id this exercise takes when the user picks it for a session.
@@ -54,14 +127,27 @@ public struct WatchCatalogExercise: Equatable {
     /// exercise and a picked one of the same kind sit side by side.
     public var slotId: String { "sx-\(exerciseId)" }
 
+    /// The id the wrist mints for a live session: the base id with the
+    /// session's token appended, so two sessions never share a slot id
+    /// (plan 81 D-1). The menu and the picker keep reading the plain base.
+    public func slotId(token: String) -> String { "\(slotId)~\(token)" }
+
     /// This exercise as a protocol `sessionExercise` slot.
     ///
     /// `effortKind` is the routine's declared kind, and only a routine has one:
     /// a slot without it carries no `effortKind` at all, and the receiver
     /// resolves the kind from the capabilities (PROTOCOL.md, `sessionExercise`).
+    ///
+    /// `roundDurationSecs` is the length the slot's period counts down from, and
+    /// it rides with the kind that owns it: the routine's declared kind when it
+    /// has one, the capabilities otherwise — the same resolution the logging
+    /// surface renders the slot with (D-1412) — and only a round carries a length
+    /// at all. A timed effort holding a `durationMs` target is a count-up, so it
+    /// gets none (D-1413).
     public func toSlot(
         sessionExerciseId: String? = nil,
-        effortKind: String? = nil
+        effortKind: String? = nil,
+        roundDurationSecs: Int? = nil
     ) -> [String: Any] {
         var slot: [String: Any] = [
             "sessionExerciseId": sessionExerciseId ?? slotId,
@@ -70,11 +156,41 @@ public struct WatchCatalogExercise: Equatable {
             "capabilities": capabilities,
         ]
         if let effortKind { slot["effortKind"] = effortKind }
+
+        let declared = effortKind.flatMap { WatchEffortKind.declared.contains($0) ? $0 : nil }
+        let governingKind = declared ?? WatchEffortKind.resolved(capabilities)
+        if governingKind == WatchEffortKind.round,
+           let seconds = roundDurationSecs ?? self.roundDurationSecs,
+           seconds >= 1 {
+            slot[Self.roundDurationKey] = seconds
+        }
+        if let healthActivity { slot[Self.healthActivityKey] = healthActivity }
         return slot
     }
 
     public func toJson() -> [String: Any] {
-        ["exerciseId": exerciseId, "name": name, "capabilities": capabilities]
+        var json: [String: Any] = [
+            "exerciseId": exerciseId,
+            "name": name,
+            "capabilities": capabilities,
+        ]
+        if let roundDurationSecs { json[Self.roundDurationKey] = roundDurationSecs }
+        if let healthActivity { json[Self.healthActivityKey] = healthActivity }
+        if !recommendedFor.isEmpty { json[Self.recommendedForKey] = recommendedFor }
+        return json
+    }
+
+    /// This exercise with the recommendation the synced list holds for its id
+    /// (plan 199, D-19907).
+    public func carrying(recommendedFor keys: [String]) -> WatchCatalogExercise {
+        WatchCatalogExercise(
+            exerciseId: exerciseId,
+            name: name,
+            capabilities: capabilities,
+            roundDurationSecs: roundDurationSecs,
+            healthActivity: healthActivity,
+            recommendedFor: keys
+        )
     }
 }
 
@@ -87,13 +203,18 @@ public struct WatchRoutineEffort {
     public let capabilities: [String]
     public let targets: [String: Any]
 
+    /// The Health kind the phone named for this effort's exercise, nil when it
+    /// named none (D-2; every discipline names one, plan 170 D-17001).
+    public let healthActivity: String?
+
     public init(
         effortId: String,
         exerciseId: String,
         exerciseName: String,
         effortKind: String,
         capabilities: [String],
-        targets: [String: Any] = [:]
+        targets: [String: Any] = [:],
+        healthActivity: String? = nil
     ) {
         self.effortId = effortId
         self.exerciseId = exerciseId
@@ -101,6 +222,7 @@ public struct WatchRoutineEffort {
         self.effortKind = effortKind
         self.capabilities = capabilities
         self.targets = targets
+        self.healthActivity = healthActivity
     }
 
     public init(json: [String: Any]) throws {
@@ -110,7 +232,8 @@ public struct WatchRoutineEffort {
             exerciseName: try requiredString(json, "exerciseName"),
             effortKind: try requiredString(json, "effortKind"),
             capabilities: (json["capabilities"] as? [String]) ?? [],
-            targets: (json["targets"] as? [String: Any]) ?? [:]
+            targets: (json["targets"] as? [String: Any]) ?? [:],
+            healthActivity: json[WatchCatalogExercise.healthActivityKey] as? String
         )
     }
 
@@ -119,10 +242,18 @@ public struct WatchRoutineEffort {
     /// carrying the routine's declared effort kind, which is the one the wrist
     /// renders (a Plank in an isometric routine is timed because the routine says
     /// so, not because a capability suggests otherwise).
-    public var slot: [String: Any] {
+    ///
+    /// A round effort's period length is the routine's own prescription —
+    /// `targets.durationMs`, which is how the phone sends a round's length
+    /// (D-1402) — and an effort with no such target carries none: the wrist's
+    /// preset stays the only other source (D-1405).
+    public func slot(token: String) -> [String: Any] {
         catalogExercise.toSlot(
-            sessionExerciseId: "sx-\(effortId)",
-            effortKind: effortKind
+            sessionExerciseId: "sx-\(effortId)~\(token)",
+            effortKind: effortKind,
+            roundDurationSecs: effortKind == WatchEffortKind.round
+                ? WatchCatalogExercise.roundSeconds(fromMillis: targets["durationMs"])
+                : nil
         )
     }
 
@@ -131,12 +262,13 @@ public struct WatchRoutineEffort {
         WatchCatalogExercise(
             exerciseId: exerciseId,
             name: exerciseName,
-            capabilities: capabilities
+            capabilities: capabilities,
+            healthActivity: healthActivity
         )
     }
 
     public func toJson() -> [String: Any] {
-        [
+        var json: [String: Any] = [
             "effortId": effortId,
             "exerciseId": exerciseId,
             "exerciseName": exerciseName,
@@ -144,6 +276,8 @@ public struct WatchRoutineEffort {
             "capabilities": capabilities,
             "targets": targets,
         ]
+        if let healthActivity { json[WatchCatalogExercise.healthActivityKey] = healthActivity }
+        return json
     }
 }
 
@@ -183,11 +317,22 @@ public struct WatchRoutine {
 
     public let segments: [WatchRoutineSegment]
 
-    public init(routineId: String, name: String, updatedAt: Date, segments: [WatchRoutineSegment]) {
+    /// The routine's Focus Modality key as the phone sent it, nil when the
+    /// routine has none or the phone sent nothing readable (D-12560).
+    public let focusModality: String?
+
+    public init(
+        routineId: String,
+        name: String,
+        updatedAt: Date,
+        segments: [WatchRoutineSegment],
+        focusModality: String? = nil
+    ) {
         self.routineId = routineId
         self.name = name
         self.updatedAt = updatedAt
         self.segments = segments
+        self.focusModality = focusModality
     }
 
     public init(json: [String: Any]) throws {
@@ -195,15 +340,31 @@ public struct WatchRoutine {
             routineId: try requiredString(json, "routineId"),
             name: try requiredString(json, "name"),
             updatedAt: try parseUtcIso(json["updatedAt"]),
-            segments: try ((json["segments"] as? [[String: Any]]) ?? []).map(WatchRoutineSegment.init(json:))
+            segments: try ((json["segments"] as? [[String: Any]]) ?? []).map(WatchRoutineSegment.init(json:)),
+            focusModality: Self.focusKey(json["focusModality"])
         )
+    }
+
+    /// The Focus only when the wrist knows the modality: this is what the
+    /// session the routine starts carries (D-12560).
+    public var startModality: String? {
+        guard let focusModality, WatchActivityTypes.byModality[focusModality] != nil else { return nil }
+        return focusModality
+    }
+
+    private static func focusKey(_ value: Any?) -> String? {
+        guard let key = value as? String, !key.isEmpty else { return nil }
+        return key
     }
 
     /// Every effort in the routine, in the order the session will run them.
     public var efforts: [WatchRoutineEffort] { segments.flatMap(\.efforts) }
 
-    /// The session slots starting this routine creates, in order.
-    public var slots: [[String: Any]] { efforts.map(\.slot) }
+    /// The session slots starting this routine creates, in order, each carrying
+    /// the session's token (plan 81 D-1).
+    public func slots(token: String) -> [[String: Any]] {
+        efforts.map { $0.slot(token: token) }
+    }
 
     /// The catalog exercises this routine cannot run without, in routine order,
     /// deduplicated. Every one of them must be in the fallback list, or the
@@ -216,12 +377,14 @@ public struct WatchRoutine {
     }
 
     public func toJson() -> [String: Any] {
-        [
+        var json: [String: Any] = [
             "routineId": routineId,
             "name": name,
             "updatedAt": utcIso(updatedAt),
             "segments": segments.map { $0.toJson() },
         ]
+        if let focusModality { json["focusModality"] = focusModality }
+        return json
     }
 }
 
@@ -352,6 +515,278 @@ public struct WatchRoutineCatalogRecord {
             generatedAt: try parseUtcIso(json["generatedAt"]),
             routines: (json["routines"] as? [[String: Any]]) ?? [],
             fallbackExercises: (json["fallbackExercises"] as? [[String: Any]]) ?? [],
+            sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
+        )
+    }
+}
+
+// MARK: - The batched exercise list
+
+/// One `exercises_down` batch as the wrist stored it.
+///
+/// The phone sends the exercise list in batches of at most 100, in any order
+/// and possibly across several syncs, so the wrist keeps each batch as it
+/// arrives rather than the whole list. Like a catalog row it carries no session
+/// — its `sessionId` is empty — because a batch belongs to the watch, not to any
+/// one workout, and its `recordId` (`exb-<catalogVersion>-<batchIndex>`) makes a
+/// repeated delivery the same row (D-3813).
+///
+/// The row is append-only like every other; the one way batch rows leave is
+/// `pruneExerciseBatches(keepingVersion:)`, once a version is complete (D-3814).
+public struct WatchExerciseBatchRecord {
+    public let recordId: String
+    public let sessionId: String
+    public let recordedAt: Date
+    public let sequence: Int
+
+    /// The list version the phone derived from the list's content. The wrist
+    /// treats it as opaque and only echoes it back (D-3802).
+    public let catalogVersion: String
+
+    /// When the phone generated the list this batch belongs to. A batch older
+    /// than the active list is not a newer truth, so it is dropped (D-3815).
+    public let generatedAt: Date
+
+    /// This batch's position, its version's batch count and the version's total
+    /// exercise count — together they say when a version is complete.
+    public let batchIndex: Int
+    public let batchCount: Int
+    public let totalCount: Int
+
+    /// This batch's exercises in catalogExercise json, in the phone's order.
+    public let exercises: [[String: Any]]
+
+    public init(
+        recordId: String,
+        recordedAt: Date,
+        catalogVersion: String,
+        generatedAt: Date,
+        batchIndex: Int,
+        batchCount: Int,
+        totalCount: Int,
+        exercises: [[String: Any]] = [],
+        sequence: Int = 0
+    ) {
+        self.recordId = recordId
+        self.sessionId = ""
+        self.recordedAt = recordedAt
+        self.sequence = sequence
+        self.catalogVersion = catalogVersion
+        self.generatedAt = generatedAt
+        self.batchIndex = batchIndex
+        self.batchCount = batchCount
+        self.totalCount = totalCount
+        self.exercises = exercises
+    }
+
+    public func withSequence(_ sequence: Int) -> WatchExerciseBatchRecord {
+        WatchExerciseBatchRecord(
+            recordId: recordId,
+            recordedAt: recordedAt,
+            catalogVersion: catalogVersion,
+            generatedAt: generatedAt,
+            batchIndex: batchIndex,
+            batchCount: batchCount,
+            totalCount: totalCount,
+            exercises: exercises,
+            sequence: sequence
+        )
+    }
+
+    public func toJson() -> [String: Any] {
+        [
+            "recordType": StoredWatchRecord.exerciseBatchType,
+            "recordId": recordId,
+            "sessionId": sessionId,
+            "recordedAt": utcIso(recordedAt),
+            "sequence": sequence,
+            "catalogVersion": catalogVersion,
+            "generatedAt": utcIso(generatedAt),
+            "batchIndex": batchIndex,
+            "batchCount": batchCount,
+            "totalCount": totalCount,
+            "exercises": exercises,
+        ]
+    }
+
+    public static func fromJson(_ json: [String: Any]) throws -> WatchExerciseBatchRecord {
+        WatchExerciseBatchRecord(
+            recordId: try requiredString(json, "recordId"),
+            recordedAt: try parseUtcIso(json["recordedAt"]),
+            catalogVersion: try requiredString(json, "catalogVersion"),
+            generatedAt: try parseUtcIso(json["generatedAt"]),
+            batchIndex: (json["batchIndex"] as? NSNumber)?.intValue ?? 0,
+            batchCount: (json["batchCount"] as? NSNumber)?.intValue ?? 0,
+            totalCount: (json["totalCount"] as? NSNumber)?.intValue ?? 0,
+            exercises: (json["exercises"] as? [[String: Any]]) ?? [],
+            sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
+        )
+    }
+}
+
+// MARK: - The phone's standing bests
+
+/// One `bests_down` frame as the wrist stored it.
+///
+/// The phone owns the history; the wrist only needs the numbers a set has to
+/// beat. `entries` is the frame's `bests` array exactly as it arrived, so the
+/// code that applies a frame and the code that restores one parse the same
+/// shape (A-1). Like a catalog row it carries no session — its `sessionId` is
+/// empty — because the bests belong to the watch, not to any one workout.
+///
+/// The row is append-only like every other; the one way bests rows leave is
+/// `pruneBests(keepingRecordId:)`, once the caller has written the copy it
+/// holds as newest (D-11, D-17).
+public struct WatchBestsRecord {
+    public let recordId: String
+    public let sessionId: String
+    public let recordedAt: Date
+    public let sequence: Int
+
+    /// When the phone generated this frame. The newest one is the copy that
+    /// applies; an older one is not a newer truth.
+    public let generatedAt: Date
+
+    /// The frame's `bests` array: one entry per exercise, each with an
+    /// `exerciseId` and at least one axis (`e1rmKg`, `repsBest`).
+    public let entries: [[String: Any]]
+
+    public init(
+        recordId: String,
+        recordedAt: Date,
+        generatedAt: Date,
+        entries: [[String: Any]] = [],
+        sequence: Int = 0
+    ) {
+        self.recordId = recordId
+        self.sessionId = ""
+        self.recordedAt = recordedAt
+        self.sequence = sequence
+        self.generatedAt = generatedAt
+        self.entries = entries
+    }
+
+    public func withSequence(_ sequence: Int) -> WatchBestsRecord {
+        WatchBestsRecord(
+            recordId: recordId,
+            recordedAt: recordedAt,
+            generatedAt: generatedAt,
+            entries: entries,
+            sequence: sequence
+        )
+    }
+
+    public func toJson() -> [String: Any] {
+        [
+            "recordType": StoredWatchRecord.bestsType,
+            "recordId": recordId,
+            "sessionId": sessionId,
+            "recordedAt": utcIso(recordedAt),
+            "sequence": sequence,
+            "generatedAt": utcIso(generatedAt),
+            "entries": entries,
+        ]
+    }
+
+    public static func fromJson(_ json: [String: Any]) throws -> WatchBestsRecord {
+        WatchBestsRecord(
+            recordId: try requiredString(json, "recordId"),
+            recordedAt: try parseUtcIso(json["recordedAt"]),
+            generatedAt: try parseUtcIso(json["generatedAt"]),
+            entries: (json["entries"] as? [[String: Any]]) ?? [],
+            sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
+        )
+    }
+}
+
+// MARK: - The phone's water count
+
+/// One `water_down` frame as the wrist stored it: the phone's glass count for
+/// its local `day` and the wrist taps it has already counted, in its order.
+///
+/// Like a bests row it belongs to the watch, not to a workout, so its
+/// `sessionId` is empty; its id is `water-<messageId>`. The one way water rows
+/// leave is `pruneWater(keepingRecordId:)`, once the caller has written the
+/// frame it holds as newest (plan 95 D-23, D-24).
+public struct WatchWaterRecord {
+    public let recordId: String
+    public let sessionId: String
+    public let recordedAt: Date
+    public let sequence: Int
+
+    /// When the phone generated this frame; the newest one is the copy held.
+    public let generatedAt: Date
+
+    /// The phone's local calendar date of the count, `YYYY-MM-DD`.
+    public let day: String
+
+    /// The phone's own displayed glass count for `day`.
+    public let glasses: Int
+
+    /// The wrist tap ids the phone has counted for `day`, in append order.
+    public let appliedTapIds: [String]
+
+    public init(
+        recordId: String,
+        recordedAt: Date,
+        generatedAt: Date,
+        day: String,
+        glasses: Int,
+        appliedTapIds: [String] = [],
+        sequence: Int = 0
+    ) {
+        self.recordId = recordId
+        self.sessionId = ""
+        self.recordedAt = recordedAt
+        self.sequence = sequence
+        self.generatedAt = generatedAt
+        self.day = day
+        self.glasses = glasses
+        self.appliedTapIds = appliedTapIds
+    }
+
+    public func withSequence(_ sequence: Int) -> WatchWaterRecord {
+        WatchWaterRecord(
+            recordId: recordId,
+            recordedAt: recordedAt,
+            generatedAt: generatedAt,
+            day: day,
+            glasses: glasses,
+            appliedTapIds: appliedTapIds,
+            sequence: sequence
+        )
+    }
+
+    public func toJson() -> [String: Any] {
+        [
+            "recordType": StoredWatchRecord.waterType,
+            "recordId": recordId,
+            "sessionId": sessionId,
+            "recordedAt": utcIso(recordedAt),
+            "sequence": sequence,
+            "generatedAt": utcIso(generatedAt),
+            "day": day,
+            "glasses": glasses,
+            "appliedTapIds": appliedTapIds,
+        ]
+    }
+
+    /// A row without a readable `day`, `glasses` or `appliedTapIds` is refused
+    /// rather than read as a zero count: the file store then skips it.
+    public static func fromJson(_ json: [String: Any]) throws -> WatchWaterRecord {
+        guard let glasses = (json["glasses"] as? NSNumber)?.intValue else {
+            throw WatchRecordError.malformed("field \"glasses\" is missing")
+        }
+        guard let appliedTapIds = json["appliedTapIds"] as? [String] else {
+            throw WatchRecordError.malformed("field \"appliedTapIds\" is missing")
+        }
+        return WatchWaterRecord(
+            recordId: try requiredString(json, "recordId"),
+            recordedAt: try parseUtcIso(json["recordedAt"]),
+            generatedAt: try parseUtcIso(json["generatedAt"]),
+            day: try requiredString(json, "day"),
+            glasses: glasses,
+            appliedTapIds: appliedTapIds,
             sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
         )
     }

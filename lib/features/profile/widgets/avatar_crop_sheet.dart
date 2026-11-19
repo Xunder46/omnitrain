@@ -63,6 +63,7 @@ import 'package:flutter/rendering.dart';
 
 import '../../../core/constants/omni_theme.dart';
 import '../../../widgets/layout/omni_back_header.dart';
+import '../../../widgets/feedback/omni_message.dart';
 
 /// Avatar crop step. Pushed via `OmniNavigator.push<Uint8List?>(
 ///   context, (_) => AvatarCropSheet(...),
@@ -215,9 +216,8 @@ class _AvatarCropSheetState extends State<AvatarCropSheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to capture crop: $e')));
+      debugPrint('Crop photo: $e');
+      OmniMessage.error(context, 'Could not crop the photo. Try again.');
     }
   }
 

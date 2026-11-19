@@ -163,6 +163,12 @@ Future<void> _pumpCard(
   required int carbsKcal,
   required int fatKcal,
   required VoidCallback onTap,
+  int proteinGrams = 0,
+  int carbsGrams = 0,
+  int fatGrams = 0,
+  int? targetProteinGrams,
+  int? targetCarbsGrams,
+  int? targetFatGrams,
   double surfaceWidth = 360,
   double surfaceHeight = 600,
   double bottomPadding = 0,
@@ -190,6 +196,12 @@ Future<void> _pumpCard(
                 proteinKcal: proteinKcal,
                 carbsKcal: carbsKcal,
                 fatKcal: fatKcal,
+                proteinGrams: proteinGrams,
+                carbsGrams: carbsGrams,
+                fatGrams: fatGrams,
+                targetProteinGrams: targetProteinGrams,
+                targetCarbsGrams: targetCarbsGrams,
+                targetFatGrams: targetFatGrams,
                 onTap: onTap,
               ),
             ),
@@ -971,6 +983,183 @@ void main() {
       expect(find.text('P 0%'), findsNothing);
       expect(find.text('C 0%'), findsNothing);
       expect(find.text('F 0%'), findsNothing);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Plan 80 — macro targets on the caption row (S-14030..S-14032, S-14034)
+  // ═══════════════════════════════════════════════════════════════════════
+  group('NutritionSummaryCard — macro targets (plan 80)', () {
+    testWidgets('S-14030: all three targets set → "<L> <eaten>/<target> g" '
+        'captions, no percent in the caption row', (tester) async {
+      // Wide surface: the test font (Ahem) renders every glyph 1 em
+      // wide, so the three "<L> <eaten>/<target> g" captions need
+      // more room than production type. The 390/320 no-overflow
+      // contract is measured separately below.
+      await _pumpCard(
+        tester,
+        consumed: 1490,
+        target: 2000,
+        proteinKcal: 320,
+        carbsKcal: 720,
+        fatKcal: 450,
+        proteinGrams: 80,
+        carbsGrams: 180,
+        fatGrams: 50,
+        targetProteinGrams: 150,
+        targetCarbsGrams: 250,
+        targetFatGrams: 67,
+        onTap: () {},
+        surfaceWidth: 500,
+      );
+
+      expect(find.text('P 80/150 g'), findsOneWidget);
+      expect(find.text('C 180/250 g'), findsOneWidget);
+      expect(find.text('F 50/67 g'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('nutrition_card_caption')),
+          matching: find.textContaining('%'),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('S-14031: only a protein target → protein reads grams, '
+        'the others keep their share', (tester) async {
+      await _pumpCard(
+        tester,
+        consumed: 1050,
+        target: 2000,
+        proteinKcal: 320,
+        carbsKcal: 280,
+        fatKcal: 450,
+        proteinGrams: 80,
+        carbsGrams: 70,
+        fatGrams: 50,
+        targetProteinGrams: 150,
+        onTap: () {},
+        surfaceWidth: 500,
+      );
+
+      expect(find.text('P 80/150 g'), findsOneWidget);
+      expect(find.text('C 27%'), findsOneWidget);
+      expect(find.text('F 43%'), findsOneWidget);
+    });
+
+    testWidgets('S-14032: targets set, nothing logged → "P 0/150 g" and '
+        'dashes for the macros without a target', (tester) async {
+      await _pumpCard(
+        tester,
+        consumed: 0,
+        target: 2000,
+        proteinKcal: 0,
+        carbsKcal: 0,
+        fatKcal: 0,
+        targetProteinGrams: 150,
+        onTap: () {},
+        surfaceWidth: 500,
+      );
+
+      expect(find.text('P 0/150 g'), findsOneWidget);
+      // The headline reads "0 / 2,000 Cal" (no exact dash) and the
+      // gauge is hidden, so the only two dashes are the captions.
+      expect(find.text('—'), findsNWidgets(2));
+    });
+
+    testWidgets(
+      'S-14034: HomeScreen passes grams and targets to the card '
+      '(live harness)',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final repo = await _freshRepoCleanConsumed();
+        final homeScreen = await _buildHomeScreen(repo);
+
+        await tester.pumpWidget(MaterialApp(home: homeScreen));
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        final nutrition = homeScreen.nutritionState;
+        await nutrition.saveNutritionTarget(
+          NutritionTarget(calories: 2000, protein: 150, carbs: 250, fat: 67),
+        );
+        final library = FoodLibraryState(repo);
+        await library.createFood(_chicken());
+        final food = await _seedChicken(repo, nutrition);
+        await nutrition.logConsumedFoodAt(food, 200.0);
+        await tester.pumpAndSettle();
+
+        // 200 g of the 31P/0C/3F chicken: 62 g protein of the 150 g
+        // target. Carbs (0 g) and fat (6 g) also have targets.
+        expect(find.text('P 62/150 g'), findsOneWidget);
+        expect(find.text('C 0/250 g'), findsOneWidget);
+        expect(find.text('F 6/67 g'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'S-14034b: HomeScreen with a calories-only target keeps the '
+      'share captions (live harness)',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final repo = await _freshRepoCleanConsumed();
+        final homeScreen = await _buildHomeScreen(repo);
+
+        await tester.pumpWidget(MaterialApp(home: homeScreen));
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        final nutrition = homeScreen.nutritionState;
+        await nutrition.saveNutritionTarget(NutritionTarget(calories: 2000));
+        final library = FoodLibraryState(repo);
+        await library.createFood(_chicken());
+        final food = await _seedChicken(repo, nutrition);
+        await nutrition.logConsumedFoodAt(food, 200.0);
+        await tester.pumpAndSettle();
+
+        // 200 g of the 31P/0C/3F chicken: 248 kcal protein and
+        // 54 kcal fat of the 302 macro kcal (net carbs 0).
+        expect(find.text('P 82%'), findsOneWidget);
+        expect(find.text('C 0%'), findsOneWidget);
+        expect(find.text('F 18%'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('nutrition_card_caption')),
+            matching: find.textContaining('/'),
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('caption row does not overflow at 390 and 320 card '
+        'widths (plan 80 / D-9)', (tester) async {
+      for (final width in [390.0, 320.0]) {
+        await _pumpCard(
+          tester,
+          consumed: 1490,
+          target: 2000,
+          proteinKcal: 320,
+          carbsKcal: 720,
+          fatKcal: 450,
+          proteinGrams: 80,
+          carbsGrams: 180,
+          fatGrams: 50,
+          targetProteinGrams: 150,
+          targetCarbsGrams: 250,
+          targetFatGrams: 67,
+          onTap: () {},
+          surfaceWidth: width,
+          surfaceHeight: 600,
+        );
+
+        // A RenderFlex overflow would throw during layout and fail
+        // the test; assert the row still rendered.
+        expect(
+          find.byKey(const Key('nutrition_card_caption')),
+          findsOneWidget,
+        );
+      }
     });
   });
 

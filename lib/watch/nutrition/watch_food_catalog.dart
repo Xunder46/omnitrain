@@ -61,6 +61,19 @@ class WatchFood {
   /// The kcal in [servings] of this food, in the phone's own arithmetic.
   int caloriesAt(double servings) => (caloriesPerServing * servings).round();
 
+  /// This food with [defaultServings] instead of the phone's, everything else
+  /// copied as it stands — the wrist's own last log is the starting amount
+  /// until the phone's list is newer.
+  WatchFood copyWithDefaultServings(double defaultServings) => WatchFood(
+    foodId: foodId,
+    name: name,
+    categoryId: categoryId,
+    referenceAmount: referenceAmount,
+    referenceLabel: referenceLabel,
+    caloriesPerServing: caloriesPerServing,
+    defaultServings: defaultServings,
+  );
+
   Map<String, Object?> toJson() => {
     'foodId': foodId,
     'name': name,

@@ -30,13 +30,13 @@ SignalCard _positive(String id, int priority) =>
 SignalCard _caution(String id, int priority) =>
     _card(id, SignalKind.caution, priority);
 
-MixLayerData _mix({required int ratedBaselineWeeks, MixMeasure? measure}) =>
+MixLayerData _mix({required int ratedWeeks, MixMeasure? measure}) =>
     MixLayerData(
       measure: measure ?? MixMeasure.time,
       segments: const [],
       baselineSegments: const [],
       unratedSessionCount: 0,
-      ratedBaselineWeeks: ratedBaselineWeeks,
+      ratedWeeks: ratedWeeks,
       weeks: const [],
     );
 
@@ -52,7 +52,7 @@ void main() {
     test('signalsGateMet is false one rated week below the minimum', () {
       expect(
         signalsGateMet(
-          _mix(ratedBaselineWeeks: kTrainingLoadMinRatedWeeks - 1),
+          _mix(ratedWeeks: kTrainingLoadMinRatedWeeks - 1),
         ),
         isFalse,
       );
@@ -60,7 +60,7 @@ void main() {
 
     test('signalsGateMet is true at the minimum rated weeks', () {
       expect(
-        signalsGateMet(_mix(ratedBaselineWeeks: kTrainingLoadMinRatedWeeks)),
+        signalsGateMet(_mix(ratedWeeks: kTrainingLoadMinRatedWeeks)),
         isTrue,
       );
     });
@@ -69,7 +69,7 @@ void main() {
       expect(
         signalsGateMet(
           _mix(
-            ratedBaselineWeeks: kTrainingLoadMinRatedWeeks,
+            ratedWeeks: kTrainingLoadMinRatedWeeks,
             measure: MixMeasure.time,
           ),
         ),
@@ -86,6 +86,11 @@ void main() {
       );
     });
 
+    test('S-18402 the quiet line with waiting lines under it is the pinned '
+        'shorter sentence', () {
+      expect(kSignalQuietLineWithWaiting, 'No signals right now.');
+    });
+
     test('an empty candidate list yields no cards and the quiet line', () {
       final data = resolveSignals(
         candidates: const [],
@@ -97,9 +102,22 @@ void main() {
       expect(data.showQuietLine, isTrue);
     });
 
-    test('an unmet gate yields no cards and no quiet line', () {
+    test('S-17504 an unmet gate keeps the cards it is given and shows no '
+        'quiet line', () {
       final data = resolveSignals(
         candidates: [_positive('p', 1)],
+        dismissedAtMs: const {},
+        now: DateTime(2026, 3, 10),
+        gateMet: false,
+      );
+      expect(data.cards.map((c) => c.id), ['p']);
+      expect(data.showQuietLine, isFalse);
+    });
+
+    test('S-17504 an unmet gate with nothing to show yields no cards and no '
+        'quiet line', () {
+      final data = resolveSignals(
+        candidates: const [],
         dismissedAtMs: const {},
         now: DateTime(2026, 3, 10),
         gateMet: false,
@@ -365,13 +383,13 @@ void main() {
   // it. They are permanent: a change that reintroduces the defect fails here,
   // not in review.
 
-  group('Structural guard — the gate precedes every signal', () {
-    test('a card proposed while the gate is unmet is never rendered', () {
-      // Breaks if `resolveSignals` stops returning early on `!gateMet`: a
-      // signal that returns a card would then reach the layer with the gate
-      // unmet (D-1006).
+  group('Structural guard — the quiet line needs the gate', () {
+    test('an unmet gate with no candidates is never the quiet line', () {
+      // Breaks if `showQuietLine` stops requiring `gateMet` (D-17503): a user
+      // still short of rated weeks would be told "nothing outside your usual
+      // range" while the load-reading signals have not had a chance to speak.
       final data = resolveSignals(
-        candidates: [_positive('p', 10), _caution('c', 20)],
+        candidates: const [],
         dismissedAtMs: const {},
         now: DateTime(2026, 3, 10),
         gateMet: false,

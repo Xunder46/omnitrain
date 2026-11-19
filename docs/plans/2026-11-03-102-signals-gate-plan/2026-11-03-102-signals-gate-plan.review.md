@@ -1,0 +1,57 @@
+# Review: 2026-11-03-102-signals-gate-plan · P1, P2a, P2b, P2c, P3 · base..working tree
+Verdict: APPROVE
+Counts: blocker 0 · major 0 · minor 1 · tests: full `flutter test` +6182 passed ~2 skipped -1 failed (the 1 failure is `test/routine_save_removes_deleted_rows_test.dart` S-R3, a file the diff does not touch — see note below)
+Diff vs Predicted Files: conforms | outside: `lib/core/services/stats_progress_service.dart` (the brief's named unrelated dirty file, ignored)
+
+## Findings
+
+1. [Minor] plan `## Scenarios` row S-17507, "Fails without the change because" — the row claims mutation M4 (`showQuietLine: cards.isEmpty`) would make the quiet line show in the S-17507 dismissal scenario. It would not: after the dismissal `resolveSignals` returns cards empty with `showQuietLine` true, but the screen's build branch (`stats_screen.dart:297-299`) renders the layer only when `cards.isNotEmpty || gateMet`, so under M4 the else-if branch renders `SignalsLockedSection` and no quiet line widget exists there — S-17507's assertions all pass under M4. M4 is in fact killed by `signals_framework_test.dart` `S-17504 an unmet gate with nothing to show yields no cards and no quiet line` (framework level, where the quiet line is observable). No code change needed; the risk is only that a future maintainer deletes the S-17504(b) test believing S-17507 guards M4. Fix: correct the plan row's rationale (or a one-line note in the test file). Guard: none needed beyond the existing S-17504(b).
+
+Note (not a finding): the full-suite failure is `test/routine_save_removes_deleted_rows_test.dart:100` — `S-R3: a removed block and its exercises are gone after save`, `Expected: empty / Actual: [Instance of 'TemplateEffort']`. The diff touches no routine-save code, no `TemplateEffort` reader and no file this test imports; the failure is outside this change. Flagged for the governor to route (pre-existing red or another session's work).
+
+## Answers to the brief's five questions
+
+**1. Unlisted behaviour change?** No. `signals_service.dart` changes only the early return into the per-signal `needsRatedWeeks && !gateMet` skip (D-17502); dismissal read, dismissal filter and registry order are untouched. `signals.dart` loses only the `resolveSignals` early return; `showQuietLine` becomes `cards.isEmpty && gateMet` (D-17503); `signalsGateMet` body unchanged, doc only. `signals_layer.dart` adds only the optional `lockedRatedWeeks` and the hint line inside the cards-non-empty branch (D-17504). `stats_screen.dart` swaps the `gateMet` gate for `evaluateSignals = totals.completedSessions > 0` and passes the real `gateMet` to `resolveSignals` (D-17505); `_dismissSignal` untouched. The seven `needsRatedWeeks` getters match D-17501 exactly: false for progression-rate, protein-consistency, cardio-efficiency-drift; true for fuel-vs-load, sustained-high-load, modality-mix-shift, cross-modality-interference. No other production line changes behaviour.
+
+**2. Walk of `StatsScreen._load`, build branch, `_dismissSignal`:**
+- *Gate unmet, unlocked card*: `evaluateSignals` true, service skips locked signals, `resolveSignals` ranks the unlocked card(s), `showQuietLine` false. Build first branch true (`cards.isNotEmpty`), layer renders with `lockedRatedWeeks = _mixLayer?.ratedWeeks ?? 0`; hint renders under the cards (it sits inside the `else` branch of `signals_layer.dart`'s build, so it cannot appear without a card). No quiet line, no locked line. ✓
+- *Gate unmet, no card*: first branch false (cards empty, gate unmet) → else-if `_mixLayer != null && !gateMet` renders the locked section. `computeMixLayer` is called with `keepEmptyWindow: true`, whose only null return is guarded by `!keepEmptyWindow` (`stats_progress_service.dart:800-802`), so with sessions present the layer is non-null and the locked section shows; the blank-slot case (gate unmet, no card, `_mixLayer == null`) is unreachable in practice and was equally reachable before this change. ✓
+- *Gate met, with cards*: layer, `lockedRatedWeeks` null, no hint. ✓ *Gate met, no cards*: `showQuietLine` true, layer renders (first branch true via `signalsGateMet`), quiet line. ✓
+- *`mixLayer == null`*: `signalsGateMet(null)` is false; with sessions > 0 and an unlocked card the layer renders with `lockedRatedWeeks: 0` ("0 of 4 so far") — correct; with no card, neither branch fires (blank slot), the same shape as before the change.
+- *No completed session*: `_totalSessions == 0` short-circuits the body to `_buildEmptyState` alone (`stats_screen.dart:286-287`); `_signalsData` is null and no signal is evaluated. ✓
+- *Dismissal*: `_dismissSignal` re-resolves the held candidates with `gateMet: signalsGateMet(_mixLayer)`. Dismissing the only card at an unmet gate → cards empty, `showQuietLine` false → first branch false → locked section. No sequence shows the quiet line while the gate is unmet, the hint without a card, a blank Signals slot (with sessions), or a wrongly re-resolved dismissal. ✓
+
+**3. Assertions satisfied for the wrong reason?** No. S-17501: `['u']` and evaluations 2/0 are false under the old early return (`[]`, 0/0). S-17503: an exact 7-entry map — any flipped flag fails it. S-17504(a) fails the old early return; (b) fails M4; (c) is the pre-existing met-gate quiet test. S-17505: `_cardKeys()` == `['signal_card_p-open']` proves `c-locked` absent; the hint is matched by key and compared to both `signalsMoreLine(0)` and the literal sentence, so the copy is pinned; evaluations 1/0 prove the skip. S-17507: key-based, no `findsOneWidget` that could match a sibling; the locked section and locked line are asserted present, hint and quiet absent. S-17509: `_seedFpr(rated: false)` nulls only `sessionFeeling` — `seedSetEffort` still runs, so the real signal's own data rules are exercised, and the card + `signalsMoreLine(0)` cannot appear under the old gate. The empty-state sibling test's stub was made `needsRatedWeeks: false`, so its 0 evaluations now actually prove the empty profile is never evaluated (the lead's M7 fix). The default `needsRatedWeeks: true` on both stub classes keeps every pre-existing test's meaning (D-17506). No stub default hides a case: S-1702 (service and screen) keep default stubs and now guard the no-card branch.
+
+**4. Docs.** Every sentence I checked is true against the code, and every cited name exists exactly (verified by reading the test files this run): `S-17503 which registered signals need rated weeks` › `only Progression Rate, Protein Consistency and Cardio Efficiency Drift speak before the gate`; `S-17501 an unmet gate evaluates only the signals that need no rated weeks`; both `S-17504` framework tests inside group `S-1703 gate met, nothing qualifies` (lines 100/112, group opens at 81); group `Structural guard — the quiet line needs the gate` › `an unmet gate with no candidates is never the quiet line`; screen groups `S-1702 gate unmet locks the signals` (line 592), `S-4002 the locked line counts rated weeks` (765), `S-4013 the locked section takes the layer slot` (718), `S-17505 …` and `S-17507 …`; `S-17509`'s test; the empty-state sibling test. The keeper's replacement of the plan's `S-17506` citation with `S-17507` in `docs/widget_catalog.md` is right: no test carries the id S-17506 (the plan's row names the existing S-1702 screen test, which the catalog already cites elsewhere), and the S-17507 group is precisely the "gate-unmet screen with no unlocked card renders the sibling" case — it asserts `signals_locked` + `signals_locked_line` present after the dismissal. One nuance, not a finding: the S-17507 group is Mock-only (`if (harness.name == 'Mock')`), same precedent as the S-1709 citation the doc already carries.
+
+**5. User-visible changes not in the plan?** None beyond D-17508. The only new copy is the hint line, byte-identical to the plan's text and pinned by the literal-string assertion in S-17505. `signalsLockedLine`, `kSignalQuietLine` ('No signals — nothing outside your usual range.') and every card/label string are untouched; the only layout addition is the hint line under the cards, which the plan specifies.
+
+## Assumption Log rulings
+- Independent-review facts (Progression Rate reads no ratings; Protein Consistency reads food logs/counts/bodyweight; Cardio Drift degrades to time) — **ratified**: consistent with the three `false` flags and the green S-17503/S-17509 tests.
+- Default taken on the hint copy (D-17508) — **ratified**: owner pre-approved defaults; unit 103 replaces the line anyway.
+- Fuel vs Load and Interference kept behind the gate — **ratified**: flags true, pinned by S-17503.
+
+## Scenario coverage
+S-17501 -> test/signals_service_test.dart · `S-17501 an unmet gate evaluates only the signals that need no rated weeks`
+S-17502 -> test/signals_service_test.dart · `a met gate evaluates each signal once and returns its cards` (existing twin, per plan)
+S-17503 -> test/signals_service_test.dart · group `S-17503 which registered signals need rated weeks`
+S-17504 -> test/signals_framework_test.dart · `S-17504 an unmet gate keeps the cards it is given and shows no quiet line`, `S-17504 an unmet gate with nothing to show yields no cards and no quiet line`, structural guard `an unmet gate with no candidates is never the quiet line`, plus the pre-existing met-gate quiet test
+S-17505 -> test/signals_layer_screen_test.dart · `S-17505 its card shows with the hint under it and the load-reading signal is not evaluated`
+S-17506 -> test/signals_layer_screen_test.dart · group `S-1702 gate unmet locks the signals` (untouched, green) and test/signals_service_test.dart · `S-1702 an unmet gate returns nothing and evaluates nothing`
+S-17507 -> test/signals_layer_screen_test.dart · group `S-17507 dismissing the only card at an unmet gate` › `S-17507 returns the block to the locked line` (Mock-only, per the lead's noted edit)
+S-17508 -> test/signals_layer_screen_test.dart · group `S-1703 gate met, nothing qualifies` (quiet line) and groups `S-4002`/`S-4013` (locked section) — existing, guards the render rule (M5)
+S-17509 -> test/progression_rate_signal_screen_test.dart · `the real card shows with the exact copy and the hint for the other signals, and no locked section`
+S-17510 -> test/signals_layer_screen_test.dart · `a profile with no sessions shows the empty state and no layer, even with stubs registered` (stub now `needsRatedWeeks: false`)
+
+## Docs delta
+docs/signals.md "evaluates only the signals that need no rated weeks" -> applied
+docs/signals.md "A signal declares whether it needs rated weeks" -> applied
+docs/signals.md "A gate-unmet load reports the cards of the unlocked signals but never the quiet line" -> applied
+docs/stats_screen.md "The signals that need no ratings render from the first session" -> applied
+docs/stats_screen.md "no load-reading signal is evaluated" -> applied
+docs/stats_screen.md "More signals unlock after 4 weeks of rating your workouts" -> applied
+docs/stats_screen.md "evaluates only the signals that need no ratings" -> applied
+docs/stats_screen.md "[Signals layer](#signals-layer) whenever a signal speaks or its gate is met" -> applied
+docs/widget_catalog.md "A gate-unmet screen with no unlocked card instead renders the sibling" -> applied
+Doc edit the table does not name: docs/stats_screen.md widget row for `signals_layer.dart` ("the locked line a gate-unmet screen **with no unlocked card** shows in the layer's slot") — applied, true, consistent with the catalog row.

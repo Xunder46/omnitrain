@@ -1,0 +1,21 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-exercises-v2-101-badcapacity-0",
+  "type": "exercises_down",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-07-13T17:00:00Z",
+    "catalogVersion": "v2-101-c0ffee00",
+    "batchIndex": 0,
+    "batchCount": 1,
+    "totalCount": 101,
+    "exercises": [
+      {
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ]
+  }
+}

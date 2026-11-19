@@ -63,9 +63,13 @@ The split takes a per-modality map of **measured active time** in seconds; it
 never derives that map itself and never reads a stored instance. A caller that
 produces the sums is the only place that touches the stored instances.
 
-- A non-rolling session's Resistance time is the remainder: its own duration
-  minus the measured sums, never below zero. Its duration is the same figure
-  the all-time totals use.
+- A non-rolling session that holds a set effort with a stored set that was not skipped gets its Resistance time as the
+  remainder: its own duration minus the measured sums, never below zero. Its
+  duration is the same figure the all-time totals use.
+- A session with no set effort and some measured time shares its whole duration
+  across the measured modalities in proportion to their measured time (plan
+  179): nothing in it is lifting, so Resistance takes none of it, and its load
+  still counts the full duration. A session that holds efforts but no set that was done (a skipped set is not one) and has no measured time contributes nothing (plan 224: a never-started run or round, a lift emptied of its sets); a session with no effort at all keeps the remainder rule.
 - When the measured sums exceed the duration, the whole session's time goes to
   its **dominant** modality instead — the modality with the most efforts of
   that modality's kind. A session with no effort that maps to a modality
@@ -81,7 +85,10 @@ session is unrated. The split is never rounded per session.
 Verified by `test/training_load_test.dart` (`sessionTimeByModality (D-904–D-906)`
 — `S-1503`, `S-1504`, `S-1505`, `S-1506 A`, `S-1507`, `S-1508`, `S-1509 A`,
 `S-1515`, `S-1516`, and the cases for a non-negative remainder and a session
-with no mapping effort — and `sessionLoadByModality (D-907)`).
+with no mapping effort — and `sessionLoadByModality (D-907)`), by
+`test/mix_no_sets_pure_test.dart` (`S-20001`..`S-20006`) and by
+`test/mix_no_sets_service_test.dart` (`S-20007`..`S-20011`) and, for the session with nothing done, by
+`test/mix_session_with_nothing_done_test.dart` (`S-22401`..`S-22404`).
 
 ---
 
@@ -119,12 +126,24 @@ own baseline.
 The blocks are computed from calendar components rather than a `Duration`, so a
 daylight-saving transition cannot shift a boundary. They are also independent of
 the saved start-of-week setting — changing that setting never moves a baseline
-boundary. A **rated baseline week** is one of the blocks containing at least one
-completed session with a rating.
+boundary.
+
+The **rated weeks** that gate the load measure are a different set of 12
+seven-day blocks, anchored at the payload's end day — today for the Mix layer,
+the period's end day for a period payload — and tiling
+`[endDay − 83 days, endDay + 1 day)`, so the last block is
+`[endDay − 6, endDay]` and the current week counts. They do not follow the
+start-of-week setting. A week counts when at least one completed session with a
+rating (`sessionFeeling != null`) starts in it; the helper is
+`ratedWeekBlockStarts(endDay)`.
 
 Verified by `test/training_load_test.dart` (`baselineBlockStarts (D-934)`,
 including the block count, the no-gap case, the last-block boundary, the
-anchoring case and the DST case).
+anchoring case and the DST case) and by
+`test/stats_rated_weeks_service_test.dart` (`S-17101 rated sessions in four
+different current weeks count 4`, `S-17102 two rated sessions in one week count
+once`, `S-17104 the 84th day back is outside the 12 weeks`,
+`S-17106 ratedWeekBlockStarts tiles the 12 weeks at local midnight`).
 
 ---
 
@@ -139,7 +158,9 @@ boundary. It serves the strip only; the baseline does not use it.
 `MixWeek` carries a week's start, its segments, its measure and whether it is
 the current week. `MixLayerData` carries the measure the figures are in, the
 window's segments and its baseline's segments, the two counts the surface
-reports, and the strip.
+reports, the strip, and the last completed session's day (`lastSessionDay`,
+which the empty-strip line names; guarded by
+`test/mix_layer_service_test.dart`, `S-4009`).
 
 Verified by `test/training_load_test.dart` (`OmniDateUtils.startOfWeek (D-910,
 D-935)` — every weekday under both settings, an unrecognised setting, and the
@@ -164,7 +185,7 @@ before `now`'s: the week containing `now` is never an entry.
 `baselineBlockStarts`. The Sustained High Load rule reads
 `kTrainingLoadBaselineWeeks` weeks immediately before a candidate run as
 neighbours in the same series, so its usual load is that window's sum divided by
-the twelve weeks, an empty week counting as zero. The baseline period above is
+the twelve weeks less any week that held only unrated sessions, an empty week counting as zero. The baseline period above is
 anchored to a window's start day and serves the Mix layer's window comparison;
 the two are separate reads of separate spans and neither is derived from the
 other.
@@ -184,7 +205,7 @@ the incomplete current week is never counted`).
 |----------|-----------------|
 | `kMixStripWeeks` | How many weeks a weekly strip holds |
 | `kTrainingLoadBaselineWeeks` | How many 7-calendar-day blocks the baseline spans |
-| `kTrainingLoadMinRatedWeeks` | How many rated baseline weeks the load measure needs before it is shown |
+| `kTrainingLoadMinRatedWeeks` | How many of the last 12 seven-day weeks, current ones included, must hold a rated session for the load measure to be shown |
 | `kTrainingLoadMaxUnratedShare` | The largest share of a window's time that may be unrated for the load measure to be shown; the boundary is inclusive |
 
 Verified by `test/training_load_test.dart` (the constant contracts).
@@ -207,8 +228,13 @@ blocks; the strip's are selected against each week's own bounds and never
 against the window, so changing the window moves the bar and leaves the strip
 alone.
 
-The measure is load only when the baseline is rated enough and the window is
-rated enough; otherwise it is time. The baseline's segments are built in the
+The measure is load only when at least `kTrainingLoadMinRatedWeeks` of the
+last 12 seven-day weeks up to the payload's end day hold a rated session and
+the window's unrated share of time is at most `kTrainingLoadMaxUnratedShare`;
+otherwise it is time. The rated-weeks half of the
+gate is verified by `test/stats_rated_weeks_service_test.dart` (`S-17101 rated
+sessions in four different current weeks count 4`, `S-17103 an unrated session
+does not count a week`). The baseline's segments are built in the
 load measure only, and only when the baseline's total load is above zero. The
 strip's weeks are the `kMixStripWeeks` weeks ending with the week containing
 the current instant, oldest first, with the last week marked in progress; an
@@ -226,7 +252,10 @@ the same payload shape, so a rule that compares an arbitrary period against its
 baseline reads the same measure, bar and baseline the Mix layer does. It
 carries no weekly strip, because a period is not anchored to a week; its
 baseline is the same `kTrainingLoadBaselineWeeks` calendar blocks before the
-period's start day, and the measure gate is the same one.
+period's start day, and the measure gate is the same one, its rated weeks
+anchored at the period's end day (verified by
+`test/stats_rated_weeks_service_test.dart`, `S-17105 the period counts weeks
+anchored at its own end day`).
 
 The two instants are the only thing that varies between callers: the Modality
 Mix Shift rule asks for its own shift period, the Fuel vs Load rule asks for a

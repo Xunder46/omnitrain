@@ -15,6 +15,8 @@ import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../session/workout_session_screen.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
+import '../../widgets/common/omni_empty_state.dart';
 
 /// Screen displaying list of saved workout routines
 /// Allows user to view, start, edit, or delete routines
@@ -47,7 +49,12 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
   @override
   void initState() {
     super.initState();
-    widget.routineState.loadRoutines();
+    // D-150/D-151: `loadRoutines` notifies `RoutineState` synchronously, so the
+    // first load waits for the frame that mounts this screen — a notifying
+    // listener above it cannot be marked dirty mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.routineState.loadRoutines();
+    });
   }
 
   @override
@@ -71,8 +78,6 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
         child: ListenableBuilder(
           listenable: widget.routineState,
           builder: (context, child) {
-            final theme = Theme.of(context);
-
             if (widget.routineState.isLoading) {
               return Center(child: CircularProgressIndicator());
             }
@@ -80,47 +85,10 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
             final routines = widget.routineState.routines;
 
             if (routines.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: OmniTheme.colors.textDominant.withOpacity(0.3),
-                          width: 2,
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.folder_open,
-                        size: 60,
-                        color: OmniTheme.colors.textDominant.withOpacity(0.6),
-                      ),
-                    ),
-                    SizedBox(height: 32),
-                    Text(
-                      'No Routines Yet',
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: OmniTheme.colors.textDominant,
-                      ),
-                    ),
-                    SizedBox(height: 16),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 32.0),
-                      child: Text(
-                        'Create your first routine to get started',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: OmniTheme.colors.textDominant.withOpacity(0.7),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              return const OmniEmptyState(
+                icon: Icons.folder_open,
+                title: 'No Routines Yet',
+                hint: 'Create your first routine to get started',
               );
             }
 
@@ -198,9 +166,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
 
   void _startRoutine(BuildContext context, String templateId) async {
     if (widget.workoutState == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: Workout state not available')),
-      );
+      OmniMessage.error(context, 'Error: Workout state not available');
       return;
     }
 
@@ -226,9 +192,15 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
       final manifest = await widget.routineSessionService
           .buildSessionFromTemplate(templateId);
 
+      // Plan 230: a confirmed Start New really discards the running workout.
+      // Plan 240: only after the routine is known to start, so a routine
+      // that cannot start (an empty one) never costs the user the workout.
+      await widget.workoutState!.discardUnfinishedSession();
+
       // Step 2: Create new workout session with routine metadata
       await widget.workoutState!.createNewSession(
-        modality: null, // Mixed modality for routines
+        // Routine session carries the routine's Focus as a snapshot.
+        modality: manifest.template.focusModality,
         title: manifest.template.name,
         intent: 'routine',
         routineTemplateId: manifest.template.id,
@@ -255,9 +227,9 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error starting routine: $e')));
+      if (!mounted) return;
+      debugPrint('Start routine: $e');
+      OmniMessage.error(context, 'Could not start the routine. Try again.');
     }
   }
 

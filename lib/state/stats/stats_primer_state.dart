@@ -4,9 +4,9 @@
 // `docs/plans/2026-10-04-10b-stats-pr10b-primer-sheet-plan/2026-10-04-10b-stats-pr10b-primer-sheet-plan.md`).
 //
 // A first-time user opening Stats sees one empty card and nothing else.
-// Nothing on the screen explains the Signals cards or the chart icon, so the
-// first time they tap Stats from Home we want a single dismissible primer that
-// explains the page in three short blocks.
+// Nothing on the screen explains the Signals cards or the Records & Trends
+// row, so the first time they tap Stats from Home we want a single
+// dismissible primer that explains the page in three short blocks.
 //
 // This state tracks the "has the user seen the primer yet?" flag. The flag is
 // PERSISTED via the repository preference surface (`'primer_seen_stats'`) so it

@@ -14,8 +14,8 @@
 ///    the primary action of the watch and never depends on a sensor (S-006).
 ///
 /// The GPS decision is not made here either: [WatchGpsPolicy] reads the
-/// session's capability profile, so a lift never wakes the radio and a run
-/// always does.
+/// capabilities of the exercise the session is on, so a lift never wakes the
+/// radio and a run always does (plan 205).
 library;
 
 import 'dart:async';
@@ -121,16 +121,21 @@ class WatchSensorRecorder {
     );
   }
 
-  /// Starts listening to whatever [session]'s modality calls for.
+  /// Starts listening to what the exercise [session] is on calls for.
   ///
   /// Heart rate is recorded for every session that has a sensor to record it
-  /// with. Location is recorded only where the modality can cover distance, so
-  /// a lift does not drain the battery warming up a radio it will never use
-  /// (S-001, S-002).
+  /// with. Location is recorded only when the exercise the session is on
+  /// carries `distance`, so a lift or a jump rope does not drain the battery
+  /// warming up a radio it will never use (S-001, S-002; plan 205).
   Future<void> start(WatchSessionRecord session) async {
     await _startHeartRate();
 
-    if (!WatchGpsPolicy.isRequired(session.modality)) return;
+    final capabilities = <String>[
+      for (final capability
+          in (session.currentExercise?['capabilities'] as List?) ?? const [])
+        if (capability is String) capability,
+    ];
+    if (!WatchGpsPolicy.coversDistance(capabilities)) return;
     if (await _source.locationPermission() != WatchSensorPermission.granted) {
       return;
     }

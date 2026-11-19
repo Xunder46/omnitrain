@@ -5,7 +5,9 @@ nor app state: `lib/core/services/`, `lib/core/utils/`, and the cross-cutting
 pieces those classes own, including the shared Stats formatters
 (`lib/features/stats/widgets/native_value_format.dart`). The watch↔phone live
 mirroring surface, the platform transport it rides on and the watch's own runtime
-and sensor layer are in [The Watch Surface](watch_surface.md).
+layer are in [The Watch Surface](watch_surface.md); the watch's sensor layer and
+platform workout are in
+[The Watch Sensors and the Platform Workout](watch_sensors.md).
 
 > Part of [State Management & Services](../state_management.md). Return to the
 > index for the full class list and dependency graph.
@@ -66,6 +68,34 @@ Post-workout analytics.
 | `compareGroupsToPreviousSession(session, summary)` | `Map<String, GroupDelta>` | Finds the most recent previous session; computes per-group stats (strength volume, cardio/isometric duration, round counts); returns delta map keyed by `'strength'`, `'cardio'`, `'rounds'`, `'isometric'` |
 | `computePRs(exerciseSummaries)` | `List<PRAchievement>` | Compares the session's per-exercise bests against the all-time best via `StatsProgressService.getAllTimeBestE1RM` (weight axis) and `StatsProgressService.getAllTimeBestReps` (reps axis). Collapses duplicate per-block entries to at most one record per exercise per session. Emits a weight-axis (`metricLabel: 'e1RM'`) PR for loaded exercises and a reps-axis (`metricLabel: 'reps'`) PR for bodyweight exercises — never both for the same exercise (`docs/plans/stats-summary-fix-pack-plan.md` PR 1 + Item 2). |
 | `saveRoutineFromDraft(draft, {focusModality})` | `String` (template ID) | Persists a session-to-routine template |
+| `getSessionEnergy(sessionId)` | `({int kcal, bool measured})?` | Reads the session's stored active energy: `kcal` is the active kilocalories rounded to whole numbers — the one rounding on the figure — and `measured` is true only for a row the watch measured (`estimated` rows answer `false`). Null when nothing is stored. Verified by `test/active_energy_service_test.dart` (groups `Mock — ActiveEnergyService.settle` and `Hive — ActiveEnergyService.settle`: `read-out: estimated 31.8355 reads (32, not measured)`, `read-out: a measured 250.4 row reads (250, measured)`, `read-out: no row reads null`). |
+
+---
+
+---
+
+### `ActiveEnergyService`
+
+**File**: `lib/core/services/active_energy_service.dart`
+**Depends on**: `WorkoutRepository` and a `StatsProgressService` factory (the factory, not an instance, so a settle after a write sees fresh history).
+
+Stores the active-energy estimate of a finished session (D-13407) and computes the running estimate the open session screen shows (D-13440). Constructed in `main.dart` and injected into `WorkoutState`/`SessionCore` through the optional `activeEnergy` constructor argument of `WorkoutState`; without it the state works exactly as before, only no energy is stored. `SessionCore` calls the service — awaited inside its own try/catch (bounded by one repository read and at most one history index), so the session end never flips into an error — when a session ends (`endSession`) and again when its duration is edited (`updateSessionEndTime`). It is also called after an inbox pass that changed a session's history (`WatchSessionInbox`'s optional `onSessionHistoryChanged`, given `ActiveEnergyService.settle` by `main.dart` through `watch_sync_wiring.dart`), so a session the watch created is priced when it is imported and a Free Training session whose wrist-timed entries land after the end is priced again from them. Verified by `test/active_energy_import_test.dart` (groups `active energy through the watch inbox (Mock)` and `(Hive)`: `S-13418 a session the phone does not hold: the wrist end prices it through the settle callback`, `S-13419 a Free Training session the wrist ran: the timed entry and the remainder are priced separately`, `S-13420 a pass that changes nothing does not call the callback`, `S-13421 a throwing callback never fails the pass`) and `test/active_energy_lifecycle_test.dart` (`D-13420 the watch graph gives its inbox the settle callback`).
+
+| Member | Purpose |
+|--------|---------|
+| `settle(sessionId)` | Writes at most one `estimated` `SessionEnergy` row for the session. Nothing usable writes nothing: no usable body weight, an unfinished session, or a session with nothing measured produces no row and the read-out answers null. A `measured` row already on file is returned to untouched — an estimate never overwrites one. Every failure is caught, so ending a session never fails on energy. |
+| `latestWeightKg()` | The latest `bodyweight` measurement on file in the canonical `unit-kg` above zero — the same guarded read `settle` uses for a first estimate. Null with no entry on file, a non-kg newest entry, or a non-finite / non-positive value. |
+| `liveKcal({modality, elapsedSecs, weightKg})` | The running estimate the open session screen shows: the same one formula as the stored estimate (`_kcal`, the shared static, so the two cannot drift), over the elapsed seconds so far at the modality section's MET — the resistance MET for Free Training, an unknown id or a null modality. Null without a usable weight or at a negative elapsed; an elapsed of 0 answers 0.0, never null. |
+
+`WorkoutState.latestBodyWeightKg()` is the screen's passthrough to `latestWeightKg()`: it answers the injected service's read and null without the service, so the open session screen never builds a service or reads the repository itself.
+
+The live side is verified by `test/active_energy_live_test.dart` (groups `S-13440 — liveKcal figures`, `S-13441 — liveKcal guards`, `Mock — S-13442 final equals live` and its Hive twin — the stored estimate equals `liveKcal`, `Mock — S-13443 latestWeightKg` and its Hive twin, `S-13444 — WorkoutState passthrough`) and by `test/session_live_calories_test.dart` (the chip on the screen: `S-13445: resistance session, 80 kg, 1800 s reads ~100 kcal` and its 60th-tick re-read twin, `S-13446: no body weight on file reads —`, group `S-13447: geometry at 390x844`, `S-13448: Free Training session (null modality) reads ~100 kcal`, group `S-13449: no exercise yet and the edit-mode screen`).
+
+The estimate is active energy = (MET − 1) × body weight in kg × hours, with the MET per section in `kActiveEnergyMets` (`lib/core/constants/active_energy.dart`): resistance 3.5, cardio 6.0, isometric 3.0, sports 6.0. A session with one of the four modality ids uses its whole duration at that section's MET; Free Training, an unknown modality id or a rolling session takes the per-section time split of measured seconds the Mix view already computes (`StatsProgressService.sessionTimeBySectionFor`), so a rolling session with no measured section time writes no row whatever its modality value.
+
+An estimate stores the weight it used, and a later settle reuses that stored weight rather than reading a newer one, so logging a new bodyweight never rewrites an old session; a duration edit recomputes, still at the stored weight. The weight is the latest `bodyweight` measurement on file in the canonical `unit-kg` above zero; a measurement in any other unit, or of zero or less, writes no row.
+
+Verified by `test/active_energy_service_test.dart` (group `Mock — ActiveEnergyService.settle` and its `Hive — ActiveEnergyService.settle` twin) and by `test/active_energy_lifecycle_test.dart`: the end stores the estimate (`S-13401: endSession on a resistance session stores the estimated row`), a duration edit recomputes it (`S-13406: a duration edit recomputes an estimated row at its stored weight`), a measured row survives both and a discard (`S-13407: a measured row survives an end and a duration edit`, `S-13408: discardCurrentSession takes the session energy row with it`), a throwing store never fails the end (`S-13417: a throwing putSessionEnergy never fails the end`), the wiring is optional (`S-13401 without activeEnergy: the end writes no row and works as before`) and `main.dart` provides it (`D-13408 lib/main.dart gives WorkoutState the ActiveEnergyService`).
 
 ---
 
@@ -78,7 +108,13 @@ Post-workout analytics.
 Owns the two opt-in platform-health pipelines (Apple Health / Health Connect):
 writing a completed session out, and reading body weight back in. Constructed
 in `main.dart` and injected into `WorkoutState` (via `SessionCore`, which calls
-`onSessionCompleted` after a successful session save) and into the app-lifetime
+`onSessionCompleted` after a successful session save — except for a session the
+watch runs, whose workout the watch saves (plan 89c1) — and `rewriteWorkout`
+after a `catchUpEndedSession` moved the held session's end (plan 146c), and `onSessionDeleted`,
+un-awaited, after a successful discard, and `onSessionRated`, un-awaited, after
+a saved rating of a finished session; `WatchSessionInbox` also calls it for an
+import that applied a rating, plan 90, and for an import that moved a finished
+session's end out, plan 146c) and into the app-lifetime
 `AppLifecycleListener` (which calls `syncOnForeground`).
 
 Layering rationale — the plugin boundary is deliberately narrow:
@@ -86,6 +122,18 @@ Layering rationale — the plugin boundary is deliberately narrow:
 - `health_platform_service.dart` declares the plugin-free `HealthPlatformService`
   contract, the `HealthWorkoutDraft` / `HealthWeightSample` value types, and an
   `UnavailableHealthPlatformService` no-op.
+- `health_platform_gateway_io.dart` also implements the plugin-free
+  `HealthActiveEnergySource` — `requestActiveEnergyReadPermission()` and
+  `readDailyActiveEnergy(List<DateTime>) -> Map<int, double>` keyed by day-start
+  epoch ms — used by the Fuel burned-per-day line, not part of
+  `HealthPlatformService`. It issues one query per local day behind a `dayQuery`
+  seam (iOS HealthKit statistics sum, Android Health Connect aggregate), with
+  the pure helpers `activeEnergyDayBounds` / `activeEnergyTotalsByDay`;
+  `UnavailableHealthPlatformService` returns `{}` and `false`. Verified by
+  `test/health_active_energy_read_test.dart` (`S-20827 the per-day read calls
+  the day query once per local day, on iOS and Android, and never throws`,
+  `S-20828 web and desktop are inert: the unavailable gateway reads nothing and
+  asks nothing`).
 - `health_platform_gateway.dart` conditionally exports the io gateway
   (`health_platform_gateway_io.dart`, backed by the `health` package) or a stub,
   mirroring `image_storage_service.dart`. The `health` package imports `dart:io`,
@@ -94,6 +142,8 @@ Layering rationale — the plugin boundary is deliberately narrow:
   `HealthActivityKind`; the io gateway translates a kind to a platform activity
   type **per platform**, because several types (e.g. strength, flexibility)
   exist on exactly one platform and crossing them throws.
+- `health_effort_mapper.dart` maps the 1 to 5 session rating to Apple's 1 to 10
+  Workout Effort (doubled; null off the scale).
 
 Invariants:
 
@@ -105,10 +155,72 @@ Invariants:
 - The write pipeline touches the platform at most once per session id, across
   restarts, via a JSON ledger preference key (`HealthPrefs.writtenSessionIdsKey`).
   Enforced in `onSessionCompleted`; verified by `test/health_platform_test.dart`.
+- Discarding a finished session (same Write workouts gate) drops its ledger
+  entry and asks the store to delete this app's workouts that *start* inside the
+  session's own `[startedAtMs, endedAtMs)` window — the `health` plugin's iOS
+  rule (`.strictStartDate`, own source only), so a back-to-back neighbour is
+  never hit. The discard never waits on it. Verified by the `S-89-4` / `S-89-5`
+  tests in `test/health_platform_test.dart` (plan 89).
+- A finished session's rating goes to its workout as Workout Effort through
+  `setWorkoutEffort` over the same span (same gate). Only a `noWorkout` answer is
+  retried, 20 s, 90 s and 5 min after the first try, in process only; a newer
+  rating or the delete drops pending retries, and the delete clears the effort
+  before the workout. On iOS the io gateway calls the native channel
+  `omnitrain/health_effort` (`ios/Runner/HealthEffortChannel.swift`, iOS 18+); every other platform answers `unavailable`. Verified by `test/health_effort_test.dart` (`S-90-2` to `S-90-6`).
 - Imported body-weight rows use deterministic ids derived from the platform
   sample, so a repeated foreground read upserts instead of duplicating.
+- A finished session whose end moved later — a catch-up (D-14604) or an import
+  carrying a wrist set past the end — has its workout rewritten to the new span:
+  one delete and one effort clear over `[startedAtMs, startedAtMs + 1 s)` — the
+  session's own start and nothing that starts later (plan 155 D-15501; the
+  platform contract exposes no workout id, so the delete stays a window), the
+  draft written again, then the rating re-applied over the new span. The
+  activity kind is read before the delete, and a new write that returns false
+  or throws writes the previous span back (`startedAtMs` to
+  `previousEndedAtMs`, same draft, rating re-applied), so a failed move never
+  leaves the session with no workout. The ledger is never touched, so the
+  session stays written and a repeated catch-up with the
+  same end sends nothing. Only a session the ledger names is rewritten: a
+  workout the wrist saved carries heart rate, energy and a route a bare phone
+  draft would lose, so it is left entirely alone — no delete, no write (plan
+  146c D-14634, D-14636). Known limit, unchanged: a session whose start was
+  edited after the write is not found by this narrow window, so its re-write
+  adds a second workout (plan 155 D-15504). Verified by
+  `test/health_platform_test.dart` (group
+  `plan 146c: a moved end rewrites the Health workout` › `S-14670 a moved end
+  rewrites the one workout, and a second move again`, `S-14671 a session the
+  phone never wrote is left alone, whatever its end does`, `S-15409 a rewrite
+  whose new write fails puts the previous span back`, `S-15410 a refused delete
+  writes nothing back either`, `S-15501 a late end deletes only the moved
+  session's own workout, never the next session's`, `S-15502 the delete and the
+  effort clear ask for exactly [start, start + 1 s)`) and by
+  `test/watch_session_import_test.dart` (group `plan 146c: a moved end reaches
+  the Health rewrite` › `S-14670 the inbox asks for a rewrite only when the end
+  moved, and names the end it moved from`).
 - Toggle state lives in the normal preference store (`HealthPrefs` keys), so a
   reinstall resets both toggles to off.
+
+### `ScreenAwakePort`
+
+**Files**: `lib/core/services/screen_awake_port.dart`,
+`lib/core/platform/screen_awake_channel.dart`
+
+The narrow port that keeps the phone screen from auto-locking (plan 120):
+`setKeepAwake(bool)` turns the hold on or off, and `ScreenAwakePort.noop()` is
+the do-nothing implementation. `createScreenAwakePort()` returns the
+`MethodChannelScreenAwakePort` on iOS and Android — method channel
+`omnitrain/screen_awake`, native side inline in `ios/Runner/AppDelegate.swift`
+(`isIdleTimerDisabled`) and in `android/.../MainActivity.kt`
+(`FLAG_KEEP_SCREEN_ON`) — and the no-op everywhere else, including web. Only
+`lib/main.dart` imports the channel file. Channel failures are logged and
+swallowed, never thrown to callers.
+
+Verified by `test/screen_awake_channel_test.dart` (group
+`MethodChannelScreenAwakePort (Mock)`: `S-19515a no handler:
+MissingPluginException is swallowed`; group `source scans`: `S-19518 the channel
+file is imported by lib/main.dart alone`, `S-19519 the iOS piece is inline in
+AppDelegate after the registrant`, `S-19519 the Android piece is in
+MainActivity.kt`).
 
 ---
 
@@ -130,9 +242,10 @@ Groups flat observation lists by effort kind into structured per-set maps. Used 
 - `_inProgressKeys` (`Set<String>`) — tracks `effortId-entryIndex` keys whose timer has been started at least once and not yet finished. Enforces the global in-progress lock: only one timer can be active at a time.
 
 **Key behaviors**:
-- `_restoreTimerStateFromPersisted`: populates `_inProgressKeys` for any persisted `active`/`paused` state on session restore.
-- `_toggleEffortTimer` (for `notStarted → active` transition): checks `_getAnotherInProgressKey`; if blocked, shows SnackBar `"Another set is still in progress. Pause or finish it before starting a new timer."` and returns early.
+- `_restoreTimerStateFromPersisted`: populates `_inProgressKeys` for any persisted `active`/`paused` state on session restore. On a freshly opened screen `_adoptRunningTimerState` then starts the ticker of every interval stored as running, so a reopened workout keeps counting instead of standing still (plan 233, `test/open_screen_mid_run_keeps_timer_test.dart`).
+- `_toggleEffortTimer` (for `notStarted → active` transition): checks `_getAnotherInProgressKey`; if blocked, shows a message through the shared `OmniMessage` (info look, no error icon), copy verbatim: `"Another set is still in progress. Pause or finish it before starting a new timer."` — and returns early. Verified by `test/session_message_test.dart` ("S-2702: the in-progress lock message keeps its copy on the shared look"); the same copy is asserted on the lock-clearing paths in `test/round_auto_expiry_test.dart`, group `Round Auto-Expiry Active-Round Lock Fix` · "S-BUG-001: auto-expired round clears active-round lock so next round can start" and "S-BUG-001b: round lock cleared by drain when user navigates before tick fires".
 - `_resetTimerState`: removes key from `_inProgressKeys` (called after manual set log/finish flows).
+- `_rekeyTimerStateAfterDelete`: after an entry delete, drops the deleted entry's timer UI state (and its ticker, and the effort-expiry notification if it was running) and moves every later entry's state and live ticker down one place, matching the re-indexing the state layer already applied to the persisted timed/round instances and rests. Verified by `test/delete_focused_timer_test.dart` (group `Delete the focused set — timers (plan 41)` · `S-4904: deleting a running interval asks first; cancel keeps it running; delete drops it and its timer; the next set is idle`; the stale started-marker guard is the end of S-4904; `S-4905: a running later interval keeps running and keeps its own time after a middle delete` checks the moved interval's own time only).
 - `_handleEffortTimerExpired` (round flow): removes the current round key from `_inProgressKeys` before calling `completeRound`, so the next round is immediately startable after auto-expiry.
 
 **Navigation and running timers** (in `workout_session_screen.dart`):
@@ -190,7 +303,11 @@ data backing a catalog refresh can be swapped (e.g. for a server-provided
 catalog) without touching the version-check logic. `BundledCatalogSource` is
 the default implementation: pure reads of the compile-time `SeedData` /
 `FoodCatalogSeed` constants plus the seeded demo routines. Its getters have
-no side effects and are safe to call repeatedly.
+no side effects and are safe to call repeatedly. The reference getters
+`sportCategories`, `disciplines`, `tags`, `units`, `metricDefinitions` and
+`metricEffortKinds` back the version-16 reference delivery;
+`test/catalog_delivery_contract_test.dart` pins every public `SeedData`
+member as delivered or excluded with a written reason.
 
 See [DB Integration](../db_integration.md) for the refresh/version flow.
 
@@ -250,20 +367,39 @@ time, and the streak is deliberately not computed here because
 `test/screen_widget_test.dart`.
 
 `computeExerciseMetrics({fromMs, toMs})` returns one summary per exercise
-trained inside the range, carrying the section it sits in and the value that
+trained inside the range that holds a readable value on at least one day (an exercise added and never done has none and is left out, plan 221), carrying the section it sits in and the value that
 section is read by; null bounds mean all history. Two of its rules are the ones
 `computeProgressData` and `SessionSummaryBuilder` already own, and it exists so
 they cannot drift:
 
 - **The axis is a property of the exercise, not of the range or the day.** An
-  exercise is on the reps axis when any bodyweight set appears anywhere in its
+  exercise is on the reps axis when its bodyweight sets outnumber its loaded sets across its
   history, so a range holding only loaded sets does not move it onto the weight
-  axis and one series never mixes metrics.
+  axis and one series never mixes metrics. A tie reads Est. 1RM and a single
+  stray weightless set never moves a lift off it. Verified by
+  `test/est_1rm_cap_and_axis_test.dart` (`S-15805 a tie of zero-weight and
+  loaded sets reads Est. 1RM`, `S-15803 one stray zero-weight set leaves Squat
+  on Est. 1RM`).
 - **The round predicate is `SessionSummaryBuilder`'s** — finished, started, and
   with an end stamp — rather than the stored `completed` flag, because a round
   stopped early still happened.
 
 Verified by `test/exercise_metric_service_test.dart` (S-904 … S-911).
+
+`getAllTimeBestE1RM(exerciseId)` and `getAllTimeBestReps(exerciseId)` are the
+standing-best reads the PR surfaces compare a set against — the Epley estimate
+in kilograms for a loaded exercise, the rep count for a bodyweight one — and
+`getAllTimeBests()` is the same pair for every exercise in one pass over the
+cached history, which is what the wrist's `bests_down` frame is built from; a
+caller needing all of them would otherwise re-walk the whole history once per
+exercise. Epley counts at most 12 reps of a set, so a 30-rep set reads like a 12-rep set at the same weight (plan 157b); the wrist's copy of the formula caps the same way. The cap is verified by
+`test/est_1rm_cap_and_axis_test.dart` (`S-15801 epley1RM counts at most 12 reps
+of a set`, `S-15802 a 100 kg x 30 set reads 140.0 on both best reads`).
+An exercise appears in the bulk map only when one of its axes is
+above zero, and an in-progress session contributes nothing, exactly as in the
+two per-exercise walks. Verified by `test/stats_bests_builder_test.dart`, group
+`StatsProgressService.getAllTimeBests`, the parity test `S-87a-5 parity: every
+exercise equals getAllTimeBestE1RM and getAllTimeBestReps`.
 
 `progressionSamples()` returns one sample per completed session and exercise that
 logged a `set` effort in it — whatever the session's modality, so a set logged in
@@ -276,11 +412,27 @@ rate is the pure math's rule, not the walk's.
 
 Verified by `test/progression_samples_service_test.dart`.
 
+`completedSessionStarts({required DateTime now})` returns the start of every
+completed session at or before `now`, oldest first, served from the service's
+cached history snapshot, so it makes no repository read of its own. The
+Consistency and Training Gap adapters reach it through
+`completedSessionStarts(SignalContext)` in
+`lib/core/services/signals/session_history.dart`. Verified by
+`test/stats_load_single_read_test.dart` (groups `S-18103
+completedSessionStarts — Mock` and `S-18103 completedSessionStarts — Hive` ›
+`oldest first, no open session, no future one, the one at now in`).
+
 `computeInstrumentSections({required StatsWindow window})` returns the window's
 sections and rows, built from two `computeExerciseMetrics` calls — the window
 itself, and the immediately preceding range of the same calendar length, so a
 row's change compares like with like. It is the window's sections-and-rows read,
-and nothing it produces is persisted.
+and nothing it produces is persisted. One service instance builds a window's
+sections once:
+a second call for the same window returns the first call's sections
+and a caller needing fresh data constructs a new service. Verified by
+`test/stats_load_single_read_test.dart` (group `S-18104 the Instruments
+sections are built once per window` › `a second ask for the same window is the
+first list; a new window rebuilds`).
 
 - **Section order is by work done, not by declaration.** A section's rank is the
   number of distinct days in the window on which an effort of that kind was
@@ -307,9 +459,11 @@ The change a row shows is rendered by
 `formatNativeChange(metric, delta, settings)` in
 `lib/features/stats/widgets/native_value_format.dart`: an arrow and the signed
 magnitude, or `'—'` when the delta is zero. The sign is the raw numeric sign of
-the delta, with no per-metric inversion, and the magnitude is formatted by the
-same per-metric rule as `formatNativeMetric`, so a change and the figure above it
-read in one unit. `nativeSecondaryLabel` in the same file is the single source of
+the delta for every metric but pace; for pace the arrow says better (`↑`, a
+smaller seconds-per-kilometre) or worse (`↓`) and the magnitude carries no sign,
+through `nativeChangeGain(metric, delta)` in the same file, which the chip also
+reads for its colour. The magnitude is formatted by the same per-metric rule as
+`formatNativeMetric`, so a change and the figure above it read in one unit. `nativeSecondaryLabel` in the same file is the single source of
 a secondary figure's name, so it cannot read two ways.
 
 Verified by `test/instrument_list_service_test.dart` (S-1005, S-1007, S-1008,
@@ -317,14 +471,19 @@ S-1009, S-1010) and `test/instrument_change_format_test.dart`.
 
 `computeMixLayer({required StatsWindow window, required DateTime now, required
 String startOfWeek})` returns the Mix layer's whole payload — the measure, the
-window's bar, the baseline's segments, the two counts and the weekly strip — or
-`null` when the window holds no time at all. It is the only history walk behind
+window's bar, the baseline's segments, the two counts, the weekly strip and the
+last completed session's day (`lastSessionDay`, the day the empty-strip line
+names) — or `null` when the window holds no time at all. It is the only history walk behind
 those figures: the window, the baseline and the strip are all served from the
 one cached snapshot, so the surface pays for no extra repository read.
 
-- **The measure is load only when the baseline is rated enough and the window is
-  rated enough**; otherwise it is time. The baseline's segments are built in the
-  load measure only, and only when the baseline's total load is above zero.
+- **The measure is load only when the window has at least
+  `kTrainingLoadMinRatedWeeks` rated weeks and its unrated share of time is at
+  most `kTrainingLoadMaxUnratedShare`**; otherwise it is time. `ratedWeeks`
+  counts the 12 seven-day weeks ending at the payload's end day, current ones
+  included, that hold a rated completed session; the baseline's ratedness gates
+  nothing. The baseline's segments are built in the load measure only, and only
+  when the baseline's total load is above zero.
 - **The baseline is the 12 calendar blocks before the window's start day** and
   never uses the start-of-week setting; that setting moves the strip's weeks and
   nothing else. The blocks are calendar arithmetic, so a DST transition cannot
@@ -344,7 +503,8 @@ documented in [Training Load & Mix Definitions](../training_load.md).
 Verified by `test/mix_layer_service_test.dart` (S-1501, S-1502, S-1503, S-1505,
 S-1509, S-1510 A–E, S-1511 and its start-of-week twin, S-1513 and its
 Sunday-start twin, S-1514, S-1515, S-1516, S-1517, and the Mock/Hive
-value-for-value parity group).
+value-for-value parity group) and by `test/stats_rated_weeks_service_test.dart`
+(`S-17101 rated sessions in four different current weeks count 4`).
 
 `computeMixPeriod({required DateTime fromMs, required DateTime toMs})` returns
 the same payload shape for an arbitrary period rather than a `StatsWindow`, and
@@ -357,11 +517,16 @@ period is not anchored to a week.
   the `kTrainingLoadBaselineWeeks` calendar blocks before the period's start
   day, exactly as the window's is. The two reads therefore agree about the
   measure, the bar and the baseline for the same range.
-- **The measure gate is the same one** — load only when the baseline is rated
-  enough and the period is rated enough, otherwise time.
+- **The measure gate is the same one** — load only when the period has at least
+  `kTrainingLoadMinRatedWeeks` rated weeks and its unrated share of time is at
+  most `kTrainingLoadMaxUnratedShare`, otherwise time. The rated weeks are the
+  12 seven-day weeks ending at the period's end day, current ones included, that
+  hold a rated completed session; the baseline's ratedness gates nothing.
 
 Verified by `test/modality_mix_period_service_test.dart` (S-1904a, S-1907,
-S-1913, over both repository implementations).
+S-1913, over both repository implementations) and by
+`test/stats_rated_weeks_service_test.dart` (`S-17105 the period counts weeks
+anchored at its own end day`).
 
 `startOfWeekSetting()` is the saved start-of-week preference, normalized the way
 `SettingsState` normalizes it when it writes, so the weeks the service returns
@@ -380,6 +545,7 @@ it costs no extra repository read.
   before `now`'s, with empty weeks present** as zero load and no rated session.
   The week containing `now` is never returned, whatever it holds, and an empty
   history yields an empty list.
+- **Each entry also says whether the week held any session** (`hasSessions`); a week with sessions but no rated one is unrated, its zero load is unknown, and the Sustained High Load baseline leaves it out (plan 157c).
 - **The boundaries follow the saved start-of-week setting**, so a week here is
   the user's own week rather than an always-Monday one.
 
@@ -389,7 +555,10 @@ list`, `S-2401 the service returns the seventeen completed weeks`, `S-2411 the
 incomplete current week is never counted`, `S-2411 the current week holding
 nothing changes nothing`, `S-2413 the saved start-of-week moves the boundaries`,
 `S-2413 SettingsState writes the value the service reads`, `S-2414 Hive and Mock
-return identical week lists`, over both repository implementations).
+return identical week lists`, over both repository implementations), and by
+`test/sustained_high_load_unrated_weeks_test.dart` (`S-15906 …: weeklyLoads
+marks which weeks held sessions` — as `S-15906 ${harness.name}` over both
+harnesses — and `S-15901 unrated weeks are left out of the baseline divisor`).
 
 `interferenceSessions()` returns one `InterferenceSession` per completed session
 in the cached history, ordered by start and then by id — the signal layer's only
@@ -495,8 +664,10 @@ Verified by `test/signals_service_test.dart`.
 ## The Watch Surface
 
 The watch↔phone live mirroring surface, the platform transport it rides on and
-the watch's own runtime and sensor layer are documented in
-[The Watch Surface](watch_surface.md).
+the watch's own runtime layer are documented in
+[The Watch Surface](watch_surface.md); the watch's sensor layer and platform
+workout are documented in
+[The Watch Sensors and the Platform Workout](watch_sensors.md).
 
 ---
 

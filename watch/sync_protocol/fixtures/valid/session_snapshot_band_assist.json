@@ -1,0 +1,45 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-band-assist",
+  "sessionId": "sess-1",
+  "type": "session_snapshot",
+  "origin": "phone",
+  "sentAt": "2026-10-06T10:12:00Z",
+  "payload": {
+    "sessionId": "sess-1",
+    "revision": 12,
+    "status": "active",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "slot-bench",
+        "exerciseId": "ex-bench",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "entry-slot-bench-0",
+        "eventId": "entry-slot-bench-0",
+        "kind": "set",
+        "loggedAt": "2026-10-06T10:05:00Z",
+        "sessionExerciseId": "slot-bench",
+        "exerciseId": "ex-bench",
+        "reps": 8,
+        "loadKg": -20
+      },
+      {
+        "entryId": "entry-slot-bench-1",
+        "eventId": "entry-slot-bench-1",
+        "kind": "set",
+        "loggedAt": "2026-10-06T10:10:00Z",
+        "sessionExerciseId": "slot-bench",
+        "exerciseId": "ex-bench",
+        "reps": 5,
+        "loadKg": -200
+      }
+    ],
+    "timers": {}
+  }
+}

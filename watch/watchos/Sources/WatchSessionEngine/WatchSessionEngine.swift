@@ -15,9 +15,11 @@
 //     memory, so a suspension, an OS kill, or a reboot costs the user nothing.
 //  2. The watch never edits or deletes. The engine appends new rows; it cannot
 //     rewrite one. Position and timer state advance by appending, and data is
-//     dropped only through `pruneConfirmed()`, gated on the phone's receipt.
+//     dropped only through the store's prunes, each gated on a rule the store
+//     states (`WatchSessionStore.swift`'s header lists them all).
 //
 
+import Combine
 import Foundation
 
 /// Where the engine hands the messages the watch owes the phone.
@@ -32,44 +34,83 @@ public struct WatchEmissionRejected: Error, CustomStringConvertible {
     public var description: String { message }
 }
 
-public final class WatchSessionEngine {
+public final class WatchSessionEngine: ObservableObject {
     private let store: WatchSessionStore
+
+    /// Serialises the five session-row writers (D-2). Each runs its whole body —
+    /// the read of the session the watch is on, the awaited append, the write of
+    /// it — inside this gate, so a phone message and a wrist change cannot both
+    /// build a row from the same out-of-date copy.
+    private let mutex = WatchAsyncMutex()
+
     private let onEmit: WatchMessageSink?
     private let validator: SyncProtocolValidator?
     private let clock: () -> Date
     private let newId: () -> String
     private let newSessionId: () -> String
+    private let diagnostics: WatchDiagnosticsLog?
+
+    /// Countdowns whose end has already been announced to the wrist, by
+    /// `WatchTimerHaptics.countdownKey`. Kept here, not in a screen's model: the
+    /// logging screen is rebuilt whenever the rest screen comes and goes, and a
+    /// rebuilt model forgot what it had announced, so an expired period tapped
+    /// again at Log and again at Next.
+    var announcedCountdownKeys: Set<String> = []
 
     /// Record-id prefixes for the rows a message from the phone writes. The id
     /// is derived from the `changeId` (or `messageId`) that caused the row,
     /// which is what makes re-delivery a store no-op *and* what lets `restore`
     /// rebuild "already applied" from storage instead of from memory.
     private static let changePrefix = "chg-"
+    /// D-15403: how far apart two end instants may be and still be the same
+    /// instant. The phone and the wrist each stamp the end of one workout from
+    /// their own clock, so a second or two between the stamps is skew, not a
+    /// decision: only an end earlier by more than this replaces the held ending
+    /// on its own. Mirrors `kEndSkewToleranceMs` in `lib/core/sync_protocol/end_skew.dart`.
+    static let endSkewTolerance: TimeInterval = 2
+
     private static let snapshotPrefix = "snap-"
-    private static let timerPrefix = "tms-"
-    private static let lifecyclePrefix = "life-"
+    static let timerPrefix = "tms-"
+    static let lifecyclePrefix = "life-"
 
-    private var sessionRows: [WatchSessionRecord] = []
-    private var storedObservations: [WatchObservationRecord] = []
-    private var storedTimers: [WatchTimerRecord] = []
-    private var storedSensorSamples: [WatchSensorSampleRecord] = []
+    /// The session the watch is on and the rows it holds, behind one lock
+    /// (`WatchEngineSessionState`): the gated writers and `restore` write them
+    /// while every screen and prompt reads them on whatever thread the caller
+    /// runs on (plan 162 D-16202). The same lock holds the structure changes
+    /// already applied, by `changeId` — rebuilt from storage by `restore`, so a
+    /// relaunch cannot apply one twice (PROTOCOL.md, authority rule 6) — and the
+    /// `sentAt` of the newest snapshot applied (plan 63 D-6), which is what
+    /// refuses an older one whole.
+    private let state = WatchEngineSessionState()
 
-    /// The structure changes this watch has already applied, by `changeId`.
-    /// Rebuilt from storage by `restore`, so a relaunch cannot apply one twice
-    /// (PROTOCOL.md, authority rule 6).
-    private var appliedChangeIds: Set<String> = []
+    /// The stored observations and timer rows, behind a lock each: a phone
+    /// frame's delivery task, a sensor stream and a logging tap write them while
+    /// the screens read them on the main thread (`WatchEngineRowLogs`).
+    private let observationLog = WatchObservationLog()
+    private let timerLog = WatchTimerLog()
+
+    /// The raw readings, behind one lock: the platform writes them on its own
+    /// threads while the logging screen reads them on the main thread
+    /// (`WatchSensorSampleLog`).
+    private let storedSensorSamples = WatchSensorSampleLog()
 
     /// The phone's corrections to entries the watch holds, keyed by `entryId`,
-    /// and the ones it deleted. The stored row is never rewritten — these are
-    /// what `entries` folds in.
-    private var entryCorrections: [String: [String: Any]] = [:]
-    private var deletedEntryIds: Set<String> = []
+    /// the ids it deleted, and the ones it **replaced** rather than corrected: a
+    /// snapshot re-stated the id with a different `loggedAt`, which is a
+    /// different entry reusing a minted number (D-113.3). A correction merges
+    /// into the held payload; a replacement is the whole payload. The stored row
+    /// is never rewritten — these are what `entries` folds in, behind one lock,
+    /// because the delivery task writes them while the screens read them
+    /// (`WatchEntryLensLog`).
+    private let lensLog = WatchEntryLensLog()
 
     /// Every observation the phone has acknowledged, by record id — including
     /// the ones pruned since. A confirmation row outlives the observation it
     /// names, which is what lets "this session's end was acknowledged" and "this
-    /// session already has one" be answered after a prune.
-    private var acknowledgedObservationIds: Set<String> = []
+    /// session already has one" be answered after a prune. Behind a lock, because
+    /// a receipt writes it on the delivery task while the effort-rating prompt
+    /// reads it on the main thread (`WatchAcknowledgementLog`).
+    private let acknowledgementLog = WatchAcknowledgementLog()
 
     /// The two statuses a session ends in, and the source a session the wrist
     /// itself created carries.
@@ -79,7 +120,23 @@ public final class WatchSessionEngine {
     ]
     private static let wristSource = "watch"
 
-    private var current: WatchSessionRecord?
+    /// The slot a frame's running work timer says the wrist should be on (D-2).
+    private struct JumpCandidate {
+        let slotId: String
+        let startedAt: Date
+    }
+
+    /// What adopting one frame's timers did: whether the store changed, and the
+    /// slot the wrist should move to, nil when nothing names one (D-8).
+    ///
+    /// The jump is carried out, never performed here: the adopt pass runs inside
+    /// the snapshot's mutex, and the select path takes that mutex again. Keeping
+    /// the target in this value rather than in a field is what stops two
+    /// overlapping frames from clobbering each other's jump (D-7).
+    private struct TimerAdoption {
+        var changed = false
+        var jump: JumpCandidate?
+    }
 
     public init(
         store: WatchSessionStore,
@@ -87,7 +144,8 @@ public final class WatchSessionEngine {
         validator: SyncProtocolValidator? = nil,
         clock: @escaping () -> Date = { Date() },
         idFactory: @escaping () -> String = { UUID().uuidString },
-        sessionIdFactory: @escaping () -> String = { UUID().uuidString }
+        sessionIdFactory: @escaping () -> String = { UUID().uuidString },
+        diagnostics: WatchDiagnosticsLog? = nil
     ) {
         self.store = store
         self.onEmit = onEmit
@@ -95,6 +153,7 @@ public final class WatchSessionEngine {
         self.clock = clock
         self.newId = idFactory
         self.newSessionId = sessionIdFactory
+        self.diagnostics = diagnostics
     }
 
     // MARK: - Restore
@@ -103,31 +162,60 @@ public final class WatchSessionEngine {
     /// any suspension: what comes back is what the watch knew at kill time,
     /// because nothing else was ever authoritative.
     public func restore() async {
-        let contents = await store.readAll()
-
-        sessionRows = contents.sessions
-        storedObservations = contents.observations
-        storedTimers = contents.timers
-        storedSensorSamples = contents.sensorSamples
-        acknowledgedObservationIds = Set(contents.confirmations.flatMap(\.observationIds))
-
-        current = contents.sessions.max { $0.sequence < $1.sequence }
-        appliedChangeIds = Set(
+        let contents = await store.readLaunch()
+        let restored = contents.sessions.max { $0.sequence < $1.sequence }
+        let appliedChangeIds = Set(
             contents.sessions
                 .filter { $0.recordId.hasPrefix(Self.changePrefix) }
                 .map { String($0.recordId.dropFirst(Self.changePrefix.count)) }
         )
+        let newestSnapshotAt = contents.sessions
+            .filter { $0.recordId.hasPrefix(Self.snapshotPrefix) }
+            .map(\.recordedAt)
+            .max()
+
+        // One acquisition for all four: a reader can never see the restored
+        // session without the list, the applied changes or the watermark that
+        // belong to it. No mutex is taken here (D-16203), so a writer's row
+        // appended after `readAll` is clobbered exactly as before.
+        state.fill(
+            rows: contents.sessions,
+            current: restored,
+            appliedChangeIds: appliedChangeIds,
+            newestSnapshotAt: newestSnapshotAt
+        )
+        observationLog.fill(with: contents.observations)
+        timerLog.fill(with: contents.timers)
+        storedSensorSamples.fill(with: contents.sensorSamples)
+        acknowledgementLog.fill(with: Set(contents.confirmations.flatMap(\.observationIds)))
+
+        // D-113.1: the deletion lens is read back from the newest row, so a
+        // relaunch hides the same entries the killed process hid.
+        lensLog.fill(hidden: Set(restored?.deletedEntryIds ?? []))
+    }
+
+    /// The newest session the store holds, read without restoring anything
+    /// (plan 89 D-3): the launch's workout recovery asks it before `restore()`
+    /// runs, so a stranded workout is ended before a restored session can open
+    /// another. The same row `restore()` makes current.
+    public func storedSession() async -> WatchSessionRecord? {
+        await store.readLaunch().sessions.max { $0.sequence < $1.sequence }
     }
 
     // MARK: - Session state
 
-    public var session: WatchSessionRecord? { current }
+    public var session: WatchSessionRecord? { state.record() }
 
-    public var currentExercise: [String: Any]? { current?.currentExercise }
+    public var currentExercise: [String: Any]? { state.record()?.currentExercise }
 
     /// The current session's observations, in the order they were logged.
+    ///
+    /// The session id is read once per call, so a writer moving the engine to
+    /// another session cannot make this filter answer the previous session's
+    /// rows while the log has moved on (D-16205).
     public var observations: [WatchObservationRecord] {
-        storedObservations.filter { $0.sessionId == current?.sessionId }
+        guard let sessionId = state.record()?.sessionId else { return [] }
+        return observationLog.snapshot().filter { $0.sessionId == sessionId }
     }
 
     /// The readings the platform sensors produced for the current session, in
@@ -137,8 +225,25 @@ public final class WatchSessionEngine {
     /// rate on the wrist is the newest row that reached the store, so a relaunch
     /// shows what the watch measured instead of starting from nothing.
     public var sensorSamples: [WatchSensorSampleRecord] {
-        storedSensorSamples.filter { $0.sessionId == current?.sessionId }
+        guard let sessionId = state.record()?.sessionId else { return [] }
+        return storedSensorSamples.samples(forSession: sessionId)
     }
+
+    /// How many readings of `kind` the session `sessionId` holds, without
+    /// visiting any of them (S-15606): the pace window's cache key.
+    func sensorSampleCount(forSession sessionId: String, kind: String) -> Int {
+        storedSensorSamples.count(forSession: sessionId, kind: kind)
+    }
+
+    /// The number of stored reading rows the per-session reads have returned so
+    /// far, for the test that bounds a tick's cost by a count rather than by wall
+    /// time (S-15606). No production behaviour reads it.
+    var sensorRowsVisitedForTesting: Int { storedSensorSamples.rowsVisitedForTesting }
+
+    /// How many session rows the in-memory mirror holds, for the test that a
+    /// concurrent reader never sees the mirror shrink (S-16203). No production
+    /// behaviour reads it.
+    var sessionRowCountForTesting: Int { state.rowCount }
 
     /// The newest reading of `kind` for the current session, or nil when there
     /// has been none.
@@ -153,16 +258,8 @@ public final class WatchSessionEngine {
     /// that divides them) and it is rebuilt on a one-second tick, so the caller
     /// resolves the session's measurements once rather than scanning per value.
     public func newestSensorSamples() -> [String: WatchSensorSampleRecord] {
-        var newest: [String: WatchSensorSampleRecord] = [:]
-
-        for sample in storedSensorSamples where sample.sessionId == current?.sessionId {
-            if let existing = newest[sample.kind], existing.sequence >= sample.sequence {
-                continue
-            }
-            newest[sample.kind] = sample
-        }
-
-        return newest
+        guard let sessionId = state.record()?.sessionId else { return [:] }
+        return storedSensorSamples.newest(forSession: sessionId)
     }
 
     /// The newest row for `kind`, which is the timer that applies.
@@ -174,8 +271,10 @@ public final class WatchSessionEngine {
     /// the history a round's pauses are read back from (D-122 c), where
     /// `timerFor` gives only the row that applies now.
     public func timerRows(_ kind: String) -> [WatchTimerRecord] {
-        storedTimers
-            .filter { $0.sessionId == current?.sessionId && $0.kind == kind }
+        guard let sessionId = state.record()?.sessionId else { return [] }
+        return timerLog
+            .snapshot()
+            .filter { $0.sessionId == sessionId && $0.kind == kind }
             .sorted { $0.sequence < $1.sequence }
     }
 
@@ -187,18 +286,25 @@ public final class WatchSessionEngine {
     /// A correction is therefore a projection, not an edit, which is what keeps
     /// the store append-only and the phone the only side that can edit history.
     public var entries: [WatchObservationRecord] {
-        guard let sessionId = current?.sessionId else { return [] }
+        guard let sessionId = state.record()?.sessionId else { return [] }
         return projectedEntries(sessionId)
     }
 
     /// `entries` for any session the store holds — what a session end
     /// summarises, whichever session the watch is on when it ends.
     private func projectedEntries(_ sessionId: String) -> [WatchObservationRecord] {
-        storedObservations
-            .filter { $0.sessionId == sessionId && !deletedEntryIds.contains($0.entryId) }
+        let lens = lensLog.snapshot()
+        return observationLog.snapshot()
+            .filter { $0.sessionId == sessionId && !lens.deleted.contains($0.entryId) }
             .map { observation in
-                guard let correction = entryCorrections[observation.entryId] else {
+                guard let correction = lens.corrections[observation.entryId] else {
                     return observation
+                }
+                // D-113.3: a re-stated id with a new stamp **is** the whole
+                // entry, so the held row's keys it does not carry are gone with
+                // it.
+                if lens.replaced.contains(observation.entryId) {
+                    return observation.withPayload(correction)
                 }
                 return observation.withPayload(
                     observation.payload.merging(correction) { _, corrected in corrected }
@@ -214,8 +320,24 @@ public final class WatchSessionEngine {
     /// back as the original, and timers travel as wall-clock state: the phone
     /// derives remaining time from its own clock (PROTOCOL.md, "Timer state").
     public func sessionSnapshot(messageId: String? = nil) -> [String: Any]? {
-        guard let session = current else { return nil }
+        guard let session = state.record() else { return nil }
 
+        var payload: [String: Any] = [
+            "sessionId": session.sessionId,
+            "revision": session.revision,
+            "status": session.status,
+            "currentExerciseIndex": session.currentExerciseIndex,
+            "exercises": session.exercises,
+            "entries": entries.map(\.payload),
+            "timers": timersJson(),
+        ]
+        // Plan 204, D-20401: the session's modality travels when the row holds
+        // one (never null, never empty), so the phone adopts a Cardio workout
+        // as Cardio. The phone's own value is stamped on first hearing only
+        // (D-12591) and is echoed back unchanged.
+        if let modality = session.modality, !modality.isEmpty {
+            payload["modality"] = modality
+        }
         let envelope: [String: Any] = [
             "protocolVersion": SyncProtocolValidator.protocolVersion,
             "messageId": messageId ?? self.messageId(for: "snapshot-\(session.recordId)"),
@@ -223,15 +345,7 @@ public final class WatchSessionEngine {
             "type": "session_snapshot",
             "origin": "watch",
             "sentAt": utcIso(clock()),
-            "payload": [
-                "sessionId": session.sessionId,
-                "revision": session.revision,
-                "status": session.status,
-                "currentExerciseIndex": session.currentExerciseIndex,
-                "exercises": session.exercises,
-                "entries": entries.map(\.payload),
-                "timers": timersJson(),
-            ] as [String: Any],
+            "payload": payload,
         ]
         try? requireConformant(envelope)
         return envelope
@@ -248,13 +362,35 @@ public final class WatchSessionEngine {
     ///
     /// The session-started lifecycle event leaves through the same sink as every
     /// other message, so the phone's live mirror learns about a wrist-started
-    /// session without being asked (S-006).
+    /// session without being asked (S-006). One snapshot follows it, carrying the
+    /// session's own shape: the lifecycle says the wrist started, the snapshot is
+    /// what the phone's mirror adopts, and the order is the frame order D-91 fixes
+    /// (S-100).
     @discardableResult
     public func createSession(
         modality: String?,
         source: String = "watch",
         exercises: [[String: Any]] = []
     ) async -> WatchSessionRecord {
+        await mutex.exclusive {
+            await createSessionExclusive(modality: modality, source: source, exercises: exercises)
+        }
+    }
+
+    private func createSessionExclusive(
+        modality: String?,
+        source: String,
+        exercises: [[String: Any]]
+    ) async -> WatchSessionRecord {
+        // The wrist runs one session at a time: a start that arrives while a
+        // live session is held is refused and the held session is what the
+        // caller gets back — same row, no lifecycle, no snapshot (D-171,
+        // D-177). A session the wrist already ended does not hold the slot, so
+        // the next start is free.
+        if let held = state.record(), held.status == WatchSessionStatus.active {
+            return held
+        }
+
         let now = clock()
         let row = WatchSessionRecord(
             recordId: newId(),
@@ -271,6 +407,7 @@ public final class WatchSessionEngine {
         let stored = await store.append(.session(row))
         let live = mirrored(stored.sessionRow ?? row)
         emitLifecycle(live, state: WatchLifecycleState.started)
+        emitSnapshot()
         return live
     }
 
@@ -294,7 +431,7 @@ public final class WatchSessionEngine {
     /// longer holds returns nil and changes nothing.
     @discardableResult
     public func selectExercise(slotId: String) async -> WatchSessionRecord? {
-        guard let session = current,
+        guard let session = state.record(),
               let index = session.exercises.firstIndex(where: {
                   $0["sessionExerciseId"] as? String == slotId
               })
@@ -332,11 +469,17 @@ public final class WatchSessionEngine {
     /// pick moves the session to the new exercise, while a structure change the
     /// phone initiated leaves the user on the exercise they were logging — the
     /// rule `lib/core/sync_protocol/session_reconciler.dart` applies to it.
+    ///
+    /// `announce` tells the wrist's own add from the phone's: the user's add
+    /// announces the new shape with a snapshot whose `revision` has moved, while
+    /// a slot the phone pushed applies quietly — the phone wrote it, so the phone
+    /// is the one that reports it (D-91).
     @discardableResult
     public func insertExercise(
         _ slot: [String: Any],
         atIndex: Int? = nil,
-        moveTo: Bool = false
+        moveTo: Bool = false,
+        announce: Bool = true
     ) async -> WatchSessionRecord {
         let session = requireSession()
         if let slotId = slot["sessionExerciseId"] as? String,
@@ -348,7 +491,7 @@ public final class WatchSessionEngine {
         var exercises = session.exercises
         exercises.insert(slot, at: index)
 
-        return await transitionTo(
+        let live = await transitionTo(
             currentExerciseIndex: Self.positionAfterInsert(
                 currentIndex: session.currentExerciseIndex,
                 insertedAt: index,
@@ -356,8 +499,11 @@ public final class WatchSessionEngine {
                 wasEmpty: session.exercises.isEmpty
             ),
             exercises: exercises,
-            lifecycle: nil
+            lifecycle: nil,
+            revision: announce ? session.revision + 1 : nil
         )
+        if announce { emitSnapshot() }
+        return live
     }
 
     /// Applies an `exercise_push` from the phone: the slot it names lands at the
@@ -367,15 +513,18 @@ public final class WatchSessionEngine {
     /// A readable push that arrives with no session to land in is dropped: a
     /// wrist that never started a workout has no ladder to put it on, and the
     /// next sync is what brings the two devices back together. The push is not
-    /// queued and nothing is created for it.
+    /// queued and nothing is created for it. It never announces itself back
+    /// either: the phone wrote the slot, and a wrist snapshot answering it would
+    /// be the wrist claiming a change it did not make (D-91).
     @discardableResult
     public func applyExercisePush(_ envelope: [String: Any]) async throws -> WatchSessionRecord? {
         try requireConformingIncoming(envelope)
-        guard current != nil else { return nil }
+        guard guardSession(envelope) else { return nil }
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         return await insertExercise(
             (payload["exercise"] as? [String: Any]) ?? [:],
-            atIndex: (payload["insertAtIndex"] as? NSNumber)?.intValue
+            atIndex: (payload["insertAtIndex"] as? NSNumber)?.intValue,
+            announce: false
         )
     }
 
@@ -410,9 +559,9 @@ public final class WatchSessionEngine {
             try requireConformingIncoming(envelope)
             return await applyTimerState(envelope)
         case "exercise_push":
-            let before = current?.recordId
+            let before = state.record()?.recordId
             _ = try await applyExercisePush(envelope)
-            return current?.recordId != before
+            return state.record()?.recordId != before
         case "observations_up":
             // The watch's own product; a phone has no business sending one. It
             // is still read, so a peer speaking another version is refused here
@@ -437,31 +586,126 @@ public final class WatchSessionEngine {
     /// the phone obviously has them. The snapshot is also the receipt for the
     /// observations it does carry: the watch may drop them.
     private func applySnapshot(_ envelope: [String: Any]) async -> Bool {
+        let outcome = await mutex.exclusive { await applySnapshotExclusive(envelope) }
+        // D-7: the jump runs after the mutex is released, because the select
+        // path takes it again and `WatchAsyncMutex` is not reentrant. The
+        // active-session gate (D-6) was checked when the target was collected:
+        // a lifecycle frame landing before this line can at worst move a
+        // just-finished session's position, and `selectExercise` re-validates
+        // the slot against the held session.
+        if let jump = outcome?.jump {
+            await selectExercise(slotId: jump.slotId)
+        }
+        return outcome != nil
+    }
+
+    /// Applies the snapshot, or returns nil when it was refused whole.
+    ///
+    /// A snapshot that applied reports true whatever its timers did: the message
+    /// changed the session, and nil is reserved for a refusal.
+    private func applySnapshotExclusive(_ envelope: [String: Any]) async -> TimerAdoption? {
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         guard let sessionId = payload["sessionId"] as? String,
               let messageId = envelope["messageId"] as? String,
               let sentAt = try? parseUtcIso(envelope["sentAt"])
-        else { return false }
+        else { return nil }
+
+        // An older state arriving late changes nothing, not even an entry or a
+        // tombstone (plan 63 D-1, D-6): the newest snapshot already applied
+        // speaks for the session. The watermark is read once, from the box, and
+        // named as it was while it was the engine's own field (S-9315 scans this
+        // line).
+        let newestSnapshotAt = state.snapshotWatermark()
+        if let newest = newestSnapshotAt, sentAt < newest { return nil }
 
         let exercises = (payload["exercises"] as? [[String: Any]]) ?? []
         let entryMaps = (payload["entries"] as? [[String: Any]]) ?? []
-        let existing = current?.sessionId == sessionId ? current : nil
+        let named = state.record()
+        let existing = named?.sessionId == sessionId ? named : nil
         let status = (payload["status"] as? String) ?? WatchSessionStatus.active
+
+        // D-15101: a snapshot naming a session the wrist has already ended may
+        // never bring it back — not while the wrist runs a workout of its own
+        // (D-78), and not while it holds only an ended one, or nothing current
+        // at all. Its entries are the only news such a frame can carry, and
+        // they merge (D-14605); no row, status, structure, revision or timer
+        // changes. Like the D-78 guard, this runs before `captureSessionEnd`,
+        // so a late snapshot ends nothing.
+        if existing == nil, holdsTerminalRow(sessionId) {
+            return await mergeLateEntries(sessionId, entryMaps) ? TimerAdoption() : nil
+        }
+
+        // A snapshot naming another session is refused whole while the wrist is
+        // running a workout of its own: the user is in the middle of it, and
+        // nothing — no end, no row, no message — may come of a frame that is not
+        // about it (D-78). The same snapshot still applies when the wrist holds
+        // nothing, or holds a session that has already ended: that is the
+        // ordinary case of the phone's next workout arriving. The guard runs
+        // before `captureSessionEnd`, so a refused snapshot ends nothing. And
+        // when the session it names has already ended, its entries are the only
+        // news such a frame can carry (D-14605).
+        if let held = state.record(),
+           held.status == WatchSessionStatus.active,
+           !held.exercises.isEmpty,
+           held.sessionId != sessionId {
+            guard holdsTerminalRow(sessionId) else { return nil }
+            return await mergeLateEntries(sessionId, entryMaps) ? TimerAdoption() : nil
+        }
+
+        // D-113.2: an entry the snapshot carries exists, so its tombstone is
+        // cleared — here, before the row that records this state is written,
+        // since that row is what `restore` reads the lens back from.
+        for entry in entryMaps {
+            unhideTheIdTheSnapshotNames(entry)
+        }
+
+        // D-14601: an ended session stays ended. A snapshot keeps the held
+        // terminal status against an `active` payload status, and a terminal
+        // payload status replaces the held one only when its instant — the
+        // snapshot's `sentAt`, the D-120 end moment — is earlier than the held
+        // terminal row's, or the two share an instant and the tie-break applies.
+        // D-15403: "an instant" means within `endSkewTolerance` — two clocks
+        // stamping one workout's end land a second or two apart — so only an
+        // end earlier by more than the tolerance replaces on its own.
+        let terminalHeld = existing.map { Self.isTerminal($0.status) } ?? false
+        var replacing = false
+        if let existing, terminalHeld, Self.isTerminal(status) {
+            let order = Self.orderEnds(
+                incoming: sentAt,
+                held: existing.recordedAt,
+                sameStatus: status == existing.status
+            )
+            replacing = order == .earlier
+                || (order == .tied
+                    && Self.incomingEndWinsATie(
+                        held: existing,
+                        incomingStatus: status,
+                        incomingMessageId: messageId
+                    ))
+        }
+        let rowStatus = terminalHeld && !replacing ? existing?.status ?? status : status
+        let rowRecordedAt = terminalHeld && !replacing ? existing?.recordedAt ?? sentAt : sentAt
 
         // A phone snapshot can be what ends a session the wrist created; its
         // end is the moment the phone sent it (D-120).
-        await captureSessionEnd(sessionId, status: status, endedAt: sentAt)
+        await captureSessionEnd(sessionId, status: rowStatus, endedAt: rowRecordedAt)
+
+        // First hearing only (plan 125d D-12591/D-12592): the phone's session modality is stamped only on the
+        // snapshot that CREATES the wrist row for this session. A held session keeps the value it has
+        // (nil stays nil: no mid-workout location prompt, round-word flip or half-changed workout), and a
+        // snapshot with a different, absent, null or bad key never overrides or nulls it.
+        let snapshotFocus = existing == nil ? WatchActivityTypes.knownModality(payload["modality"]) : nil
 
         await storeSessionRow(
             WatchSessionRecord(
                 recordId: "\(Self.snapshotPrefix)\(messageId)",
                 sessionId: sessionId,
-                recordedAt: sentAt,
+                recordedAt: rowRecordedAt,
                 startedAt: existing?.startedAt
                     ?? Self.startedAtOf(entryMaps, fallback: sentAt),
-                modality: existing?.modality,
+                modality: existing?.modality ?? snapshotFocus,
                 source: existing?.source ?? "phone",
-                status: status,
+                status: rowStatus,
                 currentExerciseIndex: Self.clampIndex(
                     (payload["currentExerciseIndex"] as? NSNumber)?.intValue ?? 0,
                     exercises.count
@@ -470,19 +714,119 @@ public final class WatchSessionEngine {
                 revision: (payload["revision"] as? NSNumber)?.intValue ?? 0
             )
         )
+        // The watermark rises after the row is stored, so a snapshot that lands
+        // between this frame's gate and this line still leaves the newest of the
+        // two in place (never lowered).
+        state.advanceSnapshot(sentAt: sentAt)
 
         for entry in entryMaps {
             await storeSnapshotEntry(sessionId, entry)
         }
         _ = await confirmObservations(entryMaps.compactMap { $0["entryId"] as? String })
-        _ = await adoptTimers(
-            (payload["timers"] as? [String: Any]) ?? [:],
+        let timers = (payload["timers"] as? [String: Any]) ?? [:]
+        let adopted = await adoptTimers(
+            // A session that has ended runs no timer, so a snapshot may clear one and
+            // never start one (D-14603, D-14604) — whether the held row already ended
+            // or this very snapshot is the one that ends it.
+            Self.isTerminal(rowStatus) ? Self.namedNullTimers(timers) : timers,
             sessionId: sessionId,
             messageId: messageId,
             recordedAt: sentAt,
             authoritative: true
         )
-        return true
+        // The phone's snapshot can close what the rating prompt asks about (42b):
+        // the state forward in `WatchEffortRatingState` redraws an open prompt.
+        objectWillChange.send()
+        return adopted
+    }
+
+    /// Merges the entries of a snapshot whose session the wrist does not hold but
+    /// has already ended (D-14605): the entries are the only news such a frame
+    /// can carry. No row, no status, no structure, no revision, and no
+    /// confirmation — the session it describes is over and not the one the user
+    /// is in. Union by `entryId` is what keeps a re-stated set from doubling
+    /// (D-14606).
+    private func mergeLateEntries(
+        _ sessionId: String,
+        _ entryMaps: [[String: Any]]
+    ) async -> Bool {
+        let rows = observationLog.count
+        let corrections = lensLog.correctionCount
+        for entry in entryMaps {
+            await storeSnapshotEntry(sessionId, entry)
+        }
+        return observationLog.count != rows || lensLog.correctionCount != corrections
+    }
+
+    /// Whether any row the wrist holds for `sessionId` has ended it — the test
+    /// that makes a late snapshot's entries worth merging (D-14605).
+    private func holdsTerminalRow(_ sessionId: String) -> Bool {
+        for row in state.rows() where row.sessionId == sessionId {
+            if Self.isTerminal(row.status) { return true }
+        }
+        return false
+    }
+
+    /// The kinds `timers` names as null, and nothing else: all a session that
+    /// has ended may take from a late frame (D-14603).
+    private static func namedNullTimers(_ timers: [String: Any]) -> [String: Any] {
+        var nulls: [String: Any] = [:]
+        for (kind, value) in timers where value is NSNull {
+            nulls[kind] = value
+        }
+        return nulls
+    }
+
+    /// How an incoming end orders against the held one (D-15403). Two ends of
+    /// DIFFERENT status are compared through `endSkewTolerance` — within it they
+    /// are `.tied`, so skew between two clocks never deletes a finished workout;
+    /// two ends of the SAME status are compared exactly, as before the
+    /// tolerance, so the earlier wins deterministically and only an exactly
+    /// equal pair reaches the messageId tie-break (S-15411). Mirrors
+    /// `orderEnds` in `lib/core/sync_protocol/end_skew.dart`.
+    enum EndOrder { case earlier, tied, later }
+
+    static func orderEnds(incoming: Date, held: Date, sameStatus: Bool) -> EndOrder {
+        if sameStatus {
+            if incoming < held { return .earlier }
+            if incoming == held { return .tied }
+            return .later
+        }
+        if incoming < held.addingTimeInterval(-endSkewTolerance) { return .earlier }
+        if abs(incoming.timeIntervalSince(held)) <= endSkewTolerance { return .tied }
+        return .later
+    }
+
+    /// Whether an ending that arrives at the same instant as the held one
+    /// replaces it (D-14601 as amended by the lead review): `completed` wins a
+    /// tie, so a finished workout is never deleted by a discard that lands at
+    /// the same instant, and a still-tied pair resolves on the lexicographically
+    /// smaller messageId — the order the phone's reconciler applies too, so both
+    /// sides keep the same ending whatever order the frames arrived in.
+    private static func incomingEndWinsATie(
+        held: WatchSessionRecord,
+        incomingStatus: String,
+        incomingMessageId: String
+    ) -> Bool {
+        if incomingStatus != held.status {
+            return incomingStatus == WatchSessionStatus.completed
+        }
+        guard let heldMessageId = messageIdOf(held) else { return false }
+        return incomingMessageId < heldMessageId
+    }
+
+    /// The message a phone-written row derives from, or nil for a row the wrist
+    /// wrote itself (its own end carries no message id).
+    private static func messageIdOf(_ row: WatchSessionRecord) -> String? {
+        for prefix in [lifecyclePrefix, snapshotPrefix] where row.recordId.hasPrefix(prefix) {
+            return String(row.recordId.dropFirst(prefix.count))
+        }
+        return nil
+    }
+
+    /// Whether `status` is one a session never leaves (D-14601).
+    private static func isTerminal(_ status: String) -> Bool {
+        terminalStatuses.contains(status)
     }
 
     /// Applies one structure change: the ladder, the position that follows from
@@ -492,11 +836,16 @@ public final class WatchSessionEngine {
     /// not duplicate it), a removed slot never takes its entries with it, and a
     /// swap keeps the slot's id so entries logged against it still point at it.
     private func applyStructureChange(_ envelope: [String: Any]) async -> Bool {
+        await mutex.exclusive { await applyStructureChangeExclusive(envelope) }
+    }
+
+    private func applyStructureChangeExclusive(_ envelope: [String: Any]) async -> Bool {
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
-        guard let session = current,
+        guard guardSession(envelope),
+              let session = state.record(),
               let changeId = payload["changeId"] as? String
         else { return false }
-        guard appliedChangeIds.insert(changeId).inserted else { return false }
+        guard state.firstApply(changeId: changeId) else { return false }
 
         let ladder = ladderAfter(
             exercises: session.exercises,
@@ -521,45 +870,107 @@ public final class WatchSessionEngine {
         return true
     }
 
-    /// Applies a lifecycle message from the phone: the most recent status wins,
-    /// and an advanced position clamps to the ladder (PROTOCOL.md, "Idempotency
-    /// and reconciliation").
+    /// Applies a lifecycle message from the phone: the first ending of a session
+    /// is final, and an advanced position clamps to the ladder (D-14601).
+    ///
+    /// A session that has reached `completed` or `abandoned` never returns to
+    /// `active`: a `started` — or a position change — for it is ignored whole (no
+    /// row, no end), and a terminal state that arrived later than the held ending
+    /// loses to it. An earlier end replaces the held one whatever its status
+    /// (D-14630), because the earlier instant is the moment the workout actually
+    /// ended; an equal instant goes to `completed`, then to the smaller
+    /// `messageId` (D-14601).
     ///
     /// Nothing is echoed back — the phone is telling the watch what it decided,
     /// and answering it with the same news would be noise.
     private func applyLifecycle(_ envelope: [String: Any]) async -> Bool {
-        guard let session = current else { return false }
+        await mutex.exclusive { await applyLifecycleExclusive(envelope) }
+    }
+
+    private func applyLifecycleExclusive(_ envelope: [String: Any]) async -> Bool {
+        guard guardSession(envelope), let session = state.record() else { return false }
 
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
-        let state = payload["state"] as? String ?? ""
+        let lifecycleState = payload["state"] as? String ?? ""
+        let messageId = envelope["messageId"] as? String ?? newId()
+        let sentAt = (try? parseUtcIso(envelope["sentAt"])) ?? clock()
         let status: String
-        switch state {
+        switch lifecycleState {
         case WatchLifecycleState.started: status = WatchSessionStatus.active
         case WatchLifecycleState.completed: status = WatchSessionStatus.completed
         case WatchLifecycleState.abandoned: status = WatchSessionStatus.abandoned
         default: status = session.status
         }
-        let index = state == WatchLifecycleState.exerciseAdvanced
+        let ends = lifecycleState == WatchLifecycleState.completed
+            || lifecycleState == WatchLifecycleState.abandoned
+        let at = (try? parseUtcIso(payload["at"])) ?? sentAt
+
+        if Self.isTerminal(session.status) {
+            if !ends { return false }
+            // D-14630: the earlier end instant decides, whatever its status — a
+            // discard the wrist stamped before the phone's completion is the
+            // ending that was always the truth, and the finished workout must
+            // not survive. A later or equal-instant ending loses unless the tie
+            // arms the equal-instant tie-break (completed before abandoned, then
+            // the smaller messageId, D-14601). D-15403: an instant within
+            // `endSkewTolerance` of the held one is the same instant, so only an
+            // end earlier by more than the tolerance replaces on its own.
+            let order = Self.orderEnds(
+                incoming: at,
+                held: session.recordedAt,
+                sameStatus: status == session.status
+            )
+            if order != .earlier {
+                if !(order == .tied && Self.incomingEndWinsATie(
+                    held: session,
+                    incomingStatus: status,
+                    incomingMessageId: messageId
+                )) {
+                    // The same end delivered again: applied (nothing to
+                    // write), so the caller does not read the repeat as a
+                    // refusal. A later end for the same session is refused
+                    // whole (D-14601).
+                    return order == .tied && status == session.status
+                }
+            }
+        }
+
+        let index = lifecycleState == WatchLifecycleState.exerciseAdvanced
             ? Self.clampIndex(
                 (payload["exerciseIndex"] as? NSNumber)?.intValue ?? 0,
                 session.exercises.count
             )
             : session.currentExerciseIndex
-        let recordedAt = (try? parseUtcIso(envelope["sentAt"])) ?? clock()
+
+        if ends {
+            // D-14603a: an end stops every timer of the session, under the id of
+            // the message that named it — so a redelivered end stops nothing a
+            // second time — and the same stop the wrist's own end runs.
+            var nulls: [String: Any] = [:]
+            for kind in WatchTimerKind.all {
+                nulls[kind] = NSNull()
+            }
+            _ = await adoptTimers(
+                nulls,
+                sessionId: session.sessionId,
+                messageId: messageId,
+                recordedAt: at,
+                authoritative: false
+            )
+        }
 
         // The phone ending a session the wrist created: its end is the moment
         // the message says it happened (D-120).
-        await captureSessionEnd(
-            session.sessionId,
-            status: status,
-            endedAt: (try? parseUtcIso(payload["at"])) ?? recordedAt
-        )
+        await captureSessionEnd(session.sessionId, status: status, endedAt: at)
 
         await storeSessionRow(
             WatchSessionRecord(
-                recordId: "\(Self.lifecyclePrefix)\(envelope["messageId"] as? String ?? newId())",
+                recordId: "\(Self.lifecyclePrefix)\(messageId)",
                 sessionId: session.sessionId,
-                recordedAt: recordedAt,
+                // An ending row records the moment it claims, so the next end is
+                // compared against the ending itself and not against its delivery
+                // (D-14601).
+                recordedAt: ends ? at : sentAt,
                 startedAt: session.startedAt,
                 modality: session.modality,
                 source: session.source,
@@ -586,33 +997,58 @@ public final class WatchSessionEngine {
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         let entryIds = (payload["entryIds"] as? [Any] ?? []).compactMap { $0 as? String }
         guard !entryIds.isEmpty else { return false }
-        return !(await confirmObservations(entryIds)).isEmpty
+        let acknowledged = !(await confirmObservations(entryIds)).isEmpty
+        // D-15601: the receipt that clears a finished workout's last owed entry
+        // is what makes its readings safe to drop, so the release rides on the
+        // phone's own receipt instead of waiting for the next launch — a wrist
+        // can run for weeks without one. Receipts are rare, so the release runs
+        // on this frame's turn; anything it misses the next launch prunes.
+        if acknowledged { await pruneSettledSensorSamples() }
+        return acknowledged
     }
 
     /// Applies an incremental timer update: the kinds it names are adopted or
     /// cleared, the kinds it does not name are left alone (PROTOCOL.md, "Timer
     /// state"). Only a snapshot is authoritative for timer state as a whole.
     private func applyTimerState(_ envelope: [String: Any]) async -> Bool {
-        guard let sessionId = envelope["sessionId"] as? String,
+        guard guardSession(envelope),
+              let sessionId = envelope["sessionId"] as? String,
               let messageId = envelope["messageId"] as? String,
-              let sentAt = try? parseUtcIso(envelope["sentAt"]),
-              current != nil
+              let sentAt = try? parseUtcIso(envelope["sentAt"])
         else { return false }
 
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
-        return await adoptTimers(
-            (payload["timers"] as? [String: Any]) ?? [:],
+        let timers = (payload["timers"] as? [String: Any]) ?? [:]
+        let held = state.record()
+        // D-14603: a session that has ended takes a `null` from a late frame and
+        // nothing else — a running timer a phone still reports cannot restart one.
+        let terminal = held != nil
+            && held?.sessionId == sessionId
+            && Self.isTerminal(held?.status ?? "")
+        let adopted = await adoptTimers(
+            terminal ? Self.namedNullTimers(timers) : timers,
             sessionId: sessionId,
             messageId: messageId,
             recordedAt: sentAt,
             authoritative: false
         )
+        // D-7: this call runs outside the mutex, so the jump it names can take
+        // the select path, which takes the mutex itself. The active-session
+        // gate (D-6) was checked when the target was collected: a lifecycle
+        // frame landing before this line can at worst move a just-finished
+        // session's position, and `selectExercise` re-validates the slot
+        // against the held session.
+        if let jump = adopted.jump {
+            await selectExercise(slotId: jump.slotId)
+        }
+        return adopted.changed
     }
 
     /// Adopts `timers` as the rows that apply. A kind the message names as null
     /// is cleared; a kind it does not name keeps whatever it had, unless the
-    /// message is a snapshot — only a snapshot is authoritative for timer state
-    /// as a whole (PROTOCOL.md, "Timer state").
+    /// message is a snapshot and the newest row of that kind is the sender's —
+    /// only a snapshot speaks for timer state as a whole, and even then only for
+    /// the countdowns it wrote itself (D-80) (PROTOCOL.md, "Timer state").
     ///
     /// Every row's id is derived from the message that named it, so re-delivery
     /// is a no-op and a relaunch cannot tell the difference.
@@ -622,41 +1058,96 @@ public final class WatchSessionEngine {
         messageId: String,
         recordedAt: Date,
         authoritative: Bool
-    ) async -> Bool {
-        var changed = false
+    ) async -> TimerAdoption {
+        var outcome = TimerAdoption()
         for kind in WatchTimerKind.all {
             let recordId = "\(Self.timerPrefix)\(messageId)-\(kind)"
             guard let timer = timers[kind], !(timer is NSNull) else {
-                if authoritative || timers.keys.contains(kind) {
-                    changed = await stopTimerFromMessage(
+                if timers.keys.contains(kind) || (authoritative && senderWroteTimer(kind)) {
+                    outcome.changed = await stopTimerFromMessage(
                         kind,
                         sessionId: sessionId,
                         recordId: recordId,
                         stoppedAt: recordedAt
-                    ) || changed
+                    ) || outcome.changed
                 }
                 continue
             }
-            changed = await adoptTimer(
+            let adopted = await adoptTimer(
                 (timer as? [String: Any]) ?? [:],
                 sessionId: sessionId,
                 recordId: recordId,
                 recordedAt: recordedAt
-            ) || changed
+            )
+            outcome.changed = adopted.changed || outcome.changed
+            // D-8: one jump per frame, and the earliest start wins. A tie is
+            // settled by this loop's own order — `WatchTimerKind.all` walks the
+            // work kinds round, hold, elapsed — so a candidate equal to the one
+            // already held never displaces it.
+            if let candidate = adopted.jump,
+               outcome.jump.map({ candidate.startedAt < $0.startedAt }) ?? true {
+                outcome.jump = candidate
+            }
         }
-        return changed
+        return outcome
     }
 
     /// A timer the phone told the watch about. It is not news back to the phone,
     /// so nothing is emitted: the phone already decided this.
+    ///
+    /// The adoption is also where a work effort the phone started for another
+    /// exercise asks the wrist to follow it (D-2). The ask travels out with the
+    /// outcome rather than being performed here: `adoptTimers` is reached from
+    /// inside the snapshot's mutex, and the select path takes that mutex again
+    /// (D-7).
     private func adoptTimer(
         _ timer: [String: Any],
         sessionId: String,
         recordId: String,
         recordedAt: Date
-    ) async -> Bool {
-        guard !storedTimers.contains(where: { $0.recordId == recordId }) else {
-            return false
+    ) async -> TimerAdoption {
+        guard !timerLog.contains(where: { $0.recordId == recordId }) else {
+            return TimerAdoption()
+        }
+
+        let kind = timer["kind"] as? String ?? ""
+        let slotId = timer["sessionExerciseId"] as? String
+        let startedAt = (try? parseUtcIso(timer["startedAt"])) ?? recordedAt
+        let stoppedAt = try? parseOptionalUtcIso(timer["stoppedAt"])
+
+        // Plan 202, D-20202/D-20203: an interval the wrist already holds is never
+        // stored again by a later frame. A work interval the wrist stopped stays
+        // stopped (a phone that still names it as running is stale); a rest the
+        // wrist stopped, or an exact repeat of one it holds, is not reopened or
+        // re-adopted under a new row id (a new id restarts the rest ping's memory).
+        // A stop (`stoppedAt` set), a later start, another slot, a pause and a
+        // resume all fall through to the rules below.
+        let pausedAt = try? parseOptionalUtcIso(timer["pausedAt"])
+        let accumulatedPauseMs = (timer["accumulatedPauseMs"] as? NSNumber)?.intValue ?? 0
+        if stoppedAt == nil,
+           ranInterval(
+               kind: kind,
+               sessionId: sessionId,
+               slotId: slotId,
+               startedAt: startedAt,
+               pausedAt: pausedAt,
+               accumulatedPauseMs: accumulatedPauseMs
+           ) {
+            return TimerAdoption()
+        }
+
+        // D-4: the owner's rule, the earlier start wins — for the work kinds
+        // only. A rest is exempt (D-4's second half): the phone's newer rest
+        // still supersedes the wrist's own, because a rest has no owner slot to
+        // tie the earlier copy to (S-336).
+        if kind != WatchTimerKind.rest,
+           stoppedAt == nil,
+           let held = newestTimer(kind: kind),
+           held.sessionId == sessionId,
+           held.state != WatchTimerState.stopped,
+           held.sessionExerciseId == slotId,
+           held.startedAt < startedAt {
+            return TimerAdoption()
         }
 
         let stored = await store.append(
@@ -665,18 +1156,87 @@ public final class WatchSessionEngine {
                     recordId: recordId,
                     sessionId: sessionId,
                     recordedAt: recordedAt,
-                    kind: timer["kind"] as? String ?? "",
-                    startedAt: (try? parseUtcIso(timer["startedAt"])) ?? recordedAt,
+                    kind: kind,
+                    startedAt: startedAt,
                     pausedAt: try? parseOptionalUtcIso(timer["pausedAt"]),
-                    stoppedAt: try? parseOptionalUtcIso(timer["stoppedAt"]),
+                    stoppedAt: stoppedAt,
                     accumulatedPauseMs: (timer["accumulatedPauseMs"] as? NSNumber)?.intValue ?? 0,
-                    plannedDurationMs: (timer["plannedDurationMs"] as? NSNumber)?.intValue
+                    plannedDurationMs: (timer["plannedDurationMs"] as? NSNumber)?.intValue,
+                    sessionExerciseId: slotId
                 )
             )
         )
-        guard let row = stored.timerRow else { return false }
-        storedTimers.append(row)
-        return true
+        guard let row = stored.timerRow else { return TimerAdoption() }
+        timerLog.append(row)
+        return TimerAdoption(
+            changed: true,
+            jump: jumpTarget(
+                kind: kind,
+                slotId: slotId,
+                startedAt: startedAt,
+                stoppedAt: stoppedAt,
+                sessionId: sessionId
+            )
+        )
+    }
+
+    /// Whether the wrist already holds the interval an incoming running timer
+    /// names (plan 202): the same session and kind, a start within a second, and
+    /// for a work kind the same slot. A work interval counts once the wrist has
+    /// stopped it. A rest counts once stopped, or when the incoming row repeats
+    /// a held one exactly (same `pausedAt` and `accumulatedPauseMs`), so a phone
+    /// pause or resume of the same rest still applies.
+    private func ranInterval(
+        kind: String,
+        sessionId: String,
+        slotId: String?,
+        startedAt: Date,
+        pausedAt: Date?,
+        accumulatedPauseMs: Int
+    ) -> Bool {
+        let isRest = kind == WatchTimerKind.rest
+        return timerLog.snapshot().contains { held in
+            guard held.sessionId == sessionId,
+                  held.kind == kind,
+                  abs(held.startedAt.timeIntervalSince(startedAt)) < 1.0
+            else { return false }
+            if held.state == WatchTimerState.stopped {
+                return isRest || held.sessionExerciseId == slotId
+            }
+            return isRest
+                && held.pausedAt == pausedAt
+                && held.accumulatedPauseMs == accumulatedPauseMs
+        }
+    }
+
+    /// The slot a freshly stored timer asks the wrist to move to (D-2), or nil
+    /// when it asks for nothing.
+    ///
+    /// A rest is not work; a stopped timer runs nothing; a timer that names no
+    /// slot belongs to whatever exercise is current; a slot the ladder does not
+    /// hold has nowhere to land; the slot already current is not a move; and a
+    /// session that is no longer active follows nothing (D-6). Only a row that
+    /// was actually stored gets here, so the earlier-start drop in `adoptTimer`
+    /// never moves the wrist (S-8411).
+    private func jumpTarget(
+        kind: String,
+        slotId: String?,
+        startedAt: Date,
+        stoppedAt: Date?,
+        sessionId: String
+    ) -> JumpCandidate? {
+        guard kind != WatchTimerKind.rest,
+              stoppedAt == nil,
+              let slotId,
+              let session = state.record(),
+              session.sessionId == sessionId,
+              session.status == WatchSessionStatus.active,
+              let index = session.exercises.firstIndex(where: {
+                  $0["sessionExerciseId"] as? String == slotId
+              }),
+              index != session.currentExerciseIndex
+        else { return nil }
+        return JumpCandidate(slotId: slotId, startedAt: startedAt)
     }
 
     /// Stops the newest timer of `kind` by appending its stopped version — the
@@ -694,7 +1254,7 @@ public final class WatchSessionEngine {
         guard let timer = newestTimer(kind: kind),
               timer.state != WatchTimerState.stopped,
               timer.sessionId == sessionId,
-              !storedTimers.contains(where: { $0.recordId == recordId })
+              !timerLog.contains(where: { $0.recordId == recordId })
         else { return false }
 
         let stored = await store.append(
@@ -708,17 +1268,61 @@ public final class WatchSessionEngine {
             )
         )
         guard let row = stored.timerRow else { return false }
-        storedTimers.append(row)
+        timerLog.append(row)
         return true
     }
 
     /// Stores an entry the phone sent, in the shape the wrist shows it. Nothing
     /// is emitted: the phone is the source, and the receipt is `entries`.
+    ///
+    /// An `entryId` the wrist already holds is **re-stated**: the snapshot's
+    /// payload folds into the projection `entries` reads, exactly as a
+    /// `correct_entry` does, and the stored observation row is left alone — the
+    /// log stays append-only, so re-stating a set the phone edited neither
+    /// rewrites the row nor doubles it. The phone, receiving, keeps the first
+    /// value it stored for an id it holds; only the wrist re-states.
+    ///
+    /// A re-stated id whose `loggedAt` **differs** is a different entry wearing
+    /// a reused number, and replaces the held one outright (D-113.3). An id a
+    /// deletion had hidden is shown again, because the phone saying it is there
+    /// outranks the phone having said it was gone (D-113.2) — unless the
+    /// snapshot only repeats the entry the wrist already holds, stamp and all.
     private func storeSnapshotEntry(_ sessionId: String, _ entry: [String: Any]) async {
-        guard let entryId = entry["entryId"] as? String,
-              !storedObservations.contains(where: { $0.recordId == entryId })
-        else { return }
+        guard let entryId = entry["entryId"] as? String else { return }
+        // D-113.2: the phone is the structure authority, so an entry its
+        // snapshot carries exists — whatever this watch was told about that id
+        // before.
+        unhideTheIdTheSnapshotNames(entry)
+        // D-14606: the entry id is the identity. A set the wrist logged under its
+        // own event id is the same entry as the one the phone sends back, so a row
+        // that already holds this `entryId` is re-stated, not doubled.
+        if heldRecord(entryId) != nil {
+            if let held = heldPayload(entryId),
+               !Self.sameStamp(held["loggedAt"], entry["loggedAt"]) {
+                // D-113.3: the phone mints the highest number + 1, so deleting
+                // the newest set of a slot and logging another reuses its id for
+                // a different entry. A merge would keep a field the new entry
+                // does not carry — the dead entry's Load. The correction is the
+                // whole entry.
+                lensLog.restate(entryId, with: entry)
+                return
+            }
+            lensLog.merge(entryId, with: entry)
+            return
+        }
 
+        // F-7: a burst delivered without awaiting each frame can hand this engine
+        // two copies of one entry, and both would miss the other's row — the row
+        // only reaches the observation list once its append returns — while the
+        // store, which keeps one row per id, hands the same row back twice. The id
+        // is claimed before the write is awaited, so the second copy waits for the
+        // first and is then re-stated rather than stored again.
+        if let inflight = observationLog.claim(entryId) {
+            await inflight.wait()
+            return await storeSnapshotEntry(sessionId, entry)
+        }
+
+        defer { observationLog.finishClaim(entryId) }
         let stored = await store.append(
             .observation(
                 WatchObservationRecord(
@@ -731,14 +1335,90 @@ public final class WatchSessionEngine {
             )
         )
         guard let row = stored.observationRow else { return }
-        storedObservations.append(row)
+        observationLog.append(row)
+    }
+
+    /// Shows `entry`'s id again — the tombstone it carried no longer stands —
+    /// when this snapshot entry outranks what the wrist holds (D-113.2).
+    ///
+    /// The phone is the structure authority, so an id its snapshot carries
+    /// exists — but a snapshot entry that only repeats the row the wrist already
+    /// holds, stamp and all, is the stale answer D-115 says the phone stops
+    /// sending, and the deletion the wrist was told about is newer than it: the
+    /// tombstone stays, and the projection keeps hiding the id. An id the wrist
+    /// holds no row for, or one whose `loggedAt` differs — D-113.3's
+    /// replacement — is the phone saying something new, and is shown again.
+    private func unhideTheIdTheSnapshotNames(_ entry: [String: Any]) {
+        guard let entryId = entry["entryId"] as? String else { return }
+        if let held = heldPayload(entryId), Self.sameStamp(held["loggedAt"], entry["loggedAt"]) {
+            return
+        }
+        lensLog.show(entryId)
+    }
+
+    /// The payload `entries` shows for `entryId` right now, before any deletion
+    /// — the held row with the phone's correction folded in, or nil when the
+    /// wrist holds no row for it.
+    private func heldPayload(_ entryId: String) -> [String: Any]? {
+        guard let row = heldRecord(entryId) else { return nil }
+        guard let correction = lensLog.correction(entryId) else { return row.payload }
+        return row.payload.merging(correction) { _, corrected in corrected }
+    }
+
+    /// The row the wrist holds for `entryId`, under whatever id that row was
+    /// written with: the wrist logs a set under its `eventId`, and a snapshot
+    /// names the same entry by `entryId`, so one entry may be held under either
+    /// (D-14606).
+    private func heldRecord(_ entryId: String) -> WatchObservationRecord? {
+        for row in observationLog.snapshot()
+        where row.recordId == entryId || row.payload["entryId"] as? String == entryId {
+            return row
+        }
+        return nil
+    }
+
+    /// Whether two wire `loggedAt` stamps name the same instant.
+    private static func sameStamp(_ a: Any?, _ b: Any?) -> Bool {
+        if a == nil, b == nil { return true }
+        guard let a = a as? String, let b = b as? String else { return false }
+        return a == b
+    }
+
+    /// `row` carrying the deletion lens as it stands this moment.
+    ///
+    /// Every session row carries the lens, not only the row a structure change
+    /// writes: `restore` reads it off the *newest* row, so a row appended after a
+    /// delete — a lifecycle row, the wrist's own ladder change, its End — would
+    /// otherwise be the newest one and answer an empty lens (D-113.1, F1). One
+    /// writer, so no path that appends a session row can lose it.
+    private func carryingLens(_ row: WatchSessionRecord) -> WatchSessionRecord {
+        var carried = row.deletedEntryIds
+        for id in lensLog.hiddenIds() where !carried.contains(id) {
+            carried.append(id)
+        }
+        return row.withDeletedEntryIds(carried)
     }
 
     /// Writes a row a message produced, without announcing it back to the phone:
     /// the phone is the author of the news.
     private func storeSessionRow(_ row: WatchSessionRecord) async {
-        let stored = await store.append(.session(row))
-        current = mirrored(stored.sessionRow ?? row)
+        let carried = carryingLens(row)
+        let stored = await store.append(.session(carried))
+        mirrored(stored.sessionRow ?? carried)
+
+        // A session that just ended has readings nothing reads any more: they
+        // leave the launch set now, without waiting for the phone's receipt —
+        // the receipt still gates the drop (D-17305, D-15601).
+        await releaseReadingsOfAnEndedSession(carried)
+    }
+
+    /// Moves an ended session's raw readings out of the launch set (D-17305).
+    /// Both session-row writers call it, so a session that ends on the wrist and
+    /// one the phone ends leave the same store behind; a session with nothing
+    /// inline drops nothing and writes nothing (D-17308, D-15603).
+    private func releaseReadingsOfAnEndedSession(_ row: WatchSessionRecord) async {
+        guard Self.terminalStatuses.contains(row.status) else { return }
+        _ = await store.archiveSensorSamples(row.sessionId)
     }
 
     /// The session's entries in `entryMaps`, oldest first — the moment the
@@ -808,12 +1488,9 @@ public final class WatchSessionEngine {
             case "correct_entry":
                 let entryId = change["entryId"] as? String ?? ""
                 let correction = (change["correction"] as? [String: Any]) ?? [:]
-                entryCorrections[entryId] = (entryCorrections[entryId] ?? [:])
-                    .merging(correction) { _, corrected in corrected }
+                lensLog.merge(entryId, with: correction)
             case "delete_entry":
-                let entryId = change["entryId"] as? String ?? ""
-                entryCorrections.removeValue(forKey: entryId)
-                deletedEntryIds.insert(entryId)
+                lensLog.hide(change["entryId"] as? String ?? "")
             default:
                 continue
             }
@@ -909,16 +1586,55 @@ public final class WatchSessionEngine {
     /// Writes a new session row carrying `status` and `currentExerciseIndex`.
     ///
     /// A state change appends rather than updates, which is what both keeps the
-    /// store append-only and makes the position survive a kill.
+    /// store append-only and makes the position survive a kill. `revision` is
+    /// carried over from the session being replaced unless the caller moves it:
+    /// the counter is the number the phone reads a shape by, so a change that is
+    /// not a shape change leaves it exactly where it was (D-101). The row carries
+    /// the deletion lens like every other one (F1) — `restore` reads the lens off
+    /// the newest row, and a wrist-side advance, End or abandon must not answer
+    /// an empty one.
+    ///
+    /// - Parameter revision: the new row's revision, or nil to keep the current
+    ///   session's.
     private func transitionTo(
         status: String? = nil,
         currentExerciseIndex: Int? = nil,
         exercises: [[String: Any]]? = nil,
-        lifecycle: String?
+        lifecycle: String?,
+        revision: Int? = nil
+    ) async -> WatchSessionRecord {
+        await mutex.exclusive {
+            await transitionToExclusive(
+                status: status,
+                currentExerciseIndex: currentExerciseIndex,
+                exercises: exercises,
+                lifecycle: lifecycle,
+                revision: revision
+            )
+        }
+    }
+
+    private func transitionToExclusive(
+        status: String?,
+        currentExerciseIndex: Int?,
+        exercises: [[String: Any]]?,
+        lifecycle: String?,
+        revision: Int?
     ) async -> WatchSessionRecord {
         let session = requireSession()
+        // D-14602: an ended session stays ended. The wrist's own Finish or
+        // Discard on a session that has already ended changes nothing — the row
+        // that holds the end comes back, no row is appended, nothing is
+        // announced, and no timer is stopped on the way to a row that is never
+        // written. An auto-finish cannot upgrade a discard (S-14605).
+        if status != nil, Self.isTerminal(session.status) { return session }
         let now = clock()
         if let status {
+            // A rest cannot outlive the workout (D-223). The stop happens before
+            // the terminal row below, which replaces the session the appender
+            // resolves, and it emits the rest's own observation while the
+            // session it names is still the one the wrist is on.
+            await stopTimer(kind: WatchTimerKind.rest, at: now)
             // The wrist's own End or abandon: its end is the wrist's clock at
             // this moment, the same instant the new row records (D-120).
             await captureSessionEnd(session.sessionId, status: status, endedAt: now)
@@ -933,11 +1649,14 @@ public final class WatchSessionEngine {
             source: session.source,
             status: status ?? session.status,
             currentExerciseIndex: currentExerciseIndex ?? session.currentExerciseIndex,
-            exercises: exercises ?? session.exercises
+            exercises: exercises ?? session.exercises,
+            revision: revision ?? session.revision
         )
 
-        let stored = await store.append(.session(row))
-        let live = mirrored(stored.sessionRow ?? row)
+        let carried = carryingLens(row)
+        let stored = await store.append(.session(carried))
+        let live = mirrored(stored.sessionRow ?? carried)
+        await releaseReadingsOfAnEndedSession(live)
         if let lifecycle { emitLifecycle(live, state: lifecycle) }
         return live
     }
@@ -951,11 +1670,26 @@ public final class WatchSessionEngine {
     /// never be released.
     @discardableResult
     private func mirrored(_ row: WatchSessionRecord) -> WatchSessionRecord {
-        if !sessionRows.contains(where: { $0.recordId == row.recordId }) {
-            sessionRows.append(row)
+        state.mirror(row)
+    }
+
+    /// Announces the session's current shape to the phone.
+    ///
+    /// The wrist's own change is the wrist's to report, and the snapshot
+    /// `sessionSnapshot()` already builds is what the phone's mirror adopts — no
+    /// new frame type (D-90). Like a lifecycle announcement, a snapshot this
+    /// build cannot send is dropped rather than blocking the session the user is
+    /// in the middle of; the suites pin the shape.
+    private func emitSnapshot() {
+        guard let envelope = sessionSnapshot() else { return }
+        if let validator {
+            let rejections = validator.validateEnvelope(envelope)
+            if !rejections.isEmpty {
+                noteRefused("frame_not_sent", envelope, rejections)
+                return
+            }
         }
-        current = row
-        return row
+        emit(envelope)
     }
 
     /// Tells the phone the session moved, when the protocol accepts the telling.
@@ -966,7 +1700,62 @@ public final class WatchSessionEngine {
     /// The suites pin the shape, so a drift fails there instead of going quiet.
     private func emitLifecycle(_ row: WatchSessionRecord, state: String) {
         let envelope = lifecycle(row, state: state)
-        if let validator, !validator.validateEnvelope(envelope).isEmpty { return }
+        if let validator {
+            let rejections = validator.validateEnvelope(envelope)
+            if !rejections.isEmpty {
+                noteRefused("frame_not_sent", envelope, rejections)
+                return
+            }
+        }
+        emit(envelope)
+    }
+
+    /// D-199: re-announces how the held session ended, from its stored terminal
+    /// row, so a phone that missed the live frame ends its copy. The frame is
+    /// the live frame's own (same `messageId`, `sentAt`, `at`); nothing is
+    /// minted and nothing is queued. An active session, or none, says nothing.
+    public func replaySessionEnd() {
+        guard let row = state.record(),
+              row.status == WatchSessionStatus.completed
+                || row.status == WatchSessionStatus.abandoned
+        else { return }
+        emitLifecycle(row, state: row.status)
+    }
+
+    /// Reports to the phone that a session just started on the wrist from a
+    /// planned session (plan 129, D-8966). The report is the start paths', not
+    /// the engine's generic start: a start from a routine button sends nothing
+    /// new. A frame the validator refuses throws — a report that could not be
+    /// sent does not stop the start, which is why the path swallows it.
+    public func emitSessionStarted(
+        sessionId: String,
+        routineTemplateId: String?,
+        plannedSessionId: String?,
+        at: Date
+    ) throws {
+        var payload: [String: Any] = [
+            "sessionId": sessionId,
+            "at": utcIso(at),
+        ]
+        if let routineTemplateId = routineTemplateId {
+            payload["routineTemplateId"] = routineTemplateId
+        }
+        if let plannedSessionId = plannedSessionId {
+            payload["plannedSessionId"] = plannedSessionId
+        }
+
+        // The top-level `sessionId` names the wrist's own session, the way a
+        // lifecycle frame does; the contract pins the payload ids.
+        let envelope: [String: Any] = [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-session-started-\(sessionId)",
+            "sessionId": sessionId,
+            "type": "session_started",
+            "origin": "watch",
+            "sentAt": utcIso(at),
+            "payload": payload,
+        ]
+        try requireConformant(envelope)
         emit(envelope)
     }
 
@@ -1020,7 +1809,7 @@ public final class WatchSessionEngine {
 
         return try await appendObservation(
             event,
-            sessionId: current?.sessionId ?? WatchNutritionSession.idFor(now)
+            sessionId: state.record()?.sessionId ?? WatchNutritionSession.idFor(now)
         )
     }
 
@@ -1030,7 +1819,38 @@ public final class WatchSessionEngine {
     /// Read back out of the rows storage already held, which is what makes the
     /// food that moves to the top of the wrist's list survive a relaunch.
     public var nutritionLog: [WatchObservationRecord] {
-        storedObservations.filter { $0.kind == WatchObservationKind.nutritionQuickLog }
+        observationLog.snapshot().filter { $0.kind == WatchObservationKind.nutritionQuickLog }
+    }
+
+    /// Persists one glass of water added or removed on the wrist, and emits it
+    /// for the phone (plan 95 D-22, plan 94 D-2).
+    ///
+    /// Like a food log it needs no session, but unlike one it never rides a
+    /// running workout: its session id is always the day's nutrition id, so no
+    /// workout's observations, entries or snapshot ever hold a tap. Every press
+    /// is its own event, stored before it is emitted and re-sent by
+    /// `pendingObservations()` until a receipt names it.
+    @discardableResult
+    public func logWaterGlass(
+        _ change: WatchGlassChange,
+        loggedAt: Date? = nil
+    ) async throws -> WatchObservationRecord {
+        let now = loggedAt ?? clock()
+        let entryId = newId()
+        let event: [String: Any] = [
+            "entryId": entryId,
+            "eventId": entryId,
+            "kind": WatchObservationKind.waterGlass,
+            "loggedAt": utcIso(now),
+            "glassChange": change.rawValue,
+        ]
+        return try await appendObservation(event, sessionId: WatchNutritionSession.idFor(now))
+    }
+
+    /// The water taps the wrist has stored, in store order, confirmed or not —
+    /// what the wrist's water count folds over (plan 95 D-25).
+    public var waterLog: [WatchObservationRecord] {
+        observationLog.snapshot().filter { $0.kind == WatchObservationKind.waterGlass }
     }
 
     /// Storage first, emission second — the order every log on the watch
@@ -1060,13 +1880,31 @@ public final class WatchSessionEngine {
         )
         try requireConformant(envelope)
 
-        let alreadyStored = storedObservations.contains { $0.recordId == recordId }
-        let stored = await store.append(.observation(record))
-        if !alreadyStored, let row = stored.observationRow {
-            storedObservations.append(row)
-            emit(envelope)
+        // D-14606: one `entryId` is one row, whatever id the row that holds it
+        // was written with. A re-statement of something already held emits
+        // nothing.
+        if let held = heldRecord(recordId) {
+            return held
         }
-        return stored.observationRow ?? record
+        if let entryId = event["entryId"] as? String, !entryId.isEmpty,
+           let held = heldRecord(entryId) {
+            return held
+        }
+
+        // F-7, as in `storeSnapshotEntry`: a second copy of the same entry that
+        // lands before the first copy's row is in the observation list waits for
+        // it and then finds it held — nothing is stored twice, nothing is
+        // announced twice.
+        if let inflight = observationLog.claim(recordId) {
+            await inflight.wait()
+            return try await appendObservation(event, sessionId: sessionId)
+        }
+        let stored = await store.append(.observation(record))
+        observationLog.finishClaim(recordId)
+        guard let row = stored.observationRow else { return record }
+        observationLog.append(row)
+        emit(envelope)
+        return row
     }
 
     /// Persists a reading the platform sensors produced.
@@ -1097,13 +1935,110 @@ public final class WatchSessionEngine {
             value: value
         )
 
-        let alreadyStored = storedSensorSamples.contains { $0.recordId == record.recordId }
         let stored = await store.append(.sensorSample(record))
-        if !alreadyStored, case .sensorSample(let row) = stored {
+        if case .sensorSample(let row) = stored {
             storedSensorSamples.append(row)
         }
         return stored.sensorSampleRow ?? record
     }
+
+    // MARK: - Live energy (plan 135)
+
+    /// One `NSLock` for the three announce marks: they have exactly one reader and
+    /// one writer, both in `announceEnergy`, and the sensor stream calls it off the
+    /// main actor while a second stream task can call it again (plan 162 D-16201).
+    /// The section it guards is synchronous — never held across an `await` — and
+    /// takes no second lock; `emit` and `noteRefused` run after it is released.
+    private let energyMarksLock = NSLock()
+    private var energyAnnouncedSession: String?
+    private var energyAnnouncedKcal: Double?
+    private var energyAnnouncedAt: Date?
+
+    /// What one call to `announceEnergy` decided inside the marks section, for the
+    /// caller to act on after the lock is released.
+    private enum EnergyAnnouncement {
+        case suppressed
+        case send([String: Any])
+        case refused([String: Any], [SyncProtocolRejection])
+    }
+
+    /// Tells the phone the wrist's running active-energy total (plan 135 D-13510,
+    /// D-13511): live only, stored nowhere, sent through the same `emit` path as a
+    /// timer. The total is the restart-aware sum of the session's stored counts —
+    /// the same chain the session end sums — so a recovered workout's counter
+    /// falling to zero never pulls the phone's chip back down (S-13511 D). A frame
+    /// goes out the first time for a session, when the value fell
+    /// (a restarted counter), or when it rose by at least half a kilocalorie and
+    /// at least five seconds have passed since the last one; anything else, and
+    /// any value that is not a finite number of at least zero, sends nothing.
+    public func announceEnergy(kilocalories: Double, at: Date) {
+        guard let row = state.record(), row.status == WatchSessionStatus.active else { return }
+        guard kilocalories.isFinite, kilocalories >= 0 else { return }
+        // The recorder stores the raw reading before it announces, so the stored
+        // samples already include `kilocalories`; a restarted counter (a recovered
+        // workout) is summed the way the session end sums it. With no stored
+        // sample inside the window (a caller that announces without recording) the
+        // raw value is the total.
+        let samples = storedSensorSamples.samples(forSession: row.sessionId)
+        let total = WatchSensorSummaries.activeEnergy(samples, from: row.startedAt, through: at) ?? kilocalories
+        switch energyAnnouncement(row: row, total: total, at: at) {
+        case .suppressed:
+            return
+        case .refused(let envelope, let rejections):
+            noteRefused("frame_not_sent", envelope, rejections)
+        case .send(let envelope):
+            emit(envelope)
+        }
+    }
+
+    /// The announce decision and its bookkeeping in one synchronous section: the
+    /// rule check, the envelope, the validator's answer and the three marks.
+    /// Two callers cannot both pass the guard, and a frame the protocol refuses
+    /// records no mark — so the next caller can retry, as before (D-16201,
+    /// A-16201). Nothing in the section awaits, takes a second lock, emits or
+    /// reports a refusal; the caller does those once the lock is released.
+    private func energyAnnouncement(
+        row: WatchSessionRecord,
+        total: Double,
+        at: Date
+    ) -> EnergyAnnouncement {
+        energyMarksLock.lock()
+        defer { energyMarksLock.unlock() }
+
+        if energyAnnouncedSession == row.sessionId,
+           let lastKcal = energyAnnouncedKcal,
+           let lastAt = energyAnnouncedAt,
+           total >= lastKcal {
+            guard total - lastKcal >= 0.5, at.timeIntervalSince(lastAt) >= 5 else { return .suppressed }
+        }
+        let envelope: [String: Any] = [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-energy-\(row.sessionId)-\(Int((at.timeIntervalSince1970 * 1000).rounded()))",
+            "sessionId": row.sessionId,
+            "type": "energy_live",
+            "origin": "watch",
+            "sentAt": utcIso(at),
+            "payload": ["activeEnergyKcal": total, "at": utcIso(at)],
+        ]
+        if let validator {
+            let rejections = validator.validateEnvelope(envelope)
+            if !rejections.isEmpty { return .refused(envelope, rejections) }
+        }
+        energyAnnouncedSession = row.sessionId
+        energyAnnouncedKcal = total
+        energyAnnouncedAt = at
+        return .send(envelope)
+    }
+
+    /// The newest settled workouts the watch keeps; older ones are retired at
+    /// launch (plan 207).
+    public static let settledSessionsKept = 20
+
+    /// How long an ended session the phone has not taken keeps its raw readings
+    /// (D-15602). Long enough for a phone that was left in a locker, off, or out
+    /// of range to come back; short enough that a watch whose phone never comes
+    /// does not carry every workout forever.
+    private static let unacknowledgedReadingsRetention: TimeInterval = 14 * 24 * 60 * 60
 
     /// Drops the raw sensor log of every session that is over and whose entries
     /// the phone has recorded in full.
@@ -1121,18 +2056,39 @@ public final class WatchSessionEngine {
     /// `session_end` is stored and acknowledged (D-129). The summaries are
     /// computed from these readings, so the readings stay until the phone holds
     /// what was computed from them — whichever order the prunes run in.
+    ///
+    /// The phone never coming is the one case that would hold them forever, so
+    /// time ends it (D-15602): an ended session keeps its readings for
+    /// `unacknowledgedReadingsRetention` after its own last row and releases them
+    /// after that, acknowledged or not. The summaries rode on the end, so what
+    /// the wrist has already shown is stored with the session either way.
+    ///
+    /// Serialised with the engine's session writers: it reads the session rows
+    /// and prunes a log, and a receipt can ask for it while another turn is
+    /// writing (D-15601).
     @discardableResult
     public func pruneSettledSensorSamples() async -> [String] {
+        await mutex.exclusive { await pruneSettledSensorSamplesLocked() }
+    }
+
+    private func pruneSettledSensorSamplesLocked() async -> [String] {
         let awaitingReceipt = Set(
-            storedObservations.filter { $0.confirmedAt == nil }.map(\.sessionId)
+            observationLog.snapshot().filter { $0.confirmedAt == nil }.map(\.sessionId)
         )
+        let now = clock()
 
         let settled = newestSessionRows().values
             .filter { session in
-                session.status != WatchSessionStatus.active
-                    && !awaitingReceipt.contains(session.sessionId)
+                // The store owns "is anything stored": it answers from its side
+                // files without decoding a reading, and a session with nothing
+                // stored drops nothing and writes nothing (D-17308, D-15603).
+                guard session.status != WatchSessionStatus.active else { return false }
+
+                let acknowledged = !awaitingReceipt.contains(session.sessionId)
                     && isEndAcknowledgedWhereOwed(session.sessionId)
-                    && storedSensorSamples.contains { $0.sessionId == session.sessionId }
+                return acknowledged
+                    || now.timeIntervalSince(session.recordedAt)
+                        >= Self.unacknowledgedReadingsRetention
             }
             .map(\.sessionId)
 
@@ -1140,15 +2096,24 @@ public final class WatchSessionEngine {
 
         let pruned = await store.pruneSensorSamples(settled)
         let dropped = Set(pruned)
-        storedSensorSamples.removeAll { dropped.contains($0.recordId) }
+        storedSensorSamples.prune { dropped.contains($0.recordId) }
         return pruned
+    }
+
+    /// Retires every settled workout beyond the newest `settledSessionsKept`
+    /// (plan 207). Meant to run at launch BEFORE `restore()`, so the engine
+    /// never holds rows the store no longer has; the store decides from its own
+    /// rows and writes nothing when there is nothing to retire.
+    @discardableResult
+    public func pruneSettledSessions() async -> [String] {
+        await store.pruneSettledSessions(keepingNewest: Self.settledSessionsKept)
     }
 
     /// The current version of each session the store holds, by session id — the
     /// newest row wins, exactly as `restore` reduces the session the watch is on.
     private func newestSessionRows() -> [String: WatchSessionRecord] {
         var newest: [String: WatchSessionRecord] = [:]
-        for row in sessionRows {
+        for row in state.rows() {
             if let existing = newest[row.sessionId], existing.sequence >= row.sequence {
                 continue
             }
@@ -1167,7 +2132,7 @@ public final class WatchSessionEngine {
     /// no session (S-006) is owed like any other, under the id it was stored
     /// with.
     public func pendingObservations() -> [[String: Any]] {
-        storedObservations
+        observationLog.snapshot()
             .filter { $0.confirmedAt == nil }
             .map { observation in
                 observationsUp(
@@ -1179,23 +2144,31 @@ public final class WatchSessionEngine {
             }
     }
 
+    /// The observations the phone has not acknowledged yet, as stored records:
+    /// what `pendingObservations()` rebuilds its messages from, here for the
+    /// wrist's "waiting for your phone" line (plan 51d D-2). A receipt
+    /// (`confirmObservations`) removes an entry from it.
+    public var unconfirmedObservations: [WatchObservationRecord] {
+        observationLog.snapshot().filter { $0.confirmedAt == nil }
+    }
+
     // MARK: - Session end
 
-    /// Appends the `session_end` of a session the wrist created, the first time
-    /// it becomes completed or abandoned — by the wrist's End or abandon, or by
-    /// the phone's lifecycle message or snapshot (D-120).
+    /// Appends the `session_end` of a session the wrist created or followed
+    /// from the phone, the first time it becomes completed or abandoned — by
+    /// the wrist's End or abandon, or by the phone's lifecycle message or
+    /// snapshot (D-120; plan 71 D-1). A followed session's end carries
+    /// `followed: true` (plan 71 D-2), so the phone stores only its heart rate.
     ///
     /// Called before the row that records the new status, so nothing else is
     /// stored for the session first, and a kill in between leaves the session
     /// still running with its end already owed to the phone rather than ended
-    /// with no end the phone could import. A session the wrist joined from the
-    /// phone gets none. A session that already has one — reopened and ended
-    /// again, or ended by two messages — keeps it: the id is the session's, so
-    /// no end is ever re-emitted with different values.
+    /// with no end the phone could import. A session that already has one —
+    /// reopened and ended again, or ended by two messages — keeps it: the id is
+    /// the session's, so no end is ever re-emitted with different values.
     private func captureSessionEnd(_ sessionId: String, status: String, endedAt: Date) async {
         guard Self.terminalStatuses.contains(status),
               let origin = creationRow(sessionId),
-              origin.source == Self.wristSource,
               !knowsObservation(WatchSessionCapture.sessionEndId(sessionId))
         else { return }
 
@@ -1223,7 +2196,7 @@ public final class WatchSessionEngine {
         let sessionId = origin.sessionId
         let startedAt = WatchSensorSummaries.wireInstant(origin.startedAt)
         let end = WatchSensorSummaries.wireInstant(endedAt)
-        let samples = storedSensorSamples.filter { $0.sessionId == sessionId }
+        let samples = storedSensorSamples.samples(forSession: sessionId)
         let id = WatchSessionCapture.sessionEndId(sessionId)
 
         var event: [String: Any] = [
@@ -1235,6 +2208,11 @@ public final class WatchSessionEngine {
             "endedAt": utcIso(end),
             "status": status,
         ]
+        // A session the phone started and the wrist followed says so (plan 71 D-2):
+        // the phone then stores only its heart rate. A wrist-created end has no key.
+        if origin.source != Self.wristSource {
+            event["followed"] = true
+        }
         if let modality = origin.modality, !modality.isEmpty {
             event["modality"] = modality
         }
@@ -1243,6 +2221,12 @@ public final class WatchSessionEngine {
         // whole session (D-122 g).
         if let session = WatchSensorSummaries.heartRate(samples, from: startedAt, through: end) {
             event.merge(session.fields) { _, measured in measured }
+        }
+
+        // The wrist's measured energy total for the whole session (D-13473),
+        // wrist-created end and followed end alike.
+        if let kcal = WatchSensorSummaries.activeEnergy(samples, from: startedAt, through: end) {
+            event["activeEnergyKcal"] = kcal
         }
 
         let blocks = WatchSensorSummaries
@@ -1306,7 +2290,8 @@ public final class WatchSessionEngine {
     /// from a phone message can carry another source, so the first is the one
     /// that answers.
     private func creationRow(_ sessionId: String) -> WatchSessionRecord? {
-        sessionRows
+        let rows = state.rows()
+        return rows
             .filter { $0.sessionId == sessionId }
             .min { $0.sequence < $1.sequence }
     }
@@ -1314,16 +2299,18 @@ public final class WatchSessionEngine {
     /// Whether the watch has held the observation `recordId` — still stored, or
     /// acknowledged and pruned since.
     private func knowsObservation(_ recordId: String) -> Bool {
-        acknowledgedObservationIds.contains(recordId)
-            || storedObservations.contains { $0.recordId == recordId }
+        acknowledgementLog.contains(recordId)
+            || observationLog.contains { $0.recordId == recordId }
     }
 
     /// The prune gate's extra step for a session the wrist created: its
     /// `session_end` has been acknowledged (D-129). A session the wrist joined
-    /// owes no end, so nothing extra holds it.
+    /// now also sends an end (plan 71 D-1), but the observation gate already
+    /// holds it until that end is acknowledged, so nothing extra holds it here
+    /// (plan 71 D-3).
     private func isEndAcknowledgedWhereOwed(_ sessionId: String) -> Bool {
         guard creationRow(sessionId)?.source == Self.wristSource else { return true }
-        return acknowledgedObservationIds.contains(WatchSessionCapture.sessionEndId(sessionId))
+        return acknowledgementLog.contains(WatchSessionCapture.sessionEndId(sessionId))
     }
 
     // MARK: - Timers
@@ -1332,18 +2319,38 @@ public final class WatchSessionEngine {
     @discardableResult
     public func startTimer(
         _ kind: String,
-        plannedDurationMs: Int? = nil
+        plannedDurationMs: Int? = nil,
+        sessionExerciseId: String? = nil
     ) async throws -> WatchTimerRecord {
         try requireTimerKind(kind)
+        let session = requireSession()
         let now = clock()
-        return await appendTimer(
-            WatchTimerRecord(
-                recordId: newId(),
-                sessionId: requireSession().sessionId,
+        if Self.isTerminal(session.status) {
+            // D-14603: the end stopped every timer of this session, so a start
+            // after it is not a start — no row and no `timer_state`, or the phone
+            // would mirror a rest for a workout that is over. The newest row of
+            // `kind` is the timer that applies; with none, the answer is a timer
+            // that stopped where it began, never stored and never sent.
+            return newestTimer(kind: kind) ?? WatchTimerRecord(
+                recordId: "\(Self.timerPrefix)ended-\(session.sessionId)-\(kind)",
+                sessionId: session.sessionId,
                 recordedAt: now,
                 kind: kind,
                 startedAt: now,
-                plannedDurationMs: plannedDurationMs
+                stoppedAt: now,
+                plannedDurationMs: plannedDurationMs,
+                sessionExerciseId: sessionExerciseId
+            )
+        }
+        return await appendTimer(
+            WatchTimerRecord(
+                recordId: newId(),
+                sessionId: session.sessionId,
+                recordedAt: now,
+                kind: kind,
+                startedAt: now,
+                plannedDurationMs: plannedDurationMs,
+                sessionExerciseId: sessionExerciseId
             )
         )
     }
@@ -1379,13 +2386,77 @@ public final class WatchSessionEngine {
 
     /// Ends the newest timer, or the newest one of `kind`. A stopped timer keeps
     /// the time it had reached.
+    ///
+    /// The rest is the one timer whose ending the phone also has to hear: the
+    /// window it spanned travels as a `rest` observation (D-211/D-220), built
+    /// from the stopped row and emitted through the same append-then-emit path
+    /// every other log uses. `at` is the ending instant the caller already has
+    /// (D-223) — the instant the frame it is about to send reports — and
+    /// defaults to the clock.
     @discardableResult
-    public func stopTimer(kind: String? = nil) async -> WatchTimerRecord? {
+    public func stopTimer(kind: String? = nil, at instant: Date? = nil) async -> WatchTimerRecord? {
         guard let timer = activeTimer(kind), timer.state != WatchTimerState.stopped
         else { return activeTimer(kind) }
 
-        let now = clock()
-        return await appendTimer(timerRowFrom(timer, recordedAt: now, stoppedAt: now))
+        let now = instant ?? clock()
+        let stopped = await appendTimer(timerRowFrom(timer, recordedAt: now, stoppedAt: now))
+        if stopped.kind == WatchTimerKind.rest {
+            await emitRestEnded(stopped, following: timer)
+        }
+        return stopped
+    }
+
+    /// Emits the rest the stopped row was: the window it spanned, hung on the
+    /// entry it followed (D-166, D-220, D-221).
+    ///
+    /// Nothing is emitted when the window is empty — a rest that ends where it
+    /// started is nothing to write — and nothing when D-221 finds no entry to
+    /// hang it on. The stop itself has already happened either way: only the
+    /// travel is skipped, and the timer row is stored all the same.
+    private func emitRestEnded(
+        _ row: WatchTimerRecord,
+        following preStop: WatchTimerRecord
+    ) async {
+        guard let endedAt = row.stoppedAt, endedAt > row.startedAt else { return }
+        guard let followed = restFollowOnEntryId(before: preStop) else { return }
+
+        // D-224: the id is derived from the row, so a re-send is the same event,
+        // and suffixed so it cannot collide with the `timer_state` frame the
+        // same row already sent.
+        let eventId = "\(row.recordId)-rest"
+        let event: [String: Any] = [
+            "entryId": eventId,
+            "eventId": eventId,
+            "kind": WatchObservationKind.rest,
+            "loggedAt": utcIso(endedAt),
+            "sessionExerciseId": followed.payload["sessionExerciseId"] as? String ?? "",
+            "exerciseId": followed.payload["exerciseId"] as? String ?? "",
+            "startedAt": utcIso(row.startedAt),
+            "endedAt": utcIso(endedAt),
+            "afterEntryId": followed.entryId,
+        ]
+        // A rest whose event cannot be built is a rest that does not travel:
+        // the ending is the user's, and it must not fail with the frame.
+        _ = try? await appendObservation(event, sessionId: row.sessionId)
+    }
+
+    /// The entry a rest hangs on (D-221): the newest effort observation of the
+    /// same session whose stored row precedes the rest timer's own row.
+    ///
+    /// Positional, against the store's row order, because the timer row names no
+    /// slot: it reads the rows the store holds, which is what makes the answer
+    /// survive a relaunch and what makes a rest the wrist adopted from the phone
+    /// answer with the entry that was logged last. No preceding effort
+    /// observation → nil, and the rest is not emitted.
+    private func restFollowOnEntryId(before timerRow: WatchTimerRecord) -> WatchObservationRecord? {
+        var newest: WatchObservationRecord?
+        for observation in observationLog.snapshot() {
+            if observation.sessionId != timerRow.sessionId { continue }
+            if observation.sequence >= timerRow.sequence { continue }
+            guard WatchObservationKind.efforts.contains(observation.kind) else { continue }
+            if newest.map({ observation.sequence > $0.sequence }) ?? true { newest = observation }
+        }
+        return newest
     }
 
     /// Copies the timer's identity into a new row — timers advance by append too.
@@ -1410,7 +2481,8 @@ public final class WatchSessionEngine {
             pausedAt: clearPause ? nil : (pausedAt ?? timer.pausedAt),
             stoppedAt: stoppedAt ?? timer.stoppedAt,
             accumulatedPauseMs: accumulatedPauseMs ?? timer.accumulatedPauseMs,
-            plannedDurationMs: timer.plannedDurationMs
+            plannedDurationMs: timer.plannedDurationMs,
+            sessionExerciseId: timer.sessionExerciseId
         )
     }
 
@@ -1418,7 +2490,7 @@ public final class WatchSessionEngine {
     private func appendTimer(_ row: WatchTimerRecord) async -> WatchTimerRecord {
         let stored = await store.append(.timer(row))
         guard let timer = stored.timerRow else { return row }
-        storedTimers.append(timer)
+        timerLog.append(timer)
         emit(
             timerState(
                 sessionId: timer.sessionId,
@@ -1437,13 +2509,39 @@ public final class WatchSessionEngine {
     }
 
     private func newestTimer(kind: String?) -> WatchTimerRecord? {
+        guard let sessionId = state.record()?.sessionId else { return nil }
         var newest: WatchTimerRecord?
-        for timer in storedTimers {
-            if timer.sessionId != current?.sessionId { continue }
+        for timer in timerLog.snapshot() {
+            if timer.sessionId != sessionId { continue }
             if let kind, timer.kind != kind { continue }
             if newest.map({ timer.sequence > $0.sequence }) ?? true { newest = timer }
         }
         return newest
+    }
+
+    /// Whether a phone's session-scoped frame applies at all (D-79): it must
+    /// name the session the watch holds. A frame that names none, or names
+    /// another one, is refused whole — nothing applied, nothing stored, nothing
+    /// emitted.
+    private func guardSession(_ envelope: [String: Any]) -> Bool {
+        guard let held = state.record(),
+              let sessionId = envelope["sessionId"] as? String
+        else { return false }
+        return sessionId == held.sessionId
+    }
+
+    /// Whether the newest row of `kind` is one a phone message wrote — the rows
+    /// whose id is derived from the message that named them (D-80).
+    private func senderWroteTimer(_ kind: String) -> Bool {
+        newestTimer(kind: kind).map(isTimerFromMessage) ?? false
+    }
+
+    /// Whether `timer` came from a message the phone sent rather than from this
+    /// watch's own Start (D-3). Only the former carries a slot the wrist can be
+    /// on the wrong side of; a clock the wrist started keeps running across a
+    /// jump (S-1403).
+    public func isTimerFromMessage(_ timer: WatchTimerRecord) -> Bool {
+        timer.recordId.hasPrefix(Self.timerPrefix)
     }
 
     private func requireTimerKind(_ kind: String) throws {
@@ -1462,7 +2560,7 @@ public final class WatchSessionEngine {
     /// drop across a relaunch, without rewriting an observation.
     public func confirmObservations(_ entryIds: [String]) async -> [String] {
         let wanted = Set(entryIds)
-        let acknowledged = storedObservations.filter {
+        let acknowledged = observationLog.snapshot().filter {
             wanted.contains($0.entryId) && $0.confirmedAt == nil
         }
         guard !acknowledged.isEmpty else { return [] }
@@ -1475,7 +2573,7 @@ public final class WatchSessionEngine {
                     // A receipt names the session it belongs to; a standalone
                     // nutrition quick-log has none, so the row's own id stands
                     // in.
-                    sessionId: current?.sessionId ?? acknowledged[0].sessionId,
+                    sessionId: state.record()?.sessionId ?? acknowledged[0].sessionId,
                     recordedAt: now,
                     observationIds: acknowledged.map(\.recordId)
                 )
@@ -1483,8 +2581,8 @@ public final class WatchSessionEngine {
         )
 
         let acknowledgedIds = Set(acknowledged.map(\.recordId))
-        acknowledgedObservationIds.formUnion(acknowledgedIds)
-        storedObservations = storedObservations.map { observation in
+        acknowledgementLog.acknowledge(acknowledgedIds)
+        observationLog.map { observation in
             acknowledgedIds.contains(observation.recordId)
                 ? observation.withConfirmation(now)
                 : observation
@@ -1497,9 +2595,27 @@ public final class WatchSessionEngine {
     /// acknowledges them.
     public func pruneConfirmed() async -> [String] {
         let pruned = await store.pruneConfirmed()
-        let dropped = Set(pruned)
-        storedObservations.removeAll { dropped.contains($0.recordId) }
+        trimPrunedObservations(pruned)
         return pruned
+    }
+
+    /// Drops the water taps the phone confirmed that were logged before
+    /// `cutoff`; unconfirmed taps and every other kind of row stay (plan 96
+    /// D-43, D-44). Its one caller is `WatchWaterState.restore()`, at launch.
+    public func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String] {
+        let pruned = await store.pruneWaterTaps(loggedBefore: cutoff)
+        trimPrunedObservations(pruned)
+        return pruned
+    }
+
+    /// Takes the rows a prune dropped out of memory too.
+    private func trimPrunedObservations(_ pruned: [String]) {
+        let dropped = Set(pruned)
+        observationLog.prune(dropped)
+        // D-52: a pruned row takes its projection lens with it. A correction or
+        // deletion marker left behind would override or hide the fresh row when
+        // the same id is re-carried.
+        lensLog.prune(dropped)
     }
 
     // MARK: - Emission
@@ -1588,6 +2704,7 @@ public final class WatchSessionEngine {
     private func requireConformingIncoming(_ envelope: [String: Any]) throws {
         let rejections = SyncProtocolValidator.incomingRejections(validator, envelope)
         guard rejections.isEmpty else {
+            noteRefused("frame_rejected", envelope, rejections)
             throw WatchEmissionRejected(
                 message: "refusing to apply a message this build cannot read: "
                     + "\(rejections[0].description)",
@@ -1596,8 +2713,18 @@ public final class WatchSessionEngine {
         }
     }
 
+    /// Records a refused frame (plan 142 D-14207); never changes what happens next.
+    private func noteRefused(_ kind: String, _ envelope: [String: Any], _ rejections: [SyncProtocolRejection]) {
+        diagnostics?.note(
+            kind,
+            session: envelope["sessionId"] as? String,
+            // The code and the path only: a rejection's message can quote the offending value (D-14211).
+            detail: "\(envelope["type"] as? String ?? "unknown") \(rejections.first.map { "\($0.code) at \($0.path)" } ?? "")"
+        )
+    }
+
     private func requireSession() -> WatchSessionRecord {
-        guard let current else {
+        guard let current = state.record() else {
             preconditionFailure(
                 "no session: create one, or restore the in-progress session first"
             )

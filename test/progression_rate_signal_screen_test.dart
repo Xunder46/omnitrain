@@ -38,7 +38,8 @@ const Size _kTallViewport = Size(400, 2400);
 
 /// The observation and the suggestion the plan pins (D-1109), verbatim.
 const String _kFprObservation =
-    'Resistance progression rate is 80% over the last 4 weeks, up from 65%.';
+    'In the last 4 weeks, 80% of your lifting sessions matched or beat your '
+    'previous one for that lift, up from 65% before.';
 const String _kFprSuggestion = 'The current approach is working.';
 
 // ─── F-PR ───────────────────────────────────────────────────────────────────
@@ -72,13 +73,15 @@ int _at(int daysAgo, int hour) {
   return DateTime(day.year, day.month, day.day, hour).millisecondsSinceEpoch;
 }
 
-/// One completed, rated session with one segment, written directly because the
-/// shared `seedSession` cannot express a rating.
+/// One completed session with one segment, written directly because the
+/// shared `seedSession` cannot express a rating. Rated unless [rated] is
+/// false (S-17509 seeds the same nine sessions with no rating at all).
 Future<void> _seedRatedSession(
   WorkoutRepository repo, {
   required String sessionId,
   required int daysAgo,
   String? modality,
+  bool rated = true,
 }) async {
   final start = _at(daysAgo, 9);
   await repo.createSession(
@@ -87,7 +90,7 @@ Future<void> _seedRatedSession(
       ownerUserId: 'user-1',
       startedAtMs: start,
       endedAtMs: start + 3600000,
-      sessionFeeling: _kFprRating,
+      sessionFeeling: rated ? _kFprRating : null,
       modality: modality,
       createdAtMs: start,
       updatedAtMs: start,
@@ -108,7 +111,8 @@ Future<void> _seedRatedSession(
 
 /// F-PR: nine rated sessions carrying all five exercises, plus the
 /// period-scoped window whose rated baseline meets the gate.
-Future<void> _seedFpr(WorkoutRepository repo) async {
+/// S-17509 seeds the same nine sessions with no rating at all.
+Future<void> _seedFpr(WorkoutRepository repo, {bool rated = true}) async {
   for (final id in _kFprWeights.keys) {
     await seedExercise(
       repo,
@@ -124,6 +128,7 @@ Future<void> _seedFpr(WorkoutRepository repo) async {
       sessionId: 'fpr-s$day',
       daysAgo: day,
       modality: 'resistance',
+      rated: rated,
     );
     for (final entry in _kFprWeights.entries) {
       await seedSetEffort(
@@ -342,8 +347,8 @@ void main() {
           expect(find.text(_kFprObservation), findsOneWidget);
           expect(find.text(_kFprSuggestion), findsOneWidget);
 
-          // The layer sits in its slot, under the Mix layer and above ALL
-          // TIME, and the card is the layer's top card.
+          // The layer sits in its slot, under the Mix layer and above the
+          // Instruments caption, and the card is the layer's top card.
           final signalsTop = tester
               .getTopLeft(find.byKey(const Key('signals_layer')))
               .dy;
@@ -355,7 +360,11 @@ void main() {
           );
           expect(
             signalsTop,
-            lessThan(tester.getTopLeft(find.text('ALL TIME')).dy),
+            lessThan(
+              tester
+                  .getTopLeft(find.byKey(const Key('instrument_caption')))
+                  .dy,
+            ),
           );
           expect(
             tester
@@ -366,9 +375,32 @@ void main() {
 
           // The blocks below are undisturbed.
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
-          expect(find.byKey(const Key('all_time_card')), findsOneWidget);
-          expect(find.text('Resistance'), findsOneWidget);
+          expect(find.byKey(const Key('instrument_caption')), findsOneWidget);
+          expect(find.text('RESISTANCE'), findsOneWidget);
           expect(find.byKey(const Key('fuel_section')), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // ─── S-17509 ───────────────────────────────────────────────────────────
+
+      group('S-17509 the card shows with no ratings at all', () {
+        setUp(() => _seedFpr(repo, rated: false));
+
+        testWidgets('the real card shows with the exact copy and the hint '
+            'for the other signals, and no locked section', (tester) async {
+          await pumpStats(tester);
+
+          expect(_cardKeys(), ['signal_card_progression-rate']);
+          expect(find.text(_kFprObservation), findsOneWidget);
+          expect(find.text(_kFprSuggestion), findsOneWidget);
+          expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
+          expect(find.byKey(const Key('signals_locked')), findsNothing);
+
+          final hint = tester.widget<Text>(
+            find.byKey(const Key('signals_locked_hint')),
+          );
+          expect(hint.data, signalsMoreLine(0));
           expect(tester.takeException(), isNull);
         });
       });

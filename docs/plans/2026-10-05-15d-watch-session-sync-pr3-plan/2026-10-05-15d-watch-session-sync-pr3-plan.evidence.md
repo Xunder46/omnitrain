@@ -328,3 +328,213 @@ the debug harness's seeded snapshot carries the shape `watch_sync_wiring.dart` u
 residue-grep fix, already recorded above; **this fix round did not touch the file**, and no line of it
 affects the projection.
 
+# Evidence — watch-session-sync PR 3b, Phase 3 (the wrist takes a re-statement)
+
+The brief: `.work/watch-pr3b/brief-dev-3a.md`, part A (Phase 3, items 1–5). Part B (PROTOCOL.md,
+`docs/`, the plan's Progress row) is a later run and is untouched here.
+
+## Baselines (from the brief, before this phase)
+
+| Check | Baseline |
+|---|---|
+| `gateway.sh test` (whole suite) | `+3940 ~1` (3940 passing, 1 skipped) |
+| `gateway.sh swift-test` | `Executed 268 tests, with 0 failures` |
+| `gateway.sh lint` | `196 issues found`, 0 errors, exit 1 on the pre-existing info notices |
+
+## Red first — Dart
+
+Three tests were written on the projection register before any engine line changed
+(`test/watch_session_projection_test.dart`): `S-35 a re-statement is append-only and doubles nothing`,
+`S-41 the wrist's own set survives an answer with no phone entries`, and a fourth,
+`S-35 a re-statement of a deleted id stays deleted`, added once the fold existed. The F7 test was also
+flipped from "the wrist never re-states" to `S-35 an edit reaches the wrist and a delete is not sent`.
+
+`gateway.sh test test/watch_session_projection_test.dart` → `+24 -2`:
+
+| Test | Expected | Actual |
+|---|---|---|
+| `S-35 a re-statement is append-only and doubles nothing` (line 1003) | `[65.0, 62.5]` | `[60.0, 62.5]` |
+| `S-35 an edit reaches the wrist and a delete is not sent` (line 1664) | `[65.0, 62.5]` | `[60.0, 62.5]` |
+
+Noted honestly: `S-41` passed on the old code as well. Its subject is *survival and confirmation* of
+the wrist's own set (which the old code never broke), not the re-statement; it guards the change that
+follows. The append-only assertion inside the F7 test (`engine.observations` `[60.0, 62.5]`) is the
+half that fails only under mutation 2.
+
+Green after the engine edit: `+26: All tests passed!`.
+
+## Red first — Swift
+
+`watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift` (new, six tests: S-32, S-35
+×2 — the re-statement and the deleted id — S-38, S-41, and the `phone_entries_merge.json` replay) was
+written after the engine edit, so its red was captured the mutation way — mutation 3 below restores the
+pre-edit guard verbatim and is byte-identical to the file's state before this phase.
+
+## Mutations — three, all caught
+
+| # | Mutation (original line recorded, restored exactly) | Red |
+|---|---|---|
+| 1 | Dart, `_storeSnapshotEntry`'s fold loses one payload key: `...entry,` → `... (Map<String, Object?>.from(entry)..remove('loadKg')),` | `test/watch_session_projection_test.dart` `+25 -2`: the same two S-35 tests, `Expected: [65.0, 62.5] Actual: [60.0, 62.5]` — a fold that drops the edited value re-states nothing |
+| 2 | Dart, the fold's `return;` removed, so a held id is folded **and** appended: the row count doubles | `test/watch_session_projection_test.dart` `+22 -5`: `S-32` (940), `S-35` append-only (1003), `S-35` stays-deleted (1092), `S-35` edit reaches the wrist (1664), `S-43` (1759). The clearest: `S-32` `Actual: ['entry-slot-bench-0', 'entry-slot-bench-0', 'entry-slot-bench-0', 'entry-slot-bench-1', 'entry-slot-bench-1', 'entry-slot-bench-1']` |
+| 3 | Swift, the re-statement removed (the held id short-circuits again): `storeSnapshotEntry`'s guard restored to `guard let entryId = …, !storedObservations.contains(…) else { return }` | `gateway.sh swift-test` `Executed 274 tests, with 1 failure`: `testS35AReStatementShowsThePhonesNewValueAndLeavesTheRow` at line 124, `("Optional(60.0)") is not equal to ("Optional(65.0)")` |
+
+Each mutation was restored to the recorded original and re-run green before the next one; the final
+tree was re-run in full (below). No mutation was left applied.
+
+## One test defect, found by the first green run
+
+The S-41 test asserted the wrist's own `loadKg` as `Double`; `setEvent` writes `80` as `Int`, so the
+assertion read `nil` and failed (274 executed, 1 failure). Fixed in the test only
+(`as? Int`); no source line was involved.
+
+## The fixture change (brief pointer 6) — attempted, proven impossible, reverted
+
+Pointer 6 asks for the wrist to "show 65" in `watch/sync_protocol/fixtures/reconciliation/phone_entries_merge.json`,
+whose second answer re-carries `entry-slot-bench-0`. Empirically, that fixture cannot carry the
+divergence D-35 creates:
+
+| Fixture state | `test/live_mirroring_test.dart --plain-name phone_entries_merge` |
+|---|---|
+| snapshot 2's bench-0 `loadKg` 65, `expected` bench-0 60 | watch test red: `[0]['loadKg'] is <65> instead of <60>`; phone test green |
+| snapshot 2's bench-0 `loadKg` 65, `expected` bench-0 65 | phone test red: `is <60> instead of <65>`; watch test green |
+| reverted to HEAD | `+2: All tests passed!` |
+
+One `expected` block is deep-compared to both stacks by three readers — `test/live_mirroring_test.dart`'s
+phone test (`expect(phone.state, equals(expected))`) and watch test
+(`expect([for (final e in engine.entries) e.payload], equals(expected['entries']))`),
+`test/sync_protocol_fixtures_test.dart` S-004 (`expect(reconciled.convergedState(), equals(fixture['expected']))`),
+and Swift `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`
+(`engine.entries.map(\.payload)` vs `expected["entries"]`). The phone's reconciler keeps the **first**
+value for an id it already holds (`SyncSessionReconciler._addEntry`'s
+`if (_entries.containsKey(entryId)) return;`), which D-35 pairs with the wrist's re-statement. So
+`expected` must be 60 or 65, never both, and any value reddens one of those unpredicted tests. Both
+edits were reverted byte-identically: `gateway.sh git-status` lists four modified files and one new
+test file, and the fixture is **not** among them. The divergence is pinned instead in
+`test/watch_reconciliation_cross_stack_test.dart`, which compares no entry block to `expected`
+(`S-35 a held id the phone edited is re-stated on the wrist, not resaved`: wrist bench-0 = 65, once;
+phone bench-0 = 60). Governor decision needed — see `## Open questions`.
+
+## Final runs on this phase's tree
+
+| Check | Command | Result |
+|---|---|---|
+| Both touched Dart files | `gateway.sh test test/watch_session_projection_test.dart test/watch_reconciliation_cross_stack_test.dart` | `00:00 +44: All tests passed!` — 44 tests, 0 failures (log `.work/gateway/test-20261006-0948…`) |
+| Flutter, whole suite | `gateway.sh test` | `01:39 +3944 ~1: All tests passed!` — 3944 passing, 1 skipped, **0 failures**, against the baseline `+3940 ~1`: the four net-new tests, nothing regressed (log `.work/gateway/test-20261006-094824-86810.log`) |
+| Swift package | `gateway.sh swift-test` | `Executed 274 tests, with 0 failures (0 unexpected)`, exit 0 — against the baseline 268 / 0: the six net-new tests, nothing regressed (log `.work/gateway/swift-test-20261006-095008-91683.log`) |
+| Lint | `gateway.sh lint` | `196 issues found. (ran in 3.0s)`, 0 errors, exit 1 on the pre-existing info notices — unchanged from the baseline, and no issue names a file this phase touched (log `.work/gateway/lint-20261006-095012-91735.log`) |
+| Invariant | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches |
+
+## Footprint
+
+`lib/watch/session/watch_session_engine.dart`, `test/watch_session_projection_test.dart`,
+`test/watch_reconciliation_cross_stack_test.dart`,
+`watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`, and the new
+`watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift` — nothing else. The fixture
+is byte-identical to HEAD, `lib/core/sync_protocol/session_reconciler.dart` is untouched, and no
+`docs/` file, PROTOCOL.md or plan Progress row was changed (part B).
+
+`test/watch_session_engine_test.dart` (the brief's allowed home for the stays-deleted test) is
+untouched: the test lives with S-31…S-43 in the projection file's own group, where the rest of the
+register is.
+
+## PR 3b fix 1 — the newest snapshot wins over an earlier correction
+
+The brief: `.work/watch-pr3b/brief-fix-1.md` (D-35 only, tests only). Both mutations the governor ran
+against Phase 3 survived because every scenario re-stated an id only **once**, so no test had an
+earlier correction for the fold order to beat. One test per stack now edits a set twice.
+
+| Stack | Test added | Passes unmutated |
+|---|---|---|
+| Dart | `test/watch_session_projection_test.dart` `S-35 a second edit wins over the first` — edit 60→65, Sync + apply; 65→70, Sync + apply; `entries` loadKg `70.0`, `observations` still `60.0`, one row | `+1` (`flutter test --plain-name …` → `All tests passed!`) |
+| Swift | `watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift` `testASecondEditWinsOverTheFirst` — snapshots 60, 65, 70; `entries` loadKg 70, stored row loadKg 60, one row | `Executed 1 test, with 0 failures` |
+
+Each surviving mutation was then re-applied to show the new test RED, and restored byte-for-byte
+(`git-diff --stat` keeps `watch_session_engine.dart` at 15 and `WatchSessionEngine.swift` at 16 lines,
+the same counts Phase 3 left):
+
+| # | Mutation (recorded, restored verbatim) | Red |
+|---|---|---|
+| 1 | Dart `_storeSnapshotEntry`'s fold order swapped to `{...entry, ...?_entryCorrections[entryId]}` (the old value beats the re-stated one) | `flutter test --plain-name "S-35 a second edit wins over the first"` → `+0 -1`: `Expected: [70.0, 62.5]` / `Actual: [65.0, 62.5]`, `Which: at location [0] is <65.0> instead of <70.0>`, `test/watch_session_projection_test.dart 1761` |
+| 2 | Swift `storeSnapshotEntry`'s merge closure `{ held, _ in held }` instead of `{ _, corrected in corrected }` | `swift test --filter WatchPhoneEntriesTests.testASecondEditWinsOverTheFirst` → `Executed 1 test, with 1 failure`: `("Optional(65.0)") is not equal to ("Optional(70.0)")`, `WatchPhoneEntriesTests.swift:159` |
+
+Final runs on the restored tree:
+
+| Check | Command | Result |
+|---|---|---|
+| Flutter, whole suite | `gateway.sh test` | `01:36 +3945 ~1: All tests passed!` — 3945 passing, 1 skipped, **0 failures**, against the baseline `+3944 ~1`: the one net-new test, nothing regressed (log `.work/gateway/test-20261006-100719-5673.log`) |
+| Swift package | `gateway.sh swift-test` | `Executed 275 tests, with 0 failures (0 unexpected)`, exit 0 — against the baseline 274 / 0: the one net-new test, nothing regressed (log `.work/gateway/swift-test-20261006-100719-5674.log`) |
+| Lint | `gateway.sh lint` | `196 issues found. (ran in 3.0s)`, 0 errors, exit 1 on the pre-existing info notices — unchanged from the baseline, and no issue names `watch_session_projection_test.dart` (log `.work/gateway/lint-20261006-100912-10830.log`) |
+| Invariant | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches |
+
+Footprint: the two test files only; no engine line changed.
+
+## PR 3b, part B — the contract sentence, docs, walkthrough, plan bookkeeping
+
+The brief: `.work/watch-pr3b/brief-dev-3b.md`. Docs only: no code, test or fixture line changed.
+Files: `watch/sync_protocol/PROTOCOL.md` (the re-statement bullet under "Idempotency and
+reconciliation" and a new `1 (amended) | 2026-10-06` version-history row),
+`docs/state_management/watch_surface.md` (the phone's own-session paragraph now names D-35),
+`docs/watch_session_sync.md` (a new D-35 decision paragraph; the "an edit does not update the wrist's
+copy" bullet removed; the delete bullet's citation repointed at the renamed test),
+`docs/watch-app-setup-and-qa.md` (step (g) extended with the edit and the delete), this plan's
+Progress/Assumption Log.
+
+Every behaviour sentence added cites a test that asserts it: the wrist-side
+`WatchPhoneEntriesTests.testS35AReStatementShowsThePhonesNewValueAndLeavesTheRow` /
+`testASecondEditWinsOverTheFirst`, and the Dart `S-35 a re-statement is append-only and doubles nothing`
+/ `S-35 a second edit wins over the first` / `S-35 an edit reaches the wrist and a delete is not sent`
+and `S-35 a held id the phone edited is re-stated on the wrist, not resaved`.
+
+### Residue sweeps (observed)
+
+| Sweep | Command | Result |
+|---|---|---|
+| The removed claim and the old test name | `grep -rn "does not update the wrist's copy\|an edit leaves the wrist" docs/ watch/ lib/ test/` | **no hits outside `docs/plans/` history text** — the only matches are rows of this evidence file (this sweep's own command, a Phase 4 record and the F7 review table); `docs/watch_session_sync.md`, `watch/`, `lib/` and `test/` are clean |
+| The standing layer invariant | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches |
+| The docs size/indexing guard | `gateway.sh test test/docs_indexing_contract_test.dart` | `00:00 +9: All tests passed!` — 9 passing, 0 failures; every doc inside the band (`watch_surface.md` ~41 KB, well under 52 KB) |
+| Flutter, whole suite | `gateway.sh test` | `01:40 +3945 ~1: All tests passed!` — 3945 passing, 1 skipped, **0 failures**, unchanged from part A's `+3945 ~1`; no Dart source, test or fixture line changed (log `.work/gateway/test-20261006-102023-16098.log`) |
+| Swift package | `gateway.sh swift-test` | `Executed 275 tests, with 0 failures (0 unexpected)`, exit 0 — the tree part A left, re-run to observe the plan's claim (log `.work/gateway/swift-test-20261006-102542-21753.log`) |
+| Lint | `gateway.sh lint` | `196 issues found. (ran in 2.5s)`, 0 errors, exit 1 on the pre-existing info notices — the plan's baseline, and no issue names a file part B touched (log `.work/gateway/lint-20261006-101913-15669.log`) |
+
+### Footprint (part B)
+
+`watch/sync_protocol/PROTOCOL.md` (+15), `docs/state_management/watch_surface.md` (+15/-3),
+`docs/watch_session_sync.md` (+24/-6), `docs/watch-app-setup-and-qa.md` (+5/-1), this plan and this
+evidence file. No code, test, fixture or seed file.
+
+## PR 3b fix 2 — G1 (doc wording) and G4 (plan bookkeeping), docs only
+
+The brief: `.work/watch-pr3b/brief-fix-2.md`. No code and no test changed.
+
+Review G1: `watch/sync_protocol/PROTOCOL.md`'s idempotency bullet, its `2026-10-06` version row and
+`docs/watch_session_sync.md`'s D-35 paragraph claimed the watch "MUST NOT / never re-states an entry
+the phone holds from the watch's own snapshot" — a watch-side rule no engine enforces and no test
+asserts. The sentences now state only the mechanism: the watch re-states, for an id it holds, the
+values the phone's snapshot carries; a phone receiving a watch snapshot keeps the values it holds
+(the watch does not edit existing records, authority rule 1), so its model does not re-state; and the
+answer carries the watch's own values for the watch's own entries, so a re-statement of one is a
+no-op. The receiver-side `MUST` the engines do keep — a held `entryId` is re-stated from the payload,
+never stored as a second row and never a rewritten record — is unchanged. The citations name only
+tests that assert their sentence: the wrist-side Swift pair, the phone half of
+`test/watch_reconciliation_cross_stack_test.dart` (`S-35 a held id the phone edited is re-stated on
+the wrist, not resaved`), the two Dart projection tests and the projection edit test.
+
+Review G4: the plan's `Next handoff` line now names the owner walkthroughs (code review 2: APPROVE;
+the G2/G3 follow-ups belong to the durable-store (PR 4) plan), the status block's stale "the review
+of PR 3b" is dropped, and `## Open questions` no longer reuses 8 and 9 — those items are 12 and 13,
+with 13 (the one-PR/no-split item) marked superseded by the governor's Split note. The Impact table
+was left untouched.
+
+G1 proof — `grep -n` for `MUST NOT re-state` or `never re-states` across `watch/sync_protocol/PROTOCOL.md`
+and `docs/watch_session_sync.md`: no matches.
+
+| Check | Command | Result |
+|---|---|---|
+| Docs guard | `gateway.sh test test/docs_indexing_contract_test.dart` | `00:00 +9: All tests passed!` — 9 passing, 0 failures |
+| Flutter, whole suite | `gateway.sh test` | `01:41 +3945 ~1: All tests passed!` — 3945 passing, 1 skipped, **0 failures**, unchanged from fix 1's `+3945 ~1` (log `.work/gateway/test-20261006-104119-38631.log`) |
+| Lint | `gateway.sh lint` | `196 issues found. (ran in 3.0s)`, 0 errors, exit 1 on the pre-existing info notices — the baseline, and no issue names a file this pass touched (log `.work/gateway/lint-20261006-104316-43345.log`) |
+| Invariant | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches |
+
+Footprint: `watch/sync_protocol/PROTOCOL.md`, `docs/watch_session_sync.md`, this plan and this evidence
+file. No code, test, fixture or seed file. `swift-test` was not re-run: no Swift file changed.
+

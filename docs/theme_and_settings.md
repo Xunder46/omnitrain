@@ -4,9 +4,10 @@
 
 OmniTrain's Settings screen is fully implemented. It owns persisted preferences for:
 
-- calendar display (`Start of Week`)
-- measurement units (`Weight`, `Distance`, `Height`)
-- timer alert behavior (`Effort Timer Sound`, `Rest Ping`, `Rest Ping Sound`)
+- calendar display and the weeks the Consistency signal counts (`Start of Week`) — verified by `test/consistency_test.dart`, group `S-17802 the week ends on the day the setting says`, and `test/signals_layer_screen_test.dart`, group `S-17812 the Start of Week setting reaches the signals`
+- the Stats screen following `Start of Week`: changing `Start of Week` while Stats is open, or underneath another screen, refreshes Stats in the background with no spinner, so the Mix strip's week columns and the signals' week and waiting lines follow at once; no other setting reloads Stats, and setting Start of Week to the value it already has does not either, and a card dismissed a moment before the change stays dismissed — verified by `test/signals_layer_screen_test.dart`, group `S-182 Stats follows Start of Week while it is open` (`S-18201`, `S-18202`, `S-18204`), group `S-18206 a card dismissed just before the flip stays dismissed`, and `test/mix_layer_screen_test.dart`, group `S-18205 the strip follows Start of Week while Stats is open`
+- measurement units (`Weight`, `Distance`, `Height`): there is no separate Volume setting and no Volume row in Preferences — the water control's unit follows the Weight preference (weight `lbs` shows the water total and step in fl oz, `kg` shows ml) — verified by `test/utils_test.dart` (group `UnitFormatter volume (S-13201, S-13202, S-13203)`: `volumeUnitForWeightUnit follows the weight unit (S-13217)`), `test/state_test.dart` (group `NutritionState volume unit`: `S-13218 the water unit follows the weight setting: lbs flips to floz, kg back to ml; the distance unit is silent (plan 132 Rev 1)`), and `test/interaction_flow_test.dart` (group `SettingsScreen interactions`: `S-13219 the Settings screen has no Volume row`)
+- timer alert behavior (`Effort Timer Sound`, `Rest Ping`, `Rest Ping Sound`): the rest ping is a count-up nudge about the open rest, never a rest timer and never an end-of-rest alarm, and the one Rest Ping setting drives it on the phone and a haptic tap on the watch with no sound there, while Rest Ping Sound stays phone-only — round and hold timer alerts are unchanged ([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up"; `WatchLoggingTimersTests.testS164ARestIsNeverOwedAnAlert`, `WatchRestPingTests.testS241AnIntervalTapsAtItsMultiplesAndNowhereElse`)
 - notification permission copy that covers both rest reminders and effort-expiry alerts
 - workout follow-up (`Effort Rating`, the automatic post-workout effort-rating prompt; copy verified by `test/screen_widget_test.dart`, `settings screen keeps the streamlined section layout`)
 - appearance (`AppTheme` selection)
@@ -19,46 +20,22 @@ All settings apply immediately. There is no save button and no staged draft stat
 
 **File**: `lib/core/constants/omni_theme.dart`
 
-> **Flagged, not owned here (documentation standard §5).** The `AppTheme` enum
-> block and the token-field table below are copied implementation content
-> (§3.5/§3.4). They predate this document's conformance pass and are left as
-> they are rather than silently rewritten: bringing them into conformance is a
-> follow-up, and until then the class and
-> [Design System](design_system.md) are the owners.
-
-### `AppTheme` Enum
-
-```dart
-enum AppTheme {
-  abyssalNeon,
-  forgeEmber,
-  obsidianVolt,
-  voidPulse,
-  crimsonDojo,
-  malachiteCore,
-}
-```
-
 ### Available Themes
 
-Six themes: Abyssal Neon, Forge & Ember, Obsidian Volt, Void Pulse, Crimson Dojo, and Malachite
+The `AppTheme` enum in `lib/core/constants/omni_theme.dart` declares six themes: Abyssal Neon,
+Forge & Ember, Obsidian Volt, Void Pulse, Crimson Dojo, and Malachite
 Core. Their palettes and the reasoning behind each are in [Design System](design_system.md); the
 values themselves live only in `lib/core/constants/omni_theme.dart`.
 
 ### `OmniTheme` Token Resolver
 
-`OmniTheme.colorsForTheme(AppTheme theme)` returns a typed record with these fields:
-
-| Token Field | Purpose |
-|-------------|---------|
-| `backgroundTop` | Top stop of the app gradient |
-| `backgroundBottom` | Bottom stop of the app gradient |
-| `surface` | Surface and sheet background |
-| `primary` | Primary CTA / active accent |
-| `secondary` | Supporting accent |
-| `textMuted` | Secondary and metadata text |
-| `divider` | Dividers and low-emphasis separators |
-| `surfaceBorder` | Subtle surface outline |
+`OmniTheme.colorsForTheme(AppTheme theme)` returns the `OmniThemeColors`
+record defined by the typedef of the same name in
+`lib/core/constants/omni_theme.dart` — one field per token group
+(gradient stops, surface, primary and secondary accents, text tiers,
+divider, surface border, macro chart palette, strip macros, intensity
+ramp). The field list is the typedef's own; read it there rather than
+restating it here.
 
 ### Helper API
 
@@ -96,6 +73,14 @@ defines as whether a session ended on the wrist asks for the rating. The phone
 never pushes it: a change reaches the wrist with the answer to the wrist's next
 sync request. Verified by `test/watch_transport_test.dart` (`S-253`).
 
+**The weight and distance units are the wrist's too.** The Units setting
+(`preferredWeightUnit`: kg or lbs; `preferredDistanceUnit`: km or miles) travels
+as `preferences_down`'s `weightUnit` and `distanceUnit`, so the watch's logging
+screens show and step in the units the phone does. Like the effort rating, a
+change reaches the wrist with its next sync; a wrist that has never synced shows
+kg and km. Verified by `test/watch_sync_request_handler_test.dart` (`S-3903`) and
+`WatchUnitsTests.swift`.
+
 ---
 
 ## Settings Screen
@@ -110,8 +95,8 @@ enumerated here — the list is presentation, and prose enumeration of it drifts
 
 ### Sections
 
-The screen groups preferences, sound and alert behaviour, workout follow-up, appearance, and the
-platform-health sync toggles. Two
+The screen groups preferences, sound and alert behaviour, workout follow-up, appearance, the
+platform-health sync toggles, and the watch's link status. Two
 rules matter beyond the row list:
 
 - **Height is stored canonically in centimetres regardless of the display unit.** Switching the
@@ -120,6 +105,33 @@ rules matter beyond the row list:
   one measurement with a compound display form.
 - **Sound choices preview immediately on tap** through `TimerAlertService.playPreview`, and audio
   playback no-ops safely on web rather than throwing.
+- **Silent mode:** the phone's silent switch silences the **rest ping** sound (the haptic tap still
+  fires), because the ping is a nudge, not an alarm. The effort-timer alert and the sound preview
+  still play with the switch on, since the user asked to hear them (`TimerAlertAudio.nudge` /
+  `.alarm` in `TimerAlertService`). Not yet confirmed on a device.
+
+There is no setting for the Weight block on Stats: it shows whenever the
+weigh-in rule is met (see [Stats Screen](stats_screen.md#weight-block)).
+
+The APPLE WATCH section is the watch's status readout (one read-only row, plus the diagnostics row below it), built only when the platform's
+transport can report a link: one `Apple Watch` row, not tappable, with the link phase on the
+right — `Connected`, `Not reachable`, `Not paired` or `Watch app not installed` — and the
+last-synced line under the label (`Never synced` until the phone first hears a frame). Verified
+by `test/settings_watch_status_test.dart` (S-6910 no section without a link state; S-6911 the
+row per phase; S-6912 the row offers no tap target; S-6913 the section sits between WORKOUT and
+HEALTH; S-6914 a heard frame updates the line while the screen is open).
+
+Under that row, when the app built a diagnostics log, a `Diagnostics` row shows the number of events
+and a `Copy` label; tapping it copies the log as text (app version, platform, event count, then one line per
+event) and says `Diagnostics copied`; with nothing recorded it reads `Nothing recorded yet` and does nothing.
+Copy diagnostics is verified by `test/settings_diagnostics_test.dart` (S-14315). The row itself is a
+debugging tool, so `lib/main.dart` passes the log only when `kDiagnosticsEntryVisible`
+(`lib/core/constants/diagnostics_entry.dart`) is true — in debug and profile builds, and in a release
+build made with `--dart-define=OMNITRAIN_DIAGNOSTICS=true`; the log keeps recording either way (plan 177,
+D-17702). Hiding the row is verified by `test/settings_diagnostics_test.dart`, group
+`S-17703 the entry flag hides the Diagnostics row in a release build and shows it in debug`, and
+`test/diagnostics_wiring_source_test.dart`, group `S-17702 main.dart gates the Settings diagnostics
+argument`. See [The Watch Diagnostics Log](state_management/watch_diagnostics.md).
 
 ### Version Footer
 
@@ -138,8 +150,28 @@ The Settings screen does not include account-management rows such as sign-in, ex
 
 The platform-health toggles are the one settings area that can fail to take effect: an OS permission
 denial is persisted as its own toggle state (rather than silently reading as off) so the row can
-point the user at system settings. The gate each pipeline reads is owned by `SettingsState`; see
-[State Management](state_management.md).
+point the user at system settings. They also include a third row, `Read active energy` below
+`Read body weight`, on iPhone and Android only — absent on web and desktop — and off by default.
+Turning it on asks Health once for read access to active energy; the granted / refused / denied
+result persists like the other toggles' and a denial shows the same notice pointing at system
+settings. iOS never reports a refused read: the read simply comes back empty and the Fuel row's
+burned-per-day line stays hidden, while Health Connect on Android does report the refusal. The
+Android path is verified by host tests only, not on a device, and the manifest carries
+`READ_ACTIVE_CALORIES_BURNED`. Verified by `test/health_active_energy_settings_screen_test.dart`
+(`S-20829 iOS shows Read active energy below Read body weight`, `S-20829 Android shows it too`,
+`S-20829 macOS shows no Read active energy row`, `S-20829 turning it on asks Health once and
+persists`, `S-20829 Read body weight is unchanged on all three platforms`) and by
+`test/health_active_energy_read_test.dart` (`S-20823 the active-energy switch lifecycle — asks
+once, persists, disables without asking, refusal is denied`, `S-20824 readDailyActiveEnergy only
+when the switch is on and a source exists`, `S-20846 the Android manifest declares the
+active-calories read permission beside the Health permissions`). The gate each pipeline reads is owned by `SettingsState`; see
+[State Management](state_management.md). With Write workouts on, deleting a finished session also
+asks Health to remove the workout this phone saved for it; with it off, Health is left alone.
+With it on, a finished session's effort rating is also sent as that workout's Workout Effort, and
+a delete clears it first (plan 90). Switching Write workouts on asks Health for Workout Effort in the same sheet; iOS 18 and later only.
+A session the watch runs gets its workout from the watch, never also from the phone: the phone
+writes nothing when the wrist ends it, or when the phone ends a session the wrist is running with an
+exercise in it (plan 89c1; `S-89c1-*` in `test/health_platform_test.dart`).
 
 ---
 
@@ -169,4 +201,4 @@ point the user at system settings. The gate each pipeline reads is owned by `Set
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-11-15. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

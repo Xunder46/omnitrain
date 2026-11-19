@@ -1,13 +1,59 @@
 import 'package:flutter/foundation.dart';
 import '../core/constants/water_constants.dart';
 import '../core/utils/date_utils.dart';
+import '../core/utils/unit_formatter.dart';
 import '../data/models/models.dart';
 import '../data/repositories/workout_repository.dart';
+import 'settings/settings_state.dart';
 
 class NutritionState extends ChangeNotifier {
   final WorkoutRepository _repository;
+  final SettingsState? _settings;
+  final DateTime Function()? _clock;
 
-  NutritionState(this._repository);
+  /// [settings] is optional; a null `SettingsState` means exactly the
+  /// ml-unit behaviour with no listener attached.
+  NutritionState(
+    this._repository, {
+    SettingsState? settings,
+    DateTime Function()? clock,
+  }) : _settings = settings,
+       _clock = clock {
+    _rememberedWaterVolumeUnit = waterVolumeUnit;
+    _settings?.addListener(_onSettingsChanged);
+  }
+
+  DateTime _now() => (_clock ?? DateTime.now)();
+
+  int _todayMs() => OmniDateUtils.startOfDayMs(_now());
+
+  /// The active volume unit, normalised to `'ml'` or `'floz'` — derived
+  /// from the bound settings' weight unit (`lbs` gives floz); a null
+  /// (unbound) settings source reads ml.
+  String get waterVolumeUnit =>
+      UnitFormatter.volumeUnitForWeightUnit(_settings?.preferredWeightUnit);
+
+  /// The per-tap step in milliliters under [waterVolumeUnit]
+  /// (250 ml, or 237 ml with the fl oz unit).
+  int get waterStepMl => waterStepMlFor(waterVolumeUnit);
+
+  /// The normalised unit the listener last saw, so it notifies only when
+  /// the unit actually changed.
+  String? _rememberedWaterVolumeUnit;
+
+  @override
+  void dispose() {
+    _settings?.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
+
+  void _onSettingsChanged() {
+    final normalized = waterVolumeUnit;
+    if (normalized != _rememberedWaterVolumeUnit) {
+      _rememberedWaterVolumeUnit = normalized;
+      notifyListeners();
+    }
+  }
 
   NutritionTarget? _nutritionTarget;
   NutritionTarget? get nutritionTarget => _nutritionTarget;
@@ -19,6 +65,24 @@ class NutritionState extends ChangeNotifier {
   /// when the UI navigates between dates or re-queries the same day.
   final Map<int, NutritionTarget?> _targetsByDate = {};
 
+  /// The day the today-caches belong to: set by the today-loads and
+  /// `rolloverToDate`, null before the first load.
+  int? _cacheDayMs;
+
+  /// The rollover in flight, shared by concurrent callers.
+  Future<void>? _rolling;
+
+  /// Plan 231: the last stamp a logged row's id was built from. Two foods
+  /// logged in the same millisecond must not share an id (both stores replace
+  /// a row with an equal id), so the stamp only ever goes up.
+  int _lastIdStamp = 0;
+
+  int _nextIdStamp() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _lastIdStamp = now > _lastIdStamp ? now : _lastIdStamp + 1;
+    return _lastIdStamp;
+  }
+
   /// Returns the most recent cached or loaded target for [dateMs], if any.
   /// Does not trigger a repository fetch.
   NutritionTarget? getCachedTargetForDate(int dateMs) => _targetsByDate[dateMs];
@@ -26,8 +90,7 @@ class NutritionState extends ChangeNotifier {
   // ─── Consumed foods (today's day-log) ──────────────────────────────────
   // Source of truth for the calorie ring on the nutrition page. Backed by
   // `WorkoutRepository.getConsumedFoodsForDate`, which both implementations
-  // (`HiveWorkoutRepository` and future `SqliteWorkoutRepository`) already
-  // provide. The state caches the result and notifies listeners on every
+  // (`HiveWorkoutRepository` and `MockWorkoutRepository`) provide. The state caches the result and notifies listeners on every
   // successful load so the ring rebuilds when the day's log changes.
 
   /// Cached list of consumed-food snapshots for today (local-time).
@@ -46,14 +109,15 @@ class NutritionState extends ChangeNotifier {
   // ─── Daily water log ───────────────────────────────────────────────────
   // Source of truth for the water tracker on the bottom-right of the
   // calorie-ring card. Backed by `WorkoutRepository.getWaterVolumeForDate`,
-  // which both implementations (`MockWorkoutRepository` and future
-  // `SqliteWorkoutRepository`) provide. The state caches the result and
+  // which both implementations (`MockWorkoutRepository` and
+  // `HiveWorkoutRepository`) provide. The state caches the result and
   // notifies listeners on every successful load / write so the count
   // rebuilds when the day's volume changes.
   //
-  // The on-screen glass count is derived (`_waterTodayMl ~/ kWaterGlassMl`)
-  // and never stored — the canonical unit is milliliters, so historical
-  // totals stay unit-clean if the per-glass amount ever changes. Water
+  // The on-screen total is formatted at the display boundary from the
+  // stored ml and the volume unit, never stored — the canonical unit is
+  // milliliters, so historical totals stay unit-clean if the per-glass
+  // amount ever changes. Water
   // has no goal (no progress bar, no target); it is tracked and stored
   // for the historical record only.
 
@@ -65,17 +129,21 @@ class NutritionState extends ChangeNotifier {
   /// Always `>= 0` — the state layer floors decrement at 0 ml.
   int get waterTodayMl => _waterTodayMl;
 
-  /// Whole glass count derived from the stored ml. Integer division
-  /// (so 250 ml → 1 glass, 750 ml → 3 glasses, 0 ml → 0 glasses).
-  /// The icon + "250 ml" annotation carries the per-glass amount
-  /// so the user can decode the unit at a glance.
-  int get waterTodayGlasses => _waterTodayMl ~/ kWaterGlassMl;
+  /// The day [_waterTodayMl] belongs to: set by [loadWaterForDate], null
+  /// before the first load. A wrist tap updates the cache only for this day.
+  int? _waterDayMs;
+
+  /// Every water read-modify-write queues here (D-12).
+  Future<void> _waterChain = Future<void>.value();
 
   /// Load the water volume for a specific date from the repository into
   /// the cache, and notify listeners. Safe to call repeatedly; an empty
   /// repo returns `0` (no exception, no error state). Past dates are
   /// stored alongside today — the cache is replaced, not merged.
-  Future<void> loadWaterForDate(int dateMs) async {
+  ///
+  /// Queued behind any water write in flight, so a load cannot overwrite
+  /// the cache with a volume read before that write landed.
+  Future<void> loadWaterForDate(int dateMs) => _serialiseWater(() async {
     try {
       final ml = await _repository.getWaterVolumeForDate(dateMs);
       _waterTodayMl = ml;
@@ -84,40 +152,82 @@ class NutritionState extends ChangeNotifier {
       // for the freshly-loaded day so a stale value does not leak.
       _waterTodayMl = 0;
     }
+    _waterDayMs = dateMs;
     notifyListeners();
-  }
+  });
 
   /// Convenience: load today's water volume.
-  Future<void> loadWaterForToday() =>
-      loadWaterForDate(OmniDateUtils.todayMidnightMs());
+  Future<void> loadWaterForToday() => loadWaterForDate(_todayMs());
 
-  /// Add one glass (250 ml) to [dateMs] and persist immediately. The
-  /// tap-only control never accepts a typed amount; the per-glass
-  /// amount is fixed by [kWaterGlassMl]. Always succeeds — the
-  /// repository clamps at 0 ml as a final defense and `kWaterGlassMl`
-  /// is always positive, so the resulting volume is always non-negative.
-  Future<void> incrementWaterForDate(int dateMs) async {
+  /// Add one step (250 ml, or 237 ml with the fl oz unit) to [dateMs]
+  /// and persist immediately. The tap-only control never accepts a typed
+  /// amount; the step is fixed by [waterStepMl] and read once at closure
+  /// start. Always succeeds — the repository clamps at 0 ml as a final
+  /// defense and the step is always positive, so the resulting volume is
+  /// always non-negative.
+  Future<void> incrementWaterForDate(int dateMs) => _serialiseWater(() async {
+    final step = waterStepMl;
     final current = await _repository.getWaterVolumeForDate(dateMs);
-    final next = current + kWaterGlassMl;
+    final next = current + step;
     await _repository.saveWaterVolumeForDate(dateMs, next);
     _waterTodayMl = next;
     notifyListeners();
-  }
+  });
 
-  /// Remove one glass (250 ml) from [dateMs] and persist immediately.
-  /// Floors at `0` ml — a minus at 0 ml is a no-op (no negative
-  /// leak, no spurious row, no notification).
-  Future<void> decrementWaterForDate(int dateMs) async {
+  /// Remove one step (250 ml, or 237 ml with the fl oz unit) from
+  /// [dateMs] and persist immediately. Floors at `0` ml — a minus at
+  /// 0 ml is a no-op (no negative leak, no spurious row, no
+  /// notification).
+  Future<void> decrementWaterForDate(int dateMs) => _serialiseWater(() async {
+    final step = waterStepMl;
     final current = await _repository.getWaterVolumeForDate(dateMs);
     if (current <= 0) {
       // Already at zero — no write, no notification. This is the
       // tap-only no-op the disabled minus button also enforces.
       return;
     }
-    final next = current - kWaterGlassMl < 0 ? 0 : current - kWaterGlassMl;
+    final next = current - step < 0 ? 0 : current - step;
     await _repository.saveWaterVolumeForDate(dateMs, next);
     _waterTodayMl = next;
     notifyListeners();
+  });
+
+  /// Applies one step (250 ml, or 237 ml with the fl oz unit) the wrist
+  /// tapped on [dateMs] (plan 94 D-12), at most once per [tapId]: [add]
+  /// is one step more, otherwise one step less floored at 0 ml — the
+  /// same math as [incrementWaterForDate] / [decrementWaterForDate],
+  /// written with the tap id in one storage write.
+  ///
+  /// Returns whether storage changed (false for a tap already applied or a
+  /// full day). The cache and its listeners hear of it only when [dateMs] is
+  /// the day the cache was loaded for; a tap on any other day — or before
+  /// any load — leaves both alone.
+  Future<bool> applyWatchWaterTap({
+    required int dateMs,
+    required String tapId,
+    required bool add,
+  }) => _serialiseWater(() async {
+    final step = waterStepMl;
+    final applied = await _repository.applyWaterTap(
+      dateMs: dateMs,
+      tapId: tapId,
+      deltaMl: add ? step : -step,
+    );
+    if (applied && _waterDayMs == dateMs) {
+      _waterTodayMl = await _repository.getWaterVolumeForDate(dateMs);
+      notifyListeners();
+    }
+    return applied;
+  });
+
+  /// Runs [write] after every water operation queued before it, so no
+  /// read-modify-write of the day's volume interleaves another (D-12). The
+  /// chain keeps moving when a write throws; the throw still reaches that
+  /// write's own caller.
+  Future<T> _serialiseWater<T>(Future<T> Function() write) {
+    final result = _waterChain.then((_) => write());
+    _waterChain = result.then((_) {}, onError: (_, _) {});
+    return result;
   }
 
   /// Load nutrition target for a specific date.
@@ -170,7 +280,7 @@ class NutritionState extends ChangeNotifier {
   /// Loads from the repository, updates [_nutritionTarget] and the cache,
   /// and notifies listeners.
   Future<NutritionTarget?> getTodayTarget() async {
-    final todayMs = OmniDateUtils.todayMidnightMs();
+    final todayMs = _todayMs();
     final target = await _repository.getNutritionTargetForDate(todayMs);
     _nutritionTarget = target;
     _targetsByDate[todayMs] = target;
@@ -190,6 +300,7 @@ class NutritionState extends ChangeNotifier {
   /// cache is the only thing cleared; `getConsumedFoodsForDate`
   /// returns the same rows for the same dateMs on every call.
   Future<void> rolloverToDate(int dateMs) async {
+    _cacheDayMs = dateMs;
     // Drop any cached "today" state. A new day must start empty.
     if (_consumedToday.isNotEmpty) {
       _consumedToday = const [];
@@ -210,13 +321,40 @@ class NutritionState extends ChangeNotifier {
     await loadWaterForDate(dateMs);
   }
 
+  /// Plan 237: rolls the today-caches over when the clock's day is no longer
+  /// the day they were loaded for (the app was resumed after midnight, a time
+  /// zone changed, a log is about to land on a new day). Returns whether a
+  /// rollover ran. Nothing loaded yet means nothing to roll over. A rollover
+  /// already in flight is shared by concurrent callers, which return `false`.
+  Future<bool> rolloverIfDayChanged() async {
+    final inFlight = _rolling;
+    if (inFlight != null) {
+      await inFlight;
+      return false;
+    }
+    final cached = _cacheDayMs;
+    final today = _todayMs();
+    if (cached == null || cached == today) return false;
+    final run = () async {
+      await rolloverToDate(today);
+      await loadConsumedToday();
+    }();
+    _rolling = run;
+    try {
+      await run;
+    } finally {
+      _rolling = null;
+    }
+    return true;
+  }
+
   /// Legacy methods for backwards compatibility - delegate to date-aware methods.
   Future<void> loadNutritionTarget() async {
-    await loadNutritionTargetForDate(OmniDateUtils.todayMidnightMs());
+    await loadNutritionTargetForDate(_todayMs());
   }
 
   Future<void> saveNutritionTarget(NutritionTarget target) async {
-    await saveNutritionTargetForDate(OmniDateUtils.todayMidnightMs(), target);
+    await saveNutritionTargetForDate(_todayMs(), target);
   }
 
   // ─── Consumed-food operations (today's day-log) ───────────────────────
@@ -232,7 +370,8 @@ class NutritionState extends ChangeNotifier {
   /// fresh list. A failed load leaves the previous cache intact (matches
   /// the existing `loadNutritionTargetForDate` error pattern).
   Future<void> loadConsumedToday() async {
-    final todayMs = OmniDateUtils.todayMidnightMs();
+    final todayMs = _todayMs();
+    _cacheDayMs = todayMs;
     try {
       final entries = await _repository.getConsumedFoodsForDate(todayMs);
       _consumedToday = entries;
@@ -252,7 +391,8 @@ class NutritionState extends ChangeNotifier {
   /// Replaces the previous stub that returned an empty list. Kept on the
   /// public API so the existing call sites and tests keep working.
   Future<List<ConsumedFood>> getTodayConsumedFoods() async {
-    final todayMs = OmniDateUtils.todayMidnightMs();
+    final todayMs = _todayMs();
+    _cacheDayMs = todayMs;
     try {
       final entries = await _repository.getConsumedFoodsForDate(todayMs);
       _consumedToday = entries;
@@ -286,8 +426,9 @@ class NutritionState extends ChangeNotifier {
     // negative inputs are rejected as a no-op (returns null without
     // mutating state).
     if (!amountConsumed.isFinite || amountConsumed <= 0) return null;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final todayMs = OmniDateUtils.todayMidnightMs();
+    await rolloverIfDayChanged();
+    final now = _now().millisecondsSinceEpoch;
+    final todayMs = _todayMs();
     final target = _nutritionTarget ?? NutritionTarget();
 
     // Look up the group name snapshot from the live food (nullable if the
@@ -304,32 +445,14 @@ class NutritionState extends ChangeNotifier {
       }
     }
 
-    final entry = ConsumedFood(
-      id: 'consumed-$now-${now ~/ 1000}',
-      loggedAtMs: now,
+    final entry = _snapshotFor(
+      food,
+      amountConsumed,
       dateMs: todayMs,
-      sourceFoodId: food.id,
-      name: food.name,
-      unitType: food.unitType,
-      referenceAmount: food.referenceAmount,
-      referenceLabel: food.referenceLabel,
-      protein: food.protein,
-      carbs: food.carbs,
-      fiber: food.fiber,
-      fat: food.fat,
-      // D-7: freeze the source food's sodium onto the snapshot at
-      // log time. Editing the food's sodium later does not change
-      // the logged day's sodium total.
-      sodium: food.sodium,
-      amountConsumed: amountConsumed,
-      groupIdSnapshot: food.groupId,
+      loggedAtMs: now,
+      nowMs: now,
+      target: target,
       groupNameSnapshot: groupNameSnapshot,
-      targetCalories: target.calories,
-      targetProtein: target.protein,
-      targetCarbs: target.carbs,
-      targetFat: target.fat,
-      createdAtMs: now,
-      updatedAtMs: now,
     );
 
     try {
@@ -350,6 +473,50 @@ class NutritionState extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Builds the frozen [ConsumedFood] snapshot shared by [logConsumedFood]
+  /// and [logConsumedFoodOnDay]: the source food's name/unit/macros, the
+  /// given day's targets, and the group snapshot the caller looked up.
+  ConsumedFood _snapshotFor(
+    Food food,
+    double amountConsumed, {
+    required int dateMs,
+    required int loggedAtMs,
+    required int nowMs,
+    required NutritionTarget target,
+    required String? groupNameSnapshot,
+  }) {
+    // Plan 231: the id stamp is taken once, at the top, so two rows built in
+    // the same millisecond never share an id (the stamp only goes up).
+    final stamp = _nextIdStamp();
+    return ConsumedFood(
+      id: 'consumed-$stamp-${stamp ~/ 1000}',
+      loggedAtMs: loggedAtMs,
+      dateMs: dateMs,
+      sourceFoodId: food.id,
+      name: food.name,
+      unitType: food.unitType,
+      referenceAmount: food.referenceAmount,
+      referenceLabel: food.referenceLabel,
+      protein: food.protein,
+      carbs: food.carbs,
+      fiber: food.fiber,
+      fat: food.fat,
+      // D-7: freeze the source food's sodium onto the snapshot at
+      // log time. Editing the food's sodium later does not change
+      // the logged day's sodium total.
+      sodium: food.sodium,
+      amountConsumed: amountConsumed,
+      groupIdSnapshot: food.groupId,
+      groupNameSnapshot: groupNameSnapshot,
+      targetCalories: target.calories,
+      targetProtein: target.protein,
+      targetCarbs: target.carbs,
+      targetFat: target.fat,
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    );
   }
 
   /// Remove a consumed-food entry by id and refresh the cache.
@@ -397,7 +564,7 @@ class NutritionState extends ChangeNotifier {
   /// cold-cache fallback (e.g. test fixtures mutating the repository
   /// directly) should call [refreshConsumedToday] first.
   ConsumedFood? findLoggedTodayForFood(String foodId) {
-    final todayMs = OmniDateUtils.todayMidnightMs();
+    final todayMs = _todayMs();
     for (final c in _consumedToday) {
       if (c.sourceFoodId == foodId && c.dateMs == todayMs) return c;
     }
@@ -448,6 +615,79 @@ class NutritionState extends ChangeNotifier {
     }
     // Fresh log: delegate to the existing snapshot-builder.
     return logConsumedFood(food, amount);
+  }
+
+  /// Logs [food] on the local day of [loggedAt] when that day is before today
+  /// (plan 112, D-18602): the wrist taps a food, the phone may receive it after
+  /// midnight, and the row belongs to the day the user tapped.
+  ///
+  /// One row per food per day, like [logConsumedFoodAt]: a second call for the
+  /// same food and day updates the row's amount. A new row freezes THAT day's
+  /// saved targets, not today's. Today's cache (`consumedToday`) is never
+  /// touched, because the row is not today's. A [loggedAt] on or after today
+  /// is today's log and goes through [logConsumedFoodAt].
+  Future<String?> logConsumedFoodOnDay(
+    Food food,
+    double amount, {
+    required DateTime loggedAt,
+  }) async {
+    if (!amount.isFinite || amount <= 0) return null;
+    final dayMs = DateTime(
+      loggedAt.year,
+      loggedAt.month,
+      loggedAt.day,
+    ).millisecondsSinceEpoch;
+    if (dayMs >= _todayMs()) {
+      return logConsumedFoodAt(food, amount);
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final sameDay = await _repository.getConsumedFoodsInRange(dayMs, dayMs);
+      ConsumedFood? existing;
+      for (final row in sameDay) {
+        if (row.sourceFoodId == food.id) {
+          existing = row;
+          break;
+        }
+      }
+      if (existing != null) {
+        await _repository.updateConsumedFood(
+          existing.copyWith(amountConsumed: amount, updatedAtMs: now),
+        );
+        await _writeThroughLastAmount(food, amount);
+        notifyListeners();
+        return existing.id;
+      }
+
+      String? groupNameSnapshot;
+      if (food.groupId != null) {
+        try {
+          groupNameSnapshot = (await _repository.getFoodGroupById(
+            food.groupId!,
+          ))?.name;
+        } catch (_) {
+          groupNameSnapshot = null;
+        }
+      }
+      final target =
+          await _repository.getNutritionTargetForDate(dayMs) ??
+          NutritionTarget();
+      final entry = _snapshotFor(
+        food,
+        amount,
+        dateMs: dayMs,
+        loggedAtMs: loggedAt.millisecondsSinceEpoch,
+        nowMs: now,
+        target: target,
+        groupNameSnapshot: groupNameSnapshot,
+      );
+      final id = await _repository.createConsumedFood(entry);
+      await _writeThroughLastAmount(food, amount);
+      notifyListeners();
+      return id;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Remove the consumed-food row for [foodId] and today.

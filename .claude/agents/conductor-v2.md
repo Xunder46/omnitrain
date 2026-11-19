@@ -179,6 +179,9 @@ do not copy.
 <touched surface → what already reads it (with the grep that found it) → effect
 of the change → guarded by <S-id or D-x> or <open — Qn>. An entry may not read
 "unaffected" without the grep that proves it.>
+## UI Standards Impact
+<which shared pieces (docs/design_system.md, "Shared pieces and rules per job") this change uses; any new
+exception, with the owner-approved reason; "none" for a change with no UI.>
 ## Scenarios
 ## Iteration N
 ### Phase X: <name> (@agent)
@@ -200,8 +203,8 @@ Conductor marks each RATIFIED (promote to D-x) or REVERT (remediation).>
 ### Phase design
 
 - One handoff, one owning agent, one verifiable change surface per phase.
-- One phase is one agent run of about ten steps. Split a bigger phase into part
-  A and part B: long runs cost the most and fail the most.
+- One phase is one agent run of at most 8 items. Split a bigger phase into
+  part A and part B: long runs cost the most and fail the most.
 - State the dependency graph explicitly and offer re-orderings with their
   trade-offs ("Phase 4 only needs 3.3; running it first gives the visible win at
   the cost of X").

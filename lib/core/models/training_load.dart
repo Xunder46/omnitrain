@@ -19,7 +19,7 @@ const int kMixStripWeeks = 8;
 /// The number of 7-calendar-day blocks the load baseline spans (D-934).
 const int kTrainingLoadBaselineWeeks = 12;
 
-/// The rated baseline weeks the load measure needs before it is shown (D-908).
+/// The rated weeks the load measure needs before it is shown (D-908).
 const int kTrainingLoadMinRatedWeeks = 4;
 
 /// The largest share of a window's time that may be unrated for the load
@@ -71,18 +71,27 @@ class MixWeek {
 /// the week's summed [sessionLoadMinutes] — the same load definition the Mix
 /// layer uses, so the weekly figure is shared and never re-derived. A session
 /// counts in the week its own start falls in. [hasRatedSession] is true when a
-/// completed rated session starts in the week. A week with no work is present
-/// with `loadMinutes: 0` and `hasRatedSession: false`, never dropped.
+/// completed rated session starts in the week. [hasSessions] is true when any
+/// completed session starts in the week (plan 157c). A week with no work is
+/// present with `loadMinutes: 0`, `hasRatedSession: false` and
+/// `hasSessions: false`, never dropped; a week that held sessions but no rated
+/// one is [isUnrated]: its load is zero because load needs a rating, not
+/// because the user rested.
 class WeeklyLoad {
   final DateTime weekStart;
   final double loadMinutes;
   final bool hasRatedSession;
+  final bool hasSessions;
 
   const WeeklyLoad({
     required this.weekStart,
     required this.loadMinutes,
     required this.hasRatedSession,
+    this.hasSessions = false,
   });
+
+  /// A week that held sessions but no rated one: its load is unknown, not zero.
+  bool get isUnrated => hasSessions && !hasRatedSession;
 }
 
 /// The whole payload the Mix layer renders (D-916, D-917).
@@ -90,23 +99,35 @@ class WeeklyLoad {
 /// [measure] names the measure the bar and the strip both use; the surface
 /// derives its own label from it, so the two can never disagree. [segments] is
 /// the window's bar, [baselineSegments] the user's usual split, and [weeks] the
-/// strip. [unratedSessionCount] and [ratedBaselineWeeks] are the two counts the
+/// strip. [unratedSessionCount] and [ratedWeeks] are the two counts the
 /// surface reports.
+///
+/// [lastSessionDay] is the local-midnight day of the latest completed session
+/// in **all** history — not only the window and not only the strip — so the
+/// empty strip's line can name the last time the user trained (D-4005). Null
+/// when no completed session exists.
+///
+/// [windowIsEmpty] is true when the window holds no completed session: the
+/// card then shows one line instead of a bar (D-17005).
 class MixLayerData {
   final MixMeasure measure;
   final List<MixSegment> segments;
   final List<MixSegment> baselineSegments;
   final int unratedSessionCount;
-  final int ratedBaselineWeeks;
+  final int ratedWeeks;
   final List<MixWeek> weeks;
+  final DateTime? lastSessionDay;
+  final bool windowIsEmpty;
 
   const MixLayerData({
     required this.measure,
     required this.segments,
     required this.baselineSegments,
     required this.unratedSessionCount,
-    required this.ratedBaselineWeeks,
+    required this.ratedWeeks,
     required this.weeks,
+    this.lastSessionDay,
+    this.windowIsEmpty = false,
   });
 }
 
@@ -149,6 +170,25 @@ List<DateTime> baselineBlockStarts(DateTime fromDay) {
   ];
 }
 
+/// The 12 local-midnight starts of the consecutive 7-calendar-day blocks that
+/// tile `[endDay − 83 days, endDay + 1 day)`, oldest first (D-17102).
+///
+/// The last block is `[endDay − 6, endDay]`, so the blocks count the weeks up to
+/// and including [endDay] itself. Built with `DateTime(y, m, d − n)`, never a
+/// [Duration], so a DST transition cannot shift a boundary; anchored at
+/// [endDay], not at the saved start-of-week setting (D-17101).
+List<DateTime> ratedWeekBlockStarts(DateTime endDay) {
+  final day = localMidnightDay(endDay);
+  return [
+    for (var i = 0; i < kTrainingLoadBaselineWeeks; i++)
+      DateTime(
+        day.year,
+        day.month,
+        day.day - (kTrainingLoadBaselineWeeks * 7 - 1) + i * 7,
+      ),
+  ];
+}
+
 /// One session's time per modality, in seconds (D-904–D-906).
 ///
 /// [measuredSecs] is the session's measured active time per modality (D-903).
@@ -157,11 +197,20 @@ List<DateTime> baselineBlockStarts(DateTime fromDay) {
 /// whole session goes to [dominantSection] instead (D-905), and a session with
 /// no dominant section contributes nothing. A rolling session has no duration
 /// to use: its time is the measured sums only, so its sets add no time (D-906).
+///
+/// A session with no set effort ([hasSets] false) and some measured time shares
+/// its whole duration across the measured modalities in proportion to their
+/// measured time (plan 179): nothing in it is lifting, so Resistance takes none
+/// of it. A session that holds efforts but no set with a row and no measured
+/// time contributes nothing (plan 224); a session with no effort at all keeps
+/// the remainder rule.
 Map<ExerciseSection, double> sessionTimeByModality({
   required int durationSecs,
   required bool isRolling,
   required Map<ExerciseSection, double> measuredSecs,
   required ExerciseSection? dominantSection,
+  required bool hasSets,
+  bool hasEfforts = false,
 }) {
   final measured = <ExerciseSection, double>{
     for (final entry in measuredSecs.entries)
@@ -175,6 +224,17 @@ Map<ExerciseSection, double> sessionTimeByModality({
     if (dominantSection == null) return const {};
     return {dominantSection: durationSecs.toDouble()};
   }
+
+  if (!hasSets && totalMeasured > 0) {
+    return {
+      for (final entry in measured.entries)
+        entry.key: entry.value * durationSecs / totalMeasured,
+    };
+  }
+
+  // A session that holds efforts but nothing done adds no time (plan 224); a
+  // session with no effort at all keeps the remainder rule.
+  if (!hasSets && hasEfforts) return const {};
 
   final remainder = durationSecs - totalMeasured;
   return {

@@ -2,10 +2,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../core/constants/omni_theme.dart';
 import '../../../core/services/image_storage_service.dart';
+import '../../../core/utils/decimal_input.dart';
 import '../../../core/utils/food_helpers.dart';
 import '../../../data/models/models.dart';
 import '../../../state/food_library_state.dart';
@@ -100,6 +100,11 @@ class _LogFoodRowState extends State<LogFoodRow> {
   late final TextEditingController _amountController;
   String? _amountError;
 
+  /// The amount text the row started with (default or today-log
+  /// pre-fill). Pressing Done on an untouched field must not log an
+  /// unlogged food, so [_recommitIfLogged] compares against this.
+  late String _initialAmountText;
+
   /// Debounce timer for the auto-commit on amount edit. When the
   /// user types in the amount input on an already-logged row, the
   /// row is re-committed to the day log after this timer elapses
@@ -155,6 +160,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
           : existing.amountConsumed / widget.food.referenceAmount;
       _amountController.text = _formatAmount(displayValue);
     }
+    _initialAmountText = _amountController.text;
     _amountController.addListener(_onAmountChanged);
   }
 
@@ -168,6 +174,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
         oldWidget.food.referenceAmount != widget.food.referenceAmount ||
         oldWidget.food.unitType != widget.food.unitType) {
       _amountController.text = _formatAmount(_defaultAmount);
+      _initialAmountText = _amountController.text;
     }
   }
 
@@ -196,7 +203,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
   double? _parseAmount() {
     final text = _amountController.text.trim();
     if (text.isEmpty) return null;
-    final parsed = double.tryParse(text);
+    final parsed = parseDecimal(text);
     if (parsed == null || !parsed.isFinite) return null;
     return parsed;
   }
@@ -241,7 +248,8 @@ class _LogFoodRowState extends State<LogFoodRow> {
     // immediately. Then restart the auto-commit debounce so the
     // new amount is written to the day log after the user
     // stops typing (only when the food is already logged today;
-    // otherwise the thumb is the explicit commit affordance).
+    // otherwise the Done key on a changed amount is the explicit
+    // commit affordance).
     setState(() {
       _validateAmount();
     });
@@ -297,14 +305,24 @@ class _LogFoodRowState extends State<LogFoodRow> {
     // guard is kept defensively).
   }
 
-  /// Re-commit the current multiplier for an already-logged food.
+  /// Re-commit the current multiplier for an already-logged food,
+  /// or log an unlogged food the user typed a new amount into.
   /// Called from the `onSubmitted` / `onEditingComplete` callbacks
   /// (i.e. when the user submits the field with the keyboard
   /// "done" key or moves focus away). The typical typing flow is
   /// covered by the debounce timer in [_scheduleAutoCommit]; this
-  /// is the focus-loss / submit fallback.
+  /// is the focus-loss / submit fallback. An unlogged food is
+  /// logged by typing only when the user actually changed the
+  /// number — pressing Done on the untouched default must not log
+  /// by accident.
   Future<void> _recommitIfLogged() async {
-    if (!widget.nutritionState.isFoodLoggedToday(widget.food.id)) return;
+    final isLogged = widget.nutritionState.isFoodLoggedToday(widget.food.id);
+    // An unlogged food is logged by typing only when the user changed the
+    // number: pressing Done on the untouched default must not log by accident.
+    if (!isLogged &&
+        _amountController.text.trim() == _initialAmountText.trim()) {
+      return;
+    }
     final amount = _amountInOwnUnit();
     if (amount == null) {
       setState(() {});
@@ -391,7 +409,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
                           decimal: true,
                           signed: false,
                         ),
-                        inputFormatters: [_AmountInputFormatter()],
+                        inputFormatters: const [DecimalInputFormatter(maxFractionDigits: 3)],
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: themeColors.textDominant,
                           fontFeatures: const [FontFeature.tabularFigures()],
@@ -416,9 +434,11 @@ class _LogFoodRowState extends State<LogFoodRow> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  // Unit label beneath the textbox (e.g. "g", "ml", "units")
+                  // Unit caption beneath the textbox: the unit the
+                  // box counts (e.g. "g", "ml", "medium"), not the
+                  // reference serving (plan 77d D-1).
                   Text(
-                    _unitLabel(food),
+                    foodUnitCaption(food),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: themeColors.textMuted,
                     ),
@@ -432,29 +452,6 @@ class _LogFoodRowState extends State<LogFoodRow> {
     );
   }
 
-  /// Render the unit label for display beneath the amount textbox.
-  /// Shows "{referenceAmount} {referenceLabel}" (e.g., "100 g", "1 unit").
-  /// Handles legacy labels like "per 100g" by extracting just the unit part.
-  static String _unitLabel(Food food) {
-    final amount = food.referenceAmount.toInt();
-    var label = food.referenceLabel.trim();
-
-    // Handle legacy labels that contain "per" (e.g., "per 100g", "per 100 g")
-    if (label.toLowerCase().startsWith('per ')) {
-      label = label.substring(4).trim();
-      // If it still starts with a number, extract just the unit part
-      final parts = label.split(' ');
-      if (parts.isNotEmpty) {
-        final firstPart = parts[0];
-        if (double.tryParse(firstPart) != null) {
-          // First part is a number, take the rest
-          label = parts.length > 1 ? parts.sublist(1).join(' ') : '';
-        }
-      }
-    }
-
-    return '$amount $label';
-  }
 }
 
 /// Tappable food thumbnail that IS the log/unlog toggle on a
@@ -475,10 +472,11 @@ class _LogFoodRowState extends State<LogFoodRow> {
 ///     reads as a paired state of the same control.
 ///   - The top-right corner carries a 16×16 circular badge in
 ///     both states. Unchecked: a hollow ring (surface fill,
-///     muted border, no glyph) so it reads as "empty / not yet
-///     selected." Checked: a filled `primary` disc with a
-///     surface-colored check glyph. The badge's color, fill,
-///     and border all animate through `AnimatedContainer`.
+///     muted border) carrying a small muted plus glyph, so it
+///     reads as "empty / not yet logged — tap to add." Checked:
+///     a filled `primary` disc with a surface-colored check
+///     glyph. The badge's color, fill, and glyph all animate
+///     through `AnimatedContainer`.
 ///   - The whole thing is wrapped in a `Semantics(checked: ...)`
 ///     node so screen readers + tests see a toggle (S-005).
 ///   - The `Key('log_food_thumb_<food.id>')` is mounted on the
@@ -620,9 +618,9 @@ class _ThumbToggleState extends State<_ThumbToggle> {
               // toggle affordance reads as a paired state. The
               // fill + border + glyph cross-fade through
               // AnimatedContainer; the unchecked state is a
-              // hollow ring (surface fill, muted border, no
-              // glyph) and the checked state is a filled
-              // primary disc with a surface-colored check.
+              // hollow ring (surface fill, muted border) with a
+              // small muted plus glyph and the checked state is a
+              // filled primary disc with a surface-colored check.
               Positioned(
                 top: 0,
                 right: 0,
@@ -641,7 +639,7 @@ class _ThumbToggleState extends State<_ThumbToggle> {
                   ),
                   child: isLogged
                       ? Icon(Icons.check, size: 12, color: themeColors.surface)
-                      : const SizedBox.shrink(),
+                      : Icon(Icons.add, size: 12, color: themeColors.textMuted),
                 ),
               ),
             ],
@@ -649,38 +647,5 @@ class _ThumbToggleState extends State<_ThumbToggle> {
         ),
       ),
     );
-  }
-}
-
-/// `TextInputFormatter` for the multiplier input on a food row.
-///
-/// Accepts digits and at most one dot, with up to 3 fractional
-/// digits. Intermediate states are allowed (e.g. a trailing dot, a
-/// leading dot) so the user can type freely on any keyboard. The
-/// validation in [_LogFoodRowState._validateMultiplier] rejects the
-/// final value if it's empty, non-numeric, zero, or negative.
-class _AmountInputFormatter extends TextInputFormatter {
-  static final RegExp _disallowed = RegExp(r'[^\d.]');
-
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final text = newValue.text;
-    if (text.isEmpty) return newValue;
-
-    if (_disallowed.hasMatch(text)) return oldValue;
-    if (text.indexOf('.') != text.lastIndexOf('.')) {
-      return oldValue;
-    }
-
-    final dotIdx = text.indexOf('.');
-    if (dotIdx >= 0) {
-      final fractional = text.substring(dotIdx + 1);
-      if (fractional.length > 3) return oldValue;
-    }
-
-    return newValue;
   }
 }

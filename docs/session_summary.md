@@ -7,12 +7,20 @@ The Session Summary screen appears after workout completion and focuses on sessi
 Current hierarchy:
 
 1. Header
-2. Session info card (Duration and Rest Time for standard sessions; the EFFORT row for every session)
+2. Session info card (Duration and Rest Time for standard sessions; the EFFORT row with its Calories pill for every session)
 3. Context-aware modality group cards (Strength, Cardio, Sports, Isometric)
 4. Session note
 5. Calendar card
 
 The screen keeps existing summary navigation actions (edit, save as routine, discard) and the bottom Done action.
+
+A post-workout summary reports the finished session to its `onSessionSaved` hook (which links a planned session) once, when the screen opens — not on Done — so leaving with Back completes the plan too. A historical summary never calls it.
+
+A set the user never logged is not stored at Finish, so it is never in this summary's sets, volume or bests, and a set exercise left with no logged set is removed at Finish, except in a session the watch had a part in, where the exercise stays with no sets (an exercise that never held a set stays, with zero sets; plan 157a, plan 218 (`test/finish_drops_unlogged_sets_test.dart` `S-15713`), `test/finish_drops_unlogged_sets_test.dart` `S-15708`, `test/finish_drops_unlogged_sets_screen_test.dart` `S-15709`).
+
+The Finish confirmation before it counts only the exercises the user did (a lift with a logged set, or a started timed, drill or round exercise), not every exercise in the session (plan 217, `test/finish_completed_exercise_count_screen_test.dart` `S-21704`).
+
+Finish on a workout with nothing done in it (no logged set, no started timed, drill or round exercise on the phone, and no set, timed, round or hold the watch has sent) asks `Discard Workout?` (`Nothing was logged, so this workout won't be saved.`) instead of saving an empty workout; Discard deletes it like the empty-workout case, Cancel keeps it open. `WorkoutState.finishWouldSaveNothing` decides, and decides after the wrist import passes already queued, so a wrist set still on its way counts; a workout the watch runs with nothing logged is discarded the same way (plans 220 and 228, `test/finish_nothing_logged_discards_test.dart`, `test/finish_nothing_logged_discards_screen_test.dart`, `test/finish_wrist_nothing_logged_discards_test.dart`).
 
 ### Effort Rating Capture
 
@@ -22,20 +30,25 @@ The **session effort rating** is how hard the whole session was: 1 is the easies
 
 **Rules.**
 
-- **The automatic prompt must be answered.** It has no close or skip control and cannot be dismissed without a choice; the Effort Rating setting (`SettingsState.showFeelingSurvey`, see [Theme & Settings](theme_and_settings.md)) is the only way not to be asked. It appears only on a post-workout summary of an unrated session, at most once.
+- **The automatic prompt must be answered.** It has no close or skip control and cannot be dismissed without a choice; the Effort Rating setting (`SettingsState.showFeelingSurvey`, see [Theme & Settings](theme_and_settings.md)) is the only way not to be asked. It appears only on a post-workout summary of an unrated session, at most once. This is the phone's rule: the wrist's own question can be skipped, which records nothing, so the phone's prompt still appears (see [Watch Session Capture](watch_session_capture.md)).
+- **The automatic prompt is first-answer-wins.** A rating the watch settles while the prompt is open closes it and shows in the EFFORT row, and the prompt's own answer is written only while the session has none, so the watch's number is never overwritten by it. The EFFORT row's Add/Change control stays an explicit edit and still overwrites. Verified by `test/rating_first_answer_summary_test.dart` (group `Summary automatic effort question, first answer wins (plan 42a)`: `S-4303 the watch rating closes the automatic question and stays stored`, `S-4303 the user's own answer closes the sheet once`, `S-4303 a late tap on the open question cannot overwrite the watch's answer`) and by `test/rating_first_answer_state_test.dart` (`S-4304 onlyIfUnrated leaves the stored rating alone, the default still writes`).
 - **The user-opened sheet is optional.** The user chose to open it, so closing it without a choice leaves the rating unchanged.
 - **A change reaches the calendar.** On a calendar-opened summary a saved rating refreshes the originating `CalendarState` — the same path Discard uses — so the day list shows the new tint on return.
 - **The rating is never drawn as ramp-colored text.** The lower ramp steps sit below the text-contrast floor, so the EFFORT value uses the stat pills' shared value color and the intensity is carried by a non-text marker in the rating's ramp step (D-15 in `docs/plans/2026-09-24-01-stats-pr1-effort-rating-plan.md`).
 - **Rolling sessions can still be rated.** They have no session clock, so their info card drops Duration and Rest Time but keeps the EFFORT row.
+- **The EFFORT row explains itself.** Under the value a muted caption reads `How hard the session felt`, and the pen button with the tooltip — an outlined rounded-square icon-only `OmniUtilityIconButton` on the same line as the value, right after it rather than at the column's far edge — reads `Change rating` once a rating exists, and `Add rating` before one (key `omni_session_effort_rating_button`, icon `Icons.edit_outlined` when rated and `Icons.add` before one). The same test also checks the outline, the tap size and that the pen sits right after the value. Verified by `test/session_summary_calories_test.dart` (group `S-13411 an unrated session`: `the pen reads Add rating with a plus icon`; group `S-13402/S-13411 a rated session with an estimated energy row`: `the pen is icon-only and the Calories pill sits to its right`) and by `test/session_summary_effort_row_test.dart` (group `S-3211 the EFFORT pill carries its own caption`: `S-3211 a rated session shows the caption under the value`, `S-3211 an unrated session shows it too`, `S-3211 a rolling session shows it too`; group `S-3212 the button names what it does`: `S-3212 an unrated session reads Add rating, then Change rating after the sheet rates it`, `S-3212 a rated session reads Change rating, and tapping it opens the sheet on the stored rating`).
 - **A watch session in history is rated like any other.** An imported watch session is an ordinary `TrainingSession`, so its summary shows the rating the wrist recorded, or offers to add one, through the same control. Verified by `test/watch_session_summary_integration_test.dart` (`S-285`, `S-286`).
 - **The phone's rating is final.** A rating written here is never replaced by one the wrist sends later: the import applies a wrist rating only while the session has none (D-138 of `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). Verified by `test/watch_session_import_test.dart` (`S-264`).
 - **Both devices ask the same question.** The sheet's question, scale and end labels are the ones `watch/contract/watch_effort_rating_contract.json` gives the wrist. Verified by `test/watch_effort_rating_copy_parity_test.dart` (`S-287`).
+- **A finished session's rating is sent to Fitness.** With Write workouts on, a rating saved for a finished session, here or by a wrist import, is also sent as its Fitness workout's Workout Effort (1 to 5 becomes 2 to 10); the iPhone does this on iOS 18 and later only, and leaves a value the owner set in Fitness alone. Verified by `test/health_effort_test.dart` (`S-90-1`, `S-90-5`).
 
 Verified by:
 
 - `test/screen_widget_test.dart` (group `SessionSummaryScreen`): `feeling modal is non-dismissible and blocks summary controls`, `selecting tile 3 dismisses the feeling modal and persists`, `does not show feeling modal when session feeling already exists`.
 - `test/interaction_flow_test.dart`: `does not show feeling survey sheet when disabled in settings`.
 - `test/session_summary_effort_row_test.dart`: the prompt's copy and refresh (`Task 1a`); add, change, pre-selection and the selected tile's text color (`S-3`, `Fresh session — Change replaces …`, `Change sheet pre-selects …`); closing without a choice by tap and by swipe (`S-5.5`, `Change sheet swiped down …`); calendar-opened summaries — no prompt, add/change, day-list refresh (`S-4/S-5`, `S-5: day list → …`); value color and marker (`EFFORT value is drawn …`); pre-redefinition answers (`S-6`); the sheet's date subtitle (`Sheet subtitle …`); rolling sessions (`Task 3`).
+- `test/rating_first_answer_state_test.dart`: the wrist's settled answer reported once and adopted by the live session (`S-4301`), the phone's stored rating kept with no callback (`S-4302`), the late automatic answer writes nothing while the default still writes (`S-4304`).
+- `test/rating_first_answer_summary_test.dart` (group `Summary automatic effort question, first answer wins (plan 42a)`): the watch answer closes the open prompt and shows in the row, the user's own answer closes it once, a late tap cannot overwrite (`S-4303`).
 - `test/header_standardization_test.dart`: `S-008: rolling session shows combined card with EFFORT row only (Duration/Rest hidden)`.
 
 ---
@@ -46,10 +59,10 @@ The screen renders a CustomScrollView over OmniGradientBackground with this orde
 
 | Section | Content |
 |---------|---------|
-| Header | Session title, formatted start date and time, modality badge |
-| Session info card | Duration and Rest Time, then the EFFORT row (rolling sessions: EFFORT row only — see [Effort Rating Capture](#effort-rating-capture)) |
+| Header | Session title only (the app bar shows no date or modality badge) |
+| Session info card | Duration and Rest Time, then the heart-rate row when the session has one ([Heart rate](#heart-rate)), then the EFFORT row with its Calories pill (rolling sessions: no Duration / Rest Time row — see [Effort Rating Capture](#effort-rating-capture)); the formatted start date/time and the modality chip sit in this card's header |
 | Group Cards | One card per group that has data in this session |
-| Session Note | Inline TextField with debounce save |
+| Session Note | Inline TextField with debounce save (a note still pending when Done or Back is pressed is written first) |
 | Calendar | Month grid and Open Calendar navigation button |
 
 What is not rendered in the active layout:
@@ -58,9 +71,112 @@ What is not rendered in the active layout:
 - Per-exercise rows
 - Standalone PR card
 
+### Heart rate
+
+The info card carries a heart-rate row — two stat pills side by side, the
+session's average and maximum heart rate — between the Duration / Rest Time
+row and the EFFORT row. It is shown only when the session has a session-scope
+`SensorSummary` carrying average and maximum heart rate, which the watch
+importer stores from the session end (see
+[Watch Session Capture](watch_session_capture.md)); the model requires the two
+values together, so there is no average-only case. Without one the card is
+unchanged, and a rolling session — which has no Duration / Rest Time row —
+shows the heart-rate row too. The screen loads it in `_loadAsyncData` next to
+the rest time; that load runs only while `workoutState.currentSession` is
+non-null, so a past session opened from the calendar does not show the row.
+Verified by `test/session_summary_heart_rate_test.dart` (group
+`SessionSummaryScreen heart-rate row (S-9654..S-9657)`: `S-9654 seeded: the
+card shows avg and max side by side`, `S-9654 not seeded: the card is
+unchanged, no row`, `S-9656 a rolling session shows the heart-rate row too`,
+`S-9657 the row sits between Duration and Effort`).
+
 Notes:
 
 - Group cards are conditional by data presence; empty groups are hidden.
+
+### Calories
+
+The EFFORT row is two halves side by side: the rating pill on the left with the
+outlined pen edit button right beside the rating value, and the Calories pill
+(`omni_session_calories_pill`, label CALORIES) on the right. The pill shows on
+every session, rolling ones included.
+
+- **An estimate is marked with a tilde, a measured value is not.** An estimated
+  row reads `~32 kcal`; a row the watch measured reads `250 kcal` with no
+  estimate mark; and with nothing stored the pill reads `—`. Verified by
+  `test/session_summary_calories_test.dart` (group `S-13402/S-13411 a rated
+  session with an estimated energy row`: `the pen is icon-only and the Calories
+  pill sits to its right`; group `S-13407 a measured energy row`: `reads plain
+  kilocalories, no estimate mark`; group `S-13412 every session shows the
+  Calories pill`: `a session with no energy row reads an em dash`).
+- **The watch sends its measured energy.** A session the watch ran or followed
+  carries the wrist workout's active-energy total on its end, and the pill reads
+  that number plain, no tilde; a session with no watch, or with Health refused,
+  stays on the `~` estimate (see
+  [Watch Session Capture](watch_session_capture.md)). Verified by
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchActiveEnergyTests.swift`
+  (`testS13473AWristEndedSessionCarriesItsEnergyTotalAndValidates`,
+  `testS13475AFollowedSessionCarriesBothItsMarkAndItsEnergyTotal`).
+- **Every session carries the pill.** A rolling session — which has no
+  Duration / Rest Time row — shows the Calories pill too, and a measured row
+  the watch writes later lands on an already-open summary through
+  `noteWristSummary`. Verified by `test/session_summary_calories_test.dart`
+  (group `S-13412 every session shows the Calories pill`: `a rolling session
+  shows the pill and no Duration/Rest row`, `a late measured row lands through
+  noteWristSummary`).
+- **Where the number comes from.** `ActiveEnergyService.settle(sessionId)`
+  stores the estimate when a session ends and again when its duration is
+  edited; ending a session never fails on it — every failure is caught (see
+  [State Management & Services](state_management/services_and_utils.md),
+  `ActiveEnergyService`).
+- **The formula is active energy = (MET − 1) × body weight in kg × hours**, with
+  the MET per section in `kActiveEnergyMets`
+  (`lib/core/constants/active_energy.dart`): resistance 3.5, cardio 6.0,
+  isometric 3.0, sports 6.0. A session with one of the four modality ids uses
+  its whole duration at that section's MET; Free Training, an unknown modality
+  id or a rolling session uses the per-section time split the Mix view already
+  computes (`StatsProgressService.sessionTimeBySectionFor`). A Free Training
+  session with timed work and no set shares its whole length across the timed
+  sections (plan 179). Verified by
+  `test/active_energy_service_test.dart` (groups `Mock —
+  ActiveEnergyService.settle` and `Hive — ActiveEnergyService.settle`:
+  `S-13401 resistance 3600 s at 80 kg stores 200.0`,
+  `S-13403 cardio 1800 s at 80 kg stores 240.0`,
+  `S-13402 isometric 1102 s at 80 kg stores 31.8355… unrounded`,
+  `S-13403 sports 5400 s at 70 kg stores 525.0`,
+  `S-13404 Free Training 3600 s with measured cardio and isometric`,
+  `S-13414 an unknown modality id takes the Free Training branch`,
+  `S-13416 Free Training with only set work: resistance remainder`,
+  `S-13409 a finished rolling session with measured isometric seconds`,
+  `S-13409 a rolling session counts its measured seconds even when it carries
+  a modality id`, `S-13409 a finished rolling session with nothing measured
+  writes no row`, `S-13409 an unfinished session writes no row`,
+  `S-13409 a session with a modality and no duration writes no row`).
+- **The weight is the latest `bodyweight` measurement on file, in kilograms and
+  above zero.** With no usable weight the app stores nothing and the pill reads
+  `—`; a latest weight of zero or less writes no row too. An estimate stores
+  the weight it used and a later settle reuses it, so logging a new weight
+  never rewrites an old session, and a duration edit recomputes at that stored
+  weight. Verified by `test/active_energy_service_test.dart` (same groups:
+  `S-13405 no weight, then a lbs weight, then a kg weight`,
+  `S-13415 a latest weight of 0 kg writes no row`,
+  `S-13415 a latest weight of −5 kg writes no row`,
+  `S-13406 a re-estimate reuses the stored weight; an edit recomputes`) and by
+  `test/active_energy_lifecycle_test.dart` (`S-13406: a duration edit
+  recomputes an estimated row at its stored weight`).
+- **A measured row is never overwritten by an estimate.** A row the watch
+  writes survives both a settle at end and a settle at a duration edit.
+  Verified by `test/active_energy_service_test.dart` (same groups:
+  `S-13407 a measured row survives a settle untouched`) and by
+  `test/active_energy_lifecycle_test.dart` (`S-13407: a measured row survives
+  an end and a duration edit`).
+- **The read-out rounds once, here.**
+  `SessionSummaryService.getSessionEnergy(sessionId)` returns
+  `({int kcal, bool measured})?` — kilocalories rounded to whole numbers, the
+  one rounding on the figure — and null when nothing is stored. Verified by
+  `test/active_energy_service_test.dart` (same groups: `read-out: estimated
+  31.8355 reads (32, not measured)`, `read-out: a measured 250.4 row reads
+  (250, measured)`, `read-out: no row reads null`).
 
 ---
 
@@ -92,6 +208,8 @@ Behavior details:
 - Cardio rounds are counted from timed entries.
 - Sports time comes from completed round durations.
 - Strength volume is formatted using preferred weight unit (kg or lbs).
+- A set marked skipped was not done: it is not counted in Sets, and its planned weight and reps feed no volume, best weight or e1RM (plan 227, `test/skipped_set_counts_for_nothing_test.dart`).
+- Saving an edited workout (Edit Session, Save Changes) finishes the rounds that were running or paused at their planned length, but a round that was never started stays never started: the summary's round count and time do not grow (plan 232, `test/edit_save_keeps_unstarted_rounds_test.dart`).
 
 ---
 
@@ -131,7 +249,16 @@ the answer goes through `WorkoutState.setEntryDistance` or
 - **The section is hidden when it has no rows**, as the group cards are.
 - **A row carries a name, a distance and a unit, and nothing else.** No pace,
   total, change indicator or duration is added anywhere on the Summary: the
-  values belong to Stats.
+  values belong to Stats. The outlined pencil button that ends each row marks it
+  editable and opens the same editor as the row; it is not data.
+- **The card says how to edit a row.** A hint above the rows reads
+  `Tap a row to enter or correct it.`, and each row ends with an outlined pencil button
+  (`OmniUtilityIconButton`); a row with no distance keeps its em dash. Verified by
+  `test/session_summary_distance_test.dart` (`S-3213 the card says how to edit
+  a row, above the rows`, `S-3213 a session with no distance rows shows neither
+  the card nor the hint`, `S-3214 every row ends with an outlined pencil
+  button, and the row still opens the editor`, `S-3215 the card fits 280 dp with a 60-character
+  name`).
 - **Confirming the pre-filled value keeps the stored metres**, which is what
   confirms an estimate; any other value is stored as entered, and zero removes
   the distance. The field's label never carries the estimate marker, because
@@ -170,7 +297,10 @@ Rest Time is aggregated from EntryRest records by:
 
 - collecting closed rest intervals across all efforts in the session
 - clipping each interval to the session wall-clock window (`startedAtMs` to
-  `endedAtMs`)
+  `max(startedAtMs, endedAtMs)`: an end stored before the start leaves an empty
+  window, so every interval clips to zero length and contributes no rest —
+  `test/session_summary_inverted_window_test.dart`, `S-153: an inverted session
+  window contributes no rest and the summary still renders`)
 - merging overlapping or adjacent intervals so concurrent rests are not
   double-counted
 - summing merged positive durations
@@ -214,7 +344,9 @@ Summary data loaded on entry:
 4. computePRs from SessionSummaryService
 5. groupPrsByEffortKind from SessionSummaryService
 6. buildGroupMetrics from SessionSummaryService
-7. computeSessionRestTimeMs from SessionSummaryService
+7. computeSessionRestTimeMs from SessionSummaryService — rests clip to the
+   session's window, and an end stored before the start contributes no rest
+   (`test/session_summary_inverted_window_test.dart`, `S-153`)
 8. getPreferredWeightUnit from SessionSummaryService
 9. calendar-day data for current month
 
@@ -227,7 +359,7 @@ File: lib/core/services/session_summary_service.dart
 Key public methods:
 
 - compareGroupsToPreviousSession
-- computePRs — records PRs using the **Epley e1RM** formula (`StatsProgressService.epley1RM = weight × (1 + reps / 30)`), the same definition the in-workout toast uses. The screen passes its own session id so the just-finished workout's PRs are not compared against themselves. See `docs/plans/summary-pr-parity-plan.md`.
+- computePRs — records PRs using the **Epley e1RM** formula (`StatsProgressService.epley1RM = weight × (1 + min(reps, 12) / 30)`), the same definition the in-workout toast uses. The screen passes its own session id so the just-finished workout's PRs are not compared against themselves. See `docs/plans/summary-pr-parity-plan.md`.
 
   The returned list is collapsed to at most one `PRAchievement` per
   exercise — when the same exercise appears in more than one block
@@ -246,7 +378,18 @@ Key public methods:
   versa. See `docs/plans/stats-summary-fix-pack-plan.md`
   Item 2 (rep-based record parity).
 - saveRoutineFromDraft
-- computeSessionRestTimeMs
+- computeSessionRestTimeMs — sums closed `EntryRest` intervals after clipping
+  each to the session's window and merging overlaps once; a session whose stored
+  end precedes its start has an empty window and the total is `0`
+  (`test/session_summary_inverted_window_test.dart`, `S-153`)
+- getSessionHeartRate — returns the session's average and maximum heart rate
+  as `({int avgBpm, int maxBpm})?` from the first session-scope
+  `SensorSummary` that carries both values, rounded to whole bpm; null when
+  there is none — an effort-scope summary does not count. Verified by
+  `test/session_summary_heart_rate_test.dart` (group
+  `SessionSummaryService.getSessionHeartRate (S-9651..S-9653)`: `S-9651 avg
+  127.6 / max 171.2 rounds to (128, 171)`, `S-9652 no summaries, or only a
+  non-session scope, answers null`).
 - buildGroupMetrics
 - groupPrsByEffortKind
 - getPreferredWeightUnit
@@ -254,6 +397,11 @@ Key public methods:
 Repository compatibility:
 
 - Uses WorkoutRepository interface only
+
+Tests: `test/session_summary_heart_rate_test.dart` — `S-9651` rounding to
+whole bpm, `S-9652` null with no session-scope summary, `S-9654` the row and
+its texts, absent without data, `S-9656` a rolling session, `S-9657` row order
+Duration → heart rate → Effort.
 
 ---
 
@@ -324,4 +472,4 @@ Last Updated: April 13, 2026
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-10-13. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

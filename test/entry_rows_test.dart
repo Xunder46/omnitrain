@@ -67,6 +67,162 @@ void main() {
     });
   });
 
+  // ─── D-11: rests are positions, the wire speaks set numbers ──────────────
+
+  group('loggedSetNumbersOf (plan 38f D-11)', () {
+    /// The groups a set effort's rows make, in number order. Numbers with a
+    /// hole (`[0, 1, 3, 4]`) are what a middle set's delete leaves behind: a
+    /// row's id is never renumbered (D-1).
+    List<SetRows> groupsOf(List<int> numbers) => EntryRows.setGroups([
+      for (var i = 0; i < numbers.length; i++)
+        repsRow('e-d11', numbers[i], 5 + i, atMs: fixtureRowAt(i)),
+    ]);
+
+    EntryRest restAt(int entryIndex) => EntryRest(
+      id: 'rest-e-d11-$entryIndex',
+      effortId: 'e-d11',
+      entryIndex: entryIndex,
+      restStartMs: fixtureRowAt(entryIndex),
+      createdAtMs: fixtureRowAt(entryIndex),
+      updatedAtMs: fixtureRowAt(entryIndex),
+    );
+
+    test('no delete: the positions and the numbers coincide', () {
+      final groups = groupsOf([0, 1, 2]);
+      final rests = [restAt(1), restAt(2), restAt(3)];
+      expect(EntryRows.loggedSetNumbersOf(groups, rests), {0, 1, 2});
+      expect(
+        EntryRows.loggedSetNumbersOf(groups, rests),
+        EntryRows.loggedSetNumbers(rests),
+      );
+    });
+
+    test('a hole in the numbers: the rest names the position', () {
+      final groups = groupsOf([0, 1, 3, 4]);
+      expect(
+        EntryRows.loggedSetNumbersOf(groups, [
+          restAt(1),
+          restAt(2),
+          restAt(3),
+          restAt(4),
+        ]),
+        {0, 1, 3, 4},
+      );
+    });
+
+    test('a set logged out of order', () {
+      final groups = groupsOf([0, 1, 3, 4]);
+      expect(EntryRows.loggedSetNumbersOf(groups, [restAt(1), restAt(3)]), {
+        0,
+        3,
+      });
+    });
+
+    test('a rest before the first set and one past the last are ignored', () {
+      final groups = groupsOf([0, 1, 3, 4]);
+      expect(
+        EntryRows.loggedSetNumbersOf(groups, [restAt(0), restAt(9)]),
+        isEmpty,
+      );
+    });
+  });
+
+  // ─── S-4508: a delete re-keys the rests it kept (plan 38g D-3) ───────────
+
+  group('S-4508 restsAfterDelete', () {
+    EntryRest restAt(
+      int entryIndex, {
+      int? startMs,
+      bool restIsPaused = false,
+      int? restPausedAtMs,
+    }) => EntryRest(
+      id: 'rest-e-$entryIndex',
+      effortId: 'e',
+      entryIndex: entryIndex,
+      restStartMs: startMs ?? entryIndex * 1000,
+      restIsPaused: restIsPaused,
+      restPausedAtMs: restPausedAtMs,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    );
+
+    /// The effort's three rests: marks for the sets at positions 0, 1 and 2.
+    List<EntryRest> three() => [restAt(1), restAt(2), restAt(3)];
+
+    List<int> indexesOf(List<EntryRest>? rests) =>
+        [for (final rest in rests!) rest.entryIndex];
+
+    List<int> startsOf(List<EntryRest>? rests) =>
+        [for (final rest in rests!) rest.restStartMs];
+
+    List<String> idsOf(List<EntryRest>? rests) =>
+        [for (final rest in rests!) rest.id];
+
+    test('the deleted set’s mark goes, the later rests move one down', () {
+      final afterFirst = EntryRows.restsAfterDelete(three(), 'e', 0);
+      expect(indexesOf(afterFirst), [1, 2]);
+      expect(startsOf(afterFirst), [2000, 3000]);
+      expect(idsOf(afterFirst), ['rest-e-1', 'rest-e-2']);
+
+      final afterSecond = EntryRows.restsAfterDelete(three(), 'e', 1);
+      expect(indexesOf(afterSecond), [1, 2]);
+      expect(startsOf(afterSecond), [1000, 3000]);
+
+      final afterThird = EntryRows.restsAfterDelete(three(), 'e', 2);
+      expect(indexesOf(afterThird), [1, 2]);
+      expect(startsOf(afterThird), [1000, 2000]);
+    });
+
+    test('a re-keyed rest keeps its marks open and paused state', () {
+      final kept = EntryRows.restsAfterDelete([
+        restAt(1),
+        restAt(2),
+        restAt(3, restIsPaused: true, restPausedAtMs: 2500),
+      ], 'e', 1)!;
+
+      final moved = kept.last;
+      expect(moved.id, 'rest-e-2');
+      expect(moved.entryIndex, 2);
+      expect(moved.restStartMs, 3000);
+      expect(moved.restEndMs, isNull);
+      expect(moved.restIsPaused, isTrue);
+      expect(moved.restPausedAtMs, 2500);
+      expect(kept.first.id, 'rest-e-1');
+    });
+
+    test('no rest at the deleted mark or above: null, nothing to re-key', () {
+      expect(EntryRows.restsAfterDelete(three(), 'e', 3), isNull);
+      expect(EntryRows.restsAfterDelete(three(), 'e', 9), isNull);
+      expect(EntryRows.restsAfterDelete(const <EntryRest>[], 'e', 0), isNull);
+    });
+
+    test('the only rest is the deleted set’s own mark', () {
+      expect(EntryRows.restsAfterDelete([restAt(1)], 'e', 0), isEmpty);
+      expect(EntryRows.restsAfterDelete([restAt(1)], 'e', 1), isNull);
+    });
+
+    // S-4512: the caller (the wrist-delete loop, and the phone's own delete)
+    // hands the rests in whatever order the store returned them, so the kept
+    // list is read in entry-index order, not in the order it was given.
+    test('the kept rests come back in entry-index order', () {
+      final kept = EntryRows.restsAfterDelete(
+        [restAt(3), restAt(1), restAt(2)],
+        'e',
+        0,
+      );
+      expect(indexesOf(kept), [1, 2]);
+      expect(idsOf(kept), ['rest-e-1', 'rest-e-2']);
+      expect(
+        startsOf(kept),
+        [2000, 3000],
+        reason:
+            'S-4512 the rest given first (index 3, startMs 3000) moved to 2, '
+            'and the one given last (index 2, startMs 2000) moved to 1: in the '
+            'given order the indexes would read [2, 1]',
+      );
+    });
+  });
+
   for (final factory in harnessFactories) {
     final harness = factory();
 

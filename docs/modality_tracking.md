@@ -108,6 +108,18 @@ Verified on both clients by
 with `watch/contract/watch_start_paths_contract.json` (`routineSession.expectedSlots`)
 holding the two to the same answer.
 
+The wrist builds its own slots the same way when a modality is on:
+a slot the watch creates under a modality declares that modality's kind —
+Cardio `timed`, Resistance `set`, Isometric `drill`, Sports `round`
+(`WatchEffortKind.forModality`) — whether it is the modality tile's pick,
+**Add Exercise**, or a pick over a workout that was already running. A Free
+workout (no modality) declares nothing and still resolves from capabilities,
+and a routine's own slots keep the kinds the routine declared. Verified by
+`WatchModalityKindTests.testS20604AnExerciseAddedToAModalitySessionDeclaresTheModalitysKind`
+and `…testS20608ARoutinesOwnSlotKeepsItsKindAndAnAddedOneTakesTheFocus` in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchModalityKindTests.swift`,
+with the phone pin `test/watch_wrist_declared_kind_test.dart` (S-20606).
+
 ---
 
 ## Technical Architecture
@@ -223,6 +235,19 @@ class WorkoutState extends ChangeNotifier {
   Future<List<RoundInstance>> getRoundsForEffort(String effortId);
 }
 ```
+
+### Round vs Period wording
+
+A `round` effort is called a **Period** everywhere a sports session or sports
+routine shows it, and a **Round** in every other modality. Sports is the one
+modality that spans halves, quarters, bouts and sets, and the exercise does not
+choose the word, so custom and imported exercises read the same as built-in
+ones. The rule lives in `ModalityDisplay.roundNoun` / `roundCount`
+(`lib/core/constants/modality_display.dart`): the entry counter (`Period 2 of 4`),
+the log button (`Log Period`), the length editor (`Edit Period Duration`), the
+list and overview counts (`3 periods`), the summary group and delta, the
+exercise editor's capability chip, and the watch's `Period length`. The word
+"period" also names the calendar's training periods, which are unrelated.
 
 ### Exercise Defaults for Sports Rounds
 

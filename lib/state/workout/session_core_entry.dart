@@ -18,7 +18,7 @@ extension SessionCoreEntryMethods on SessionCore {
               orElse: () => _segments.first,
             )
           : _segments.first;
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
 
       String effortKind;
       if (effortKindOverride != null) {
@@ -65,9 +65,92 @@ extension SessionCoreEntryMethods on SessionCore {
     }
   }
 
+  /// Appends [efforts] to the segment each one names, then notifies once
+  /// (D-94).
+  ///
+  /// This is the write a wrist snapshot's add-only reconcile runs: the phone's
+  /// ladder grows by the slots the wrist added, and nothing else moves. The
+  /// session's `status` and position are untouched, and no timer is cleared —
+  /// it never calls [loadSessionData] or `clearAll`, so every running rest and
+  /// timed timer survives. Nothing is written for a session the phone is not
+  /// holding, or for an empty list.
+  ///
+  /// A failed append is reported on the state's own error channel — a UI-level
+  /// error the session screens show — and does not reach the watch graph's
+  /// failure hook; because the caller marks a slot seen before it is written,
+  /// nothing retries it for the rest of this run.
+  Future<void> appendSessionSlots(
+    List<SegmentEffort> efforts, {
+    required String sessionId,
+  }) async {
+    if (efforts.isEmpty || _currentSession?.id != sessionId) return;
+
+    _clearError();
+
+    try {
+      for (final effort in efforts) {
+        await _repository.createEffort(effort);
+        _efforts.putIfAbsent(effort.segmentId, () => []).add(effort);
+
+        // A slot the wrist added names an exercise this state has never read:
+        // without the cache entry the session screens render the slot's title
+        // as the summary builder's fallback until the session is reopened
+        // (the same fill `loadSessionData` and `refreshEfforts` do).
+        if (effort.exerciseId != null &&
+            !_exerciseCache.containsKey(effort.exerciseId)) {
+          final exercise = await _repository.getExerciseById(
+            effort.exerciseId!,
+          );
+          if (exercise != null) _exerciseCache[effort.exerciseId!] = exercise;
+        }
+        await seedFirstEntry(effort.id, notify: false);
+      }
+
+      _watchRefreshRevision++;
+      _notify();
+    } catch (e) {
+      _setError('Failed to append session slots: $e');
+    }
+  }
+
+  /// Gives an effort its first entry when it holds none.
+  ///
+  /// A slot adopted off the watch arrives with no entries, unlike an exercise
+  /// the phone adds itself; without one the session screen reads "Set 1 of 0"
+  /// (or "Interval 1 of 0"), the exercise cannot be removed, and a timer the
+  /// watch starts has nothing to land on. A set effort gets one unlogged set,
+  /// which the wrist's first logged set fills (D-4) rather than adding a
+  /// second. Safe to call twice: an effort that already holds an entry is
+  /// untouched.
+  ///
+  /// [atMs] stamps the seeded rows; a caller with its own clock passes it so
+  /// the rows it adopts carry one time (the default is the real clock).
+  /// [notify] false leaves the notification to a caller that sends one for the
+  /// whole change.
+  Future<void> seedFirstEntry(
+    String effortId, {
+    int? atMs,
+    bool notify = true,
+  }) async {
+    final effort = _findEffort(effortId);
+    if (effort == null) return;
+
+    final held = switch (effort.effortKind) {
+      'round' => _timerManager.getRoundsForEffort(effortId).length,
+      'timed' ||
+      'drill' => _timerManager.getTimedInstancesForEffort(effortId).length,
+      _ => (_observations[effortId] ?? const <EffortObservation>[]).length,
+    };
+    if (held != 0) return;
+
+    await addEntry(effortId, atMs: atMs, notify: notify);
+  }
+
   Future<void> addEntry(
     String effortId, {
     Map<String, dynamic>? previousValues,
+    int? atMs,
+    bool notify = true,
   }) async {
     _clearError();
 
@@ -78,7 +161,7 @@ extension SessionCoreEntryMethods on SessionCore {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = atMs ?? _clock().millisecondsSinceEpoch;
       final existingObservations =
           _observations[effortId] ?? <EffortObservation>[];
       // Every kind of new entry is numbered above every number the effort
@@ -145,7 +228,7 @@ extension SessionCoreEntryMethods on SessionCore {
         }
         _observations.putIfAbsent(effortId, () => []).addAll(obsToCreate);
 
-        _notify();
+        if (notify) _notify();
         return;
       }
 
@@ -191,7 +274,7 @@ extension SessionCoreEntryMethods on SessionCore {
 
       _observations.putIfAbsent(effortId, () => []).addAll(observations);
 
-      _notify();
+      if (notify) _notify();
     } catch (e) {
       _setError('Failed to add entry: $e');
     }
@@ -265,7 +348,7 @@ extension SessionCoreEntryMethods on SessionCore {
           rpeRating: oldObs.rpeRating,
           restDurationMs: oldObs.restDurationMs,
           createdAtMs: oldObs.createdAtMs,
-          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+          updatedAtMs: _clock().millisecondsSinceEpoch,
         );
 
         await _repository.updateObservation(newObs);
@@ -273,7 +356,7 @@ extension SessionCoreEntryMethods on SessionCore {
 
         _notify();
       } else if (metricKey == 'extra-weight') {
-        final now = DateTime.now().millisecondsSinceEpoch;
+        final now = _clock().millisecondsSinceEpoch;
         final number = effort.effortKind == 'set'
             // A set's row joins the set it was entered for, by that set's own
             // number (D-325), so a gap left by an old delete cannot move it to
@@ -445,7 +528,7 @@ extension SessionCoreEntryMethods on SessionCore {
     final entries = getEffortDistanceEntries(effortId);
     if (entryIndex < 0 || entryIndex >= entries.length) return;
 
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = _clock().millisecondsSinceEpoch;
     final hasDistance = metres > 0;
 
     // Every entry before the edited one that has no row yet gets a
@@ -547,7 +630,7 @@ extension SessionCoreEntryMethods on SessionCore {
         rpeRating: oldObs.rpeRating,
         restDurationMs: oldObs.restDurationMs,
         createdAtMs: oldObs.createdAtMs,
-        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        updatedAtMs: _clock().millisecondsSinceEpoch,
       );
       await _repository.updateObservation(newObs);
       observations[obsIndex] = newObs;
@@ -605,13 +688,21 @@ extension SessionCoreEntryMethods on SessionCore {
       final effort = _findEffort(effortId);
       if (effort == null) return;
 
+      // D-1: whichever kind the entry was, the rest that marked it goes with it
+      // and every rest above it moves down one, or the deleted entry comes back
+      // as logged on the next load. A delete that found no such entry leaves the
+      // rests alone.
       if (effort.effortKind == 'round') {
-        await _timerManager.deleteRound(effortId, entryIndex);
+        if (await _timerManager.deleteRound(effortId, entryIndex)) {
+          await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
+        }
         return;
       }
 
       if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
-        await _timerManager.deleteTimedEntry(effortId, entryIndex);
+        if (await _timerManager.deleteTimedEntry(effortId, entryIndex)) {
+          await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
+        }
         return;
       }
 
@@ -630,6 +721,7 @@ extension SessionCoreEntryMethods on SessionCore {
         await _repository.deleteObservation(id);
       }
       observations.removeWhere((row) => doomed.contains(row.id));
+      await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
       _notify();
     } catch (e) {
       _setError('Failed to delete entry: $e');

@@ -626,4 +626,104 @@ void main() {
       await tester.pumpAndSettle();
     });
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // U-19..U-21: showDurationEntryDialog honours the caller's ceiling (maxSecs)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('Duration dialog ceiling (maxSecs)', () {
+    Future<int?> driveDialog(
+      WidgetTester tester, {
+      required int initialSecs,
+      required int hours,
+      required int minutes,
+      required int seconds,
+      int? maxSecs,
+    }) async {
+      int? result;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: FilledButton(
+                  onPressed: () async {
+                    result = await showDurationEntryDialog(
+                      context,
+                      title: 'Edit Round Duration',
+                      initialSecs: initialSecs,
+                      maxSecs: maxSecs,
+                    );
+                  },
+                  child: const Text('Open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      final textFields = find.byType(TextField);
+      await tester.enterText(textFields.at(0), hours.toString());
+      await tester.enterText(textFields.at(1), minutes.toString());
+      await tester.enterText(textFields.at(2), seconds.toString());
+
+      await tester.tap(find.text('Ok'));
+      await tester.pumpAndSettle();
+
+      return result;
+    }
+
+    // U-19: 230 h 15 m 0 s with maxSecs 36000 returns the 10-hour ceiling.
+    testWidgets('U-19: over-ceiling input is clamped to maxSecs', (
+      tester,
+    ) async {
+      expect(
+        await driveDialog(
+          tester,
+          initialSecs: 900,
+          hours: 230,
+          minutes: 15,
+          seconds: 0,
+          maxSecs: 36000,
+        ),
+        36000,
+      );
+    });
+
+    // U-20: without maxSecs the same input is returned unchanged.
+    testWidgets('U-20: no maxSecs leaves the value unchanged', (tester) async {
+      expect(
+        await driveDialog(
+          tester,
+          initialSecs: 900,
+          hours: 230,
+          minutes: 15,
+          seconds: 0,
+        ),
+        230 * 3600 + 15 * 60,
+      );
+    });
+
+    // U-21: under the ceiling nothing changes.
+    testWidgets('U-21: value under maxSecs is returned unchanged', (
+      tester,
+    ) async {
+      expect(
+        await driveDialog(
+          tester,
+          initialSecs: 900,
+          hours: 1,
+          minutes: 15,
+          seconds: 35,
+          maxSecs: 36000,
+        ),
+        4535,
+      );
+    });
+  });
 }

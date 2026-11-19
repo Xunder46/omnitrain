@@ -76,6 +76,7 @@ void main() {
         isRolling: false,
         measuredSecs: {ExerciseSection.isometric: 1200},
         dominantSection: ExerciseSection.isometric,
+        hasSets: true,
       );
       expect(time[ExerciseSection.resistance], 2400.0);
       expect(time[ExerciseSection.isometric], 1200.0);
@@ -87,6 +88,7 @@ void main() {
         isRolling: false,
         measuredSecs: {ExerciseSection.isometric: 1200},
         dominantSection: ExerciseSection.isometric,
+        hasSets: true,
       );
       expect(time[ExerciseSection.resistance]! / 60, 40.0);
       expect(time[ExerciseSection.isometric]! / 60, 20.0);
@@ -98,6 +100,7 @@ void main() {
         isRolling: false,
         measuredSecs: {ExerciseSection.cardio: 900},
         dominantSection: ExerciseSection.cardio,
+        hasSets: true,
       );
       expect(time[ExerciseSection.resistance], 3600.0);
       expect(time[ExerciseSection.cardio], 900.0);
@@ -113,6 +116,7 @@ void main() {
           ExerciseSection.cardio: 600,
         },
         dominantSection: ExerciseSection.isometric,
+        hasSets: true,
       );
       expect(time, {ExerciseSection.isometric: 1800.0});
     });
@@ -125,6 +129,7 @@ void main() {
           isRolling: false,
           measuredSecs: {ExerciseSection.cardio: 900},
           dominantSection: ExerciseSection.resistance,
+          hasSets: true,
         );
         expect(time, {ExerciseSection.resistance: 600.0});
       },
@@ -139,6 +144,7 @@ void main() {
           ExerciseSection.cardio: 800,
         },
         dominantSection: ExerciseSection.cardio,
+        hasSets: true,
       );
       expect(time, {ExerciseSection.cardio: 1200.0});
     });
@@ -149,6 +155,7 @@ void main() {
         isRolling: true,
         measuredSecs: {ExerciseSection.cardio: 1800},
         dominantSection: ExerciseSection.cardio,
+        hasSets: true,
       );
       expect(time, {ExerciseSection.cardio: 1800.0});
       expect(time.containsKey(ExerciseSection.resistance), isFalse);
@@ -160,6 +167,7 @@ void main() {
         isRolling: true,
         measuredSecs: const {},
         dominantSection: ExerciseSection.resistance,
+        hasSets: true,
       );
       expect(time, isEmpty);
     });
@@ -170,6 +178,7 @@ void main() {
         isRolling: false,
         measuredSecs: const {},
         dominantSection: ExerciseSection.resistance,
+        hasSets: true,
       );
       expect(time, {ExerciseSection.resistance: 5400.0});
     });
@@ -184,6 +193,7 @@ void main() {
           ExerciseSection.sports: 600,
         },
         dominantSection: ExerciseSection.resistance,
+        hasSets: true,
       );
       expect(time[ExerciseSection.resistance], 1800.0);
       expect(time[ExerciseSection.cardio], 600.0);
@@ -197,6 +207,7 @@ void main() {
         isRolling: false,
         measuredSecs: {ExerciseSection.cardio: 600},
         dominantSection: ExerciseSection.cardio,
+        hasSets: true,
       );
       expect(time[ExerciseSection.resistance], 0.0);
     });
@@ -209,6 +220,7 @@ void main() {
           isRolling: false,
           measuredSecs: {ExerciseSection.cardio: 2400},
           dominantSection: null,
+          hasSets: true,
         );
         expect(time, isEmpty);
       },

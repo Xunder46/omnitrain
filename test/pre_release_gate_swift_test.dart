@@ -67,6 +67,7 @@ class _Gate {
         'macos/Flutter/Flutter.framework',
         'macos/Flutter/ephemeral',
         '.venv',
+        '.work',
         '.claude',
         '.idea',
       ]) ...['--exclude', skip],

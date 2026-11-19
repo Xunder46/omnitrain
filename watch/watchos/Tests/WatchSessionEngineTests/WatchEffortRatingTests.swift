@@ -13,19 +13,31 @@
 //  same storage and restored.
 //
 
+import Combine
+import Foundation
 import XCTest
 
 @testable import WatchSessionEngine
 
 /// The phone's `preferences_down`, as the phone builds it (A-22's id shape).
-func preferencesDown(_ asks: Bool, generatedAt: String, messageId: String? = nil) -> [String: Any] {
+func preferencesDown(
+    _ asks: Bool,
+    generatedAt: String,
+    messageId: String? = nil,
+    restPingSeconds: Int = 0
+) -> [String: Any] {
     [
         "protocolVersion": SyncProtocolValidator.protocolVersion,
-        "messageId": messageId ?? "msg-preferences-\(generatedAt)-\(asks ? "on" : "off")",
+        "messageId": messageId
+            ?? "msg-preferences-\(generatedAt)-\(asks ? "on" : "off")-\(restPingSeconds)",
         "type": "preferences_down",
         "origin": "phone",
         "sentAt": generatedAt,
-        "payload": ["generatedAt": generatedAt, "effortRatingPrompt": asks],
+        "payload": [
+            "generatedAt": generatedAt,
+            "effortRatingPrompt": asks,
+            "restPingSeconds": restPingSeconds,
+        ],
     ]
 }
 
@@ -52,7 +64,7 @@ func instant(_ text: String) -> Date {
 /// also how a relaunch after a kill is simulated.
 final class RatingHarness {
     let clock: TestClock
-    let store = InMemoryWatchSessionStore()
+    let store: WatchSessionStore
 
     /// Everything every engine built over this store emitted, in order.
     private(set) var emitted: [[String: Any]] = []
@@ -64,9 +76,10 @@ final class RatingHarness {
     private(set) var preferences: WatchPhonePreferences!
     private(set) var rating: WatchEffortRatingState!
 
-    init(sessionIds: [String] = ["s-r-1"]) {
+    init(sessionIds: [String] = ["s-r-1"], store: WatchSessionStore = InMemoryWatchSessionStore()) {
         clock = TestClock(instant("2026-09-25T09:00:00Z"))
         self.sessionIds = sessionIds
+        self.store = store
     }
 
     @discardableResult
@@ -139,6 +152,134 @@ final class RatingHarness {
             .filter { ($0["payload"] as? [String: Any])?["state"] as? String == state }
     }
 
+}
+
+/// A `WatchSessionStore` that wraps the in-memory store and can be armed so the
+/// next `append` suspends until `resume()` (S-55). Everything else passes
+/// straight through, so a test can pause exactly one commit in flight.
+final class SuspendingStore: WatchSessionStore {
+    private let inner = InMemoryWatchSessionStore()
+    private let lock = NSLock()
+
+    private var armed = false
+    private var suspendedFlag = false
+    private var resumeRequested = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    /// Arms the next `append` to suspend until `resume()`.
+    func arm() {
+        lock.lock()
+        armed = true
+        lock.unlock()
+    }
+
+    /// Whether an armed `append` is currently inside the store, suspended.
+    var suspended: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return suspendedFlag
+    }
+
+    /// Lets an armed `append` continue — before or after it reaches the wait.
+    func resume() {
+        lock.lock()
+        if let waiting = continuation {
+            continuation = nil
+            suspendedFlag = false
+            lock.unlock()
+            waiting.resume()
+            return
+        }
+        resumeRequested = true
+        lock.unlock()
+    }
+
+    func append(_ record: StoredWatchRecord) async -> StoredWatchRecord {
+        if beginAppend() && !alreadyResumed() {
+            await withCheckedContinuation { continuation in
+                if let pending = register(continuation) { pending.resume() }
+            }
+        }
+        return await inner.append(record)
+    }
+
+    func readAll() async -> WatchStoreContents { await inner.readAll() }
+
+    func pruneConfirmed() async -> [String] { await inner.pruneConfirmed() }
+
+    func pruneSensorSamples(_ sessionIds: [String]) async -> [String] {
+        await inner.pruneSensorSamples(sessionIds)
+    }
+
+    func pruneExerciseBatches(keepingVersion: String) async -> [String] {
+        await inner.pruneExerciseBatches(keepingVersion: keepingVersion)
+    }
+
+    func pruneBests(keepingRecordId: String) async -> [String] {
+        await inner.pruneBests(keepingRecordId: keepingRecordId)
+    }
+
+    func pruneWater(keepingRecordId: String) async -> [String] {
+        await inner.pruneWater(keepingRecordId: keepingRecordId)
+    }
+
+    func pruneWaterTaps(loggedBefore cutoff: Date) async -> [String] {
+        await inner.pruneWaterTaps(loggedBefore: cutoff)
+    }
+
+    /// Consumes the arm and marks the store suspended, if it was armed.
+    private func beginAppend() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let shouldSuspend = armed
+        armed = false
+        if shouldSuspend { suspendedFlag = true }
+        return shouldSuspend
+    }
+
+    /// True — clearing the wait — when `resume()` arrived before the append did.
+    private func alreadyResumed() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard resumeRequested else { return false }
+        resumeRequested = false
+        suspendedFlag = false
+        return true
+    }
+
+    /// Files the continuation, or hands it straight back if `resume()` already came.
+    private func register(
+        _ continuation: CheckedContinuation<Void, Never>
+    ) -> CheckedContinuation<Void, Never>? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard resumeRequested else {
+            self.continuation = continuation
+            return nil
+        }
+        resumeRequested = false
+        suspendedFlag = false
+        return continuation
+    }
+}
+
+/// The state the surface was in at each notification it delivered, recorded
+/// from the sink itself.
+final class RatingNotificationLog {
+    private let lock = NSLock()
+    private var seen: [(ended: Bool, owed: Bool)] = []
+
+    func record(ended: Bool, owed: Bool) {
+        lock.lock()
+        seen.append((ended: ended, owed: owed))
+        lock.unlock()
+    }
+
+    var observations: [(ended: Bool, owed: Bool)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return seen
+    }
 }
 
 final class WatchEffortRatingTests: XCTestCase {
@@ -342,6 +483,118 @@ final class WatchEffortRatingTests: XCTestCase {
         XCTAssertEqual(ends.first?["endedAt"] as? String, "2026-09-25T10:30:00.000Z", "S-217 the snapshot's sentAt")
     }
 
+    // MARK: - S-4310 / S-4311 the phone answered first
+
+    /// The phone's snapshot of the wrist's own session, carrying the wrist's
+    /// logged entry plus the phone's `effort_rating` under the wrist's id.
+    private func phoneRatingSnapshot(
+        sessionId: String,
+        entry: [String: Any],
+        sentAt: String
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-phone-snap-rating-\(sessionId)",
+            "sessionId": sessionId,
+            "type": "session_snapshot",
+            "origin": "phone",
+            "sentAt": sentAt,
+            "payload": [
+                "sessionId": sessionId,
+                "revision": 0,
+                "status": WatchSessionStatus.completed,
+                "currentExerciseIndex": 0,
+                "exercises": [exercise("sx-bench")],
+                "entries": [
+                    entry,
+                    [
+                        "entryId": "rating-\(sessionId)",
+                        "eventId": "rating-\(sessionId)",
+                        "kind": "effort_rating",
+                        "loggedAt": "2026-09-25T10:11:30.000Z",
+                        "rating": 3,
+                    ] as [String: Any],
+                ],
+                "timers": [String: Any](),
+            ] as [String: Any],
+        ]
+    }
+
+    func testS4310ThePhonesRatingInASnapshotClosesTheOwedQuestion() async throws {
+        let wrist = await RatingHarness(sessionIds: ["s-r-4"]).launch()
+        await wrist.sync(true, generatedAt: "2026-09-25T09:00:00Z")
+        try await wrist.loggedSession(
+            start: "2026-09-25T10:00:00Z",
+            set: "e-1",
+            logged: "2026-09-25T10:05:00Z",
+            end: "2026-09-25T10:10:00Z"
+        )
+        XCTAssertTrue(wrist.rating.isPromptOwed, "S-4310 the wrist's End owes the question")
+
+        let logged = try XCTUnwrap(wrist.engine.entries.first?.payload)
+        let snapshot = phoneRatingSnapshot(
+            sessionId: "s-r-4",
+            entry: logged,
+            sentAt: "2026-09-25T10:12:00Z"
+        )
+
+        // The state forwards the engine's change on the main queue (42b fix 1),
+        // so the publication arrives after `applyMessage` returns.
+        let notified = expectation(description: "S-4310 the open prompt is told to redraw")
+        notified.assertForOverFulfill = false
+        var cancellables: Set<AnyCancellable> = []
+        wrist.rating.objectWillChange
+            .sink { _ in notified.fulfill() }
+            .store(in: &cancellables)
+
+        wrist.clock.now = instant("2026-09-25T10:12:30Z")
+        _ = try await wrist.engine.applyMessage(snapshot)
+        await fulfillment(of: [notified], timeout: 2)
+        withExtendedLifetime(cancellables) {}
+
+        XCTAssertFalse(wrist.rating.isPromptOwed, "S-4310 the phone's rating closes the question")
+        XCTAssertTrue(wrist.rating.owedSessionIds.isEmpty, "S-4310 nothing is owed")
+        wrist.rating.select(5)
+        XCTAssertFalse(wrist.rating.canConfirm, "S-4310 there is nothing left to confirm")
+        let late = try await wrist.rating.confirm()
+        XCTAssertNil(late, "S-4310 a late answer records nothing")
+        let direct = try await wrist.engine.recordEffortRating(5, sessionId: "s-r-4")
+        XCTAssertNil(direct, "S-4310 nor does the engine's own append path")
+        XCTAssertTrue(wrist.events("effort_rating").isEmpty, "S-4310 the wrist emitted no rating of its own")
+    }
+
+    func testS4311ThePhonesRatingIsNotUploadedBackAsAnEffortRating() async throws {
+        let wrist = await RatingHarness(sessionIds: ["s-r-4"]).launch()
+        await wrist.sync(true, generatedAt: "2026-09-25T09:00:00Z")
+        try await wrist.loggedSession(
+            start: "2026-09-25T10:00:00Z",
+            set: "e-1",
+            logged: "2026-09-25T10:05:00Z",
+            end: "2026-09-25T10:10:00Z"
+        )
+        XCTAssertTrue(wrist.rating.isPromptOwed, "S-4311 the wrist's End owes the question")
+
+        let logged = try XCTUnwrap(wrist.engine.entries.first?.payload)
+        let snapshot = phoneRatingSnapshot(
+            sessionId: "s-r-4",
+            entry: logged,
+            sentAt: "2026-09-25T10:12:00Z"
+        )
+        wrist.clock.now = instant("2026-09-25T10:12:30Z")
+        _ = try await wrist.engine.applyMessage(snapshot)
+
+        let pendingIds = wrist.engine.pendingObservations().flatMap { envelope -> [String] in
+            let events = ((envelope["payload"] as? [String: Any])?["events"] as? [[String: Any]]) ?? []
+            return events.flatMap { event in
+                [event["entryId"] as? String, event["eventId"] as? String].compactMap { $0 }
+            }
+        }
+        XCTAssertFalse(
+            pendingIds.contains("rating-s-r-4"),
+            "S-4311 the phone's rating is not owed back up: the phone's own number stands"
+        )
+    }
+
     // MARK: - S-218 the wrist never changes a rating
 
     func testS218TheWristNeverChangesARating() async throws {
@@ -480,6 +733,102 @@ final class WatchEffortRatingTests: XCTestCase {
         XCTAssertFalse(wrist.rating.isPromptOwed, "S-220 the phone deleted the only set, so nothing is asked")
     }
 
+    // MARK: - S-55 a slow commit still shows the settled state
+
+    /// Spins until `condition` holds or `limit` yields have passed: a bounded
+    /// poll, never an unbounded wait.
+    private func spin(until condition: () -> Bool, limit: Int = 100_000) async -> Bool {
+        var spins = 0
+        while !condition() && spins < limit {
+            await Task.yield()
+            spins += 1
+        }
+        return condition()
+    }
+
+    func testS55ASlowCommitStillShowsTheOwedQuestion() async throws {
+        let store = SuspendingStore()
+        let wrist = await RatingHarness(store: store).launch()
+        await wrist.sync(true, generatedAt: "2026-09-25T09:00:00Z")
+        await wrist.start(at: "2026-09-25T10:00:00Z")
+        try await wrist.logSet("e-1", at: "2026-09-25T10:05:00Z")
+
+        let log = RatingNotificationLog()
+        var cancellables: Set<AnyCancellable> = []
+        wrist.rating.objectWillChange
+            .sink { _ in
+                log.record(
+                    ended: wrist.engine.session?.status != WatchSessionStatus.active,
+                    owed: wrist.rating.isPromptOwed
+                )
+            }
+            .store(in: &cancellables)
+
+        store.arm()
+        let ending = Task { await wrist.end(at: "2026-09-25T10:10:00Z") }
+
+        let reached = await spin(until: { store.suspended })
+        XCTAssertTrue(reached, "S-55 the End's commit is in flight")
+        XCTAssertTrue(
+            log.observations.isEmpty,
+            "S-55 the notification must wait for the commit it announces"
+        )
+
+        store.resume()
+        await ending.value
+
+        let seen = log.observations
+        XCTAssertFalse(seen.isEmpty, "S-55 the settled state is announced")
+        for observation in seen {
+            XCTAssertTrue(observation.ended, "S-55 every notification sees the session ended")
+            XCTAssertTrue(observation.owed, "S-55 every notification sees the prompt owed")
+        }
+        XCTAssertTrue(wrist.rating.isPromptOwed, "S-55 the question is up")
+    }
+
+    func testS55ASlowAnswerNotifiesAfterTheRatingIsRecorded() async throws {
+        let store = SuspendingStore()
+        let wrist = await RatingHarness(store: store).launch()
+        await wrist.sync(true, generatedAt: "2026-09-25T09:00:00Z")
+        await wrist.start(at: "2026-09-25T10:00:00Z")
+        try await wrist.logSet("e-1", at: "2026-09-25T10:05:00Z")
+        await wrist.end(at: "2026-09-25T10:10:00Z")
+        XCTAssertTrue(wrist.rating.isPromptOwed, "S-55 the question is owed")
+
+        wrist.rating.select(3)
+
+        let log = RatingNotificationLog()
+        var cancellables: Set<AnyCancellable> = []
+        wrist.rating.objectWillChange
+            .sink { _ in
+                log.record(
+                    ended: wrist.engine.session?.status != WatchSessionStatus.active,
+                    owed: wrist.rating.isPromptOwed
+                )
+            }
+            .store(in: &cancellables)
+
+        store.arm()
+        let answering = Task { try await wrist.rating.confirm() }
+
+        let reached = await spin(until: { store.suspended })
+        XCTAssertTrue(reached, "S-55 the answer's commit is in flight")
+        XCTAssertTrue(
+            log.observations.isEmpty,
+            "S-55 the notification must wait for the answer to be recorded"
+        )
+
+        store.resume()
+        _ = try await answering.value
+
+        let seen = log.observations
+        XCTAssertFalse(seen.isEmpty, "S-55 the recorded answer is announced")
+        for observation in seen {
+            XCTAssertFalse(observation.owed, "S-55 every notification sees the rating recorded")
+        }
+        XCTAssertFalse(wrist.rating.isPromptOwed, "S-55 nothing is owed after the answer")
+    }
+
     // MARK: - The contract and the way out
 
     func testWhetherANeverSyncedWristAsksIsTheContracts() throws {
@@ -496,10 +845,11 @@ final class WatchEffortRatingTests: XCTestCase {
         )
     }
 
-    /// D-118: once shown, the prompt must be answered. A name or a button that
-    /// offers another way out is a build failure here, not a review comment.
+    /// D-118, amended by plan 66a (D-3): once shown, the prompt has two ways
+    /// out — an answer, or Skip, which records nothing. Any other way out is a
+    /// build failure here, not a review comment.
     func testTheRatingOffersNoWayOutButAnAnswer() throws {
-        let banned = ["skip", "dismiss", "cancel", "close", "later", "not now"]
+        let banned = ["dismiss", "cancel", "close", "later", "not now"]
         let declaration = try NSRegularExpression(pattern: "\\b(?:func|var|let|case)\\s+`?(\\w+)")
         let buttonTitle = try NSRegularExpression(pattern: "Button\\(\\s*\"([^\"]*)\"")
         let buttonLabel = try NSRegularExpression(pattern: "label:\\s*\\{\\s*Text\\(\\s*\"([^\"]*)\"")
@@ -536,5 +886,54 @@ final class WatchEffortRatingTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(labelsSeen, 0, "the scan found no button labels — it is not looking")
+    }
+
+    /// Plan 66a (D-3): Skip is allowed, but only under its two names — the
+    /// state's `skipPrompt` and the copy's `skipLabel` (the view's
+    /// `skipButton` arrives in P3). Any other skip-like name or button label
+    /// in the state or view files is a build failure here.
+    func testSkipAppearsOnlyUnderItsTwoNames() throws {
+        let declaration = try NSRegularExpression(pattern: "\\b(?:func|var|let|case)\\s+`?(\\w+)")
+        let buttonTitle = try NSRegularExpression(pattern: "Button\\(\\s*\"([^\"]*)\"")
+        let buttonLabel = try NSRegularExpression(pattern: "label:\\s*\\{\\s*Text\\(\\s*\"([^\"]*)\"")
+        let allowed = ["skipprompt", "skiplabel", "skipbutton"]
+
+        func captures(_ pattern: NSRegularExpression, in source: String) -> [String] {
+            let range = NSRange(source.startIndex..<source.endIndex, in: source)
+            return pattern.matches(in: source, range: range).compactMap { match in
+                Range(match.range(at: 1), in: source).map { String(source[$0]) }
+            }
+        }
+
+        var skipNamesSeen = 0
+        for file in ["WatchEffortRating.swift", "WatchEffortRatingView.swift"] {
+            let source = try String(
+                contentsOf: Fixtures.sourcesRoot.appendingPathComponent(file),
+                encoding: .utf8
+            )
+            let names = captures(declaration, in: source)
+            let labels = captures(buttonTitle, in: source) + captures(buttonLabel, in: source)
+
+            for name in names where name.lowercased().hasPrefix("skip") {
+                skipNamesSeen += 1
+                XCTAssertTrue(
+                    allowed.contains(name.lowercased()),
+                    "S-9614 \(file) declares `\(name)`: Skip goes only by "
+                        + "skipPrompt, skipLabel or skipButton (plan 66a D-3)"
+                )
+            }
+            for label in labels where label.lowercased().hasPrefix("skip") {
+                skipNamesSeen += 1
+                XCTAssertTrue(
+                    allowed.contains(label.lowercased()),
+                    "S-9614 \(file) has a \"\(label)\" button: Skip goes only by "
+                        + "skipPrompt, skipLabel or skipButton (plan 66a D-3)"
+                )
+            }
+        }
+        XCTAssertGreaterThan(
+            skipNamesSeen, 0,
+            "the scan found no skip-like name — it is not looking"
+        )
     }
 }

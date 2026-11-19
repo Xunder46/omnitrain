@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/models/app_version_info.dart';
+import '../../core/services/diagnostics_log.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -33,8 +34,8 @@ import '../../state/food_library_state.dart';
 import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../state/stats/stats_primer_state.dart';
 import '../../state/exercise/exercise_library_state.dart';
+import '../../state/watch/watch_link_state.dart';
 import '../nutrition/nutrition_screen.dart';
-import '../nutrition/widgets/nutrition_primer_sheet.dart';
 import '../stats/widgets/stats_primer_sheet.dart';
 
 /// Hub-sheet layout constants used to size the destination grid against the
@@ -69,6 +70,10 @@ const double hubTileNaturalAspectRatio = 1.1;
 /// this the tile has no room for a label at all.
 const double hubMinTileHeight = 56.0;
 
+/// A macro target in whole grams, or null when none is set (0 means unset).
+int? _targetGrams(double? grams) =>
+    (grams != null && grams > 0) ? grams.round() : null;
+
 class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final HomeState homeState;
@@ -94,6 +99,14 @@ class HomeScreen extends StatefulWidget {
   final ExerciseLibraryState exerciseLibraryState;
   final AppVersionInfo? appVersionInfo;
 
+  /// Where the watch stands, handed on to Settings (47c D-3). Null without a
+  /// watch graph, and Settings then carries no APPLE WATCH section.
+  final WatchLinkState? watchLinkState;
+
+  /// The phone's diagnostics log, handed on to Settings (plan 143, D-14306).
+  /// Null without a log, and Settings then carries no Diagnostics row.
+  final DiagnosticsLog? diagnostics;
+
   HomeScreen({
     super.key,
     required this.workoutState,
@@ -112,6 +125,8 @@ class HomeScreen extends StatefulWidget {
     this.statsPrimerState,
     required this.exerciseLibraryState,
     this.appVersionInfo,
+    this.watchLinkState,
+    this.diagnostics,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -120,7 +135,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   static const double _minSheetExtent = 0.0;
   double _maxSheetExtent = 0.9;
 
@@ -130,18 +146,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final Animation<double> _hintOffset;
 
   bool _resumeCheckDone = false;
-  late int _lastSeenDate; // Track the last date we checked for rollover
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (!_resumeCheckDone) {
       widget.workoutState.checkForInProgressSession();
       _resumeCheckDone = true;
     }
-
-    // Initialize last seen date for rollover detection
-    _initializeLastSeenDate();
 
     _sheetController = DraggableScrollableController();
     _sheetExtent = ValueNotifier<double>(_minSheetExtent);
@@ -210,6 +223,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _sheetExtent.removeListener(_onSheetExtentChanged);
     _sheetExtent.dispose();
     _hintController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -234,59 +248,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       widget.nutritionState.loadNutritionTarget(),
       widget.nutritionState.loadConsumedToday(),
     ]);
-    // One rollover check after the initial loads settle
-    // (S-054): covers the edge case where the user opens the
-    // app right at midnight, the loads above grabbed the new
-    // day's target, but yesterday's cached `consumedToday` is
-    // still in memory.
-    if (mounted) _checkAndHandleDateRollover();
+    // Plan 237: covers a midnight that passes during the first load.
+    if (mounted) unawaited(widget.nutritionState.rolloverIfDayChanged());
   }
 
-  /// Initialize last seen date for rollover detection
-  void _initializeLastSeenDate() {
-    final now = DateTime.now();
-    _lastSeenDate = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).millisecondsSinceEpoch;
-  }
-
-  /// Check if date has rolled over and trigger nutrition state rollover if needed
-  void _checkAndHandleDateRollover() {
-    final now = DateTime.now();
-    final todayMs = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).millisecondsSinceEpoch;
-
-    if (todayMs != _lastSeenDate) {
-      _lastSeenDate = todayMs;
-      // Date has changed; trigger rollover (S-054). The
-      // rollover clears the in-memory consumed cache and reloads
-      // the target for the new day. We additionally reload
-      // today's consumed foods (which the rollover does not
-      // auto-reload) so the home strip rebuilds into the empty
-      // state immediately rather than staying on yesterday's
-      // values until the next manual load.
-      // Schedule the rollover through `addPostFrameCallback`
-      // (not `Future.microtask`): a microtask runs *between*
-      // frames, but the strip's `ListenableBuilder` will still
-      // try to rebuild in response to the notify, and if a
-      // build is currently in flight we trip Flutter's
-      // "setState during build" assertion. The post-frame
-      // callback runs *after* the current frame, so the notify
-      // schedules a clean rebuild for the next frame.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(() async {
-          await widget.nutritionState.rolloverToDate(todayMs);
-          if (mounted) {
-            await widget.nutritionState.loadConsumedToday();
-          }
-        }());
-      });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Plan 237: a resume after midnight must show the new day, not yesterday's.
+    if (state == AppLifecycleState.resumed && mounted) {
+      unawaited(widget.nutritionState.rolloverIfDayChanged());
     }
   }
 
@@ -326,22 +296,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// the Foods I Eat card (D-5: the strip is always tappable →
   /// NutritionScreen in all states).
   ///
-  /// First-ever tap of the home strip fires the one-shot primer
-  /// (`NutritionPrimerSheet`) over the home screen via
-  /// `showModalBottomSheet`. On dismiss, the seen-flag is marked
-  /// AND `NutritionScreen` is pushed — the primer is a sheet, NOT
-  /// a route, so it does not block navigation; the user can dismiss
-  /// it and reach the page behind it. Subsequent taps push the
-  /// page directly with no overlay (S-005: the primer never gates
-  /// access). The header "?" on the nutrition page reopens the
-  /// primer at any time without mutating the seen state.
-  Future<void> _openNutritionScreen() async {
-    // Auto-show path: first tap, primer not yet seen. Open the
-    // primer sheet, mark seen on dismiss, then push the page.
-    if (widget.nutritionPrimerState.shouldShowPrimer) {
-      await _showNutritionPrimer();
-    }
-    if (!mounted) return;
+  /// The one-shot primer is shown by the nutrition screen itself, over the
+  /// screen it explains, the first time it opens (plan 77d). The header "?"
+  /// there reopens it at any time without mutating the seen state.
+  void _openNutritionScreen() {
     OmniNavigator.push(
       context,
       (_) => NutritionScreen(
@@ -349,34 +307,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         foodLibraryState: widget.foodLibraryState,
         nutritionPrimerState: widget.nutritionPrimerState,
       ),
-    );
-  }
-
-  /// Show the [NutritionPrimerSheet] over the home screen. The
-  /// seen flag is marked ON DISMISS (in the post-pop callback),
-  /// not on show, so a sheet that gets dismissed externally (e.g.
-  /// by a back-tap) still counts as "seen" — the user has at
-  /// least read the primer once.
-  Future<void> _showNutritionPrimer() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-          ),
-          child: NutritionPrimerSheet(
-            onDismiss: () {
-              // Mark seen AFTER the sheet pops. Fire-and-forget: the
-              // seen flag is local UX state and the round-trip
-              // cannot fail the user-facing flow.
-              unawaited(widget.nutritionPrimerState.markSeen());
-            },
-          ),
-        );
-      },
     );
   }
 
@@ -511,7 +441,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   color: OmniTheme.colors.textDominant,
                                   shadows: [
                                     Shadow(
-                                      color: Colors.black.withOpacity(0.5),
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .shadow
+                                          .withOpacity(0.5),
                                       blurRadius: 8,
                                       offset: const Offset(0, 2),
                                     ),
@@ -548,14 +481,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                             : tile.modality == null
                                             ? session?.modality == null &&
                                                   !isRoutineSession
-                                            : session?.modality ==
-                                                  tile.modality);
+                                            : !isRoutineSession &&
+                                                  session?.modality ==
+                                                      tile.modality);
 
                                     return EnergyTile(
                                       title: tile.label,
                                       icon: tile.iconData,
                                       artworkBuilder: tile.artworkBuilder,
-                                      accentColor: tile.accentColor,
+                                      accentColor: tile.accentFor(
+                                        OmniTheme.colors,
+                                      ),
                                       isSecondary: tile.isSecondary,
                                       isActive: isActive,
                                       onTap: () => _handleTileTap(
@@ -625,6 +561,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           proteinKcal: widget.nutritionState.todayProteinKcal,
                           carbsKcal: widget.nutritionState.todayNetCarbsKcal,
                           fatKcal: widget.nutritionState.todayFatKcal,
+                          proteinGrams: widget.nutritionState.todayConsumedProtein,
+                          carbsGrams: widget.nutritionState.todayConsumedCarbs,
+                          fatGrams: widget.nutritionState.todayConsumedFat,
+                          targetProteinGrams: _targetGrams(target?.protein),
+                          targetCarbsGrams: _targetGrams(target?.carbs),
+                          targetFatGrams: _targetGrams(target?.fat),
                           onTap: _openNutritionScreen,
                         );
                       },
@@ -696,7 +638,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           );
           if (confirmed != true) return;
-          widget.workoutState.clearSession();
+          // Plan 230: confirmed Start New really discards the running workout.
+          await widget.workoutState.discardUnfinishedSession();
         }
         if (context.mounted) {
           OmniNavigator.push(
@@ -782,8 +725,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return;
     }
 
-    // Standard modality tile: clear any prior session and start a new one.
-    widget.workoutState.clearSession();
+    // Standard modality tile: discard any prior session and start a new one.
+    await widget.workoutState.discardUnfinishedSession();
     await widget.workoutState.createNewSession(modality: tile.modality);
 
     if (context.mounted) {
@@ -834,7 +777,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.35),
+                    color: Theme.of(innerCtx).colorScheme.shadow
+                        .withOpacity(0.35),
                     blurRadius: 30,
                     offset: const Offset(0, -12),
                   ),
@@ -918,7 +862,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     BuildContext context, {
     required bool isRolling,
   }) async {
-    widget.workoutState.clearSession();
+    await widget.workoutState.discardUnfinishedSession();
     await widget.workoutState.createNewSession(isRolling: isRolling);
     if (context.mounted) {
       OmniNavigator.push(
@@ -1006,7 +950,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.35),
+                      color: Theme.of(context).colorScheme.shadow
+                          .withOpacity(0.35),
                       blurRadius: 30,
                       offset: const Offset(0, -12),
                     ),
@@ -1180,6 +1125,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             appVersionInfo:
                 widget.appVersionInfo ??
                 const AppVersionInfo(version: '0.0.0', build: '0'),
+            watchLinkState: widget.watchLinkState,
+            diagnostics: widget.diagnostics,
           ),
         ),
       ),

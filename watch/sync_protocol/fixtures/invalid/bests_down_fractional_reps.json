@@ -1,0 +1,13 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-bests-fractional-reps-1",
+  "type": "bests_down",
+  "origin": "phone",
+  "sentAt": "2026-10-26T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-10-26T17:00:00Z",
+    "bests": [
+      { "exerciseId": "ex-push-up", "repsBest": 12.5 }
+    ]
+  }
+}

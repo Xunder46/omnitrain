@@ -1,5 +1,8 @@
 import 'dart:convert';
 
+import '../../core/utils/date_utils.dart';
+import '../../core/utils/macro_energy.dart';
+
 // Data model classes aligned with SQLite schema
 
 class SportCategory {
@@ -718,12 +721,20 @@ class WorkoutTemplate {
   /// Returns a copy with selected fields replaced. `isBuiltInDemo` defaults
   /// to preserving the current value, mirroring the
   /// `Optional<String?>`-style semantics of the other nullable fields.
+  ///
+  /// Passing `null` for `note`, `description`, `primaryDisciplineId` or
+  /// `ownerUserId` keeps the current value rather than clearing it (known
+  /// trap: none of them can be cleared through `copyWith` today). Only
+  /// `focusModality` has a clear flag: `clearFocusModality: true` sets the
+  /// result's Focus to `null`, overriding both `focusModality` and the
+  /// current value.
   WorkoutTemplate copyWith({
     String? id,
     String? ownerUserId,
     String? name,
     String? description,
     String? focusModality,
+    bool clearFocusModality = false,
     String? primaryDisciplineId,
     String? note,
     bool? isBuiltInDemo,
@@ -735,7 +746,9 @@ class WorkoutTemplate {
       ownerUserId: ownerUserId ?? this.ownerUserId,
       name: name ?? this.name,
       description: description ?? this.description,
-      focusModality: focusModality ?? this.focusModality,
+      focusModality: clearFocusModality
+          ? null
+          : (focusModality ?? this.focusModality),
       primaryDisciplineId: primaryDisciplineId ?? this.primaryDisciplineId,
       note: note ?? this.note,
       isBuiltInDemo: isBuiltInDemo ?? this.isBuiltInDemo,
@@ -921,26 +934,83 @@ class Tag {
   };
 }
 
+/// The role a muscle group plays on an exercise.
+///
+/// Persisted as the enum name, `'primary'` or `'secondary'`.
+enum MuscleRole { primary, secondary }
+
+/// One muscle group an exercise loads, together with the role it plays.
+///
+/// Stored as a map (`muscle_group_id`, `role`) in the exercise's muscle link
+/// list. Only [MuscleRole.primary] links match a muscle filter.
+class ExerciseMuscleLink {
+  final String muscleGroupId;
+  final MuscleRole role;
+
+  const ExerciseMuscleLink({required this.muscleGroupId, required this.role});
+
+  factory ExerciseMuscleLink.fromMap(Map<String, dynamic> m) {
+    final rawRole = m['role'];
+    if (rawRole == MuscleRole.primary.name) {
+      return ExerciseMuscleLink(
+        muscleGroupId: m['muscle_group_id'] as String,
+        role: MuscleRole.primary,
+      );
+    }
+    if (rawRole == MuscleRole.secondary.name) {
+      return ExerciseMuscleLink(
+        muscleGroupId: m['muscle_group_id'] as String,
+        role: MuscleRole.secondary,
+      );
+    }
+    throw ArgumentError.value(rawRole, 'role', 'Unknown muscle role');
+  }
+
+  Map<String, dynamic> toMap() => {
+    'muscle_group_id': muscleGroupId,
+    'role': role.name,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ExerciseMuscleLink &&
+      other.muscleGroupId == muscleGroupId &&
+      other.role == role;
+
+  @override
+  int get hashCode => Object.hash(muscleGroupId, role);
+
+  @override
+  String toString() => 'ExerciseMuscleLink($muscleGroupId, ${role.name})';
+}
+
 class MuscleGroup {
   final String id;
   final String name;
+
+  /// The id of the parent entry: a region for a muscle, `null` for a region
+  /// and for a standalone entry (Chest, Neck).
+  final String? parentId;
   final int createdAtMs;
 
   MuscleGroup({
     required this.id,
     required this.name,
+    this.parentId,
     required this.createdAtMs,
   });
 
   factory MuscleGroup.fromMap(Map<String, dynamic> m) => MuscleGroup(
     id: m['id'] as String,
     name: m['name'] as String,
+    parentId: m['parent_id'] as String?,
     createdAtMs: m['created_at_ms'] as int,
   );
 
   Map<String, dynamic> toMap() => {
     'id': id,
     'name': name,
+    'parent_id': parentId,
     'created_at_ms': createdAtMs,
   };
 }
@@ -1390,6 +1460,9 @@ class TimedInstance {
 /// When a planned session is actually executed as a workout, [linkedSessionId]
 /// may be set to point to the resulting [TrainingSession].
 ///
+/// A routine plan stores a null `modality`; its colour is resolved from the
+/// routine's Focus Modality at display time (see `CalendarState`).
+///
 /// Recurrence is NOT yet implemented.
 /// [recurrenceRule] is reserved for future use; always set it to null for now.
 /// Future implementation will likely use an iCalendar-style RRULE string
@@ -1405,6 +1478,8 @@ class PlannedSession {
 
   /// Epoch milliseconds representing the intended training day.
   /// Store start-of-day (midnight local time) for reliable day-level grouping.
+  /// Stored as that local wall-clock time read as UTC, held in memory as the
+  /// local instant (plan 236).
   final int scheduledDateMs;
 
   /// Modality key (e.g. 'cardio_endurance', 'resistance_lifting'), or null
@@ -1451,7 +1526,9 @@ class PlannedSession {
   factory PlannedSession.fromMap(Map<String, dynamic> m) => PlannedSession(
     id: m['id'] as String,
     ownerUserId: m['owner_user_id'] as String,
-    scheduledDateMs: m['scheduled_date_ms'] as int,
+    scheduledDateMs: OmniDateUtils.localMsOfWallClockKeyMs(
+      m['scheduled_date_ms'] as int,
+    ),
     modality: m['modality'] as String?,
     title: m['title'] as String?,
     note: m['note'] as String?,
@@ -1466,7 +1543,7 @@ class PlannedSession {
   Map<String, dynamic> toMap() => {
     'id': id,
     'owner_user_id': ownerUserId,
-    'scheduled_date_ms': scheduledDateMs,
+    'scheduled_date_ms': OmniDateUtils.wallClockKeyMs(scheduledDateMs),
     'modality': modality,
     'title': title,
     'note': note,
@@ -1504,9 +1581,13 @@ class TrainingPeriod {
   final String name;
 
   /// Epoch ms representing the first day of the period (midnight local time).
+  /// Stored as that local wall-clock time read as UTC, held in memory as the
+  /// local instant (plan 236).
   final int startDateMs;
 
   /// Epoch ms representing the last day of the period (end-of-day local time).
+  /// Stored as that local wall-clock time read as UTC, held in memory as the
+  /// local instant (plan 236).
   final int endDateMs;
 
   /// Modality keys for the training focus. Empty = all/unspecified.
@@ -1544,8 +1625,12 @@ class TrainingPeriod {
       id: m['id'] as String,
       ownerUserId: m['owner_user_id'] as String?,
       name: m['name'] as String,
-      startDateMs: m['start_date_ms'] as int,
-      endDateMs: m['end_date_ms'] as int,
+      startDateMs: OmniDateUtils.localMsOfWallClockKeyMs(
+        m['start_date_ms'] as int,
+      ),
+      endDateMs: OmniDateUtils.localMsOfWallClockKeyMs(
+        m['end_date_ms'] as int,
+      ),
       focusModalities: modalities,
       notes: m['notes'] as String?,
       colorHex: m['color_hex'] as String?,
@@ -1558,8 +1643,8 @@ class TrainingPeriod {
     'id': id,
     'owner_user_id': ownerUserId,
     'name': name,
-    'start_date_ms': startDateMs,
-    'end_date_ms': endDateMs,
+    'start_date_ms': OmniDateUtils.wallClockKeyMs(startDateMs),
+    'end_date_ms': OmniDateUtils.wallClockKeyMs(endDateMs),
     'focus_modalities_csv': focusModalities.join(','),
     'notes': notes,
     'color_hex': colorHex,
@@ -1765,8 +1850,10 @@ class NutritionTarget {
   final double protein;
   final double carbs;
   final double fat;
-  final int?
-  dateMs; // Optional date (ms since epoch); null for legacy global targets
+  /// The day this target applies to, held as the local midnight; stored as
+  /// that calendar date's UTC midnight (the zone-independent day key, plan
+  /// 235). Null for legacy global targets.
+  final int? dateMs;
 
   NutritionTarget({
     this.calories = 0.0,
@@ -1785,7 +1872,9 @@ class NutritionTarget {
     protein: ((m['protein'] as num?) ?? 0.0).toDouble(),
     carbs: ((m['carbs'] as num?) ?? 0.0).toDouble(),
     fat: ((m['fat'] as num?) ?? 0.0).toDouble(),
-    dateMs: m['date_ms'] as int?,
+    dateMs: m['date_ms'] == null
+        ? null
+        : OmniDateUtils.localMidnightOfDayKeyMs(m['date_ms'] as int),
   );
 
   Map<String, dynamic> toMap() => {
@@ -1793,7 +1882,9 @@ class NutritionTarget {
     'protein': protein,
     'carbs': carbs,
     'fat': fat,
-    'date_ms': dateMs,
+    'date_ms': dateMs == null
+        ? null
+        : OmniDateUtils.dayKeyMs(OmniDateUtils.fromMs(dateMs!)),
   };
 
   NutritionTarget copyWith({
@@ -1984,7 +2075,7 @@ class Food {
   /// Macros are stored as `double` to support fractional grams
   /// (e.g. `0.5` g of fat); the calorie count is rounded to `int`
   /// at the display boundary because the UI shows whole kcal.
-  int get calories => (protein * 4 + carbs * 4 + fat * 9).round();
+  int get calories => macroKcal(protein: protein, carbs: carbs, fat: fat).round();
 
   /// Computed net carbs: carbs - (fiber ?? 0).
   /// Rounded to `int` for parity with the existing
@@ -2129,7 +2220,10 @@ const Object _foodCopyWithUnset = Object();
 class ConsumedFood {
   final String id;
   final int loggedAtMs; // when the user logged this (wall clock)
-  final int dateMs; // day key (local midnight ms) this counts toward
+  /// The day this food counts toward, held as the local midnight; stored as
+  /// that calendar date's UTC midnight (the zone-independent day key, plan
+  /// 235).
+  final int dateMs;
 
   // Source reference — nullable if the original food was deleted
   final String? sourceFoodId;
@@ -2203,13 +2297,14 @@ class ConsumedFood {
   ///   - 3 of a per-1-egg food (6P / 1C / 5F = 73 kcal):
   ///     73 * (3 / 1) = 73 * 3 = 219.
   int get caloriesConsumed =>
-      ((protein * 4 + carbs * 4 + fat * 9) * (amountConsumed / referenceAmount))
+      (macroKcal(protein: protein, carbs: carbs, fat: fat) *
+              (amountConsumed / referenceAmount))
           .round();
 
   factory ConsumedFood.fromMap(Map<String, dynamic> m) => ConsumedFood(
     id: m['id'] as String,
     loggedAtMs: m['logged_at_ms'] as int,
-    dateMs: m['date_ms'] as int,
+    dateMs: OmniDateUtils.localMidnightOfDayKeyMs(m['date_ms'] as int),
     sourceFoodId: m['source_food_id'] as String?,
     name: m['name'] as String,
     unitType: FoodUnitType.fromString(m['unit_type'] as String?),
@@ -2237,7 +2332,7 @@ class ConsumedFood {
   Map<String, dynamic> toMap() => {
     'id': id,
     'logged_at_ms': loggedAtMs,
-    'date_ms': dateMs,
+    'date_ms': OmniDateUtils.dayKeyMs(OmniDateUtils.fromMs(dateMs)),
     'source_food_id': sourceFoodId,
     'name': name,
     'unit_type': unitType.toStorageString(),
@@ -2316,13 +2411,19 @@ class ConsumedFood {
 //
 // One row per calendar day, keyed by `dateMs` (local midnight). The day's
 // water volume is stored as a real volume in milliliters so the historical
-// record stays unit-clean — the on-screen "glass count" is derived at the
-// display boundary (`volumeMl ~/ kWaterGlassMl`), not stored. Editing a day's
+// record stays unit-clean — the on-screen total is converted to the user's
+// volume unit at the display boundary (`UnitFormatter.formatWaterTotal`),
+// never stored. Editing a day's
 // water writes a new `updatedAtMs`; past days are never mutated automatically.
 //
 // Water has no goal — like macros and sodium, it is tracked and stored for the
 // historical record only. Each new day starts at 0; logging takes effect
 // immediately and survives closing and reopening the app on the same day.
+//
+// `appliedTapIds` is the day's ledger of watch taps already applied (plan 94
+// D-4): kept in the same row as the volume so one write changes both, and a
+// redelivered tap is never counted twice. Stored as JSON text
+// (`applied_tap_ids`); a row written before the field reads as `[]`.
 
 class WaterLogEntry {
   /// Deterministic id (`'water-<dateMs>'`) so the per-day row has a stable
@@ -2330,7 +2431,9 @@ class WaterLogEntry {
   /// repository owns the id minting and `NutritionState` writes through it.
   final String id;
 
-  /// Day key (local midnight ms) this row counts toward.
+  /// The day this row counts toward, held as the local midnight; stored as
+  /// that calendar date's UTC midnight (the zone-independent day key, plan
+  /// 235).
   final int dateMs;
 
   /// Stored volume in milliliters. Always `>= 0`. The state layer floors
@@ -2340,12 +2443,16 @@ class WaterLogEntry {
   final int createdAtMs;
   final int updatedAtMs;
 
+  /// Ids of the watch taps already applied to this day, in append order.
+  final List<String> appliedTapIds;
+
   const WaterLogEntry({
     required this.id,
     required this.dateMs,
     required this.volumeMl,
     required this.createdAtMs,
     required this.updatedAtMs,
+    this.appliedTapIds = const [],
   });
 
   /// Stable per-day id (`'water-<dateMs>'`). Used by both repository
@@ -2354,18 +2461,28 @@ class WaterLogEntry {
 
   factory WaterLogEntry.fromMap(Map<String, dynamic> m) => WaterLogEntry(
     id: m['id'] as String,
-    dateMs: m['date_ms'] as int,
+    dateMs: OmniDateUtils.localMidnightOfDayKeyMs(m['date_ms'] as int),
     volumeMl: m['volume_ml'] as int,
     createdAtMs: m['created_at_ms'] as int,
     updatedAtMs: m['updated_at_ms'] as int,
+    appliedTapIds: _tapIdsFrom(m['applied_tap_ids']),
   );
+
+  /// Reads the JSON text the contract stores, or the list a Hive row holds;
+  /// an absent key (a row written before the ledger) is `[]`.
+  static List<String> _tapIdsFrom(Object? raw) {
+    if (raw == null) return const [];
+    final list = raw is String ? jsonDecode(raw) as List : raw as List;
+    return List<String>.unmodifiable(list.cast<String>());
+  }
 
   Map<String, dynamic> toMap() => {
     'id': id,
-    'date_ms': dateMs,
+    'date_ms': OmniDateUtils.dayKeyMs(OmniDateUtils.fromMs(dateMs)),
     'volume_ml': volumeMl,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
+    'applied_tap_ids': jsonEncode(appliedTapIds),
   };
 
   WaterLogEntry copyWith({
@@ -2374,6 +2491,7 @@ class WaterLogEntry {
     int? volumeMl,
     int? createdAtMs,
     int? updatedAtMs,
+    List<String>? appliedTapIds,
   }) {
     return WaterLogEntry(
       id: id ?? this.id,
@@ -2381,6 +2499,7 @@ class WaterLogEntry {
       volumeMl: volumeMl ?? this.volumeMl,
       createdAtMs: createdAtMs ?? this.createdAtMs,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+      appliedTapIds: appliedTapIds ?? this.appliedTapIds,
     );
   }
 }
@@ -2589,11 +2708,120 @@ class SensorSummary {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Session energy — the active energy a session burned (plan 134a, D-13401)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The active energy (above resting) one session burned, and where the number
+/// came from: the watch's measurement or the phone's estimate.
+///
+/// It is one row per session, keyed by [sessionId], in its own `session_energy`
+/// Hive box and mirrored by the SQL table `app_session_energy` in
+/// `scripts/sqlite_schema.sql`. It is not a [SensorSummary]: a summary is
+/// put-if-absent per (scope, target) and needs a heart rate or steps, where a
+/// stored estimate would block the wrist's later summary.
+///
+/// Invariants, enforced here at construction (a violation throws
+/// [ArgumentError]) and mirrored by CHECK constraints on `app_session_energy`:
+///   - [source] is [sourceEstimated] or [sourceMeasured].
+///   - [activeKcal] is finite and not negative; a measured 0 is a value.
+///   - A [sourceMeasured] row carries no body weight; an [sourceEstimated] row
+///     stores the weight its estimate used, finite and above 0.
+///
+/// An estimate never replaces a measured row: the repository's
+/// `putSessionEnergy` returns false and writes nothing (D-13402).
+/// Verified by `test/session_energy_repository_test.dart`.
+class SessionEnergy {
+  static const String sourceEstimated = 'estimated';
+  static const String sourceMeasured = 'measured';
+
+  /// Every source a row may come from.
+  static const List<String> sources = [sourceEstimated, sourceMeasured];
+
+  /// The [TrainingSession] the row belongs to; it is also the storage key.
+  final String sessionId;
+
+  /// Active energy above resting, unrounded kilocalories.
+  final double activeKcal;
+
+  /// [sourceEstimated] or [sourceMeasured].
+  final String source;
+
+  /// The body weight an estimate used; null on a measured row.
+  final double? bodyWeightKg;
+  final int updatedAtMs;
+
+  SessionEnergy({
+    required this.sessionId,
+    required this.activeKcal,
+    required this.source,
+    this.bodyWeightKg,
+    required this.updatedAtMs,
+  }) {
+    _checkInvariants();
+  }
+
+  void _checkInvariants() {
+    if (sessionId.isEmpty) {
+      throw ArgumentError('D-13401: a session energy row names its session');
+    }
+    if (!sources.contains(source)) {
+      throw ArgumentError.value(source, 'source', 'D-13401: unknown source');
+    }
+    if (!activeKcal.isFinite || activeKcal < 0) {
+      throw ArgumentError.value(
+        activeKcal,
+        'activeKcal',
+        'D-13401: active energy is finite and not negative',
+      );
+    }
+    final weight = bodyWeightKg;
+    if (source == sourceMeasured) {
+      if (weight != null) {
+        throw ArgumentError.value(
+          weight,
+          'bodyWeightKg',
+          'D-13401: a measured row carries no body weight',
+        );
+      }
+      return;
+    }
+    if (weight == null) {
+      throw ArgumentError(
+        'D-13401: an estimated row stores the body weight it used',
+      );
+    }
+    if (!weight.isFinite || weight <= 0) {
+      throw ArgumentError.value(
+        weight,
+        'bodyWeightKg',
+        'D-13401: the estimate\'s body weight is finite and above 0',
+      );
+    }
+  }
+
+  factory SessionEnergy.fromMap(Map<String, dynamic> m) => SessionEnergy(
+    sessionId: m['session_id'] as String,
+    activeKcal: (m['active_kcal'] as num).toDouble(),
+    source: m['source'] as String,
+    bodyWeightKg: (m['body_weight_kg'] as num?)?.toDouble(),
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'session_id': sessionId,
+    'active_kcal': activeKcal,
+    'source': source,
+    'body_weight_kg': bodyWeightKg,
+    'updated_at_ms': updatedAtMs,
+  };
+}
+
 /// One thing the phone learned about a wrist session before it became
 /// history: a wrist event, or one of the phone's own annotations on that
 /// session.
 ///
-/// Wrist kinds are the protocol's `set`, `timed`, `round`, `hold`,
+/// Wrist kinds are the protocol's `set`, `timed`, `round`, `hold`, `rest`,
 /// `effort_rating` and `session_end` events. Phone kinds are the phone's own
 /// rating (`phone_rating`), and the live corrections and deletions it sent
 /// for a wrist entry (`phone_correction`, `phone_deletion`). The phone mints
@@ -2620,6 +2848,7 @@ class WatchInboxEntry {
   static const String kindRound = 'round';
   static const String kindHold = 'hold';
   static const String kindEffortRating = 'effort_rating';
+  static const String kindRest = 'rest';
   static const String kindSessionEnd = 'session_end';
   static const String kindPhoneRating = 'phone_rating';
   static const String kindPhoneCorrection = 'phone_correction';
@@ -2631,6 +2860,7 @@ class WatchInboxEntry {
     kindTimed,
     kindRound,
     kindHold,
+    kindRest,
     kindEffortRating,
     kindSessionEnd,
   ];

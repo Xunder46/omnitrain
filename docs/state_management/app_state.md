@@ -45,6 +45,7 @@ Manages the calendar month view and associated monthly stats. See also [Calendar
 - Load completed + planned sessions for the current month range and group by day into `_entriesByDay`
 - Compute monthly stats derived from `_entriesByDay` (pure getters — no extra caching)
 - Compute the current consecutive-day streak via `_computeStreak()` (up to 90 days of history)
+- `CalendarState` takes an optional `now` clock (constructor, `init`, `isHistoricalMonth`, `isActiveStreak` and `_computeStreak` read it; default the device clock; `test/calendar_streak_state_test.dart` injects it to stand on fixed dates)
 - Load period highlights for calendar background shading
 
 #### Monthly Stats Getters
@@ -54,7 +55,8 @@ Manages the calendar month view and associated monthly stats. See also [Calendar
 | `completedSessionCount` | `int` | Completed sessions in loaded month |
 | `totalTrainingMs` | `int` | Sum of `endedAtMs − startedAtMs` for completed sessions with timing data |
 | `modalityBreakdown` | `Map<String?, int>` | Count of completed sessions grouped by modality key |
-| `streakDays` | `int` | Current consecutive-day streak (computed independently of displayed month) |
+| `streakDays` | `int` | The live streak, else the displayed month's longest run |
+| `liveStreakDays` | `int` | The live streak, or 0 once it has lapsed |
 
 ---
 
@@ -126,7 +128,7 @@ Manages profile identity and body-measurement flows used by `ProfileScreen`.
 ### `SettingsState`
 
 **File**: `lib/state/settings/settings_state.dart`
-**Depends on**: `WorkoutRepository`, `PreferencesService`, optional `HealthPlatformService`
+**Depends on**: `WorkoutRepository`, `PreferencesService`, optional `HealthPlatformService`, optional `HealthActiveEnergySource`
 
 Owns persisted app appearance, calendar, timer-alert, and workout follow-up preferences. See [Theme & Settings](../theme_and_settings.md) for full documentation.
 
@@ -141,6 +143,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `_restPingInterval` | `int` | `0` |
 | `_restPingSound` | `String` | `'soft_chime'` |
 | `_notificationPermissionAsked` | `bool` | `false` |
+| `_learnedTapHints` | `Set<TapHintControl>` | empty — every `tap to type` hint shown. One flag per logger number control (`TapHintControl.reps`, `.weight`, `.roundLength`, `.elapsed`), persisted under `hint_seen_tap_to_type_reps`, `hint_seen_tap_to_type_weight`, `hint_seen_tap_to_type_round_length`, `hint_seen_tap_to_type_elapsed` (plan 44 D-6) |
 
 | Method | Purpose |
 |--------|--------|
@@ -155,6 +158,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `notificationPermissionAsked` | Getter — whether notification permission has been contextually requested yet |
 | `healthWriteWorkouts` | Getter — `off` / `on` / `permissionDenied` state of the platform-health write toggle |
 | `healthReadBodyWeight` | Getter — `off` / `on` / `permissionDenied` state of the platform-health read toggle |
+| `healthReadActiveEnergy` | Getter — `off` / `on` / `permissionDenied` state of the active-energy read toggle (the Stats Fuel card's Burned per day line) |
 | `setAppTheme(AppTheme)` | Persists theme by enum name and notifies listeners for immediate UI updates |
 | `setPreferredWeightUnit(String)` | Normalizes/persists the display weight unit and notifies listeners |
 | `setPreferredDistanceUnit(String)` | Normalizes/persists the display distance unit and notifies listeners |
@@ -166,7 +170,12 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `setNotificationPermissionAsked()` | Persists that notification permission has already been requested in-context |
 | `setHealthWriteWorkoutsEnabled(bool)` | Resolves the OS write permission via the injected `HealthPlatformService` and persists `off` / `on` / `permissionDenied` |
 | `setHealthReadBodyWeightEnabled(bool)` | Same contract for the body-weight read permission |
+| `setHealthReadActiveEnergyEnabled(bool)` | Same contract for the active-energy read permission, resolved through the optional `HealthActiveEnergySource` (null resolves to `permissionDenied`) |
+| `readDailyActiveEnergy(List<DateTime>)` | The user's active energy per local day (keyed by day-start epoch ms), read fresh from the source; `{}` unless the switch is `on` and a source exists |
+| `isTapHintLearned(TapHintControl)` | Whether the logger control kind's `tap to type` hint has been learned (dismissed) |
+| `markTapHintLearned(TapHintControl)` | Marks the control kind learned, notifies once and persists `true` under the control's `hint_seen_tap_to_type_*` key |
 | `_loadFromPrefs()` | Private — restores theme and unit preferences from repository-backed preference keys on init |
+
 
 ---
 

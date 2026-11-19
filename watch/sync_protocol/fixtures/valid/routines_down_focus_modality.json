@@ -1,0 +1,41 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-routines-focus-1",
+  "type": "routines_down",
+  "origin": "phone",
+  "sentAt": "2026-11-05T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-11-05T17:00:00Z",
+    "routines": [
+      {
+        "routineId": "routine-isometric-a",
+        "name": "Isometric A",
+        "updatedAt": "2026-11-04T09:00:00Z",
+        "focusModality": "isometric_stretching",
+        "segments": [
+          {
+            "segmentId": "seg-stretch",
+            "name": "Stretch",
+            "efforts": [
+              {
+                "effortId": "ef-stretch",
+                "exerciseId": "ex-stretch",
+                "exerciseName": "Isometric Hold",
+                "effortKind": "timed",
+                "capabilities": ["time"],
+                "targets": { "durationMs": 600000 }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "fallbackExercises": [
+      {
+        "exerciseId": "ex-stretch",
+        "name": "Isometric Hold",
+        "capabilities": ["time"]
+      }
+    ]
+  }
+}

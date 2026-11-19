@@ -26,9 +26,15 @@ import '../widgets/watch_controls.dart';
 import 'watch_logging_state.dart';
 import 'watch_timer_haptics.dart';
 
-/// How the wrist is told a countdown ended.
+/// How the wrist is told a countdown ended, and how it is told a rest pinged.
+/// The ping is its own entry point, not a [WatchTimerMilestone]: a rest has no
+/// length, so nothing about it ends (D-251).
 abstract interface class WatchHaptics {
   void play(WatchTimerMilestone milestone);
+
+  /// The rest's ping: a repeating nudge at each multiple of the phone's Rest
+  /// Ping interval while a rest is open. A tap, and never a sound.
+  void playRestPing();
 }
 
 /// The platform haptic channel, which Flutter already exposes on Wear OS: no
@@ -38,6 +44,11 @@ class SystemWatchHaptics implements WatchHaptics {
 
   @override
   void play(WatchTimerMilestone milestone) {
+    HapticFeedback.mediumImpact();
+  }
+
+  @override
+  void playRestPing() {
     HapticFeedback.mediumImpact();
   }
 }
@@ -203,13 +214,11 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
     return parts.isEmpty ? null : parts.join('  ·  ');
   }
 
-  /// What is left of the running countdown, or null when none is running. The
-  /// round countdown wins when both kinds are live, because it is the one the
-  /// user is working to.
+  /// What is left of the running round countdown, or null when none is running.
+  /// A rest is a count-up and has no remaining time (D-160), so it never
+  /// produces the "left" line.
   int? _countdown() {
-    final running =
-        widget.state.timerFor(WatchTimerKind.round) ??
-        widget.state.timerFor(WatchTimerKind.rest);
+    final running = widget.state.timerFor(WatchTimerKind.round);
     if (running == null || running.state == WatchTimerState.stopped) {
       return null;
     }

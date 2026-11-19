@@ -3,27 +3,27 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/omni_theme.dart';
 import '../../../core/constants/water_constants.dart';
+import '../../../core/utils/unit_formatter.dart';
 
-/// A compact, tap-only +/− stepper for the day's water volume. Lives in
-/// the bottom-right of the calorie-ring card, horizontally opposite the
+/// A compact, tap-only +/− stepper for the day's water. Lives in the
+/// bottom-right of the calorie-ring card, horizontally opposite the
 /// sodium readout in the bottom-left.
 ///
 /// Composition (left-to-right):
 ///   - A vertical pair: glass icon (`Icons.local_drink_outlined`) on
-///     top, `250 ml` annotation below. Stacking them vertically instead
-///     of laying them out horizontally keeps the row's total width
-///     tight enough to fit alongside the sodium chip on the same card
-///     row. The annotation is still sourced from the canonical
-///     [kWaterGlassMl] constant; if the per-glass amount ever changes,
-///     the displayed text follows it.
-///   - A minus `IconButton` (disabled at 0).
-///   - A whole-number glass count, derived from the stored ml at the
-///     display boundary (`volumeMl ~/ kWaterGlassMl`). The count is
-///     **never** a volume figure — the icon carries the unit.
+///     top, the per-tap step below (`250 ml` or `8 oz`, from
+///     `UnitFormatter.waterStepLabel`). Stacking them vertically keeps
+///     the row's total width tight enough to fit alongside the sodium
+///     chip on the same card row.
+///   - A minus `IconButton` (disabled at 0 ml).
+///   - The day's **total** in the user's volume unit (`750 ml`,
+///     `1.5 L`, `48 oz`, from `UnitFormatter.formatWaterTotal`).
 ///   - A plus `IconButton`.
 ///
 /// **Pure presentation**: no repository access, no business logic, no
-/// keyboard / text-entry field. All buttons follow the explicit
+/// keyboard / text-entry field. The control takes the stored volume in
+/// milliliters and the volume unit; all conversion and wording go
+/// through `UnitFormatter`. All buttons follow the explicit
 /// `shape:` + `OmniTheme.buttonIconRadius` contract; all colors come
 /// from `Theme.colorScheme`.
 ///
@@ -31,10 +31,11 @@ import '../../../core/constants/water_constants.dart';
 /// `NutritionState` and is responsible for invoking its
 /// `incrementWaterForDate` / `decrementWaterForDate` on each tap.
 class WaterTrackerControl extends StatelessWidget {
-  /// Current glass count for the day. Always `>= 0`. The widget
-  /// does not accept a typed amount — the count is the only
-  /// signal the parent can pass in.
-  final int glasses;
+  /// The day's stored water in milliliters. Always `>= 0`.
+  final int volumeMl;
+
+  /// The user's volume unit (`ml` or `floz`), as `NutritionState.waterVolumeUnit`.
+  final String volumeUnit;
 
   /// Tap handler for the plus button. The widget does not invoke
   /// the state directly; the parent owns the persistence wiring.
@@ -42,12 +43,13 @@ class WaterTrackerControl extends StatelessWidget {
 
   /// Tap handler for the minus button. The widget also passes
   /// `null` to the `IconButton.onPressed` (disabled state) when
-  /// [glasses] is `0` so the visual and the no-op agree.
+  /// [volumeMl] is `0` so the visual and the no-op agree.
   final VoidCallback onDecrement;
 
   const WaterTrackerControl({
     super.key,
-    required this.glasses,
+    required this.volumeMl,
+    required this.volumeUnit,
     required this.onIncrement,
     required this.onDecrement,
   });
@@ -56,39 +58,34 @@ class WaterTrackerControl extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final themeColors = OmniTheme.colors;
+    final stepSpoken = UnitFormatter.formatWaterSpoken(
+      waterStepMlFor(volumeUnit),
+      volumeUnit,
+    );
 
     return Semantics(
       container: true,
-      label: 'Water tracker: $glasses glasses of ${kWaterGlassMl}ml',
+      label:
+          'Water today: ${UnitFormatter.formatWaterSpoken(volumeMl, volumeUnit)}',
       child: Row(
         key: const Key('water_tracker_control'),
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Glass icon stacked above the `250 ml` annotation. The icon
-          // is the primary visual; the annotation is a caption-style
-          // hint so the per-glass amount is decoded at a glance.
-          // Vertical stacking keeps the row's total width tight —
-          // ~22 dp narrower than the horizontal layout — so the
-          // control fits alongside the sodium chip on the same card
-          // row without crowding.
+          // Glass icon stacked above the per-tap step. The icon is the
+          // primary visual; the caption tells the user what one tap adds.
           Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // `Icons.local_drink_outlined` reads as a tumbler / cup
-              // with water and pairs cleanly with the dark-theme card
-              // chrome.
               Icon(
                 Icons.local_drink_outlined,
                 size: 18,
                 color: themeColors.textMuted,
               ),
               const SizedBox(height: 1),
-              // The "250 ml" annotation. Sourced from `kWaterGlassMl`
-              // so a future per-glass amount change propagates here.
               Text(
-                '$kWaterGlassMl ml',
+                UnitFormatter.waterStepLabel(volumeUnit),
                 key: const Key('water_tracker_label'),
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: themeColors.textMuted,
@@ -100,19 +97,18 @@ class WaterTrackerControl extends StatelessWidget {
             ],
           ),
           // Minus button. Explicit shape + theme radius token.
-          // Disabled (`onPressed: null`) at 0 glasses — the no-op
-          // contract is enforced visually and programmatically.
+          // Disabled (`onPressed: null`) at 0 ml.
           IconButton(
             key: const Key('water_tracker_minus'),
-            onPressed: glasses <= 0 ? null : onDecrement,
+            onPressed: volumeMl <= 0 ? null : onDecrement,
             icon: Icon(
               Icons.remove,
               size: 18,
-              color: glasses <= 0
+              color: volumeMl <= 0
                   ? themeColors.textDisabled
                   : theme.colorScheme.primary,
             ),
-            tooltip: 'Remove one glass',
+            tooltip: 'Remove $stepSpoken',
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -123,15 +119,16 @@ class WaterTrackerControl extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 2),
-          // Whole glass count. Wider tabular-figures box so the
-          // value doesn't reflow as the count grows from 1 to 2 to
-          // 3 digits.
+          // The day's total. Tabular figures so the digits do not jitter;
+          // never wraps (a long total such as `10.5 L` stays on one line).
           Container(
             key: const Key('water_tracker_count'),
             constraints: const BoxConstraints(minWidth: 24),
             alignment: Alignment.center,
             child: Text(
-              '$glasses',
+              UnitFormatter.formatWaterTotal(volumeMl, volumeUnit),
+              maxLines: 1,
+              softWrap: false,
               textAlign: TextAlign.center,
               style: theme.textTheme.titleMedium?.copyWith(
                 color: themeColors.textDominant,
@@ -141,13 +138,12 @@ class WaterTrackerControl extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 2),
-          // Plus button. Mirror of the minus button — explicit shape +
-          // theme radius token.
+          // Plus button. Mirror of the minus button.
           IconButton(
             key: const Key('water_tracker_plus'),
             onPressed: onIncrement,
             icon: Icon(Icons.add, size: 18, color: theme.colorScheme.primary),
-            tooltip: 'Add one glass',
+            tooltip: 'Add $stepSpoken',
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),

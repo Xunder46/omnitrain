@@ -19,6 +19,12 @@
 //   S-273 empty completed session               → `S-273 ...`
 //   S-274 shape parity with phone logging       → `S-274 ...`
 //   S-281, S-284 the phone-rating API (state)   → `S-281 ...`, `S-284 ...`
+//
+// Negative load (band assist):
+//   S-58 a −20 kg set imports and sums negative → `S-58 ...`
+//   S-63 the phone reads the negative back      → `S-63 ...`
+//   S-65 corrections down to the −200 kg floor  → `S-65 ...`
+// Plan: `docs/plans/2026-10-06-16-watch-negative-load-plan/` (D-59, D-63).
 // S-272 (Hive ↔ Mock) is `test/watch_capture_contract_test.dart`.
 //
 // Every value the full-case tests expect is the capture contract's own
@@ -26,10 +32,15 @@
 // `test/helpers/watch_capture_import_harness.dart`.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/services/diagnostics_log.dart';
+import 'package:omnitrain/core/services/diagnostics_storage.dart';
 import 'package:omnitrain/core/services/health_platform_service.dart';
 import 'package:omnitrain/core/services/health_sync_service.dart';
 import 'package:omnitrain/core/services/watch_session_importer.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
+import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
+import 'package:omnitrain/core/utils/entry_rows.dart';
+import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
@@ -39,10 +50,14 @@ import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/watch/watch_incoming_router.dart';
 import 'package:omnitrain/state/watch/watch_nutrition_log_bridge.dart';
+import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
 import 'package:omnitrain/state/watch/watch_session_inbox.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
+import 'package:omnitrain/state/workout/session_summary_builder.dart';
+import 'package:omnitrain/state/workout/timer_manager.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
+import 'helpers/repository_harness.dart' hide seedExercise;
 import 'helpers/sync_protocol_harness.dart';
 import 'helpers/watch_capture_import_harness.dart';
 
@@ -63,15 +78,18 @@ WatchSessionInbox _inbox(
   WorkoutRepository repository,
   CaptureTransport transport, {
   Future<void> Function()? onHistoryChanged,
+  DateTime Function()? clock,
+  HealthSyncService? healthSync,
 }) {
   var ids = 0;
   return WatchSessionInbox(
     repository: repository,
     transport: transport,
     validator: loadProtocolValidator(),
-    clock: () => _phoneNow,
+    clock: clock ?? () => _phoneNow,
     idFactory: () => 'msg-phone-${++ids}',
     onHistoryChanged: onHistoryChanged,
+    healthSync: healthSync,
     // A failure inside the inbox fails the test where it happened.
     onFailure: Error.throwWithStackTrace,
   );
@@ -163,6 +181,30 @@ Map<String, Object?> _rating(
   'rating': rating,
 };
 
+/// An ISO instant as the epoch milliseconds every row carries.
+int _msOf(String iso) => DateTime.parse(iso).toUtc().millisecondsSinceEpoch;
+
+/// A rest event in the protocol's shape (18b D-166): a window, no length, and
+/// the id of the set it follows.
+Map<String, Object?> _rest(
+  String entryId, {
+  required String startedAt,
+  required String endedAt,
+  required String afterEntryId,
+  String slot = 'sx-bench',
+  String exerciseId = 'ex-bench',
+}) => {
+  'entryId': entryId,
+  'eventId': entryId,
+  'kind': 'rest',
+  'loggedAt': endedAt,
+  'sessionExerciseId': slot,
+  'exerciseId': exerciseId,
+  'startedAt': startedAt,
+  'endedAt': endedAt,
+  'afterEntryId': afterEntryId,
+};
+
 /// Whether the phone already holds the rows [entryId] of [caseName] becomes —
 /// what a receipt is allowed to name.
 Future<bool> _rowsExist(
@@ -196,6 +238,42 @@ Future<bool> _rowsExist(
       );
       return (await repository.getRoundInstances(effortId)).any(
         (r) => r.id == WatchSessionImporter.roundInstanceIdFor(_capId, entryId),
+      );
+    case 'rest':
+      // A rest lands beside the entry it follows, in that entry's own effort
+      // (D-167): the effort kind comes from the followed entry's kind, and the
+      // index is its position among the entries of the same effort.
+      final after = _eventOf(caseName, event['afterEntryId']! as String);
+      final effortKind = WatchSessionImporter.effortKindFor(
+        after['kind']! as String,
+      );
+      final effortId = WatchSessionImporter.effortIdFor(
+        _capId,
+        after['sessionExerciseId']! as String,
+        after['exerciseId']! as String,
+        effortKind,
+      );
+      final sameEffort = [
+        for (final e in captureEvents(caseName))
+          if (const {
+                WatchInboxEntry.kindSet,
+                WatchInboxEntry.kindTimed,
+                WatchInboxEntry.kindRound,
+                WatchInboxEntry.kindHold,
+              }.contains(e['kind']) &&
+              e['sessionExerciseId'] == after['sessionExerciseId'] &&
+              e['exerciseId'] == after['exerciseId'] &&
+              WatchSessionImporter.effortKindFor(e['kind']! as String) ==
+                  effortKind)
+            e['entryId'],
+      ];
+      final index = sameEffort.indexOf(after['entryId']) + 1;
+      return (await repository.getEntryRests(effortId)).any(
+        (row) =>
+            row.id == 'rest-$effortId-$index' &&
+            row.entryIndex == index &&
+            row.restStartMs == _msOf(event['startedAt']! as String) &&
+            row.restEndMs == _msOf(event['endedAt']! as String),
       );
     default:
       final effortId = WatchSessionImporter.effortIdFor(
@@ -250,14 +328,61 @@ class _RecordingHealthPlatform implements HealthPlatformService {
   }
 
   @override
+  Future<bool> deleteWorkouts(DateTime start, DateTime end) async => false;
+
+  @override
+  Future<HealthEffortOutcome> setWorkoutEffort(
+    DateTime start,
+    DateTime end,
+    int score,
+  ) async => HealthEffortOutcome.unavailable;
+
+  @override
+  Future<bool> clearWorkoutEffort(DateTime start, DateTime end) async => false;
+
+  @override
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since) async =>
       const [];
 }
 
+/// Records the end rewrites the inbox asks the health sync for (plan 146c):
+/// the trigger is asserted without a platform behind it.
+class _RewriteSpy extends HealthSyncService {
+  _RewriteSpy(MockWorkoutRepository repository)
+    : super(
+        platform: const UnavailableHealthPlatformService(),
+        repository: repository,
+        isWriteEnabled: () => true,
+        isReadEnabled: () => false,
+      );
+
+  final List<(String, int)> rewrites = [];
+
+  @override
+  Future<void> rewriteWorkout(
+    TrainingSession session, {
+    required int previousEndedAtMs,
+  }) async {
+    rewrites.add((session.id, previousEndedAtMs));
+  }
+}
+
 void main() {
+  test('S-90-7 the recording fake answers the effort calls with '
+      'unavailable', () async {
+    final fake = _RecordingHealthPlatform();
+    final start = DateTime(2026, 10, 28, 9);
+    final end = DateTime(2026, 10, 28, 10);
+    expect(
+      await fake.setWorkoutEffort(start, end, 8),
+      HealthEffortOutcome.unavailable,
+    );
+    expect(await fake.clearWorkoutEffort(start, end), isFalse);
+  });
+
   group('S-261 import from the offline stream', () {
     for (final caseName in const ['full', 'no-sensors', 'prompt-off']) {
-      test('S-261 $caseName: nine envelopes through the router import exactly '
+      test('S-261 $caseName: every envelope through the router imports exactly '
           'the contract', () async {
         final repository = await _repository();
         final transport = CaptureTransport();
@@ -733,6 +858,425 @@ void main() {
     });
   });
 
+  group('S-14633 a winning discard leaves no phantom workout', () {
+    const sessionId = 's-gone-1';
+
+    /// The set the wrist logged on the session the earlier discard deleted:
+    /// staged, and never applied.
+    Future<void> stageSet(WorkoutRepository repository, String entryId) =>
+        repository.stageWatchInboxEntry(
+          WatchInboxEntry(
+            entryId: entryId,
+            watchSessionId: sessionId,
+            kind: WatchInboxEntry.kindSet,
+            origin: WatchInboxEntry.originWatch,
+            payload: Map<String, dynamic>.from(
+              _set(entryId, loggedAt: '2026-09-25T10:05:00.000Z'),
+            ),
+            receivedAtMs: _phoneNow.millisecondsSinceEpoch,
+          ),
+        );
+
+    test('S-14633 an abandoned end consumes the staged set and writes no '
+        'history', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      await stageSet(repository, 'e-gone-1');
+
+      await _deliverEach(_inbox(repository, transport), sessionId, [
+        _end(
+          sessionId,
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:30:00.000Z',
+          status: 'abandoned',
+        ),
+      ]);
+
+      expect(
+        await repository.getSession(sessionId),
+        isNull,
+        reason:
+            'S-14633 the wrist discarded this workout, so the phone holds none '
+            'of it — the row the earlier discard deleted stays deleted',
+      );
+      expect(
+        await repository.getAllSessions(),
+        isEmpty,
+        reason: 'S-14633 no calendar or stats row ever appears',
+      );
+      final staged = await repository.getWatchInboxEntriesForSession(sessionId);
+      expect(
+        [for (final row in staged) row.entryId],
+        ['e-gone-1', 'end-$sessionId'],
+        reason: 'the fixture: the set and the end are both staged',
+      );
+      expect(
+        staged.map((row) => row.appliedAtMs != null),
+        everyElement(isTrue),
+        reason: 'S-14633 D-133: an abandoned session is consumed, not held',
+      );
+      expect(
+        transport.receiptedEntryIds.toSet(),
+        {'e-gone-1', 'end-$sessionId'},
+        reason: 'S-14633 every consumed row is acknowledged',
+      );
+    });
+
+    test('S-14633 a late set with no end creates no history either', () async {
+      final repository = await _repository();
+      final inbox = _inbox(repository, CaptureTransport());
+      await _deliverEach(inbox, sessionId, [
+        _end(
+          sessionId,
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:30:00.000Z',
+          status: 'abandoned',
+        ),
+      ]);
+
+      await _deliverEach(
+        inbox,
+        sessionId,
+        [_set('e-gone-late', loggedAt: '2026-09-25T10:40:00.000Z')],
+        tag: 'late',
+      );
+
+      expect(
+        await repository.getSession(sessionId),
+        isNull,
+        reason:
+            'S-14633 a set that arrives after the discard imports nothing: '
+            'without a live session it is not a workout',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-gone-late'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-14633 and it is consumed rather than retried for ever',
+      );
+      expect(await repository.getAllSessions(), isEmpty);
+    });
+
+    test('S-14633 a merge into a session whose row is gone consumes, never '
+        're-creates', () async {
+      final repository = await _repository();
+      await stageSet(repository, 'e-gone-2');
+
+      final result = await WatchSessionImporter(repository: repository)
+          .apply(sessionId, phoneOwnsSession: true);
+
+      expect(
+        await repository.getSession(sessionId),
+        isNull,
+        reason:
+            'D-14632 the winning discard deleted the row, and nothing a merge '
+            'does may write it back',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-gone-2'))?.appliedAtMs,
+        isNotNull,
+        reason: 'D-133 a row with no session to merge into is consumed',
+      );
+      expect(
+        result.historyChanged,
+        isFalse,
+        reason: 'S-14633 a consumed merge is no history change',
+      );
+      expect(await repository.getAllSessions(), isEmpty);
+    });
+  });
+
+  group('O-6 the wrist’s own workout is its own finished row', () {
+    const wristId = 's-o6-w2';
+    const phoneId = 's-o6-p1';
+    final phoneStartedAt = _msOf('2026-09-25T10:00:00.000Z');
+
+    /// The phone's own workout, open and held on screen while the wrist ran its
+    /// own: the state D-14633's O-6 sentence starts from.
+    Future<void> createPhoneWorkout(WorkoutRepository repository) =>
+        repository.createSession(
+          TrainingSession(
+            id: phoneId,
+            ownerUserId: 'u-o6',
+            startedAtMs: phoneStartedAt,
+            createdAtMs: phoneStartedAt,
+            updatedAtMs: phoneStartedAt,
+          ),
+        );
+
+    Future<void> stage(WorkoutRepository repository, Map<String, Object?> event) =>
+        repository.stageWatchInboxEntry(
+          WatchInboxEntry(
+            entryId: event['entryId']! as String,
+            watchSessionId: wristId,
+            kind: event['kind']! as String,
+            origin: WatchInboxEntry.originWatch,
+            payload: Map<String, dynamic>.of(event),
+            receivedAtMs: _phoneNow.millisecondsSinceEpoch,
+          ),
+        );
+
+    test('O-6 a completed wrist session imports as its own row while the '
+        'phone holds another workout', () async {
+      final repository = await _repository();
+      await createPhoneWorkout(repository);
+      await stage(
+        repository,
+        _set('e-o6-1', loggedAt: '2026-09-25T10:35:00.000Z'),
+      );
+      await stage(
+        repository,
+        _end(
+          wristId,
+          startedAt: '2026-09-25T10:10:00.000Z',
+          endedAt: '2026-09-25T10:40:00.000Z',
+        ),
+      );
+
+      final result = await WatchSessionImporter(
+        repository: repository,
+      ).apply(wristId, phoneOwnsSession: false);
+
+      final imported = await repository.getSession(wristId);
+      expect(
+        imported,
+        isNotNull,
+        reason:
+            'O-6 the wrist\'s workout is saved as its own finished workout: '
+            'the phone adopting nothing for it does not make it history-less',
+      );
+      expect(imported!.startedAtMs, _msOf('2026-09-25T10:10:00.000Z'));
+      expect(imported.endedAtMs, _msOf('2026-09-25T10:40:00.000Z'));
+      expect(
+        result.historyChanged,
+        isTrue,
+        reason: 'O-6 the import is a history change',
+      );
+
+      final bench = WatchSessionImporter.effortIdFor(
+        wristId,
+        'sx-bench',
+        'ex-bench',
+        'set',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'reps'))?.valueInt,
+        5,
+        reason: 'O-6 the set the wrist logged comes with the workout',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        80.0,
+        reason: 'O-6 with its own load',
+      );
+
+      final phoneRow = await repository.getSession(phoneId);
+      expect(phoneRow, isNotNull, reason: 'O-6 the phone keeps its own workout');
+      expect(
+        phoneRow!.endedAtMs,
+        isNull,
+        reason: 'O-6 the phone\'s own workout stays open: nothing was adopted '
+            'and nothing was ended',
+      );
+      expect(
+        (await repository.getAllSessions()).map((row) => row.id).toSet(),
+        {phoneId, wristId},
+        reason: 'O-6 two workouts, one open and one finished, nothing deleted',
+      );
+
+      final staged = await repository.getWatchInboxEntriesForSession(wristId);
+      expect(
+        staged.map((row) => row.appliedAtMs != null),
+        everyElement(isTrue),
+        reason: 'O-6 every staged row is consumed by the import',
+      );
+    });
+  });
+
+  // Plan 160 (S-16008): the `session_end` the twin now captures at its own
+  // finish is the only word the phone gets about a workout it never started, so
+  // it has to import as that session's finish.
+  group('S-16008 the end the twin captured imports as its finish', () {
+    const wristId = 's-16008-w';
+
+    test('S-16008 the captured end finishes the wrist\'s own workout on the '
+        'phone', () async {
+      final repository = await _repository();
+      final events = [
+        _set('e-16008', loggedAt: '2026-09-25T10:35:00.000Z'),
+        _end(
+          wristId,
+          startedAt: '2026-09-25T10:10:00.000Z',
+          endedAt: '2026-09-25T10:40:00.000Z',
+        ),
+      ];
+      for (final event in events) {
+        await repository.stageWatchInboxEntry(
+          WatchInboxEntry(
+            entryId: event['entryId']! as String,
+            watchSessionId: wristId,
+            kind: event['kind']! as String,
+            origin: WatchInboxEntry.originWatch,
+            payload: Map<String, dynamic>.of(event),
+            receivedAtMs: _phoneNow.millisecondsSinceEpoch,
+          ),
+        );
+      }
+
+      final result = await WatchSessionImporter(
+        repository: repository,
+      ).apply(wristId, phoneOwnsSession: false);
+
+      final imported = await repository.getSession(wristId);
+      expect(
+        imported,
+        isNotNull,
+        reason: 'S-16008 the twin\'s end brings its session with it',
+      );
+      expect(imported!.startedAtMs, _msOf('2026-09-25T10:10:00.000Z'));
+      expect(
+        imported.endedAtMs,
+        _msOf('2026-09-25T10:40:00.000Z'),
+        reason: 'S-16008 the finish instant is the end\'s `endedAt`',
+      );
+      expect(
+        result.historyChanged,
+        isTrue,
+        reason: 'S-16008 a workout the phone did not know about is history',
+      );
+      expect(
+        (await repository.getWatchInboxEntry(
+          'end-$wristId',
+        ))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-16008 D-133 the applied end is consumed, so the phone never '
+            'asks for it twice',
+      );
+    });
+  });
+
+  group('S-58 a band assist crosses into history with its sign', () {
+    test('S-58 a set logged at −20 kg imports at −20 kg and sums −160', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, 's-58', [
+        _set('e-58', loggedAt: '2026-09-25T10:10:00.000Z', reps: 8, loadKg: -20),
+        _end(
+          's-58',
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:20:00.000Z',
+        ),
+      ]);
+
+      final bench = WatchSessionImporter.effortIdFor(
+        's-58',
+        'sx-bench',
+        'ex-bench',
+        'set',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'reps'))?.valueInt,
+        8,
+        reason: 'S-58 the wrist’s eight reps land',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -20.0,
+        reason: 'S-58 the assist is not clamped to zero on the way in',
+      );
+
+      final session = (await repository.getSession('s-58'))!;
+      final segments = await repository.getSessionSegments('s-58');
+      final efforts = <String, List<SegmentEffort>>{};
+      final observations = <String, List<EffortObservation>>{};
+      for (final segment in segments) {
+        final segmentEfforts = await repository.getSegmentEfforts(segment.id);
+        efforts[segment.id] = segmentEfforts;
+        for (final effort in segmentEfforts) {
+          observations[effort.id] = await repository.getEffortObservations(
+            effort.id,
+          );
+        }
+      }
+      final summary = SessionSummaryBuilder(
+        timerManager: TimerManager(
+          repository,
+          notify: () {},
+          setError: (_) {},
+          clearError: () {},
+        ),
+        observations: observations,
+        efforts: efforts,
+        segments: segments,
+        exerciseCache: const {},
+      ).buildSessionSummary(session);
+      expect(
+        summary.totalVolume,
+        -160.0,
+        reason: 'S-58 the summary counts 8 reps of a −20 kg assist as −160',
+      );
+    });
+
+    test('S-63 the phone reads the negative load back, and a set with no '
+        'history keeps the default', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, 's-63', [
+        _set('e-63', loggedAt: '2026-09-25T10:10:00.000Z', reps: 8, loadKg: -20),
+        _end(
+          's-63',
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:20:00.000Z',
+        ),
+      ]);
+
+      // What the logging screen seeds the dial from: the exercise's last
+      // logged set, read back through the phone's own history path.
+      final history = WorkoutState(repository);
+      await history.loadHistoricalSession('s-63');
+      final logged = history
+          .getExercisesWithEntries()
+          .firstWhere((row) => row['exerciseId'] == 'ex-bench');
+      final lastSet = (logged['entries']! as List).last as Map;
+      expect(
+        lastSet['reps'],
+        8,
+        reason: 'S-63 the last logged set is the one the dial carries',
+      );
+      expect(
+        lastSet['weight'],
+        -20.0,
+        reason: 'S-63 the assist carries over negative, not as 0 kg or a target',
+      );
+
+      // An exercise with no history has nothing to carry, so the existing
+      // default stands — a negative carry-over must not invent one.
+      await seedExercise(
+        repository,
+        id: 'ex-row',
+        name: 'Barbell Row',
+        capabilities: ['sets', 'reps', 'load'],
+      );
+      final fresh = WorkoutState(repository);
+      await fresh.createNewSession();
+      final effortId = await fresh.addExerciseToSession(
+        (await repository.getExerciseById('ex-row'))!,
+      );
+      await fresh.addEntry(effortId);
+      final added = fresh
+          .getExercisesWithEntries()
+          .firstWhere((row) => row['exerciseId'] == 'ex-row');
+      expect(
+        ((added['entries']! as List).last as Map)['weight'],
+        0.0,
+        reason: 'S-63 no history → the existing default, not a negative',
+      );
+    });
+  });
+
   group('S-267 live corrections carry into history', () {
     /// The mirror holding s-cap-1 live, with its outgoing corrections staged
     /// through [inbox] before they reach [transport].
@@ -891,6 +1435,228 @@ void main() {
         90.0,
         reason: 'S-267 the user’s own edit of the weight stays',
       );
+    });
+
+    test('S-65 a band assist corrects down to the floor and no further', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      // Corrections are stamped by the inbox's clock, and a later correction of
+      // the same metric only wins on a strictly later stamp: a fixed clock would
+      // make the second correction a no-op, which is not what the wire does.
+      var now = _phoneNow;
+      final inbox = _inbox(repository, transport, clock: () => now);
+      final mirror = liveMirror(inbox, transport);
+      final bench = WatchSessionImporter.effortIdFor(
+        _capId,
+        'sx-bench',
+        'ex-bench',
+        'set',
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-neg', loggedAt: '2026-09-25T10:10:00.000Z', loadKg: 60),
+        _end(
+          _capId,
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:20:00.000Z',
+        ),
+      ]);
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        60.0,
+        reason: 'S-65 the wrist logged 60 kg',
+      );
+
+      now = now.add(const Duration(seconds: 1));
+      await mirror.correctEntry('e-neg', {'loadKg': -20});
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -20.0,
+        reason: 'S-65 a −20 kg assist is a correction the phone may make',
+      );
+
+      now = now.add(const Duration(seconds: 1));
+      await mirror.correctEntry('e-neg', {'loadKg': -200});
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -200.0,
+        reason: 'S-65 the floor itself is a correction the phone may make',
+      );
+
+      now = now.add(const Duration(seconds: 1));
+      // The row as the −200 kg correction left it. A refusal must leave it
+      // untouched; a clamp would re-stamp it at the −240 kg correction.
+      final beforeRefusal = await observationAt(repository, bench, 0, 'weight');
+      final below = await mirror.correctEntry('e-neg', {'loadKg': -240});
+      final decision = SyncProtocolValidator.evaluateOrAccept(
+        loadProtocolValidator(),
+        below,
+      );
+      expect(
+        decision.accepted,
+        isFalse,
+        reason: 'S-65 a −240 kg assist is below the wire floor',
+      );
+      expect(
+        decision.rejectionCodes,
+        contains('constraint_violation'),
+        reason: 'S-65 the schema names the refusal',
+      );
+      expect(
+        [for (final rejection in decision.rejections) rejection.path],
+        contains(contains('loadKg')),
+        reason: 'S-65 the refusal points at the load',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -200.0,
+        reason: 'S-65 a correction below the floor leaves the last value',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.toMap(),
+        beforeRefusal?.toMap(),
+        reason: 'S-65 refused, not clamped: the row is unchanged from before the '
+            '−240 kg correction, value and stamp alike',
+      );
+    });
+  });
+
+  group('S-14610 the imported end catches up', () {
+    test(
+      'S-14610 a set the wrist logged after its end moves the imported end to '
+      'that set',
+      () async {
+        final repository = await _repository();
+        final transport = CaptureTransport();
+        var refreshes = 0;
+        final inbox = _inbox(
+          repository,
+          transport,
+          onHistoryChanged: () async => refreshes++,
+        );
+
+        await _deliverEach(inbox, _capId, captureEvents('full'));
+        final imported = (await repository.getAllSessions()).single;
+        final end = imported.endedAtMs!;
+        final before = refreshes;
+        expect(before, greaterThan(0), reason: 'the fixture: the import refreshed');
+
+        final template = captureEvents(
+          'full',
+        ).firstWhere((event) => event['kind'] == 'set');
+        final late = end + 5000;
+        await inbox.receive(
+          observationsUp(_capId, [
+            {
+              ...template,
+              'entryId': 'cx-late-1',
+              'eventId': 'cx-late-1',
+              'loggedAt': utcIso(
+                DateTime.fromMillisecondsSinceEpoch(late, isUtc: true),
+              ),
+            },
+          ], messageId: 'msg-late-set'),
+        );
+
+        expect(
+          (await repository.getSession(imported.id))!.endedAtMs,
+          late,
+          reason: 'S-14610 the end is the latest instant the wrist logged',
+        );
+        expect(
+          refreshes,
+          greaterThan(before),
+          reason: 'S-14610 the moved end reaches history listeners (the '
+              'energy settle re-runs)',
+        );
+      },
+    );
+
+    test('S-14610 a set logged before the end leaves the end where it is', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, _capId, captureEvents('full'));
+      final imported = (await repository.getAllSessions()).single;
+      final end = imported.endedAtMs!;
+
+      final template = captureEvents(
+        'full',
+      ).firstWhere((event) => event['kind'] == 'set');
+      await inbox.receive(
+        observationsUp(_capId, [
+          {
+            ...template,
+            'entryId': 'cx-early-1',
+            'eventId': 'cx-early-1',
+            'loggedAt': utcIso(
+              DateTime.fromMillisecondsSinceEpoch(end - 60000, isUtc: true),
+            ),
+          },
+        ], messageId: 'msg-early-set'),
+      );
+
+      expect(
+        (await repository.getSession(imported.id))!.endedAtMs,
+        end,
+        reason: 'S-14610 an earlier instant never shortens the end',
+      );
+    });
+  });
+
+  group('plan 146c: a moved end reaches the Health rewrite', () {
+    test('S-14670 the inbox asks for a rewrite only when the end moved, and '
+        'names the end it moved from', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final spy = _RewriteSpy(repository);
+      final inbox = _inbox(repository, transport, healthSync: spy);
+
+      await _deliverEach(inbox, _capId, captureEvents('full'));
+      final imported = (await repository.getAllSessions()).single;
+      final end = imported.endedAtMs!;
+      final template = captureEvents(
+        'full',
+      ).firstWhere((event) => event['kind'] == 'set');
+
+      Map<String, Object?> lateSet(String entryId, int loggedAt) => {
+        ...template,
+        'entryId': entryId,
+        'eventId': entryId,
+        'loggedAt': utcIso(
+          DateTime.fromMillisecondsSinceEpoch(loggedAt, isUtc: true),
+        ),
+      };
+
+      await inbox.receive(
+        observationsUp(
+          _capId,
+          [lateSet('cx-rewrite-early', end - 60000)],
+          messageId: 'msg-rewrite-early',
+        ),
+      );
+      expect(
+        spy.rewrites,
+        isEmpty,
+        reason: 'S-14670 an end that did not move asks for no rewrite',
+      );
+
+      final movedTo = end + 5000;
+      await inbox.receive(
+        observationsUp(
+          _capId,
+          [lateSet('cx-rewrite-move', movedTo)],
+          messageId: 'msg-rewrite-move',
+        ),
+      );
+
+      expect(
+        spy.rewrites,
+        [(_capId, end)],
+        reason: 'S-14670 the pass reports the end it moved from, once',
+      );
+      expect((await repository.getSession(_capId))!.endedAtMs, movedTo);
     });
   });
 
@@ -1244,6 +2010,9 @@ void main() {
         await workout.updateEntryValue(bench, 0, 'weight', 80.0);
         final pushup = await add('ex-pushup', 'set');
         await workout.updateEntryValue(pushup, 0, 'reps', 5);
+        // The phone side holds only logged work, as the wrist side does.
+        await workout.recordRestStart(bench, 1);
+        await workout.recordRestStart(pushup, 1);
         final run = await add('ex-run', 'timed');
         await workout.setTimedEntryDuration(run, 0, 1200);
         final plank = await add('ex-plank', 'drill');
@@ -2059,6 +2828,29 @@ void main() {
                 'loggedAt': '2026-09-25T10:30:00.000Z',
                 'startedAt': '2026-09-25T10:00:00.000Z',
               },
+              // A rest is stageable only with the entry it follows (D-214);
+              // the same row carrying it is staged.
+              {
+                'entryId': 'rest-s-snap-partial',
+                'eventId': 'rest-s-snap-partial',
+                'kind': 'rest',
+                'loggedAt': '2026-09-25T10:06:10.000Z',
+                'sessionExerciseId': 'sx-bench',
+                'exerciseId': 'ex-bench',
+                'startedAt': '2026-09-25T10:05:00.000Z',
+                'endedAt': '2026-09-25T10:06:10.000Z',
+              },
+              {
+                'entryId': 'rest-s-snap-whole',
+                'eventId': 'rest-s-snap-whole',
+                'kind': 'rest',
+                'loggedAt': '2026-09-25T10:06:10.000Z',
+                'sessionExerciseId': 'sx-bench',
+                'exerciseId': 'ex-bench',
+                'startedAt': '2026-09-25T10:05:00.000Z',
+                'endedAt': '2026-09-25T10:06:10.000Z',
+                'afterEntryId': 'e-snap-1',
+              },
             ],
             'timers': const <String, Object?>{},
           },
@@ -2071,7 +2863,18 @@ void main() {
         );
         expect(result.stagedEntryIds, [
           'e-snap-1',
-        ], reason: 'A-3 only the complete entry');
+          'rest-s-snap-whole',
+        ], reason: 'A-3 only the complete entries');
+        expect(
+          await repository.getWatchInboxEntry('rest-s-snap-partial'),
+          isNull,
+          reason: 'A-3 a rest without the entry it follows is not staged',
+        );
+        expect(
+          await repository.getWatchInboxEntry('rest-s-snap-whole'),
+          isNotNull,
+          reason: 'A-3 the same rest with it is staged',
+        );
         expect(
           await repository.getWatchInboxEntry('rating-s-snap'),
           isNull,
@@ -2125,5 +2928,2135 @@ void main() {
         reason: 'D-132 the snapshot entries are acknowledged',
       );
     });
+  });
+
+  // Plan: `docs/plans/2026-10-08-18c-watch-rest-to-phone-plan/` (D-210,
+  // D-214 – D-216, D-222) — the wrist's rest becomes an `EntryRest` of the
+  // effort whose set it followed, in the ordinary import flow.
+  //   S-320 a staged set and rest become one rest row → `S-320 ...`
+  //   S-323 zero length is dropped                  → `S-323 ...`
+  //   S-324 duplicate delivery, and a re-run pass   → `S-324 ...`
+  //   S-326 a rest alone imports no session         → `S-326 ...`
+  //   S-327 deleting the set takes its rest with it  → `S-327 ...`
+  //   S-328 an unresolvable rest is consumed        → `S-328 ...`
+  group('the wrist’s rests (D-210)', () {
+    final bench = WatchSessionImporter.effortIdFor(
+      _capId,
+      'sx-bench',
+      'ex-bench',
+      'set',
+    );
+    const restStart = '2026-09-25T10:05:00.000Z';
+    const restEnd = '2026-09-25T10:06:10.000Z';
+    const sessionStart = '2026-09-25T10:00:00.000Z';
+    const sessionEnd = '2026-09-25T10:30:00.000Z';
+
+    /// The rest the fixture above sends, as the importer writes it.
+    Map<String, Object?> restRow(String effortId, {int entryIndex = 1}) => {
+      'id': 'rest-$effortId-$entryIndex',
+      'effort_id': effortId,
+      'entry_index': entryIndex,
+      'rest_start_ms': _msOf(restStart),
+      'rest_end_ms': _msOf(restEnd),
+      'rest_is_paused': 0,
+      'rest_paused_at_ms': null,
+      'rest_paused_duration_ms': 0,
+      'created_at_ms': _msOf(restEnd),
+      'updated_at_ms': _msOf(restEnd),
+    };
+
+    test('S-320 a staged set and rest import one rest row after the set',
+        () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        _rest(
+          'e-rest1',
+          startedAt: restStart,
+          endedAt: restEnd,
+          afterEntryId: 'e-set1',
+        ),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      final rests = await repository.getEntryRests(bench);
+      expect(rests, hasLength(1), reason: 'S-320 one rest event, one row');
+      expect(
+        rests.single.toMap(),
+        restRow(bench),
+        reason:
+            'S-320 D-167’s row: the id from the index the set took, the '
+            'window as sent, never paused',
+      );
+      expect(
+        await observationAt(repository, bench, 0, 'reps'),
+        isNotNull,
+        reason: 'S-320 the set the rest followed still lands at index 0',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        containsAll(['e-set1', 'e-rest1', 'end-$_capId']),
+        reason: 'S-320 the rest is consumed in the same pass as the set',
+      );
+      expect(
+        await repository.getAllSessions(),
+        hasLength(1),
+        reason: 'S-320 the rest creates no session of its own',
+      );
+    });
+
+    test('S-323 a rest of no length is dropped, consumed and never retried',
+        () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+      final zeroLength = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restStart,
+        afterEntryId: 'e-set1',
+      );
+
+      // The wire refuses it, so it never arrives as a message (D-222).
+      final refused = await inbox.receive(
+        observationsUp(_capId, [zeroLength], messageId: 'msg-zero'),
+      );
+      expect(
+        refused.outcome,
+        WatchInboxOutcome.refused,
+        reason: 'S-323 the wire refuses a rest that is not a window',
+      );
+      expect(
+        await repository.getWatchInboxEntry('e-rest1'),
+        isNull,
+        reason: 'S-323 so nothing is staged',
+      );
+
+      // An older peer staged one anyway (D-222): the pass that runs next drops
+      // it, and consumes it rather than holding it back for ever.
+      await repository.stageWatchInboxEntry(
+        WatchInboxEntry(
+          entryId: 'e-rest1',
+          watchSessionId: _capId,
+          kind: WatchInboxEntry.kindRest,
+          origin: WatchInboxEntry.originWatch,
+          payload: Map<String, dynamic>.from(zeroLength),
+          receivedAtMs: _phoneNow.millisecondsSinceEpoch,
+        ),
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-323 a rest of no length is never written',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-323 and the row is consumed rather than left unapplied',
+      );
+
+      // A pass that runs again over the same row drops it the same way.
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-323 the second pass writes nothing either',
+      );
+    });
+
+    test('S-324 a redelivered rest and a re-run pass write one row', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+      final rest = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restEnd,
+        afterEntryId: 'e-set1',
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        rest,
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+      final written = await repository.getEntryRests(bench);
+      expect(written, hasLength(1), reason: 'S-324 the first delivery wrote it');
+
+      // The wrist never got the receipt, so it sends the rest again.
+      await _deliverEach(inbox, _capId, [rest], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        hasLength(1),
+        reason: 'S-324 a redelivery writes nothing: the row is already applied',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        contains('e-rest1'),
+        reason: 'S-324 and it is acknowledged, so the wrist may forget it',
+      );
+
+      // A pass that runs again over the same row — the recovery path clears
+      // the watermark — finds the spot taken and leaves the row alone.
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [rest], tag: 'third');
+      final after = await repository.getEntryRests(bench);
+      expect(
+        after.map((r) => r.toMap()),
+        [written.single.toMap()],
+        reason:
+            'S-324 first write wins: Mock appends and Hive puts by id, so the '
+            'index guard is what keeps the two implementations equal',
+      );
+    });
+
+    test('S-326 a rest and an end alone create no session', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, _capId, [
+        _rest(
+          'e-rest1',
+          startedAt: restStart,
+          endedAt: restEnd,
+          afterEntryId: 'e-set1',
+        ),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      expect(
+        await repository.getSession(_capId),
+        isNull,
+        reason: 'S-326 D-214 a rest is not an effort entry, so it imports none',
+      );
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-326 a pass that creates no session writes no rest',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-326 D-215 the row is consumed, so it is not retried',
+      );
+    });
+
+    test('S-327 deleting the set takes its rest with it', () async {
+      final repository = await _repository();
+      final inbox = _inbox(repository, CaptureTransport());
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        _rest(
+          'e-rest1',
+          startedAt: restStart,
+          endedAt: restEnd,
+          afterEntryId: 'e-set1',
+        ),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+      final before = await repository.getEntryRests(bench);
+      expect(before, hasLength(1), reason: 'S-327 the rest is imported');
+
+      final workout = WorkoutState(repository);
+      await workout.loadHistoricalSession(_capId);
+      await workout.deleteEntry(bench, 0);
+
+      expect(
+        await observationAt(repository, bench, 0, 'reps'),
+        isNull,
+        reason: 'S-327 the user deleted the set the rest followed',
+      );
+      expect(
+        (await repository.getEntryRests(bench)).map((r) => r.toMap()),
+        isEmpty,
+        reason:
+            'S-327 D-1 the user deleted the set, so the rest that followed it '
+            'goes with it (this flips D-167(b) for the phone delete path)',
+      );
+    });
+
+    test('S-328 an unresolvable rest is dropped, consumed and not retried',
+        () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+      final orphan = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restEnd,
+        afterEntryId: 'e-set2',
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        orphan,
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the after-entry was never placed, so there is no spot',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-328 the row is consumed with the set it arrived with',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        containsAll(['e-set1', 'e-rest1']),
+        reason: 'S-328 and it is acknowledged',
+      );
+
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [orphan], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the next pass does not retry it',
+      );
+    });
+
+    test('S-328 a rest naming one of two same-instant sets is dropped and '
+        'consumed', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      // Two sets the wrist logged on the same instant: their rows cannot be
+      // told apart by stamp, so neither position can be named.
+      await _deliverEach(inbox, _capId, [
+        _set('e-dup1', loggedAt: restStart),
+        _set('e-dup2', loggedAt: restStart),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      // The user adds a row of their own (A-51), so the effort is the user's
+      // to arrange and the wrist's already-placed rows are resolved by stamp.
+      final workout = WorkoutState(repository);
+      await workout.loadHistoricalSession(_capId);
+      await workout.addEntry(
+        bench,
+        previousValues: {'reps': 8, 'weight': 100.0},
+      );
+
+      final ambiguous = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restEnd,
+        afterEntryId: 'e-dup1',
+      );
+      await _deliverEach(inbox, _capId, [ambiguous], tag: 'rest');
+
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the two same-instant sets leave no spot to name',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-328 the row is consumed rather than left unapplied',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        contains('e-rest1'),
+        reason: 'S-328 and it is acknowledged',
+      );
+
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [ambiguous], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the next pass does not retry it',
+      );
+    });
+  });
+
+  // Plan 129 (P1b, S-8963/S-8964/S-8964b/S-8971) + plan 130 (D-13030):
+  // the wrist's `session_started` report through the whole router, into the
+  // phone's own storage. The report opens a session row when there is none —
+  // the routine's name and intent, one segment, and no efforts the wrist's
+  // first snapshot would arrive with too (D-8977) — and remembers the plan it
+  // names; the plan is completed only when the wrist finishes that session,
+  // by the callback the wiring passes: the app's own
+  // `CalendarState.completePlannedSession` (D-8973, S-8971, D-13031). Anything
+  // stored is proven under Mock and Hive, reading the plan row back after a
+  // repository restart (S-8964b).
+  group("S-8963…S-8964b a wrist report that starts a plan", () {
+    /// One routine the plan names: a template with one segment the row can
+    /// open as a run of. The routine's efforts stay unseeded: the report
+    /// copies none of them (D-8977).
+    Future<void> seedRoutine(
+      WorkoutRepository repository, {
+      String templateId = 'tpl-push',
+      String name = 'Push',
+      String segmentId = 'tseg-push',
+      String? focusModality,
+    }) async {
+      await repository.createTemplate(
+        WorkoutTemplate(
+          id: templateId,
+          ownerUserId: 'user-129',
+          name: name,
+          description: null,
+          focusModality: focusModality,
+          primaryDisciplineId: null,
+          note: null,
+          isBuiltInDemo: false,
+          createdAtMs: _phoneNow.millisecondsSinceEpoch,
+          updatedAtMs: _phoneNow.millisecondsSinceEpoch,
+        ),
+      );
+      await repository.createTemplateSegment(
+        TemplateSegment(
+          id: segmentId,
+          templateId: templateId,
+          orderIndex: 0,
+          segmentType: 'strength_sets',
+          disciplineId: null,
+          name: 'Segment 1',
+          note: null,
+          createdAtMs: _phoneNow.millisecondsSinceEpoch,
+          updatedAtMs: _phoneNow.millisecondsSinceEpoch,
+        ),
+      );
+    }
+
+    Future<void> seedPlan(
+      WorkoutRepository repository, {
+      String id = 'p-today',
+      String? routineTemplateId = 'tpl-push',
+    }) => repository.createPlannedSession(
+      PlannedSession(
+        id: id,
+        ownerUserId: 'user-129',
+        // Values unlike any default: today is the day the report names and
+        // the id, owner and template name plan 129.
+        scheduledDateMs: DateTime(2026, 11, 5).millisecondsSinceEpoch,
+        modality: null,
+        title: null,
+        note: null,
+        isCompleted: false,
+        linkedSessionId: null,
+        routineTemplateId: routineTemplateId,
+        createdAtMs: _phoneNow.millisecondsSinceEpoch,
+        updatedAtMs: _phoneNow.millisecondsSinceEpoch,
+      ),
+    );
+
+    Map<String, Object?> startReport({
+      String sessionId = 'w-1',
+      String? routineTemplateId = 'tpl-push',
+      String? plannedSessionId = 'p-today',
+    }) => {
+      'protocolVersion': SyncProtocolValidator.protocolVersion,
+      'messageId': 'msg-start-129',
+      'sessionId': sessionId,
+      'type': 'session_started',
+      'origin': 'watch',
+      'sentAt': '2026-11-05T10:00:00.000Z',
+      'payload': {
+        'sessionId': sessionId,
+        'at': '2026-11-05T10:00:00.000Z',
+        'routineTemplateId': ?routineTemplateId,
+        'plannedSessionId': ?plannedSessionId,
+      },
+    };
+
+    /// One `session_lifecycle` from the wrist, the shape the shipping watch
+    /// emits and the finish tests copy (plan 130 D-13031 reads its `state`).
+    Map<String, Object?> lifecycle({
+      String sessionId = 'w-1',
+      String state = 'completed',
+      String origin = 'watch',
+      String messageId = 'msg-lifecycle-130',
+    }) => {
+      'protocolVersion': SyncProtocolValidator.protocolVersion,
+      'messageId': messageId,
+      'sessionId': sessionId,
+      'type': 'session_lifecycle',
+      'origin': origin,
+      'sentAt': '2026-11-05T10:30:00.000Z',
+      'payload': {
+        'state': state,
+        'at': '2026-11-05T10:30:00.000Z',
+      },
+    };
+
+    /// The app-wired router; the plan-start callback is the recorder unless
+    /// the test hands the real one over (D-8973, S-8971). The bridge gets the
+    /// real protocol gate, as every app-wired bridge here does (plan 129
+    /// review 1, finding 1).
+    Future<WatchIncomingRouter> startRouter(
+      WorkoutRepository repository, {
+      required List<Object> failures,
+      required List<({String plan, String session})> started,
+      Future<void> Function(String plan, String session)? onPlanStarted,
+    }) async {
+      final transport = CaptureTransport();
+      final inbox = WatchSessionInbox(
+        repository: repository,
+        transport: transport,
+        clock: () => _phoneNow,
+        idFactory: () => 'msg-inbox-129',
+        onFailure: Error.throwWithStackTrace,
+      );
+      final bridge = WatchSessionAdoptionBridge(
+        repository: repository,
+        clock: () => _phoneNow,
+        onFailure: (error, stack) => failures.add(error),
+        onPlanStarted: onPlanStarted ??
+            (plan, session) async => started.add((plan: plan, session: session)),
+        validator: loadProtocolValidator(),
+      );
+      return WatchIncomingRouter(
+        inbox: inbox,
+        mirror: LiveSessionMirrorState(
+          transport: WatchInboxStagingTransport(inner: transport, inbox: inbox),
+          snapshot: watchSessionPlaceholder,
+          validator: loadProtocolValidator(),
+        ),
+        nutrition: WatchNutritionLogBridge(
+          nutrition: NutritionState(repository),
+          library: FoodLibraryState(repository),
+          validator: loadProtocolValidator(),
+          transport: transport,
+        ),
+        adoption: bridge,
+      );
+    }
+
+    test('S-8963 a startable plan opens the row and reports the link, Mock '
+        'and Hive', () async {
+      for (final factory in harnessFactories) {
+        final harness = factory();
+        final repository = await harness.open();
+        try {
+          await seedRoutine(repository);
+          await seedPlan(repository);
+          final failures = <Object>[];
+          final started = <({String plan, String session})>[];
+          final router = await startRouter(repository,
+              failures: failures, started: started);
+
+          await router.receive(startReport());
+
+          final session = await repository.getSession('w-1');
+          expect(session, isNotNull,
+              reason: '${harness.name}: the report opened the row');
+          expect(session!.routineTemplateId, 'tpl-push',
+              reason: '${harness.name}: the row is a run of the routine');
+          expect(session.title, 'Push',
+              reason: '${harness.name}: the routine\'s own name');
+          expect(session.intent, 'routine',
+              reason: '${harness.name}: the routine is what it opens as');
+          final segments = await repository.getSessionSegments('w-1');
+          expect(segments, hasLength(1), reason: '${harness.name}: one segment');
+          expect(segments.single.id, 'segment-w-1',
+              reason: '${harness.name}: the protocol\'s segment id (D-3)');
+          expect(await repository.getSegmentEfforts(segments.single.id), isEmpty,
+              reason: '${harness.name}: D-8977 the wrist lands the ladder with '
+                  'its first snapshot; the phone writes no effort of its own');
+          expect(started, isEmpty,
+              reason:
+                  '${harness.name}: the report remembers the plan; it does '
+                  'not link it yet (plan 130, D-13030)');
+          expect(failures, isEmpty, reason: '${harness.name}: no failure');
+
+          // Plan 130 (D-13031): the link belongs to the wrist's own end.
+          await router.receive(lifecycle());
+          expect(started, [
+            (plan: 'p-today', session: 'w-1'),
+          ], reason:
+              '${harness.name}: linked at the wrist\'s completed lifecycle');
+          expect(failures, isEmpty, reason: '${harness.name}: no failure');
+        } finally {
+          await harness.close();
+        }
+      }
+    });
+
+    test('S-8981 a report opened for a routine with a Focus carries it, a '
+        'free report none', () async {
+      for (final factory in harnessFactories) {
+        final harness = factory();
+        final repository = await harness.open();
+        try {
+          await seedRoutine(repository, focusModality: 'strength');
+          await seedPlan(repository);
+          final failures = <Object>[];
+          final started = <({String plan, String session})>[];
+          final router = await startRouter(repository,
+              failures: failures, started: started);
+
+          await router.receive(startReport());
+
+          final session = await repository.getSession('w-1');
+          expect(
+            session!.modality,
+            'strength',
+            reason: '${harness.name}: the report-opened row carries the '
+                "routine's Focus",
+          );
+
+          // A free report (`w-2`: no routine id, no plan) opens a row with no
+          // Focus, the way a free start stays free.
+          await router.receive(
+            startReport(
+              sessionId: 'w-2',
+              routineTemplateId: null,
+              plannedSessionId: null,
+            ),
+          );
+          expect(
+            (await repository.getSession('w-2'))!.modality,
+            isNull,
+            reason: '${harness.name}: a free report opens a free row',
+          );
+          expect(started, isEmpty,
+              reason: '${harness.name}: the report remembers the plan; the '
+                  'free report links nothing');
+          // Each session's own end: the free one has no plan to link.
+          await router.receive(lifecycle());
+          await router.receive(
+            lifecycle(sessionId: 'w-2', messageId: 'msg-lifecycle-w2'),
+          );
+          expect(started.single, (plan: 'p-today', session: 'w-1'),
+              reason: '${harness.name}: linked at the wrist\'s completed; the '
+                  'free session\'s end links nothing');
+          expect(failures, isEmpty, reason: '${harness.name}: no failure');
+        } finally {
+          await harness.close();
+        }
+      }
+    });
+
+    test('S-8973 a report the protocol refuses opens no row and links nothing '
+        '(Mock and Hive)', () async {
+      // Plan 129 review 1, finding 1: D-8972 says the report is judged
+      // conformant before anything is written. Each rejected arm below writes
+      // a row and links a plan when that gate is missing.
+      for (final factory in harnessFactories) {
+        final harness = factory();
+        final repository = await harness.open();
+        try {
+          await seedRoutine(repository);
+          await seedPlan(repository);
+          final failures = <Object>[];
+          final started = <({String plan, String session})>[];
+          final router = await startRouter(repository,
+              failures: failures, started: started);
+
+          Map<String, Object?> withExtra(String sessionId) {
+            final report = startReport(sessionId: sessionId);
+            report['payload'] = {
+              ...(report['payload']! as Map<String, Object?>),
+              'unexpectedField': 'x',
+            };
+            return report;
+          }
+
+          Map<String, Object?> phoneOrigin(String sessionId) {
+            final report = startReport(sessionId: sessionId);
+            report['origin'] = 'phone';
+            return report;
+          }
+
+          Map<String, Object?> withoutSessionId() {
+            final report = startReport();
+            report.remove('sessionId');
+            report.remove('payload');
+            return report;
+          }
+
+          await router.receive(withExtra('w-extra'));
+          await router.receive(phoneOrigin('w-phone'));
+          await router.receive(withoutSessionId());
+
+          for (final id in ['w-extra', 'w-phone']) {
+            expect(await repository.getSession(id), isNull,
+                reason: '${harness.name}: a refused report ($id) opens no row');
+          }
+          expect(started, isEmpty,
+              reason: '${harness.name}: a refused report links no plan');
+          final plan = (await repository.getPlannedSessions())
+              .singleWhere((row) => row.id == 'p-today');
+          expect(plan.linkedSessionId, isNull,
+              reason: '${harness.name}: the plan stays unstarted');
+          expect(failures, isEmpty,
+              reason: '${harness.name}: a refusal is not a failure');
+
+          // The gate lets a conformant report through, so the arm above fails
+          // for the reason it names rather than because nothing is handled.
+          await router.receive(startReport(sessionId: 'w-ok'));
+          expect(await repository.getSession('w-ok'), isNotNull,
+              reason: '${harness.name}: the conformant report still lands');
+          expect(started, isEmpty,
+              reason: '${harness.name}: the report alone links nothing yet');
+          await router.receive(lifecycle(sessionId: 'w-ok'));
+          expect(started.single, (plan: 'p-today', session: 'w-ok'),
+              reason: '${harness.name}: and the plan is linked when the '
+                  'wrist finishes that session');
+        } finally {
+          await harness.close();
+        }
+      }
+    });
+
+    test('S-8971 last write wins, and the store reads the link back after a '
+        'restart, Mock and Hive', () async {
+      for (final factory in harnessFactories) {
+        final harness = factory();
+        var repository = await harness.open();
+        try {
+          await seedRoutine(repository);
+          await seedPlan(repository);
+          final calendar = CalendarState(repository);
+          final bridges = <Object>[];
+          // The app's own wiring (D-8973): the callback finishes the plan, so
+          // the gate sees the report as linked from then on.
+          final router = await startRouter(
+            repository,
+            failures: bridges,
+            started: const <({String plan, String session})>[],
+            onPlanStarted: calendar.completePlannedSession,
+          );
+
+          await router.receive(startReport());
+          final reported = (await repository.getPlannedSessions())
+              .singleWhere((row) => row.id == 'p-today');
+          expect(reported.isCompleted, isFalse,
+              reason: '${harness.name}: the report alone leaves the plan '
+                  'planned (plan 130, D-13030)');
+          expect(reported.linkedSessionId, isNull,
+              reason: '${harness.name}: and unlinked at the report');
+
+          // The wrist finishes the session: the real calendar completes the
+          // plan (plan 130, D-13031).
+          await router.receive(lifecycle());
+          final first = (await repository.getPlannedSessions())
+              .singleWhere((row) => row.id == 'p-today');
+          expect(
+            first.linkedSessionId,
+            'w-1',
+            reason: '${harness.name}: the real calendar completes the plan',
+          );
+
+          // A repeat of the same report, a second wrist session named from the
+          // plan, and a report from a phone origin are all the same dropped
+          // case: the plan it names is already linked (D-8972).
+          await router.receive(startReport());
+          await router.receive(startReport(sessionId: 'w-9'));
+          expect(
+            (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today')
+                .linkedSessionId,
+            'w-1',
+            reason: '${harness.name}: the link stays on the first report',
+          );
+          expect(
+            await repository.getSession('w-9'),
+            isNull,
+            reason: '${harness.name}: no second row is opened for a plan '
+                'already linked',
+          );
+          expect(bridges, isEmpty, reason: '${harness.name}: nothing thrown');
+
+          // S-8964b: the plan row reads back the same from a new repository.
+          repository = await harness.restart();
+          final stored = (await repository.getPlannedSessions())
+              .singleWhere((row) => row.id == 'p-today');
+          expect(
+            stored.isCompleted,
+            isTrue,
+            reason: '${harness.name}: the plan reads completed from the store',
+          );
+          expect(stored.linkedSessionId, 'w-1',
+              reason: '${harness.name}: linked to the row the report opened');
+          expect(await repository.getSession('w-1'), isNotNull,
+              reason: '${harness.name}: and the row is on the disk too');
+        } finally {
+          await harness.close();
+        }
+      }
+    });
+
+    test('S-8964 a free start is adopted with nothing linked', () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+      final failures = <Object>[];
+      final started = <({String plan, String session})>[];
+      final router = await startRouter(repository,
+          failures: failures, started: started);
+
+      await router.receive(
+        startReport(sessionId: 'w-2', routineTemplateId: null, plannedSessionId: null),
+      );
+
+      final session = await repository.getSession('w-2');
+      expect(session, isNotNull);
+      expect(session!.title, isNull);
+      expect(session.intent, isNull,
+          reason: 'no routine the report names, so the row stays free');
+      expect(started, isEmpty);
+      expect(failures, isEmpty);
+    });
+
+    test('S-8964 a missing plan, an empty id and a held session behave '
+        '(Mock and Hive)', () async {
+      for (final factory in harnessFactories) {
+        final harness = factory();
+        final repository = await harness.open();
+        try {
+          await seedRoutine(repository);
+          // One free plan: D-8975's held session needs a startable plan so the
+          // gate passes and the "links only" path is what runs.
+          await seedPlan(repository);
+
+          final failures = <Object>[];
+          final started = <({String plan, String session})>[];
+          final router = await startRouter(repository,
+              failures: failures, started: started);
+
+          // A plan the phone does not know: nothing is written, nothing
+          // thrown (D-8972).
+          await router.receive(
+            startReport(sessionId: 'w-7', plannedSessionId: 'p-missing'),
+          );
+          expect(await repository.getSession('w-7'), isNull,
+              reason: '${harness.name}: no row for an unknown plan');
+          expect(failures, isEmpty,
+              reason: '${harness.name}: an unknown plan is not a failure');
+
+          // An id the report names nowhere: dropped before anything.
+          await router.receive(startReport(sessionId: ''));
+          expect(failures, isEmpty);
+
+          // D-8975: a session the phone already holds. The row the report
+          // names is the one already on the disk; the plan links to it and no
+          // second segment appears.
+          const at = 1780000000000;
+          await repository.createSession(
+            TrainingSession(
+              id: 'w-hold',
+              ownerUserId: LoggedEntryRows.ownerUserId,
+              startedAtMs: at,
+              createdAtMs: at,
+              updatedAtMs: at,
+            ),
+          );
+          final before = await repository.getSessionSegments('w-hold');
+          expect(before, hasLength(0),
+              reason: '${harness.name}: the held row starts bare');
+          await router.receive(
+            startReport(sessionId: 'w-hold', plannedSessionId: 'p-today'),
+          );
+          expect((await repository.getSessionSegments('w-hold')).length,
+              before.length,
+              reason: '${harness.name}: no duplicate segment');
+          expect(started, isEmpty,
+              reason: '${harness.name}: no second row is opened');
+          await router.receive(lifecycle(sessionId: 'w-hold'));
+          expect(started.single, (plan: 'p-today', session: 'w-hold'),
+              reason: '${harness.name}: linked when the wrist finishes it, '
+                  'still without a second row');
+          final held =
+              (await repository.getPlannedSessions())
+                  .singleWhere((row) => row.id == 'p-today');
+          expect(held.linkedSessionId, isNull,
+              reason: '${harness.name}: the callback is what links; this '
+                  'recorder does not write');
+          expect(failures, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      }
+    });
+
+    // Plan 130 (D-13030..D-13034): the plan a wrist start names is remembered
+    // at the report and linked only when the wrist finishes that session —
+    // its `completed` lifecycle (D-13031); `abandoned` only forgets it
+    // (D-13032); the gates run again at the link (D-13033); the memory is
+    // in-memory only (D-13034).
+    group('S-13030…S-13038 the plan is linked when the wrist finishes the '
+        'session', () {
+      test('S-13030 a start report alone leaves the plan planned, Mock and '
+          'Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+
+            expect(await repository.getSession('w-1'), isNotNull,
+                reason: '${harness.name}: the row w-1 opens');
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.isCompleted, isFalse,
+                reason: '${harness.name}: the plan is not completed');
+            expect(plan.linkedSessionId, isNull,
+                reason: '${harness.name}: no link at the report');
+            expect(started, isEmpty,
+                reason: '${harness.name}: the recorder is never called');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13031 the wrist completed lifecycle links the plan, Mock and '
+          'Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          var repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final calendar = CalendarState(repository);
+            final router = await startRouter(
+              repository,
+              failures: failures,
+              started: started,
+              onPlanStarted: (plan, session) async {
+                await calendar.completePlannedSession(plan, session);
+                started.add((plan: plan, session: session));
+              },
+            );
+
+            await router.receive(startReport());
+            await router.receive(lifecycle());
+
+            expect(started, [
+              (plan: 'p-today', session: 'w-1'),
+            ], reason: '${harness.name}: the link travels once, at the '
+                'completed lifecycle');
+            // D-13031: the plan row reads back from a NEW repository.
+            repository = await harness.restart();
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.isCompleted, isTrue,
+                reason: '${harness.name}: the plan reads completed from the '
+                    'store');
+            expect(plan.linkedSessionId, 'w-1',
+                reason: '${harness.name}: linked to the session the wrist '
+                    'finished');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13032 an abandoned wrist workout leaves the plan planned, Mock '
+          'and Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+            await router.receive(lifecycle(state: 'abandoned'));
+            final afterAbandoned = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(afterAbandoned.isCompleted, isFalse,
+                reason: '${harness.name}: the abandoned run leaves the plan '
+                    'planned');
+            expect(afterAbandoned.linkedSessionId, isNull,
+                reason: '${harness.name}: and unlinked');
+
+            // A late completed for the same session links nothing: the
+            // abandoned lifecycle forgot the plan (D-13032).
+            await router.receive(lifecycle());
+            final afterCompleted = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(afterCompleted.isCompleted, isFalse,
+                reason: '${harness.name}: a completed after an abandoned '
+                    'links nothing');
+            expect(afterCompleted.linkedSessionId, isNull,
+                reason: '${harness.name}: still unlinked');
+            expect(started, isEmpty,
+                reason: '${harness.name}: the recorder is never called');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13033 a completed delivered twice links once, Mock and Hive',
+          () async {
+        // The recorder never writes the plan, so a second `completed` meets
+        // a plan that still reads unstarted: only the bridge's own forgetting
+        // keeps the second delivery from linking again (D-13030).
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+            await router.receive(lifecycle());
+            await router.receive(lifecycle());
+
+            expect(started, [(plan: 'p-today', session: 'w-1')],
+                reason: '${harness.name}: the second completed links nothing');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13034 a free start and an unnamed session link nothing, Mock '
+          'and Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            // A free start report names no plan: its completed links nothing.
+            await router.receive(
+              startReport(sessionId: 'w-2', plannedSessionId: null),
+            );
+            await router.receive(
+              lifecycle(sessionId: 'w-2', messageId: 'msg-lifecycle-w2'),
+            );
+            // A completed for a session no report named links nothing either.
+            await router.receive(
+              lifecycle(sessionId: 'w-9', messageId: 'msg-lifecycle-w9'),
+            );
+
+            expect(started, isEmpty,
+                reason: '${harness.name}: nothing was linked');
+            expect(failures, isEmpty,
+                reason: '${harness.name}: no failure is recorded');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13035 a plan linked elsewhere keeps its first link, Mock and '
+          'Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+            final stored = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            await repository.updatePlannedSession(
+              PlannedSession(
+                id: stored.id,
+                ownerUserId: stored.ownerUserId,
+                scheduledDateMs: stored.scheduledDateMs,
+                modality: stored.modality,
+                title: stored.title,
+                note: stored.note,
+                isCompleted: true,
+                linkedSessionId: 'w-other',
+                routineTemplateId: stored.routineTemplateId,
+                createdAtMs: stored.createdAtMs,
+                updatedAtMs: stored.updatedAtMs,
+              ),
+            );
+
+            await router.receive(lifecycle());
+
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.linkedSessionId, 'w-other',
+                reason: '${harness.name}: the first link stays (D-13033)');
+            expect(started, isEmpty,
+                reason: '${harness.name}: the recorder is not called');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13035 each arm of the link-time plan gate holds on its own, '
+          'Mock and Hive', () async {
+        // A plan that reads completed with no link, and a plan that reads
+        // linked while not completed: each is left as it is, so the
+        // `isCompleted` check and the `linkedSessionId` check each need a
+        // fixture the other would not reject.
+        final arms = <({bool completed, String? link, String name})>[
+          (completed: true, link: null, name: 'completed, no link'),
+          (completed: false, link: 'w-other', name: 'linked, not completed'),
+        ];
+        for (final arm in arms) {
+          for (final factory in harnessFactories) {
+            final harness = factory();
+            final repository = await harness.open();
+            try {
+              await seedRoutine(repository);
+              await seedPlan(repository);
+              final failures = <Object>[];
+              final started = <({String plan, String session})>[];
+              final router = await startRouter(repository,
+                  failures: failures, started: started);
+
+              await router.receive(startReport());
+              final stored = (await repository.getPlannedSessions())
+                  .singleWhere((row) => row.id == 'p-today');
+              await repository.updatePlannedSession(
+                PlannedSession(
+                  id: stored.id,
+                  ownerUserId: stored.ownerUserId,
+                  scheduledDateMs: stored.scheduledDateMs,
+                  modality: stored.modality,
+                  title: stored.title,
+                  note: stored.note,
+                  isCompleted: arm.completed,
+                  linkedSessionId: arm.link,
+                  routineTemplateId: stored.routineTemplateId,
+                  createdAtMs: stored.createdAtMs,
+                  updatedAtMs: stored.updatedAtMs,
+                ),
+              );
+
+              await router.receive(lifecycle());
+
+              expect(started, isEmpty,
+                  reason: '${harness.name} (${arm.name}): the recorder is '
+                      'not called');
+              expect(failures, isEmpty,
+                  reason: '${harness.name} (${arm.name}): no failure');
+            } finally {
+              await harness.close();
+            }
+          }
+        }
+      });
+
+      test('S-13036 a discarded session row is not linked, Mock and Hive',
+          () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+            await repository.deleteSession('w-1');
+            await router.receive(lifecycle());
+
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.isCompleted, isFalse,
+                reason: '${harness.name}: the plan stays planned');
+            expect(plan.linkedSessionId, isNull,
+                reason: '${harness.name}: no link to a row that is gone');
+            expect(started, isEmpty,
+                reason: '${harness.name}: the recorder is never called');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13037 a phone-origin completed links nothing, Mock and Hive',
+          () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          var repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final router = await startRouter(repository,
+                failures: failures, started: started);
+
+            await router.receive(startReport());
+            await router.receive(
+              lifecycle(origin: 'phone', messageId: 'msg-phone-lifecycle'),
+            );
+
+            expect(started, isEmpty,
+                reason: '${harness.name}: a phone-origin frame links no plan');
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.isCompleted, isFalse,
+                reason: '${harness.name}: the plan stays planned');
+            expect(plan.linkedSessionId, isNull,
+                reason: '${harness.name}: not linked');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+
+      test('S-13038 a phone-held, phone-ended session links the plan without '
+          'a second end (G1), Mock and Hive', () async {
+        for (final factory in harnessFactories) {
+          final harness = factory();
+          final repository = await harness.open();
+          try {
+            await seedRoutine(repository);
+            await seedPlan(repository);
+            final failures = <Object>[];
+            final started = <({String plan, String session})>[];
+            final calendar = CalendarState(repository);
+            // The bridge directly, so the phone's own WorkoutState can be
+            // bound and seen: the router's own bridge stays unbound here
+            // (Mock-first — no Hive restart read this test needs).
+            final bridge = WatchSessionAdoptionBridge(
+              repository: repository,
+              clock: () => _phoneNow,
+              onFailure: (error, stack) => failures.add(error),
+              onPlanStarted: (plan, session) async {
+                await calendar.completePlannedSession(plan, session);
+                started.add((plan: plan, session: session));
+              },
+            );
+
+            await bridge.onSessionStarted(startReport());
+
+            // The report alone left the plan planned; the phone then holds
+            // the session the report opened and ends it itself (G1).
+            final planBefore = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(planBefore.linkedSessionId, isNull);
+            final state = WorkoutState(repository);
+            bridge.bindWorkoutState(state);
+            await state.loadHistoricalSession('w-1');
+            expect(state.currentSession?.id, 'w-1',
+                reason: '${harness.name}: the phone holds the session');
+            await state.endSession(writeToHealth: false);
+            final endedAtMs = state.currentSession?.endedAtMs;
+            expect(endedAtMs, isNotNull,
+                reason: '${harness.name}: the phone ended it');
+
+            await bridge.onLifecycle(lifecycle());
+
+            expect(started.single, (plan: 'p-today', session: 'w-1'),
+                reason: '${harness.name}: the plan is linked — the session '
+                    'did finish');
+            // The phone's session is not ended a second time (G1): the end is
+            // the phone's own.
+            expect(state.currentSession?.endedAtMs, endedAtMs,
+                reason: '${harness.name}: the phone\'s session keeps its one '
+                    'end');
+            expect((await repository.getSession('w-1'))!.endedAtMs, endedAtMs,
+                reason: '${harness.name}: the row was not ended twice');
+            final plan = (await repository.getPlannedSessions())
+                .singleWhere((row) => row.id == 'p-today');
+            expect(plan.isCompleted, isTrue,
+                reason: '${harness.name}: linked by the real calendar');
+            expect(plan.linkedSessionId, 'w-1');
+            expect(failures, isEmpty, reason: '${harness.name}: no failure');
+          } finally {
+            await harness.close();
+          }
+        }
+      });
+    });
+  });
+
+  // Plan 167 (D-16701/D-16702): a row the phone opened on the wrist's arrival
+  // carries the arrival as its start. The wrist's own `session_end` is the one
+  // word that knows the real start, so it moves the row's start down — and a
+  // floored end (== the arrival start) drops to the wrist's end. Only earlier:
+  // the phone's start is never pushed later, a `followed` end never touches it,
+  // and a real phone end survives.
+  group('import diagnostics notes', () {
+    final now = _phoneNow.millisecondsSinceEpoch;
+
+    String iso(int ms) =>
+        DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
+
+    DiagnosticsLog newLog() => DiagnosticsLog(
+      storage: InMemoryDiagnosticsStorage(),
+      clock: () => _phoneNow,
+    );
+
+    /// The detail of every note of [kind], oldest first.
+    List<String> notes(DiagnosticsLog log, String kind) => [
+      for (final event in log.events())
+        if (event.kind == kind) event.detail ?? '',
+    ];
+
+    Future<void> stage(
+      WorkoutRepository repository,
+      String sessionId,
+      Map<String, Object?> event,
+    ) => repository.stageWatchInboxEntry(
+      WatchInboxEntry(
+        entryId: event['entryId']! as String,
+        watchSessionId: sessionId,
+        kind: event['kind']! as String,
+        origin: WatchInboxEntry.originWatch,
+        payload: Map<String, dynamic>.of(event),
+        receivedAtMs: now,
+      ),
+    );
+
+    /// A row the phone holds, with no segment or effort of its own.
+    Future<void> heldRow(
+      WorkoutRepository repository,
+      String sessionId, {
+      required int startedAtMs,
+      required int endedAtMs,
+    }) => repository.createSession(
+      TrainingSession(
+        id: sessionId,
+        ownerUserId: 'u-174',
+        startedAtMs: startedAtMs,
+        endedAtMs: endedAtMs,
+        createdAtMs: startedAtMs,
+        updatedAtMs: startedAtMs,
+      ),
+    );
+
+    test('S-17405 an imported history row is noted with both stamps', () async {
+      final repository = await _repository();
+      final log = newLog();
+      final started = now - 1800000;
+      final ended = now - 600000;
+      await stage(repository, 'w-3', _set('e-17405', loggedAt: iso(started)));
+      await stage(
+        repository,
+        'w-3',
+        _end('w-3', startedAt: iso(started), endedAt: iso(ended)),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('w-3', phoneOwnsSession: false);
+
+      expect(
+        notes(log, 'session_row_created'),
+        ['path=import start=${iso(started)} end=${iso(ended)}'],
+        reason:
+            'S-17405 the history row an import writes is noted with the '
+            'wrist’s own two stamps',
+      );
+      expect(
+        notes(log, 'end_applied'),
+        ['who=import instant=${iso(ended)} status=completed'],
+        reason: 'S-17405 the end the row was created with is an applied end',
+      );
+    });
+
+    test('S-17406 A a merge’s start correction is noted', () async {
+      final repository = await _repository();
+      final log = newLog();
+      final floor = now - 60000;
+      await heldRow(repository, 's-17406a', startedAtMs: floor, endedAtMs: floor);
+      await stage(
+        repository,
+        's-17406a',
+        _end(
+          's-17406a',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(now - 560000),
+        ),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('s-17406a', phoneOwnsSession: true);
+
+      expect(
+        notes(log, 'session_start_corrected'),
+        ['from=${iso(floor)} to=${iso(now - 1800000)} path=merge'],
+        reason:
+            'S-17406 A the wrist’s end carries the start the D-153 floor lost, '
+            'and the merge says so',
+      );
+      expect(
+        notes(log, 'end_applied'),
+        isEmpty,
+        reason: 'S-17406 A a merge never writes the wrist’s end (G2/D-5)',
+      );
+    });
+
+    test('S-17406 B an import’s start correction is noted', () async {
+      final repository = await _repository();
+      final log = newLog();
+      final floor = now - 60000;
+      await heldRow(repository, 's-17406b', startedAtMs: floor, endedAtMs: floor);
+      await stage(
+        repository,
+        's-17406b',
+        _end(
+          's-17406b',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(now - 560000),
+        ),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('s-17406b', phoneOwnsSession: false);
+
+      expect(
+        notes(log, 'session_start_corrected'),
+        ['from=${iso(floor)} to=${iso(now - 1800000)} path=import'],
+        reason:
+            'S-17406 B a row the phone no longer holds is corrected by the '
+            'import path, and the note names that path',
+      );
+    });
+
+    test('S-17408 an import clamps a future end and notes it', () async {
+      final repository = await _repository();
+      final log = newLog();
+      final ended = now + 21600000;
+      await stage(
+        repository,
+        'w-4',
+        _set('e-17408', loggedAt: iso(now - 1800000)),
+      );
+      await stage(
+        repository,
+        'w-4',
+        _end(
+          'w-4',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(ended),
+        ),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('w-4', phoneOwnsSession: false);
+
+      expect(
+        notes(log, 'end_clamped'),
+        ['from=${iso(ended)} to=${iso(now + 300000)} who=import'],
+        reason:
+            'S-17408 plan 164 bounds an arriving end at this phone’s clock plus '
+            'five minutes, and the log says what was cut',
+      );
+      expect(
+        (await repository.getSession('w-4'))!.endedAtMs,
+        now + 300000,
+        reason: 'S-17408 the stored end is the bounded instant',
+      );
+    });
+
+    test('S-17408 b the catch-up bound is noted too', () async {
+      final repository = await _repository();
+      final log = newLog();
+      await heldRow(
+        repository,
+        's-17408b',
+        startedAtMs: now - 1800000,
+        endedAtMs: now - 600000,
+      );
+      await stage(
+        repository,
+        's-17408b',
+        _set('e-17408b', loggedAt: iso(now + 21600000)),
+      );
+      await stage(
+        repository,
+        's-17408b',
+        _end(
+          's-17408b',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(now - 300000),
+        ),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('s-17408b', phoneOwnsSession: false);
+
+      expect(
+        notes(log, 'end_clamped'),
+        ['from=${iso(now + 21600000)} to=${iso(now + 300000)} who=import'],
+        reason:
+            'S-17408 b a set the wrist stamped in the future cannot push the '
+            'stored end past the bound either',
+      );
+      expect(
+        (await repository.getSession('s-17408b'))!.endedAtMs,
+        now + 300000,
+        reason: 'S-17408 b the moved end is the bounded one',
+      );
+    });
+
+    test('S-17409 an applied import end names who and the instant', () async {
+      final repository = await _repository();
+      final log = newLog();
+      await heldRow(
+        repository,
+        's-17409',
+        startedAtMs: now - 1800000,
+        endedAtMs: now - 600000,
+      );
+      await stage(
+        repository,
+        's-17409',
+        _end(
+          's-17409',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(now - 300000),
+        ),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+        clock: () => _phoneNow,
+        diagnostics: log,
+      ).apply('s-17409', phoneOwnsSession: false);
+
+      expect(
+        notes(log, 'end_applied'),
+        ['who=import instant=${iso(now - 300000)} status=completed'],
+        reason:
+            'S-17409 the catch-up moved the phone’s end later, and the line '
+            'names the instant it moved to',
+      );
+      expect(
+        (await repository.getSession('s-17409'))!.endedAtMs,
+        now - 300000,
+        reason: 'S-17409 the end the log names is the one the row carries',
+      );
+    });
+  });
+
+  group('plan 167 the held row’s start', () {
+    final now = _phoneNow.millisecondsSinceEpoch;
+
+    String iso(int ms) =>
+        DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
+
+    /// A row the phone holds: its own window, one segment and one `set` effort
+    /// under [effortId] — the slot id for the merge path (its efforts are keyed
+    /// by slot), the protocol's effort id for the import path.
+    Future<void> held(
+      WorkoutRepository repository,
+      String sessionId, {
+      required int startedAtMs,
+      required int endedAtMs,
+      required String effortId,
+    }) async {
+      await repository.createSession(
+        TrainingSession(
+          id: sessionId,
+          ownerUserId: 'u-167',
+          startedAtMs: startedAtMs,
+          endedAtMs: endedAtMs,
+          createdAtMs: startedAtMs,
+          updatedAtMs: startedAtMs,
+        ),
+      );
+      await repository.createSegment(
+        SessionSegment(
+          id: 'seg-$sessionId',
+          sessionId: sessionId,
+          orderIndex: 0,
+          segmentType: 'workout',
+          name: 'Main Workout',
+          createdAtMs: startedAtMs,
+          updatedAtMs: startedAtMs,
+        ),
+      );
+      await repository.createEffort(
+        SegmentEffort(
+          id: effortId,
+          segmentId: 'seg-$sessionId',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          effortKind: 'set',
+          exerciseId: 'ex-bench',
+          createdAtMs: startedAtMs,
+          updatedAtMs: startedAtMs,
+        ),
+      );
+    }
+
+    Future<void> stage(
+      WorkoutRepository repository,
+      String sessionId,
+      Map<String, Object?> event,
+    ) => repository.stageWatchInboxEntry(
+      WatchInboxEntry(
+        entryId: event['entryId']! as String,
+        watchSessionId: sessionId,
+        kind: event['kind']! as String,
+        origin: WatchInboxEntry.originWatch,
+        payload: Map<String, dynamic>.of(event),
+        receivedAtMs: _phoneNow.millisecondsSinceEpoch,
+      ),
+    );
+
+    Future<int?> repsOf(WorkoutRepository repository, String effortId) async =>
+        (await observationAt(repository, effortId, 0, 'reps'))?.valueInt;
+
+    test('S-16703 a followed end never moves the phone’s start', () async {
+      final repository = await _repository();
+      await held(repository, 's-h1', startedAtMs: now - 600000, endedAtMs: now - 300000, effortId: 'sx-bench');
+      await stage(repository, 's-h1', {
+        ..._end(
+          's-h1',
+          startedAt: iso(now - 1800000),
+          endedAt: iso(now - 300000),
+        ),
+        'followed': true,
+      });
+      await stage(repository, 's-h1', _set('e-h1', loggedAt: iso(now - 300000)));
+
+      await WatchSessionImporter(
+        repository: repository,
+      ).apply('s-h1', phoneOwnsSession: true);
+
+      final row = (await repository.getSession('s-h1'))!;
+      expect(
+        row.startedAtMs,
+        now - 600000,
+        reason:
+            'S-16703 a followed end describes a session the phone started; its '
+            'start is the phone’s own (O-6)',
+      );
+      expect(
+        row.endedAtMs,
+        now - 300000,
+        reason: 'S-16703 the phone’s end stands untouched (G2)',
+      );
+      expect(
+        await repsOf(repository, 'sx-bench'),
+        5,
+        reason: 'S-16703 the entries merge as today',
+      );
+    });
+
+    test('S-16704 A a wrist start later than the row’s moves nothing', () async {
+      final repository = await _repository();
+      await held(repository, 's-h2', startedAtMs: now - 600000, endedAtMs: now - 300000, effortId: 'sx-bench');
+      await stage(
+        repository,
+        's-h2',
+        _end('s-h2', startedAt: iso(now - 100000), endedAt: iso(now - 90000)),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+      ).apply('s-h2', phoneOwnsSession: true);
+
+      final row = (await repository.getSession('s-h2'))!;
+      expect(
+        row.startedAtMs,
+        now - 600000,
+        reason: 'S-16704 A the correction only ever moves a start earlier',
+      );
+      expect(
+        row.endedAtMs,
+        now - 300000,
+        reason: 'S-16704 A a real end is not the correction’s to move (O-5)',
+      );
+    });
+
+    test('S-16704 B the floored end drops to the wrist’s end', () async {
+      final repository = await _repository();
+      await held(repository, 's-h3', startedAtMs: now - 60000, endedAtMs: now - 60000, effortId: 'sx-bench');
+      await stage(
+        repository,
+        's-h3',
+        _end('s-h3', startedAt: iso(now - 1800000), endedAt: iso(now - 560000)),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+      ).apply('s-h3', phoneOwnsSession: true);
+
+      final row = (await repository.getSession('s-h3'))!;
+      expect(
+        row.startedAtMs,
+        now - 1800000,
+        reason: 'S-16704 B the wrist’s end carries the real start',
+      );
+      expect(
+        row.endedAtMs,
+        now - 560000,
+        reason:
+            'S-16704 B an end equal to the pre-correction start is the D-153 '
+            'floor, so it drops to the wrist’s end (D-16702)',
+      );
+      expect(
+        row.endedAtMs! - row.startedAtMs,
+        1240000,
+        reason: 'S-16704 B the span is the wrist’s',
+      );
+      expect(
+        row.isRolling,
+        isFalse,
+        reason: 'S-16704 B the status is untouched',
+      );
+    });
+
+    test('S-16704 C a real phone end survives the correction', () async {
+      final repository = await _repository();
+      await held(repository, 's-h4', startedAtMs: now - 600000, endedAtMs: now - 100000, effortId: 'sx-bench');
+      await stage(
+        repository,
+        's-h4',
+        _end('s-h4', startedAt: iso(now - 1200000), endedAt: iso(now - 700000)),
+      );
+
+      await WatchSessionImporter(
+        repository: repository,
+      ).apply('s-h4', phoneOwnsSession: true);
+
+      final row = (await repository.getSession('s-h4'))!;
+      expect(
+        row.startedAtMs,
+        now - 1200000,
+        reason: 'S-16704 C the wrist’s end proves the row started earlier',
+      );
+      expect(
+        row.endedAtMs,
+        now - 100000,
+        reason:
+            'S-16704 C an end that is not the floor artifact is a real end and '
+            'stays (O-5)',
+      );
+    });
+
+    test('S-16705 the import path corrects an existing row too', () async {
+      final repository = await _repository();
+      await held(repository, 's-i1', startedAtMs: now - 60000, endedAtMs: now - 60000,
+          effortId: WatchSessionImporter.effortIdFor(
+            's-i1',
+            'sx-bench',
+            'ex-bench',
+            'set',
+          ));
+      await stage(
+        repository,
+        's-i1',
+        _end('s-i1', startedAt: iso(now - 1800000), endedAt: iso(now - 560000)),
+      );
+      await stage(repository, 's-i1', _set('e-i1', loggedAt: iso(now - 1200000)));
+
+      final result = await WatchSessionImporter(
+        repository: repository,
+      ).apply('s-i1');
+
+      final row = (await repository.getSession('s-i1'))!;
+      expect(
+        row.startedAtMs,
+        now - 1800000,
+        reason:
+            'S-16705 a row the phone no longer holds is repaired by the import '
+            'path’s existing-row branch (D-16705)',
+      );
+      expect(
+        row.endedAtMs,
+        now - 560000,
+        reason: 'S-16705 the floored end drops here too (D-16702)',
+      );
+      expect(
+        await repsOf(
+          repository,
+          WatchSessionImporter.effortIdFor(
+            's-i1',
+            'sx-bench',
+            'ex-bench',
+            'set',
+          ),
+        ),
+        5,
+        reason: 'S-16705 the set imports into the effort',
+      );
+      expect(
+        result.historyChanged,
+        isTrue,
+        reason: 'S-16705 the correction and the set are a history change',
+      );
+    });
+  });
+
+  group('plan 175 the phone’s own minted ids are not wrist news', () {
+    // The phone mints `entry-<sessionExerciseId>-<n>` for every set it logs
+    // (D-33), and its projection sends those ids to the wrist, which echoes
+    // them back inside its `session_snapshot` — the snapshot carries the whole
+    // session. The importer wrote each one as a new wrist set, once per
+    // exchange (plan 172 §5). D-17503…D-17505: the phone never treats an id it
+    // minted itself as news, on either path.
+
+    final now = _phoneNow.millisecondsSinceEpoch;
+    String iso(int ms) =>
+        DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
+
+    const slot = 'sx-phone';
+
+    /// The effort id the phone's projection mints ids from: the session's own
+    /// slot id, which is also the effort's id.
+    String effortOf(String sessionId) => slot;
+
+    /// What the phone mints for the set it logs at [number] (D-33).
+    String echoOf(String sessionId, {int number = 0}) =>
+        'entry-${effortOf(sessionId)}-$number';
+
+    /// The row the phone holds as its own: one set effort under [slot] with a
+    /// set group per number in [numbers].
+    Future<void> phoneRow(
+      WorkoutRepository repository,
+      String sessionId, {
+      List<int> numbers = const [0],
+    }) async {
+      final effortId = effortOf(sessionId);
+      final start = now - 1800000;
+      await repository.createSession(
+        TrainingSession(
+          id: sessionId,
+          ownerUserId: 'u-175',
+          startedAtMs: start,
+          endedAtMs: now - 300000,
+          createdAtMs: start,
+          updatedAtMs: start,
+        ),
+      );
+      await repository.createSegment(
+        SessionSegment(
+          id: 'seg-$sessionId',
+          sessionId: sessionId,
+          orderIndex: 0,
+          segmentType: 'workout',
+          name: 'Main Workout',
+          createdAtMs: start,
+          updatedAtMs: start,
+        ),
+      );
+      await repository.createEffort(
+        SegmentEffort(
+          id: effortId,
+          segmentId: 'seg-$sessionId',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          effortKind: 'set',
+          exerciseId: 'ex-bench',
+          createdAtMs: start,
+          updatedAtMs: start,
+        ),
+      );
+      for (final number in numbers) {
+        for (final row in LoggedEntryRows.setObservations(
+          effortId: effortId,
+          entryIndex: number,
+          reps: 5,
+          weightKg: 80,
+          exerciseHasLoad: true,
+          atMs: start + number * 60000,
+        )) {
+          await repository.createObservation(row);
+        }
+      }
+    }
+
+    Future<void> stageRow(
+      WorkoutRepository repository,
+      String sessionId,
+      Map<String, Object?> event,
+    ) => repository.stageWatchInboxEntry(
+      WatchInboxEntry(
+        entryId: event['entryId']! as String,
+        watchSessionId: sessionId,
+        kind: event['kind']! as String,
+        origin: WatchInboxEntry.originWatch,
+        payload: Map<String, dynamic>.of(event),
+        receivedAtMs: now,
+      ),
+    );
+
+    /// A wrist snapshot carrying [entries] in the frame the wrist sends.
+    Map<String, Object?> snapshot(
+      String sessionId,
+      List<Map<String, Object?>> entries,
+    ) => {
+      'protocolVersion': SyncProtocolValidator.protocolVersion,
+      'messageId': 'msg-snapshot-echo',
+      'sessionId': sessionId,
+      'type': 'session_snapshot',
+      'origin': 'watch',
+      'sentAt': '2026-09-25T11:00:00Z',
+      'payload': {
+        'sessionId': sessionId,
+        'status': 'completed',
+        'revision': 0,
+        'currentExerciseIndex': 0,
+        'exercises': const <Object?>[],
+        'entries': entries,
+        'timers': const <String, Object?>{},
+      },
+    };
+
+    const wristId = 'w-entry-1';
+    const phoneId = 'entry-sx-bench-1';
+    const phoneId2 = 'entry-sx-bench-2';
+
+    test(
+      'S-17502 a snapshot carrying the phone’s own ids stages only the '
+      'wrist’s own entry',
+      () async {
+        final repository = await _repository();
+        final result = await _inbox(repository, CaptureTransport()).receive(
+          snapshot('s-echo', [
+            _set(wristId, loggedAt: '2026-09-25T10:05:00.000Z'),
+            _set(phoneId, loggedAt: '2026-09-25T10:05:00.000Z'),
+            _set(phoneId2, loggedAt: '2026-09-25T10:05:00.000Z'),
+          ]),
+        );
+
+        expect(
+          result.outcome,
+          WatchInboxOutcome.staged,
+          reason: 'S-17502 the wrist’s own entry is news',
+        );
+        expect(
+          result.stagedEntryIds,
+          [wristId],
+          reason:
+              'S-17502 the phone’s own minted ids are not news; it wrote them '
+              'itself (D-17503)',
+        );
+        for (final id in [phoneId, phoneId2]) {
+          expect(
+            await repository.getWatchInboxEntry(id),
+            isNull,
+            reason: 'S-17502 $id is the phone’s own entry, echoed back',
+          );
+        }
+      },
+    );
+
+    test(
+      'S-17503 the live events carry the phone’s own ids too: only the '
+      'wrist’s event is staged',
+      () async {
+        final repository = await _repository();
+        final result = await _inbox(repository, CaptureTransport()).receive(
+          observationsUp('s-echo', [
+            _set(wristId, loggedAt: '2026-09-25T10:05:00.000Z'),
+            _set(phoneId, loggedAt: '2026-09-25T10:05:00.000Z'),
+          ], messageId: 'msg-live-echo'),
+        );
+
+        expect(
+          result.stagedEntryIds,
+          [wristId],
+          reason: 'S-17503 an event under the phone’s own id is not staged',
+        );
+        expect(
+          result.receiptedEntryIds,
+          isNot(contains(phoneId)),
+          reason: 'S-17503 nothing is owed for an entry the phone wrote',
+        );
+        expect(
+          await repository.getWatchInboxEntry(phoneId),
+          isNull,
+          reason: 'S-17503 the echo never becomes an inbox row',
+        );
+      },
+    );
+
+    test(
+      'S-17504 a staged row under the phone’s own id is consumed, not '
+      'merged into the phone’s session',
+      () async {
+        final repository = await _repository();
+        const sessionId = 's-17504';
+        final echoed = echoOf(sessionId, number: 1);
+        await phoneRow(repository, sessionId);
+        await stageRow(
+          repository,
+          sessionId,
+          _set(echoed, loggedAt: iso(now - 1740000)),
+        );
+        await stageRow(
+          repository,
+          sessionId,
+          _end(sessionId, startedAt: iso(now - 1800000), endedAt: iso(now - 300000)),
+        );
+        final before = EntryRows.setGroups(
+          await repository.getEffortObservations(effortOf(sessionId)),
+        );
+        expect(before, hasLength(1), reason: 'S-17504 the phone’s own set');
+
+        final result = await WatchSessionImporter(
+          repository: repository,
+        ).apply(sessionId, phoneOwnsSession: true);
+
+        expect(
+          EntryRows.setGroups(
+            await repository.getEffortObservations(effortOf(sessionId)),
+          ),
+          hasLength(1),
+          reason:
+              'S-17504 the echoed id adds no set to the session the phone '
+              'holds (D-17504)',
+        );
+        final row = await repository.getWatchInboxEntry(echoed);
+        expect(
+          row?.appliedAtMs,
+          isNotNull,
+          reason: 'S-17504 a durable pre-fix row is marked applied, not left '
+              'to be reapplied',
+        );
+        expect(
+          result.appliedEntryIds,
+          contains(echoed),
+          reason: 'S-17504 and it is receipted, so the wrist stops re-sending',
+        );
+      },
+    );
+
+    test(
+      'S-17504 a staged row under the phone’s own id imports nothing on the '
+      'history path either',
+      () async {
+        final repository = await _repository();
+        const sessionId = 'w-17504';
+        final id = echoOf(sessionId);
+        await stageRow(
+          repository,
+          sessionId,
+          _set(id, loggedAt: iso(now - 1800000)),
+        );
+        await stageRow(
+          repository,
+          sessionId,
+          _end(sessionId, startedAt: iso(now - 1800000), endedAt: iso(now - 300000)),
+        );
+
+        final result = await WatchSessionImporter(
+          repository: repository,
+        ).apply(sessionId);
+
+        expect(
+          await repository.getSession(sessionId),
+          isNull,
+          reason:
+              'S-17504 a session the wrist reports with only the phone’s own '
+              'ids has nothing to import (D-17504)',
+        );
+        expect(
+          (await repository.getWatchInboxEntry(id))?.appliedAtMs,
+          isNotNull,
+          reason: 'S-17504 the row is applied rather than re-examined',
+        );
+        expect(
+          result.appliedEntryIds,
+          contains(id),
+          reason: 'S-17504 and receipted',
+        );
+      },
+    );
+
+    test(
+      'S-17511 a group the phone deleted is never resurrected by its old id',
+      () async {
+        final repository = await _repository();
+        const sessionId = 's-17511';
+        // The group numbered 2 was deleted, so the effort holds group 1 alone.
+        // An existence check would accept the echo — number 2 is not in the
+        // session — and write the deleted set back; the grammar refuses it
+        // whatever the session holds (D-17505).
+        final echoed = echoOf(sessionId, number: 2);
+        await phoneRow(repository, sessionId, numbers: const [1]);
+        await stageRow(
+          repository,
+          sessionId,
+          _set(echoed, loggedAt: iso(now - 1680000)),
+        );
+
+        final result = await WatchSessionImporter(
+          repository: repository,
+        ).apply(sessionId, phoneOwnsSession: true);
+
+        expect(
+          EntryRows.setGroups(
+            await repository.getEffortObservations(effortOf(sessionId)),
+          ),
+          hasLength(1),
+          reason: 'S-17511 the deleted group does not come back (D-17505)',
+        );
+        expect(
+          (await repository.getWatchInboxEntry(echoed))?.appliedAtMs,
+          isNotNull,
+          reason: 'S-17511 the row is applied',
+        );
+        expect(
+          result.appliedEntryIds,
+          contains(echoed),
+          reason: 'S-17511 and receipted',
+        );
+      },
+    );
   });
 }

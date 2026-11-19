@@ -2,7 +2,7 @@
 //  WatchEffortRatingView.swift
 //  WatchSessionEngine
 //
-//  The native watchOS effort-rating prompt and End control. Plan:
+//  The native watchOS effort-rating prompt. Plan:
 //  `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`, D-118
 //  and D-119.
 //
@@ -18,9 +18,10 @@
 
 import SwiftUI
 
-/// The prompt: the question, the scale, one confirm. Its only way out is an
-/// answer, so it carries no other button, hides the back button when pushed,
-/// and cannot be swiped away when presented as a sheet.
+/// The prompt: the question, the scale, one confirm, and a small Skip that
+/// records nothing. Its only ways out are an answer or Skip, so it carries no
+/// other button, hides the back button when pushed, and cannot be swiped away
+/// when presented as a sheet.
 public struct WatchEffortRatingView: View {
     @ObservedObject private var state: WatchEffortRatingState
 
@@ -49,6 +50,7 @@ public struct WatchEffortRatingView: View {
             .font(.caption2)
             .foregroundStyle(.secondary)
             confirmButton
+            skipButton
         }
         .padding(.horizontal, Self.surfaceInset)
         .focusable(true)
@@ -69,17 +71,23 @@ public struct WatchEffortRatingView: View {
         )
         .navigationBarBackButtonHidden(true)
         .interactiveDismissDisabled(true)
+        .accessibilityValue(state.selected.map { WatchSpokenText.rating($0, of: WatchEffortRatingCopy.highest) } ?? "No rating")
     }
 
-    /// One number of the scale. `.borderedProminent` and `.bordered` are
+    /// One number of the scale. `.watchProminent()` and `.bordered` are
     /// distinct types, so the picked and unpicked branches are separate views.
     @ViewBuilder
     private func scaleButton(_ value: Int) -> some View {
         let button = Button("\(value)") { state.select(value) }
         if value == state.selected {
-            button.buttonStyle(.borderedProminent)
+            button
+                .watchProminent()
+                .accessibilityLabel(WatchSpokenText.rating(value, of: WatchEffortRatingCopy.highest))
+                .accessibilityAddTraits(.isSelected)
         } else {
-            button.buttonStyle(.bordered)
+            button
+                .buttonStyle(.bordered)
+                .accessibilityLabel(WatchSpokenText.rating(value, of: WatchEffortRatingCopy.highest))
         }
     }
 
@@ -89,28 +97,18 @@ public struct WatchEffortRatingView: View {
         } label: {
             Text("Confirm").frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .watchProminent()
         .disabled(!state.canConfirm)
-    }
-}
-
-/// The End control: ends the session the wrist is on. Whether a prompt follows
-/// is the state's decision.
-public struct WatchEndSessionView: View {
-    @ObservedObject private var state: WatchEffortRatingState
-
-    public init(state: WatchEffortRatingState) {
-        self.state = state
+        .accessibilityHint("Saves your rating")
     }
 
-    public var body: some View {
-        Button {
-            Task { await state.end() }
-        } label: {
-            Text("End").frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        .disabled(!state.canEnd)
+    /// Skip closes the question without an answer and records nothing
+    /// (plan 66a D-3): the phone still asks, and the first real answer wins.
+    private var skipButton: some View {
+        Button(WatchEffortRatingCopy.skipLabel) { state.skipPrompt() }
+            .buttonStyle(.plain)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
     }
 }
 

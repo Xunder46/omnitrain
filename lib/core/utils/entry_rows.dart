@@ -167,6 +167,70 @@ abstract final class EntryRows {
     return [for (final number in numbers) SetRows(number, byNumber[number]!)];
   }
 
+  /// The set numbers [rests] mark logged (D-1): a set is logged exactly when a
+  /// rest exists at its index + 1, so each rest names the set one below it. The
+  /// rule the session screen reads (`WorkoutSessionScreen._isSetLogged`).
+  static Set<int> loggedSetNumbers(Iterable<EntryRest> rests) => {
+    for (final rest in rests)
+      // A rest at index 0 follows no set: `entryIndex - 1` is not a number.
+      if (rest.entryIndex >= 1) rest.entryIndex - 1,
+  };
+
+  /// The set NUMBERS [rests] mark logged, read through [groups] in position
+  /// order (D-11).
+  ///
+  /// A rest's `entryIndex` is a POSITION: the session screen reads a rest at
+  /// `position + 1`, the watch importer writes the placed index + 1, and a
+  /// delete re-keys the rests positionally. The wire speaks numbers, and a
+  /// group's number is what its rows' ids carry — the two coincide until a
+  /// middle set is deleted, which leaves the numbers with a hole (`{0, 1, 3,
+  /// 4}`) while the positions do not (`0..3`). A rest naming a position past
+  /// the last group is ignored.
+  static Set<int> loggedSetNumbersOf(
+    List<SetRows> groups,
+    Iterable<EntryRest> rests,
+  ) => {
+    for (final rest in rests)
+      if (rest.entryIndex >= 1 && rest.entryIndex - 1 < groups.length)
+        groups[rest.entryIndex - 1].number,
+  };
+
+  /// The rests [effortId] keeps after the set at POSITION [deletedIndex] goes
+  /// (D-1, D-3): null when no rest sits at [deletedIndex] + 1 or above — then a
+  /// delete leaves every rest alone.
+  ///
+  /// Otherwise the rest at [deletedIndex] + 1 is the deleted set's own mark and
+  /// is dropped, every higher rest moves one down with the same stamps, the
+  /// same open/paused state and the id `rest-<effortId>-<newIndex>`, and every
+  /// rest at [deletedIndex] or below stays. The result is sorted by
+  /// `entryIndex`. One rule, read by the phone's own delete
+  /// (`TimerManager.rekeyEntryRestsAfterDelete`) and by the importer's
+  /// wrist-set delete.
+  static List<EntryRest>? restsAfterDelete(
+    Iterable<EntryRest> rests,
+    String effortId,
+    int deletedIndex,
+  ) {
+    if (!rests.any((rest) => rest.entryIndex >= deletedIndex + 1)) return null;
+
+    final kept = <EntryRest>[];
+    for (final rest in rests) {
+      if (rest.entryIndex <= deletedIndex) {
+        kept.add(rest);
+        continue;
+      }
+      if (rest.entryIndex == deletedIndex + 1) continue;
+      kept.add(
+        rest.copyWith(
+          id: 'rest-$effortId-${rest.entryIndex - 1}',
+          entryIndex: rest.entryIndex - 1,
+        ),
+      );
+    }
+    kept.sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+    return kept;
+  }
+
   /// The effort's set entries as the UI reads them.
   static List<Map<String, dynamic>> setEntries(
     Iterable<EffortObservation> rows,

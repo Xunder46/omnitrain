@@ -65,7 +65,47 @@ abstract final class WatchObservationKind {
   /// slot: it names a food and a portion, and nothing else.
   static const String nutritionQuickLog = 'nutrition_quick_log';
 
-  static const List<String> all = [set, timed, round, hold, nutritionQuickLog];
+  /// The window between two efforts, hung on the entry it followed. It records
+  /// no work in a slot, so it is not an effort: it never joins [efforts], and
+  /// the set block's span and the effort debt do not see it.
+  static const String rest = 'rest';
+
+  /// How a session ended (D-16003). Stored at the instant the session ends, so
+  /// a wrist that finishes its own workout still has the end to tell the phone
+  /// — the phone cannot see a session it never started.
+  static const String sessionEnd = 'session_end';
+
+  /// One glass added to or removed from the day's water (plan 94 D-2). The
+  /// phone reads it; this twin emits no taps, so it is not in [all] (D-14).
+  static const String waterGlass = 'water_glass';
+
+  static const List<String> all = [
+    set,
+    timed,
+    round,
+    hold,
+    nutritionQuickLog,
+    sessionEnd,
+    rest,
+  ];
+
+  /// The kinds that record work done in a slot — what "an effort entry" means
+  /// to a set block's span and to whether an effort rating is owed. The set a
+  /// rest may hang on is one of these, and nothing else.
+  static const List<String> efforts = [set, timed, round, hold];
+}
+
+/// The ids the engine's own records carry.
+///
+/// The wrist captures facts about a session only it can observe, and names them
+/// after the session they are about, so the same fact captured twice is one
+/// record (D-16004) and the phone can recognise it without an index.
+abstract final class WatchSessionCapture {
+  static const String endPrefix = 'end-';
+
+  /// The entryId and eventId the end of [sessionId] carries, as on Swift
+  /// (`WatchRecords.swift`).
+  static String sessionEndId(String sessionId) => '$endPrefix$sessionId';
 }
 
 /// The session id a nutrition quick-log carries when the wrist has no session
@@ -110,7 +150,18 @@ abstract final class WatchSensorKind {
   /// and nothing here records it.
   static const String steps = 'steps';
 
-  static const List<String> all = [heartRate, gps, distance, steps];
+  /// The platform workout's active energy since it began, in kilocalories,
+  /// cumulative. Vocabulary only on this client: it keeps the kind list equal
+  /// to the shared contract, and nothing here records it.
+  static const String activeEnergy = 'energy';
+
+  static const List<String> all = [
+    heartRate,
+    gps,
+    distance,
+    steps,
+    activeEnergy,
+  ];
 }
 
 /// Base of every stored record — the single shape the store accepts.
@@ -178,6 +229,7 @@ final class WatchSessionRecord extends WatchRecord {
     required this.currentExerciseIndex,
     this.exercises = const [],
     this.revision = 0,
+    this.deletedEntryIds = const [],
     super.sequence,
   });
 
@@ -206,6 +258,12 @@ final class WatchSessionRecord extends WatchRecord {
   /// at the same session shape. Zero until a snapshot says otherwise.
   final int revision;
 
+  /// The entry ids the phone deleted, as the newest row knows them: the durable
+  /// half of the deletion lens (plan D-113), so a relaunch rebuilds it from
+  /// storage instead of forgetting it. Ids the newest snapshot carries are not
+  /// in it — an entry the phone still sends exists.
+  final List<String> deletedEntryIds;
+
   Map<String, Object?>? get currentExercise => exercises.isEmpty
       ? null
       : exercises[currentExerciseIndex.clamp(0, exercises.length - 1)];
@@ -225,8 +283,26 @@ final class WatchSessionRecord extends WatchRecord {
     currentExerciseIndex: currentExerciseIndex,
     exercises: exercises,
     revision: revision,
+    deletedEntryIds: deletedEntryIds,
     sequence: sequence,
   );
+
+  /// The same row carrying [deletedEntryIds] as its deletion lens.
+  WatchSessionRecord withDeletedEntryIds(List<String> deletedEntryIds) =>
+      WatchSessionRecord(
+        recordId: recordId,
+        sessionId: sessionId,
+        recordedAt: recordedAt,
+        startedAt: startedAt,
+        modality: modality,
+        source: source,
+        status: status,
+        currentExerciseIndex: currentExerciseIndex,
+        exercises: exercises,
+        revision: revision,
+        deletedEntryIds: deletedEntryIds,
+        sequence: sequence,
+      );
 
   @override
   Map<String, Object?> toJson() => {
@@ -242,6 +318,7 @@ final class WatchSessionRecord extends WatchRecord {
     'currentExerciseIndex': currentExerciseIndex,
     'exercises': exercises,
     'revision': revision,
+    'deletedEntryIds': deletedEntryIds,
   };
 
   static WatchSessionRecord fromJson(Map<String, Object?> json) =>
@@ -258,6 +335,10 @@ final class WatchSessionRecord extends WatchRecord {
             .map(asJsonObject)
             .toList(growable: false),
         revision: (json['revision'] as int?) ?? 0,
+        deletedEntryIds: [
+          for (final id in (json['deletedEntryIds'] as List?) ?? const [])
+            id! as String,
+        ],
         sequence: (json['sequence'] as int?) ?? 0,
       );
 }
@@ -363,6 +444,7 @@ final class WatchTimerRecord extends WatchRecord {
     this.stoppedAt,
     this.accumulatedPauseMs = 0,
     this.plannedDurationMs,
+    this.sessionExerciseId,
     super.sequence,
   });
 
@@ -383,6 +465,10 @@ final class WatchTimerRecord extends WatchRecord {
 
   /// Planned length, when the timer counts down. Null for elapsed timers.
   final int? plannedDurationMs;
+
+  /// The exercise slot the timer is for, or null for a rest and for a row
+  /// written before the field existed (D-2/D-5).
+  final String? sessionExerciseId;
 
   /// One of [WatchTimerState], derived from which timestamps are present.
   String get state {
@@ -405,6 +491,7 @@ final class WatchTimerRecord extends WatchRecord {
     stoppedAt: stoppedAt,
     accumulatedPauseMs: accumulatedPauseMs,
     plannedDurationMs: plannedDurationMs,
+    sessionExerciseId: sessionExerciseId,
     sequence: sequence,
   );
 
@@ -416,7 +503,15 @@ final class WatchTimerRecord extends WatchRecord {
     if (pausedAt != null) 'pausedAt': utcIso(pausedAt!),
     if (stoppedAt != null) 'stoppedAt': utcIso(stoppedAt!),
     'accumulatedPauseMs': accumulatedPauseMs,
-    if (plannedDurationMs != null) 'plannedDurationMs': plannedDurationMs,
+    // A rest is a count-up (docs/global_conventions.md, rest rule): a row
+    // written before that had a length still stores one, and the wire refuses
+    // it, so the frame never carries it.
+    if (plannedDurationMs != null && kind != 'rest')
+      'plannedDurationMs': plannedDurationMs,
+    // A rest belongs to no slot, and the wire's timer allows the field on
+    // every kind but carries it only where it means something.
+    if (sessionExerciseId != null && kind != 'rest')
+      'sessionExerciseId': sessionExerciseId,
   };
 
   @override
@@ -432,6 +527,7 @@ final class WatchTimerRecord extends WatchRecord {
     'stoppedAt': stoppedAt == null ? null : utcIso(stoppedAt!),
     'accumulatedPauseMs': accumulatedPauseMs,
     'plannedDurationMs': plannedDurationMs,
+    'sessionExerciseId': sessionExerciseId,
   };
 
   static WatchTimerRecord fromJson(Map<String, Object?> json) =>
@@ -445,6 +541,7 @@ final class WatchTimerRecord extends WatchRecord {
         stoppedAt: parseOptionalUtcIso(json['stoppedAt']),
         accumulatedPauseMs: (json['accumulatedPauseMs'] as int?) ?? 0,
         plannedDurationMs: json['plannedDurationMs'] as int?,
+        sessionExerciseId: json['sessionExerciseId'] as String?,
         sequence: (json['sequence'] as int?) ?? 0,
       );
 }

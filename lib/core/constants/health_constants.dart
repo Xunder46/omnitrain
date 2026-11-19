@@ -15,6 +15,9 @@ class HealthPrefs {
   static const String writeWorkoutsKey = 'health.writeWorkouts';
   static const String readBodyWeightKey = 'health.readBodyWeight';
 
+  /// `off` | `on` | `denied` — see [HealthToggleState].
+  static const String readActiveEnergyKey = 'health.readActiveEnergy';
+
   /// JSON list of session ids already written to the platform store:
   /// the idempotency ledger for the write pipeline (S-008).
   static const String writtenSessionIdsKey = 'health.writtenSessionIds';
@@ -39,6 +42,7 @@ enum HealthActivityKind {
   cardio,
   flexibility,
   sport,
+  yoga,
   conditioning,
   other,
 }

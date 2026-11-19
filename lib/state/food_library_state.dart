@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import '../core/constants/catalog_version.dart';
+import '../core/constants/shipped_food_groups.dart';
 import '../core/models/food_draft.dart';
+import '../core/services/food_photo_service.dart';
 import '../core/services/image_storage_service.dart';
 import '../data/models/models.dart';
 import '../data/repositories/workout_repository.dart';
@@ -14,47 +17,20 @@ import '../data/repositories/workout_repository.dart';
 /// All operations route through the injected WorkoutRepository interface,
 /// allowing environment-agnostic persistence (Hive web, SQLite native).
 
-/// Thrown by [FoodLibraryState.deleteFoodGroupReassigningFoods] when
-/// the deletion would strand at least one bundled catalog food —
-/// i.e. a food whose id is in [FoodLibraryState._bundledCatalogFoodIds]
-/// still has `groupId` equal to the category being deleted.
-///
-/// The constraint (see
-/// `docs/plans/2026-08-08-food-edit-orphan-category-plan.md`):
-/// we cannot rewrite a bundled catalog food's `groupId` to "fix" the
-/// stranded-ness, because the catalog refresh restores the bundled
-/// food's category on every launch — so any such rewrite would
-/// silently revert and the user would watch their action undo
-/// itself. The honest answer is to refuse the deletion and tell the
-/// user which category is blocking it; the UI catches this error and
-/// surfaces it as a snackbar.
-///
-/// Subclass of [StateError] so the existing
-/// `try { ... } catch (_) { snackbar }` handlers in
-/// `add_food_screen.dart` continue to treat it as a soft failure
-/// (no rethrow, no rollback); a typed `catch` is preferred so a
-/// future migration to surface specific copy can discriminate.
-class FoodGroupHasBundledFoodsError extends StateError {
-  /// The id of the category the user tried to delete. Surfaced so the
-  /// UI can build copy that names the category.
+/// Thrown by [FoodLibraryState.archiveFoodGroup] and
+/// [FoodLibraryState.deleteFoodGroupReassigningFoods] when the category is one
+/// the app ships with (`shippedFoodGroupIds`). Nothing is written. The Categories
+/// tab never offers the control for such a row, so this is the state layer's own
+/// refusal for any other caller.
+class ShippedFoodGroupError extends StateError {
+  /// The id of the shipped category the caller tried to remove.
   final String groupId;
 
-  /// The display name of the category, captured at throw time.
+  /// Its display name, captured at throw time.
   final String groupName;
 
-  /// The bundled food ids that currently reference [groupId] and
-  /// would be stranded if the deletion proceeded. Surfaced so the
-  /// UI can list the first few names in the snackbar.
-  final List<String> bundledFoodIds;
-
-  FoodGroupHasBundledFoodsError({
-    required this.groupId,
-    required this.groupName,
-    required this.bundledFoodIds,
-  }) : super(
-         'Cannot delete category "$groupName" ($groupId): ${bundledFoodIds.length} '
-         'bundled catalog food(s) still reference it.',
-       );
+  ShippedFoodGroupError({required this.groupId, required this.groupName})
+    : super('Cannot remove shipped category "$groupName" ($groupId).');
 }
 
 class FoodLibraryState extends ChangeNotifier {
@@ -246,7 +222,13 @@ class FoodLibraryState extends ChangeNotifier {
   /// Update an existing food group and persist changes.
   ///
   /// Notifies listeners after update.
+  ///
+  /// A shipped category cannot be stored archived (plan 137): the same
+  /// [ShippedFoodGroupError] as [archiveFoodGroup].
   Future<void> updateFoodGroup(FoodGroup group) async {
+    if (group.isArchived && isShippedFoodGroupId(group.id)) {
+      throw ShippedFoodGroupError(groupId: group.id, groupName: group.name);
+    }
     final updated = FoodGroup(
       id: group.id,
       name: group.name,
@@ -268,6 +250,9 @@ class FoodLibraryState extends ChangeNotifier {
     final group = _foodGroups[id];
     if (group == null) {
       throw Exception('Food group not found: $id');
+    }
+    if (isShippedFoodGroupId(id)) {
+      throw ShippedFoodGroupError(groupId: id, groupName: group.name);
     }
 
     await _repository.archiveFoodGroup(id);
@@ -325,19 +310,9 @@ class FoodLibraryState extends ChangeNotifier {
   /// group's row is `isArchived = true` and the cache reflects the
   /// reassignment.
   ///
-  /// **Bundled-food guard (S-006)**: refuses the deletion when
-  /// at least one bundled catalog food — a food whose id is in
-  /// [_bundledCatalogFoodIds] — still has `groupId == id`. We
-  /// cannot rewrite a bundled catalog food's `groupId` because
-  /// the catalog refresh restores the bundled category on every
-  /// launch, so any such rewrite would silently revert and the
-  /// user would watch their action undo itself. The honest answer
-  /// is to refuse the deletion and surface the reason via a
-  /// [FoodGroupHasBundledFoodsError] (caught by
-  /// `add_food_screen.dart`'s `_confirmAndDeleteGroup` and shown
-  /// as a snackbar). Library foods and user-created catalog foods
-  /// in the category are reassigned and the category is archived
-  /// exactly as before — only the bundled case is blocked.
+  /// **Shipped categories (plan 137)**: a category the app ships
+  /// with (`shippedFoodGroupIds`) is refused with
+  /// [ShippedFoodGroupError] before anything is read or written.
   Future<void> deleteFoodGroupReassigningFoods(
     String id,
     String? toGroupId,
@@ -346,31 +321,16 @@ class FoodLibraryState extends ChangeNotifier {
     if (group == null) {
       throw Exception('Food group not found: $id');
     }
+    if (isShippedFoodGroupId(id)) {
+      throw ShippedFoodGroupError(groupId: id, groupName: group.name);
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
-    // The guard below reads the in-memory catalog cache. A cold
-    // cache would make it see zero bundled foods and wave the
-    // deletion through, stranding every bundled food in the
-    // category — the exact outcome the guard exists to prevent.
-    // Load the catalog first when it has never been populated.
+    // The user-created catalog foods below are read from the in-memory
+    // catalog cache. A cold cache would see none of them and leave them
+    // pointing at the archived category, so load the catalog first when it
+    // has never been populated.
     if (_catalogFoods.isEmpty) {
       await loadCatalogFoods();
-    }
-    // Bundled-food guard (S-006): if any bundled catalog food
-    // currently points at this group, refuse the deletion. Run
-    // this BEFORE the library/user-catalog reassignment so a
-    // refused deletion is a true no-op (no row was touched).
-    final strandedBundled = _catalogFoods.values
-        .where(
-          (f) => !f.isArchived && f.groupId == id && isBundledCatalogFood(f.id),
-        )
-        .map((f) => f.id)
-        .toList();
-    if (strandedBundled.isNotEmpty) {
-      throw FoodGroupHasBundledFoodsError(
-        groupId: id,
-        groupName: group.name,
-        bundledFoodIds: strandedBundled,
-      );
     }
     // Reassign library foods first (existing behaviour).
     final foodIds = _foods.values
@@ -394,9 +354,9 @@ class FoodLibraryState extends ChangeNotifier {
       }
     }
     // Reassign user-owned catalog foods (those created via **+ New
-    // Item**) too. The bundled guard above guarantees we never see a
-    // bundled id here; the filter on `isBundledCatalogFood == false`
-    // is belt-and-suspenders.
+    // Item**) too. The shipped lock above means a bundled id never
+    // reaches here (a shipped category is refused first); the filter
+    // on `isBundledCatalogFood == false` is belt-and-suspenders.
     final userCatalogIds = _catalogFoods.values
         .where(
           (f) =>
@@ -660,6 +620,67 @@ class FoodLibraryState extends ChangeNotifier {
     return null;
   }
 
+  /// True when a non-archived food in the library or the catalog
+  /// already carries [name], ignoring case and surrounding spaces.
+  ///
+  /// Name-only on purpose (D-92c.7): the food form's duplicate note
+  /// asks "is there already a food called this?", so
+  /// [_matchesIdentity] (which needs every value to match) is not
+  /// used. This predicate never blocks a save.
+  ///
+  /// [excluding] is the food being edited: it and its `catalogId`
+  /// twins are skipped — a library copy ignores the catalog row it
+  /// was copied from, and a catalog row ignores its library copies
+  /// (D-92c.13). A legacy library row with no `catalogId` is a
+  /// separate row and still counts.
+  ///
+  /// A blank or whitespace-only [name] is `false`. Cold cache: rows
+  /// never loaded are not seen, so callers should await
+  /// [loadCatalogFoods] and [loadFoods] first.
+  bool nameExistsInLibrary(String name, {Food? excluding}) {
+    final key = name.trim().toLowerCase();
+    if (key.isEmpty) return false;
+    bool matches(Food candidate, {required bool candidateIsCatalog}) {
+      if (candidate.isArchived) return false;
+      if (_isExcludedRow(
+        candidate,
+        candidateIsCatalog: candidateIsCatalog,
+        excluding: excluding,
+      )) {
+        return false;
+      }
+      return candidate.name.trim().toLowerCase() == key;
+    }
+
+    for (final food in _catalogFoods.values) {
+      if (matches(food, candidateIsCatalog: true)) return true;
+    }
+    for (final food in _foods.values) {
+      if (matches(food, candidateIsCatalog: false)) return true;
+    }
+    return false;
+  }
+
+  /// True when [candidate] is [excluding] itself or a row linked to
+  /// it by `catalogId`, in either direction (D-92c.13).
+  static bool _isExcludedRow(
+    Food candidate, {
+    required bool candidateIsCatalog,
+    Food? excluding,
+  }) {
+    if (excluding == null) return false;
+    if (candidate.id == excluding.id) return true;
+    if (excluding.catalogId != null &&
+        candidateIsCatalog &&
+        candidate.id == excluding.catalogId) {
+      return true;
+    }
+    if (!candidateIsCatalog && candidate.catalogId == excluding.id) {
+      return true;
+    }
+    return false;
+  }
+
   /// Inverse of [libraryIdFor]: returns the catalog-food id that the
   /// given user-owned library row is a copy of, or `null` if the
   /// library row has no catalog twin.
@@ -714,6 +735,16 @@ class FoodLibraryState extends ChangeNotifier {
     return a.name.toLowerCase() == b.name.toLowerCase();
   }
 
+  /// True when [before] and [after] differ in any of the three stored
+  /// serving fields. Same rule as the draft-vs-food serving check,
+  /// for the catalog-propagation and reset paths that compare two
+  /// foods.
+  static bool _servingTripleChanged(Food before, Food after) {
+    return before.unitType != after.unitType ||
+        before.referenceAmount != after.referenceAmount ||
+        before.referenceLabel != after.referenceLabel;
+  }
+
   /// Propagates catalog food edits to all linked library foods.
   /// Called after [updateCatalogFood] saves the catalog change.
   ///
@@ -740,10 +771,14 @@ class FoodLibraryState extends ChangeNotifier {
   ///     link stays intact.
   ///   * `lastAmountConsumed` (per-user remembered portion from
   ///     `NutritionState`, food-last-amount plan) is preserved from
-  ///     the existing library row. Catalog rows are always `null`
-  ///     for this field, so the propagation must explicitly carry
-  ///     the library value forward — otherwise the write-through
-  ///     amount the user just logged would be silently wiped.
+  ///     the existing library row — unless the catalog's serving
+  ///     triple changed, in which case it is cleared (92b D-92b.7;
+  ///     verified by `test/food_library_edit_test.dart`, group
+  ///     'FoodLibraryState updateCatalogFood'). Catalog rows are
+  ///     always `null` for this field, so the propagation must
+  ///     explicitly carry the library value forward — otherwise the
+  ///     write-through amount the user just logged would be silently
+  ///     wiped.
   ///   * `updatedAtMs` is bumped so the next `notifyListeners()`
   ///     cycle reflects the propagation timestamp.
   Future<void> _propagateCatalogEditToLinkedFoods(
@@ -780,14 +815,19 @@ class FoodLibraryState extends ChangeNotifier {
 
       // Create updated library food with catalog's current values
       // but preserve the library food's own id, catalogId,
-      // lastAmountConsumed, and createdAtMs. The catalog's
+      // createdAtMs — and its remembered amount only while the
+      // serving it refers to is unchanged. The catalog's
       // groupId flows through (per the user-stated "any editable
       // field including group" contract).
+      final servingChanged = _servingTripleChanged(
+        libFood,
+        updatedCatalogFood,
+      );
       final updatedLibFood = updatedCatalogFood.copyWith(
         id: libFood.id,
         catalogId: libFood.catalogId,
         isCatalog: false,
-        lastAmountConsumed: libFood.lastAmountConsumed,
+        lastAmountConsumed: servingChanged ? null : libFood.lastAmountConsumed,
         createdAtMs: libFood.createdAtMs,
         updatedAtMs: now,
       );
@@ -799,11 +839,17 @@ class FoodLibraryState extends ChangeNotifier {
 
     // Upgrade and update legacy library foods (found via identity match)
     for (final legacyFood in legacyMatches) {
+      final servingChanged = _servingTripleChanged(
+        legacyFood,
+        updatedCatalogFood,
+      );
       final upgradedLibFood = updatedCatalogFood.copyWith(
         id: legacyFood.id,
         catalogId: catalogFoodId, // Upgrade to durable linkage
         isCatalog: false,
-        lastAmountConsumed: legacyFood.lastAmountConsumed,
+        lastAmountConsumed: servingChanged
+            ? null
+            : legacyFood.lastAmountConsumed,
         createdAtMs: legacyFood.createdAtMs,
         updatedAtMs: now,
       );
@@ -990,6 +1036,17 @@ class FoodLibraryState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The user's library copy for a catalog id (plan 77a D-1b): the
+  /// row [libraryIdFor] points at, from the cache, or `null` when
+  /// the catalog food is not in the library. An in-list Library row
+  /// renders this copy (so an edit is visible there); a not-in-list
+  /// row renders the catalog food.
+  Food? libraryFoodFor(String catalogFoodId) {
+    final id = libraryIdFor(catalogFoodId);
+    if (id == null) return null;
+    return _foods[id];
+  }
+
   /// Delete a catalog food from the catalog (hard delete).
   /// This permanently removes the food from the catalog.
   /// Does NOT affect user's historical nutrition logs (ConsumedFood entries)
@@ -1050,6 +1107,132 @@ class FoodLibraryState extends ChangeNotifier {
     }
     notifyListeners();
     return newId;
+  }
+
+  /// Creates a food of the user's own from a **default food** (a
+  /// bundled catalog row or the copy of one) and applies the
+  /// editor's draft to it (plan 133 D-13313..D-13315). The bundled
+  /// catalog row and its seed-touched marker are untouched; the new
+  /// food is a plain user-created catalog food and is never matched
+  /// as the default's copy.
+  ///
+  /// Owns the whole in-list swap so no reader sees an intermediate
+  /// state (INV-133-A):
+  ///
+  ///   1. resolve the photo for the new copy (D-13315) — before any
+  ///      state write, so a photo failure writes nothing;
+  ///   2. `createCatalogFood` with the resolved path;
+  ///   3. when the default IS in the list: remove the replaced copy
+  ///      row FIRST (addCatalogFoodToLibrary reuses the existing row
+  ///      for a catalog id, so the new row must not find the old
+  ///      copy there), delete its managed photograph, then
+  ///      addCatalogFoodToLibrary with the new id.
+  ///
+  /// Returns the new library row id when the new food was added to
+  /// the list, else the new catalog id.
+  Future<String> createOwnCopyOfDefault(
+    Food source,
+    FoodDraft draft, {
+    required bool addToList,
+  }) async {
+    if (!isDefaultFood(source)) {
+      throw StateError(
+        'createOwnCopyOfDefault: source must be a default food '
+        '(got id ${source.id}, catalogId ${source.catalogId})',
+      );
+    }
+    final imagePath = await _copyImagePathFor(source, draft);
+    final String newId;
+    try {
+      newId = await createCatalogFood(
+        FoodDraft(
+          name: draft.name,
+          groupId: draft.groupId,
+          unitType: draft.unitType,
+          referenceAmount: draft.referenceAmount,
+          referenceLabel: draft.referenceLabel,
+          protein: draft.protein,
+          carbs: draft.carbs,
+          fiber: draft.fiber,
+          fat: draft.fat,
+          sodium: draft.sodium,
+          notes: draft.notes,
+          imagePath: imagePath,
+        ),
+      );
+    } catch (_) {
+      await _discardFreshCopyPhoto(imagePath);
+      rethrow;
+    }
+    if (!addToList) return newId;
+
+    // The new food is added BEFORE the replaced copy is removed (review
+    // 133 finding 1): a failure while adding leaves the old copy, and so
+    // today's log, exactly as it was. The new food has its own catalog id,
+    // so adding it never finds the old copy.
+    final oldLibraryId = libraryIdFor(source.catalogId ?? source.id);
+    final replacedPath = oldLibraryId == null
+        ? null
+        : _foods[oldLibraryId]?.imagePath;
+    try {
+      await addCatalogFoodToLibrary(newId);
+    } catch (_) {
+      // Nothing half-made is left behind: drop the new catalog row and
+      // its photo, then report the failure.
+      try {
+        await deleteCatalogFood(newId);
+      } catch (_) {}
+      await _discardFreshCopyPhoto(imagePath);
+      rethrow;
+    }
+    final newLibraryId = libraryIdFor(newId)!;
+    if (oldLibraryId != null) {
+      await removeFood(oldLibraryId);
+      await _imageStorage?.deleteIfManaged(replacedPath);
+    }
+    return newLibraryId;
+  }
+
+  /// Deletes the managed photo [_copyImagePathFor] wrote for a copy that
+  /// then failed to save. Only a fresh file is deleted: without an image
+  /// service [_copyImagePathFor] hands back the caller's own path.
+  Future<void> _discardFreshCopyPhoto(String? imagePath) async {
+    final svc = _imageStorage;
+    if (svc == null || imagePath == null) return;
+    try {
+      await svc.deleteIfManaged(imagePath);
+    } catch (_) {}
+  }
+
+  /// D-13315: the photo for the new copy. A picked photo already
+  /// lives under the managed directory and is copied to a fresh
+  /// basename; an untouched photo re-encodes the default's shipped
+  /// `.webp` asset through the managed directory. No service
+  /// injected (as in tests) or any failure → the new food has no
+  /// photo and the save still succeeds (INV-133-E).
+  Future<String?> _copyImagePathFor(Food source, FoodDraft draft) async {
+    final svc = _imageStorage;
+    final draftPath = draft.imagePath;
+    if (svc == null) return draftPath;
+    if (draftPath != null) {
+      try {
+        return await svc.copyManagedFileToNewBasename(draftPath);
+      } catch (_) {
+        return null;
+      }
+    }
+    final assetPath = FoodPhotoService.bundledPhotoAssetPath(
+      source.catalogId ?? source.id,
+    );
+    try {
+      final data = await rootBundle.load(assetPath);
+      return await svc.persistImageBytes(
+        data.buffer.asUint8List(),
+        extension: '.webp',
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   // ─── Custom Food (S-004) ─────────────────────────────────────────────
@@ -1296,6 +1479,7 @@ class FoodLibraryState extends ChangeNotifier {
     'chia_seeds',
     'chicken_breast',
     'chicken_thigh',
+    'chicken_thigh_skin_on',
     'chicken_wing',
     'chickpeas',
     'chocolate_chip_cookie',
@@ -1436,6 +1620,15 @@ class FoodLibraryState extends ChangeNotifier {
   /// cannot be hard-deleted. User-created catalog foods can be deleted.
   bool isBundledCatalogFood(String catalogFoodId) {
     return _bundledCatalogFoodIds.contains(catalogFoodId);
+  }
+
+  /// True when [food] is a **default food** (plan 133 D-13310): a
+  /// bundled catalog row, or the user's library copy of one
+  /// (`catalogId` names a bundled row).
+  bool isDefaultFood(Food food) {
+    if (isBundledCatalogFood(food.id)) return true;
+    final catalogId = food.catalogId;
+    return catalogId != null && isBundledCatalogFood(catalogId);
   }
 
   /// Returns catalog foods that were created by the user (not bundled).

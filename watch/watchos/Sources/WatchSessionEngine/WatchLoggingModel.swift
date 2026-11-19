@@ -28,14 +28,54 @@ public final class WatchLoggingModel: ObservableObject {
     private lazy var milestones = WatchTimerHaptics(state.engine)
     private var ticker: Timer?
 
-    /// Where the crown last was, per metric key. A crown reports a position
-    /// rather than a delta, so the row has to remember the previous one.
-    private var crownPositions: [String: Double] = [:]
+    /// Where the crown last was, in points. A crown reports one absolute position
+    /// for the whole surface, so it is remembered once and stays continuous
+    /// across a change of the armed row: arming must not step a value by the
+    /// distance the crown had already travelled.
+    private var crownPoint: Double = 0
 
-    /// Crown travel not yet worth a whole detent, per metric key. A wrist turn
-    /// is continuous and a step is discrete; the leftover is what keeps a slow
-    /// turn from being silently rounded away.
-    private var carry: [String: Double] = [:]
+    /// Crown travel not yet worth a whole detent. Dropped when another row is
+    /// armed, so half a detent aimed at one value never finishes on another.
+    private var carry: Double = 0
+
+    /// The row the user last chose, if any; `armedMetricKey` checks it is still
+    /// a row the crown may drive.
+    private var armedKey: String?
+
+    /// The row the crown steps: the one the user armed while it is still on
+    /// screen and not measured, else the first row a sensor is not keeping, else
+    /// nil.
+    public var armedMetricKey: String? {
+        let open = state.fields.filter { !$0.isMeasured }
+        if let armedKey, open.contains(where: { $0.metricKey == armedKey }) { return armedKey }
+        return open.first?.metricKey
+    }
+
+    public var crownPosition: Double { crownPoint }
+
+    /// Chooses the row the crown steps. A key that is not an open row is ignored.
+    public func arm(_ metricKey: String) {
+        guard state.fields.contains(where: { $0.metricKey == metricKey && !$0.isMeasured }) else { return }
+        armedKey = metricKey
+        carry = 0
+        objectWillChange.send()
+    }
+
+    /// A crown event: the absolute position it now reports, turned into whole
+    /// detents against where it last was and applied to the armed row. Travel
+    /// short of a detent is carried to the next event.
+    public func turn(to position: Double) {
+        let moved = position - crownPoint
+        crownPoint = position
+
+        let waiting = carry + moved
+        let detents = (waiting / Self.pointsPerDetent).rounded(.towardZero)
+        carry = waiting - detents * Self.pointsPerDetent
+        guard detents != 0, let key = armedMetricKey else { return }
+
+        state.adjust(key, detents: detents, fine: true)
+        poll()
+    }
 
     public init(state: WatchLoggingState, haptics: WatchHaptics) {
         self.state = state
@@ -64,12 +104,11 @@ public final class WatchLoggingModel: ObservableObject {
         objectWillChange.send()
     }
 
-    /// What is left of the running countdown, in seconds, or nil when none is
-    /// running.
+    /// What is left of the running round countdown, in seconds, or nil when
+    /// none is running. A rest is a count-up and has no remaining time (D-160).
     public var countdown: Double? {
-        let timer = state.timer(for: WatchTimerKind.round)
-            ?? state.timer(for: WatchTimerKind.rest)
-        guard let timer, timer.state != WatchTimerState.stopped else { return nil }
+        guard let timer = state.timer(for: WatchTimerKind.round),
+              timer.state != WatchTimerState.stopped else { return nil }
         guard let remaining = remainingMs(timer, now: state.now()) else { return nil }
         return Double(remaining) / 1000
     }
@@ -79,32 +118,107 @@ public final class WatchLoggingModel: ObservableObject {
         poll()
     }
 
+    /// Steps the armed row by `detents`: what the shared − / + under two value
+    /// tiles does. No armed row (every row is a sensor's reading, or there are
+    /// none) is a no-op.
+    public func stepArmed(_ detents: Double) {
+        guard let key = armedMetricKey else { return }
+        state.adjust(key, detents: detents)
+        poll()
+    }
+
+    /// The header's one status line: the set caption and what the sensors read,
+    /// joined with a dot, either alone when the other is absent, nil when
+    /// neither is there. Two short captions cost a whole row on a 40 mm screen.
+    public var statusLine: String? {
+        let parts = [state.setCaption, sensorLine].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Why a sensor is silent, as the state resolves it (plan 59, D-4).
+    public var sensorNotices: [String] { state.sensorNotices }
+
+    /// What the sensors are reading, as one line: the heart rate, the distance,
+    /// and the pace it is being covered at. Absent pieces are left out rather
+    /// than shown as zero — a session with no reading has nothing to report, and
+    /// the line disappears entirely when there is nothing at all.
+    private var sensorLine: String? {
+        let readout = state.sensorLabels
+        let unit = state.units.isMiles ? "mi" : "km"
+        var parts: [String] = []
+        if let beats = readout.heartRate { parts.append("\(beats) bpm") }
+        if let distance = readout.distance { parts.append("\(distance) \(unit)") }
+        if let pace = readout.pace { parts.append(pace) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Starts the effort's work clock (D-1308).
+    public func startWork() async {
+        await state.startWork()
+        poll()
+    }
+
+    /// Whether the one button is still offering Start: a timed effort whose
+    /// clock has not begun. A set is never awaiting a start, and neither is an
+    /// effort already running (D-1316).
+    private var isAwaitingStart: Bool { state.isTimedWork && !state.isWorkRunning }
+
+    /// What the one button says: Start until the effort's clock is running, then
+    /// Log — and always Log for a set, whose button never starts anything
+    /// (D-1316).
+    public var primaryTitle: String { isAwaitingStart ? "Start" : "Log" }
+
+    /// What the one button does: starts the clock when nothing is running, and
+    /// logs the effort otherwise (D-1316).
+    public func primaryAction() async {
+        if isAwaitingStart {
+            await state.startWork()
+        } else if (try? await state.log()) != nil {
+            playLogCue()
+        }
+        poll()
+    }
+
+    /// The readout, or nil for a set, whose rows are what it shows instead: a
+    /// period's remaining time (its preset before Start), and the elapsed time
+    /// for the kinds that count up (D-1316).
+    public var workReadout: String? {
+        guard state.isTimedWork else { return nil }
+        if let remaining = state.workRemainingSeconds() {
+            return WatchLoggingState.clock(Double(remaining))
+        }
+        return WatchLoggingState.clock(Double(state.workElapsedSeconds()))
+    }
+
+    /// The period the next log will record, in this modality's own word and
+    /// singular ("Period 2"), or nil for the kinds without periods (D-1307).
+    /// The view renders this line; the rule lives here so the desktop toolchain
+    /// can assert it (D-1316).
+    public var periodLine: String? {
+        guard state.effortKind == WatchEffortKind.round else { return nil }
+        return "\(Self.singular(state.roundsLabel)) \(state.nextRoundNumber)"
+    }
+
+    private static func singular(_ label: String) -> String {
+        label.hasSuffix("s") ? String(label.dropLast()) : label
+    }
+
     public func log() async {
-        _ = try? await state.log()
+        if (try? await state.log()) != nil {
+            playLogCue()
+        }
         poll()
     }
 
-    // MARK: - Crown binding
-
-    /// The crown's last position for a row, in points.
-    public func crownPosition(for metricKey: String) -> Double {
-        crownPositions[metricKey] ?? 0
-    }
-
-    /// A crown event: the position it now reports, turned into whole detents
-    /// against where the row last saw it. Travel short of a detent is carried
-    /// to the next event rather than rounding the value off its step.
-    public func turn(_ metricKey: String, to position: Double) {
-        let moved = position - crownPosition(for: metricKey)
-        crownPositions[metricKey] = position
-
-        let waiting = (carry[metricKey] ?? 0) + moved
-        let detents = (waiting / Self.pointsPerDetent).rounded(.towardZero)
-        carry[metricKey] = waiting - detents * Self.pointsPerDetent
-        guard detents != 0 else { return }
-
-        state.adjust(metricKey, detents: detents)
-        poll()
+    /// The one cue a recorded log is owed: the record's own tap when the set
+    /// beat the standing best, the logged tap otherwise — never both (plan 87b
+    /// D-6, S-87b-21).
+    private func playLogCue() {
+        if state.lastLogWasPersonalRecord {
+            haptics.playPersonalRecord()
+        } else {
+            haptics.playLogged()
+        }
     }
 }
 
@@ -112,16 +226,68 @@ public final class WatchLoggingModel: ObservableObject {
 /// wrist is owed one can be asserted.
 public final class RecordingHaptics: WatchHaptics {
     public private(set) var milestones: [WatchTimerMilestone] = []
+    public private(set) var restPings = 0
+    public private(set) var logged = 0
+    public private(set) var personalRecords = 0
+    public private(set) var nexts = 0
 
     public init() {}
 
     public func play(_ milestone: WatchTimerMilestone) {
         milestones.append(milestone)
     }
+
+    public func playRestPing() {
+        restPings += 1
+    }
+
+    public func playLogged() {
+        logged += 1
+    }
+
+    public func playPersonalRecord() {
+        personalRecords += 1
+    }
+
+    public func playNext() {
+        nexts += 1
+    }
 }
 
-/// How the wrist is told a countdown ended. The watchOS implementation lives in
+/// How the wrist is told a countdown ended, and that a rest has reached another
+/// multiple of its interval. The watchOS implementation lives in
 /// `WatchLoggingView.swift`, behind the platform guard; this is the contract.
 public protocol WatchHaptics {
     func play(_ milestone: WatchTimerMilestone)
+
+    /// The rest ping: a rest counts up and is owed nothing when it ends, so this
+    /// is its own cue rather than a `WatchTimerMilestone` case (D-244, D-251).
+    func playRestPing()
+
+    /// A log the wrist recorded: one success tap (plan 51e D-1).
+    func playLogged()
+
+    /// A log that beat the standing best: one distinct tap in place of the
+    /// logged one (plan 87b D-6). A conformer with no record cue of its own
+    /// falls back to the logged tap.
+    func playPersonalRecord()
+
+    /// Next on the rest screen, back to logging: one light directional tap.
+    func playNext()
+
+    /// The session's Finish tap: one tap confirming the choice before the
+    /// rating prompt takes the screen (plan 82 D-8).
+    func playFinished()
+}
+
+extension WatchHaptics {
+    /// A conformer with no device to tap on does nothing, so a fake in the
+    /// tests compiles without a witness (plan 82 S-15109).
+    public func playFinished() {}
+
+    /// A surface that has no record cue of its own still confirms the log: the
+    /// default is the logged tap, so a PR never plays nothing (plan 87b D-6).
+    public func playPersonalRecord() {
+        playLogged()
+    }
 }

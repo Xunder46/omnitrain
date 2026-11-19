@@ -1,0 +1,62 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-routines-round-length-1",
+  "type": "routines_down",
+  "origin": "phone",
+  "sentAt": "2026-10-09T18:00:00Z",
+  "payload": {
+    "generatedAt": "2026-10-09T18:00:00Z",
+    "routines": [
+      {
+        "routineId": "routine-soccer",
+        "name": "Soccer",
+        "updatedAt": "2026-10-09T09:00:00Z",
+        "segments": [
+          {
+            "segmentId": "seg-match",
+            "name": "Match",
+            "efforts": [
+              {
+                "effortId": "eff-soccer-half",
+                "exerciseId": "ex-soccer",
+                "exerciseName": "Soccer",
+                "effortKind": "round",
+                "capabilities": ["time", "rounds"],
+                "targets": { "rounds": 2, "durationMs": 600000 }
+              },
+              {
+                "effortId": "eff-soccer-extra",
+                "exerciseId": "ex-soccer",
+                "exerciseName": "Soccer",
+                "effortKind": "round",
+                "capabilities": ["time", "rounds"],
+                "targets": { "rounds": 3 }
+              },
+              {
+                "effortId": "eff-plank",
+                "exerciseId": "ex-plank",
+                "exerciseName": "Plank",
+                "effortKind": "timed",
+                "capabilities": ["time", "hold"],
+                "targets": { "durationMs": 300000 }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "fallbackExercises": [
+      {
+        "exerciseId": "ex-soccer",
+        "name": "Soccer",
+        "capabilities": ["time", "rounds"],
+        "roundDurationSecs": 2400
+      },
+      {
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      }
+    ]
+  }
+}

@@ -21,6 +21,17 @@ class InstrumentSparkline extends StatelessWidget {
 
   static const Size _size = Size(56, 24);
 
+  /// The values the line plots (plan 226): each point's value, negated for a
+  /// pace (seconds per kilometre, lower is better) so a faster pace rises and
+  /// the line agrees with the change arrow.
+  @visibleForTesting
+  static List<double> plottedValues(List<ExerciseMetricPoint> points) => [
+    for (final point in points)
+      point.value.metric == NativeMetric.pace
+          ? -point.value.value
+          : point.value.value,
+  ];
+
   @override
   Widget build(BuildContext context) {
     if (points.length < 2) return const SizedBox.shrink();
@@ -29,7 +40,7 @@ class InstrumentSparkline extends StatelessWidget {
       size: _size,
       child: CustomPaint(
         painter: _SparklinePainter(
-          values: [for (final point in points) point.value.value],
+          values: plottedValues(points),
           color: themeColors.primary,
         ),
       ),

@@ -1,0 +1,24 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-energy-1",
+  "sessionId": "s-energy-fx",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-11-08T10:56:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "end-s-energy-fx",
+        "entryId": "end-s-energy-fx",
+        "kind": "session_end",
+        "loggedAt": "2026-11-08T10:55:00Z",
+        "startedAt": "2026-11-08T10:00:00Z",
+        "endedAt": "2026-11-08T10:55:00Z",
+        "status": "completed",
+        "avgHeartRateBpm": 140,
+        "maxHeartRateBpm": 168,
+        "activeEnergyKcal": 412.6
+      }
+    ]
+  }
+}

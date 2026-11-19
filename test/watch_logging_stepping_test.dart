@@ -3,6 +3,7 @@
 // Plan: `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
 // Scenario mapping:
 //   S-007 metric stepping matches metric semantics → `S-007 ...`
+//   S-61 the wrist floor is −200 kg, the step unchanged → `S-61 ...`
 //
 // A step is a property of the metric and the saved unit preference, never of
 // the surface: one table, consulted by the Wear OS surface and mirrored by the
@@ -171,15 +172,7 @@ void main() {
       );
     });
 
-    test('S-007 load and distance never go negative', () {
-      expect(
-        WatchMetricStepping.adjust(
-          0,
-          metricKey: WatchMetricKey.weight,
-          detents: -1,
-        ),
-        0,
-      );
+    test('S-007 duration and distance never go negative', () {
       expect(
         WatchMetricStepping.adjust(
           0,
@@ -198,7 +191,59 @@ void main() {
       );
     });
 
-    test('S-007 extra load is signed, because band assist is a load', () {
+    test('S-61 an assisted load stops at the wire floor', () {
+      const kg = WatchUnitPreferences();
+      const lbs = WatchUnitPreferences(weightUnit: 'lbs');
+
+      // The floor itself: the same canonical kilograms in both units.
+      expect(WatchMetricStepping.clampTo(WatchMetricKey.weight, -240), -200);
+      expect(WatchMetricStepping.clampTo(WatchMetricKey.weight, -200.1), -200);
+      expect(WatchMetricStepping.clampTo(WatchMetricKey.weight, -200), -200);
+
+      for (final units in [kg, lbs]) {
+        final step = WatchMetricStepping.stepFor(
+          WatchMetricKey.weight,
+          units: units,
+        );
+        double turn(double from, double detents) =>
+            WatchMetricStepping.adjust(
+              from,
+              metricKey: WatchMetricKey.weight,
+              detents: detents,
+              units: units,
+            );
+
+        // A normal step below zero still works.
+        expect(
+          turn(-100, -1),
+          moreOrLessEquals(-100 - step, epsilon: 0.001),
+        );
+        // The dial crosses zero into an assist.
+        expect(turn(0, -1), moreOrLessEquals(-step, epsilon: 0.001));
+        // A positive load dialled down lands on zero.
+        expect(turn(step, -1), 0);
+      }
+
+      // The last step onto the floor lands exactly on it, and stays there.
+      expect(
+        WatchMetricStepping.adjust(
+          -197.5,
+          metricKey: WatchMetricKey.weight,
+          detents: -1,
+        ),
+        -200,
+      );
+      expect(
+        WatchMetricStepping.adjust(
+          -200,
+          metricKey: WatchMetricKey.weight,
+          detents: -1,
+        ),
+        -200,
+      );
+    });
+
+    test('S-61 extra load stays signed and unbounded', () {
       expect(
         WatchMetricStepping.adjust(
           0,
@@ -206,7 +251,9 @@ void main() {
           detents: -4,
         ),
         -10,
-        reason: 'negative extra load is band assist (EffortDefaults, drill)',
+        reason:
+            "extra load is signed and unbounded; extraLoadKg is not the "
+            "carrier for a set's assist (D-58)",
       );
     });
   });

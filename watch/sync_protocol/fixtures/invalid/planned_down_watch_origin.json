@@ -1,0 +1,19 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-planned-down-watch-origin-1",
+  "type": "planned_down",
+  "origin": "watch",
+  "sentAt": "2026-11-05T09:00:00Z",
+  "payload": {
+    "generatedAt": "2026-11-05T09:00:00Z",
+    "plans": [
+      {
+        "plannedSessionId": "p-today-routine",
+        "name": "Push A",
+        "scheduledDateMs": 1793836800000,
+        "createdAtMs": 1793750000000,
+        "updatedAtMs": 1793800000000
+      }
+    ]
+  }
+}

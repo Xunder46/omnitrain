@@ -20,11 +20,17 @@
 /// or altered copy never replaces what was staged.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/platform/watch_delivery.dart';
+import '../../core/services/diagnostics_log.dart';
+import '../../core/services/health_sync_service.dart';
 import '../../core/services/watch_session_importer.dart';
 import '../../core/sync_protocol/message_validator.dart';
+import '../../core/sync_protocol/phone_entries.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import 'live_session_mirror_state.dart';
@@ -111,6 +117,14 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     bool Function(String sessionId)? phoneOwnsSession,
     Future<void> Function(String sessionId, List<String> effortIds)?
     onSessionRowsChanged,
+    Future<void> Function(String sessionId, int rating)? onSessionRated,
+    Future<void> Function(String sessionId)? onSensorSummaryAttached,
+    Future<void> Function(String sessionId)? onSessionHistoryChanged,
+    HealthSyncService? healthSync,
+
+    /// The phone's diagnostics log (plan 174, D-17401), forwarded to the
+    /// importer this inbox builds; null records nothing.
+    DiagnosticsLog? diagnostics,
   }) : _repository = repository,
        _transport = transport,
        _validator = validator,
@@ -120,9 +134,14 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
        _onFailure = onFailure ?? _report,
        _phoneOwnsSession = phoneOwnsSession,
        _onSessionRowsChanged = onSessionRowsChanged,
+       _onSessionRated = onSessionRated,
+       _onSensorSummaryAttached = onSensorSummaryAttached,
+       _onSessionHistoryChanged = onSessionHistoryChanged,
+       _healthSync = healthSync,
        _importer = WatchSessionImporter(
          repository: repository,
          clock: clock ?? _utcNow,
+         diagnostics: diagnostics,
        );
 
   static DateTime _utcNow() => DateTime.now().toUtc();
@@ -162,6 +181,27 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
   final Future<void> Function(String sessionId, List<String> effortIds)?
   _onSessionRowsChanged;
 
+  /// Called once per settled session whose import wrote a rating, with the
+  /// rating it wrote — the live session's adoption (D-1). Null (a test, a build
+  /// with no session state) adopts nothing.
+  final Future<void> Function(String sessionId, int rating)? _onSessionRated;
+
+  /// Called once per settled session whose pass stored the wrist's heart-rate
+  /// summary (plan 72): a screen showing that session can re-read it. Null
+  /// (a test, a build with no session state) tells nobody.
+  final Future<void> Function(String sessionId)? _onSensorSummaryAttached;
+
+  /// Called after an import pass changed a session's history (plan 134
+  /// D-13420): the active-energy estimate reads the session's end and the
+  /// wrist's timed and round instances, which this pass may have just created.
+  /// Null without an energy store.
+  final Future<void> Function(String sessionId)? _onSessionHistoryChanged;
+
+  /// Told once per settled session whose import wrote a rating, so the rating
+  /// reaches the session's workout in Fitness (plan 90 D-4). Null (a test, a
+  /// build without health sync) tells nobody.
+  final HealthSyncService? _healthSync;
+
   /// The fields each staged kind must carry to become history — the ones the
   /// `observations_up` schema requires of it. A snapshot entry is held only to
   /// the shared entry shape (Assumption A-3 of the plan), so an entry lacking
@@ -187,6 +227,13 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
       'exerciseId',
       'startedAt',
       'endedAt',
+    ],
+    WatchInboxEntry.kindRest: [
+      'sessionExerciseId',
+      'exerciseId',
+      'startedAt',
+      'endedAt',
+      'afterEntryId',
     ],
     WatchInboxEntry.kindEffortRating: ['rating'],
     WatchInboxEntry.kindSessionEnd: ['startedAt', 'endedAt', 'status'],
@@ -416,6 +463,51 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     return result;
   }
 
+  /// Plan 218: runs [action] after every import pass already queued and
+  /// before any later one, so it never reads a wrist set whose row is written
+  /// and whose rest is not yet. A failure of [action] reaches the caller; the
+  /// chain keeps moving.
+  Future<void> afterPendingImports(Future<void> Function() action) {
+    final result = _settleChain.then((_) => action());
+    _settleChain = result.then((_) {}, onError: (_, _) {});
+    return result;
+  }
+
+  /// Hands the session a pass just rated to the health sync (plan 90 D-4),
+  /// not waiting on it: the sync retries for minutes and never throws.
+  Future<void> _sendRatingToHealth(String sessionId) async {
+    final healthSync = _healthSync;
+    if (healthSync == null) return;
+    try {
+      final session = await _repository.getSession(sessionId);
+      if (session != null) unawaited(healthSync.onSessionRated(session));
+    } catch (_) {
+      // The rating is imported; a failed read only means no effort is sent.
+    }
+  }
+
+  /// Rewrites the Health workout of a session a pass moved the end of
+  /// (plan 146c D-14634) — the service itself decides whether the phone wrote
+  /// it (D-14636). A failed read only means no rewrite.
+  Future<void> _rewriteHealth(
+    String sessionId, {
+    required int previousEndedAtMs,
+  }) async {
+    final healthSync = _healthSync;
+    if (healthSync == null) return;
+    try {
+      final session = await _repository.getSession(sessionId);
+      if (session != null) {
+        await healthSync.rewriteWorkout(
+          session,
+          previousEndedAtMs: previousEndedAtMs,
+        );
+      }
+    } catch (_) {
+      // The import is written; the store's span only lags behind.
+    }
+  }
+
   Future<List<String>> _settleNow(
     Iterable<String> sessionIds, {
     List<Object?> redelivered = const [],
@@ -434,6 +526,25 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
       // (D-17). A pass that wrote nothing names no effort and refreshes nothing.
       if (pass.changedEffortIds.isNotEmpty) {
         await _onSessionRowsChanged?.call(sessionId, pass.changedEffortIds);
+      }
+      if (pass.appliedRating != null) {
+        await _onSessionRated?.call(sessionId, pass.appliedRating!);
+        await _sendRatingToHealth(sessionId);
+      }
+      if (pass.sensorSummaryAttached) {
+        await _onSensorSummaryAttached?.call(sessionId);
+      }
+      final endMovedFromMs = pass.endMovedFromMs;
+      if (endMovedFromMs != null) {
+        await _rewriteHealth(sessionId, previousEndedAtMs: endMovedFromMs);
+      }
+      // D-13420: this pass may have created the session finished or landed
+      // the wrist's timed and round instances, so settle its energy again
+      // (idempotent; a failure never fails the pass).
+      if (pass.historyChanged) {
+        try {
+          await _onSessionHistoryChanged?.call(sessionId);
+        } catch (_) {}
       }
     }
     for (final entryId in redelivered) {
@@ -503,6 +614,10 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     if (entryId is! String || entryId.isEmpty || required == null) {
       return false;
     }
+    // The wrist's snapshot reports the entries the phone sent it as well as its
+    // own, so an id the phone minted itself (D-33) is the phone's own entry
+    // echoed back — never news, never receipted (D-17504).
+    if (PhoneEntries.isPhoneEntryId(entryId)) return false;
     for (final field in required) {
       if (entry[field] == null) return false;
     }
@@ -548,9 +663,9 @@ class WatchInboxStagingTransport implements WatchMirrorTransport {
   final WatchSessionInbox _inbox;
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async {
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     await _inbox.stagePhoneChanges(envelope);
-    await _inner.send(envelope);
+    return _inner.send(envelope);
   }
 
   @override

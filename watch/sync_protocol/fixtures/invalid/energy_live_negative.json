@@ -1,0 +1,12 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-energy-s-13501-negative",
+  "sessionId": "s-13501",
+  "type": "energy_live",
+  "origin": "watch",
+  "sentAt": "2026-11-09T12:00:00Z",
+  "payload": {
+    "activeEnergyKcal": -1,
+    "at": "2026-11-09T12:00:00Z"
+  }
+}

@@ -2,13 +2,11 @@
 ///
 /// Plans: `docs/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`
 /// (the paths) and `docs/plans/2026-09-21-13-watch-integration-shipping.md`
-/// (D-7 / S-010 — sync is watch-initiated, and this surface is where the user
-/// finds that out).
+/// (the start surface's copy).
 ///
 /// Everything on this screen is already on the watch. The routine list is read
 /// from local storage, so it renders with the phone off, in airplane mode, or
-/// before the wrist has ever seen a radio — which is why the list only changes
-/// when the user asks, and why this screen says so.
+/// before the wrist has ever seen a radio.
 library;
 
 import 'package:flutter/material.dart';
@@ -54,14 +52,9 @@ class WatchStartScreen extends StatelessWidget {
   /// workout running.
   static const String logFoodLabel = 'Log food';
 
-  /// Said plainly because there is nothing to discover: nothing arrives on the
-  /// wrist unless its user asks, and a user who does not know that reads an
-  /// unchanged routine list as a broken phone (D-7, S-010).
-  static const String noAutoSyncLabel = 'No automatic sync';
-
-  /// The user's explicit action — the only thing that asks the phone for
-  /// anything.
-  static const String syncLabel = 'Sync routines';
+  /// The user's explicit action — recovering a device that was out of reach
+  /// and refreshing the routine list.
+  static const String syncLabel = 'Sync';
 
   @override
   Widget build(BuildContext context) {
@@ -81,7 +74,6 @@ class WatchStartScreen extends StatelessWidget {
                     : _routineList(context),
               ),
               const SizedBox(height: rowGap),
-              const NoAutomaticSyncHint(),
               if (onRequestSync != null) ...[
                 const SizedBox(height: rowGap),
                 WatchUtilityButton(
@@ -250,26 +242,6 @@ class WatchHintRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// "The phone will not do this for you" — the one thing the wrist has to say
-/// about a routine list that only changes when the user asks.
-///
-/// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
-/// D-7 and S-010. The label is part of the product, not decoration: sync is
-/// watch-initiated, so a user who never learns that waits for routines that are
-/// never coming. The watchOS client renders the same sentence from the same
-/// contract fixture.
-class NoAutomaticSyncHint extends StatelessWidget {
-  const NoAutomaticSyncHint({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const WatchHintRow(
-      icon: Icons.sync_disabled,
-      label: WatchStartScreen.noAutoSyncLabel,
     );
   }
 }

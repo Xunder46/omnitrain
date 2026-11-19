@@ -8,9 +8,10 @@
 //  and through the engine's emission pipeline.
 //
 //  Scope: `manifest.json`'s valid and invalid registers. The reconciliation
-//  fixtures are replayed by the phone's reference implementation in
-//  `test/sync_protocol_fixtures_test.dart` — structural reconciliation is the
-//  receiver's job, delivered for the watch by the live-session items.
+//  fixtures are replayed on both sides: by the phone's reference implementation
+//  in `test/sync_protocol_fixtures_test.dart`, and — since plan 146 — by this
+//  package through `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`,
+//  which drives the Swift engine from the same frames.
 //
 //  Also S-207 of `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`:
 //  every event `watch/contract/watch_capture_contract.json` expects the wrist to

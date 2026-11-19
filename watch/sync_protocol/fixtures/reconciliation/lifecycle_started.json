@@ -1,7 +1,7 @@
 {
   "protocolVersion": 1,
-  "name": "Lifecycle: a session reported started is live again",
-  "description": "Lifecycle messages apply in the order received and the most recent status wins. Here the session is abandoned when the snapshot is taken and either device then reports it started, so the converged status is active. Nothing but the status moves.",
+  "name": "Lifecycle: a session reported started stays ended",
+  "description": "The first ending of a session is final: a session the snapshot reports abandoned never returns to active, so the started that follows it changes nothing but nothing else. Structure, position, entries, revision, and timers are untouched by the ignored frame.",
   "snapshot": {
     "protocolVersion": 1,
     "messageId": "msg-started-snapshot",
@@ -39,7 +39,7 @@
   ],
   "expected": {
     "sessionId": "s-2026-07-13-11",
-    "status": "active",
+    "status": "abandoned",
     "revision": 70,
     "currentExerciseIndex": 0,
     "exercises": [

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:test/test.dart';
+import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/core/constants/capability.dart';
 
@@ -1220,6 +1221,44 @@ void main() {
     });
   });
 
+  // ── WorkoutTemplate ───────────────────────────────────────────────────────
+
+  group('WorkoutTemplate.copyWith focusModality', () {
+    WorkoutTemplate buildTemplate() => WorkoutTemplate(
+      id: 'tpl-1',
+      name: 'Push Day',
+      focusModality: 'resistance_lifting',
+      createdAtMs: 100,
+      updatedAtMs: 200,
+    );
+
+    test('clearFocusModality: true clears the focus', () {
+      final copy = buildTemplate().copyWith(clearFocusModality: true);
+      expect(copy.focusModality, isNull);
+    });
+
+    test('default copyWith keeps focusModality', () {
+      final copy = buildTemplate().copyWith(name: 'Leg Day');
+      expect(copy.focusModality, 'resistance_lifting');
+      expect(copy.name, 'Leg Day');
+    });
+
+    test('focusModality sets a new focus', () {
+      final copy = buildTemplate().copyWith(
+        focusModality: 'cardio_endurance',
+      );
+      expect(copy.focusModality, 'cardio_endurance');
+    });
+
+    test('clearFocusModality: true wins over focusModality given', () {
+      final copy = buildTemplate().copyWith(
+        focusModality: 'cardio_endurance',
+        clearFocusModality: true,
+      );
+      expect(copy.focusModality, isNull);
+    });
+  });
+
   // ── BodyMeasurementEntry ──────────────────────────────────────────────────
 
   group('BodyMeasurementEntry', () {
@@ -1252,14 +1291,17 @@ void main() {
       expect(map['protein'], 180);
       expect(map['carbs'], 300);
       expect(map['fat'], 80);
-      expect(map['date_ms'], 1749312000000);
+      // Plan 235: `date_ms` is stored as the calendar date's UTC midnight
+      // (the zone-independent day key), read back as that day's local
+      // midnight.
+      expect(map['date_ms'], OmniDateUtils.dayKeyMs(OmniDateUtils.fromMs(1749312000000)));
 
       final restored = NutritionTarget.fromMap(map);
       expect(restored.calories, 2500);
       expect(restored.protein, 180);
       expect(restored.carbs, 300);
       expect(restored.fat, 80);
-      expect(restored.dateMs, 1749312000000);
+      expect(restored.dateMs, OmniDateUtils.startOfDayMs(OmniDateUtils.fromMs(1749312000000)));
     });
 
     test('defaults are 0.0 (not nullable) when constructed empty', () {

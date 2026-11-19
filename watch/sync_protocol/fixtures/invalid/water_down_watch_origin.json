@@ -1,0 +1,16 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-water-watch-origin-1",
+  "type": "water_down",
+  "origin": "watch",
+  "sentAt": "2026-11-01T12:00:00Z",
+  "payload": {
+    "generatedAt": "2026-11-01T12:00:00Z",
+    "day": "2026-11-01",
+    "glasses": 3,
+    "appliedTapIds": [
+      "w-1",
+      "w-2"
+    ]
+  }
+}

@@ -18,6 +18,9 @@ import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
 import 'state/stats/stats_primer_state.dart';
 import 'state/exercise/exercise_library_state.dart';
+import 'state/watch/watch_resume_sync.dart';
+import 'state/watch/watch_link_state.dart';
+import 'core/services/diagnostics_log.dart';
 
 import 'features/home/home_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
@@ -47,6 +50,18 @@ class MyApp extends StatelessWidget {
   final RestNotificationService restNotificationService;
   final AppVersionInfo? appVersionInfo;
 
+  /// The watch graph's catch-up call, when this platform has a watch (D-96).
+  /// Null means no observer is mounted at all.
+  final Future<void> Function()? onWatchResume;
+
+  /// Where the watch stands, for the Settings row (47c D-3). Null without a
+  /// watch graph, and Settings then carries no APPLE WATCH section.
+  final WatchLinkState? watchLinkState;
+
+  /// The phone's diagnostics log, handed on to Settings (plan 143, D-14306).
+  /// Null without a log, and Settings then carries no Diagnostics row.
+  final DiagnosticsLog? diagnostics;
+
   MyApp({
     super.key,
     required this.repository,
@@ -67,6 +82,9 @@ class MyApp extends StatelessWidget {
     required this.exerciseLibraryState,
     required this.timerAlertService,
     this.appVersionInfo,
+    this.onWatchResume,
+    this.watchLinkState,
+    this.diagnostics,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -93,7 +111,7 @@ class MyApp extends StatelessWidget {
           onSecondary: getOnSecondaryForTheme(activeTheme),
         );
 
-        return MaterialApp(
+        final appShell = MaterialApp(
           title: 'Omnitrain',
           debugShowCheckedModeBanner: false,
           theme: appTheme,
@@ -160,8 +178,17 @@ class MyApp extends StatelessWidget {
                   statsPrimerState: statsPrimerState,
                   restNotificationService: restNotificationService,
                   appVersionInfo: appVersionInfo,
+                  watchLinkState: watchLinkState,
+                  diagnostics: diagnostics,
                 ),
         );
+
+        // D-96: with a wrist graph the app asks it for its session once per
+        // resume. Without one, no observer is mounted at all.
+        final onResume = onWatchResume;
+        return onResume == null
+            ? appShell
+            : WatchResumeSync(onResume: onResume, child: appShell);
       },
     );
   }

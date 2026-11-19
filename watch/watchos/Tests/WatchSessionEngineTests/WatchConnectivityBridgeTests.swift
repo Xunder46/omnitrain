@@ -16,6 +16,10 @@
 //  the engine are the real ones, so what a frame carries is what the wrist would
 //  really send.
 //
+//  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
+//  Phase 2A (decision D-3111): the picker's available rows are `addableExercises`,
+//  in A-to-Z order, instead of the phone's fallback order.
+//
 
 import XCTest
 
@@ -151,9 +155,121 @@ private func bridgeObjects(_ value: Any?) throws -> [[String: Any]] {
     return value
 }
 
+/// The phone's answer to a session-less wrist's catch-up: its own
+/// `session_snapshot`, carrying the session and the entries it asserts (S-186).
+private func bridgeSnapshotFrame(
+    sessionId: String,
+    messageId: String,
+    exercises: [[String: Any]],
+    entries: [[String: Any]] = [],
+    revision: Int = 4
+) -> [String: Any] {
+    [
+        "protocolVersion": SyncProtocolValidator.protocolVersion,
+        "messageId": messageId,
+        "sessionId": sessionId,
+        "type": "session_snapshot",
+        "origin": "phone",
+        "sentAt": "2026-07-13T06:30:00Z",
+        "payload": [
+            "sessionId": sessionId,
+            "revision": revision,
+            "status": WatchSessionStatus.active,
+            "currentExerciseIndex": 0,
+            "exercises": exercises,
+            "entries": entries,
+            "timers": [String: Any](),
+        ] as [String: Any],
+    ]
+}
+
 /// A value the radio cannot carry: not a property-list type at all.
 private struct NotAPlistValue {
     let text = "nope"
+}
+
+/// The S-216 wire: one list, in the order the wrist handed each frame over. The
+/// catch-up's own sends and the engine's emissions land in it alike, because a
+/// synchronous sink is exactly what the app's `WatchEmitForwarder` is fed by —
+/// that forwarder's own ordering is S-020's test's, not this one's.
+private final class WireLog: WatchSyncTransport {
+    var isPhoneReachable = false
+    private(set) var frames: [[String: Any]] = []
+    private(set) var requested: [Date?] = []
+
+    /// Whether each routines request said the wrist holds a bests frame,
+    /// parallel to `requested` (S-87c-16).
+    private(set) var requestedHoldsBests: [Bool] = []
+
+    /// Whether each routines request asked for the day's water count, parallel
+    /// to `requested` (plan 95 S-94b-17).
+    private(set) var requestedWantsWater: [Bool] = []
+
+    private(set) var snapshotRequests = 0
+
+    func requestRoutines(
+        since: Date?,
+        exercisesVersion: String?,
+        holdsBests: Bool,
+        wantsWater: Bool
+    ) async {
+        requested.append(since)
+        requestedHoldsBests.append(holdsBests)
+        requestedWantsWater.append(wantsWater)
+    }
+
+    func requestSnapshot() async { snapshotRequests += 1 }
+
+    func send(_ envelope: [String: Any]) async { frames.append(envelope) }
+
+    /// What the engine is given as its `onEmit`.
+    var sink: WatchMessageSink {
+        { [weak self] envelope in self?.frames.append(envelope) }
+    }
+}
+
+/// The S-216 fixture: a wrist wired the way the app wires it — one engine, its
+/// start paths, and the orchestrator over the log above — holding `w9`.
+private final class LoggedWrist {
+    let clock = TestClock(testInstant())
+    let store = InMemoryWatchSessionStore()
+    let wire = WireLog()
+    private var ids = 0
+
+    private(set) var engine: WatchSessionEngine!
+    private(set) var paths: WatchSessionStartPaths!
+    private(set) var orchestrator: WatchSyncOrchestrator!
+
+    init() {
+        build()
+    }
+
+    private func build() {
+        engine = WatchSessionEngine(
+            store: store,
+            onEmit: wire.sink,
+            validator: Harness.validator(),
+            clock: clock.call,
+            idFactory: { [weak self] in
+                guard let self else { return UUID().uuidString }
+                self.ids += 1
+                return "rec-\(self.ids)"
+            },
+            sessionIdFactory: { "w9" }
+        )
+        paths = WatchSessionStartPaths(
+            engine: engine,
+            store: store,
+            validator: Harness.validator(),
+            clock: clock.call,
+            idFactory: { [weak self] in
+                guard let self else { return UUID().uuidString }
+                self.ids += 1
+                return "cat-\(self.ids)"
+            }
+        )
+        orchestrator = WatchSyncOrchestrator(transport: wire, paths: paths, engine: engine)
+    }
 }
 
 final class WatchConnectivityBridgeTests: XCTestCase {
@@ -200,6 +316,158 @@ final class WatchConnectivityBridgeTests: XCTestCase {
             utcIso(syncedAt)
         )
         XCTAssertEqual(harness.session.sent.count, 2)
+    }
+
+    // MARK: - S-87c-16 the wrist says whether it holds a bests frame
+
+    func testS87c16TheRoutinesRequestCarriesHoldsBestsOnlyWhenTheWristHoldsOne() async throws {
+        // The wrist tells the phone it holds a bests frame with `holdsBests: true`;
+        // a wrist holding nothing sends exactly the frame it always did, which is
+        // why S-102's pinned rows stay true (87c, D-2).
+        let expected = try bridgeObject(try bridgeContract()["transportRequests"])
+        let routinesBests = try bridgeObject(expected["routinesBests"])
+        let routines = try bridgeObject(expected["routines"])
+
+        XCTAssertEqual(
+            WatchTransportRequest.routinesFrame(since: nil, holdsBests: true) as NSDictionary,
+            routinesBests as NSDictionary
+        )
+        XCTAssertEqual(
+            WatchTransportRequest.routinesFrame(since: nil, holdsBests: false) as NSDictionary,
+            routines as NSDictionary,
+            "a wrist holding no bests omits the key rather than sending false"
+        )
+
+        let harness = WatchBridgeHarness()
+        await harness.launch()
+        await harness.orchestrator.sync()
+        XCTAssertNil(
+            harness.session.sent.first?["holdsBests"],
+            "the wrist holds no frame yet, so the request names none"
+        )
+    }
+
+    func testS87c16TheSyncPassesWhetherTheWristHoldsABestsFrame() async throws {
+        let store = InMemoryWatchSessionStore()
+        let clock = TestClock(testInstant())
+        let holder = WatchPersonalBests(
+            store: store,
+            validator: Harness.validator(),
+            clock: clock.call
+        )
+        let engine = WatchSessionEngine(
+            store: store,
+            onEmit: { _ in },
+            validator: Harness.validator(),
+            clock: clock.call,
+            idFactory: { UUID().uuidString },
+            sessionIdFactory: { "w9" }
+        )
+        let paths = WatchSessionStartPaths(
+            engine: engine,
+            store: store,
+            validator: Harness.validator(),
+            clock: clock.call,
+            idFactory: { UUID().uuidString }
+        )
+        let transport = RecordingTransport()
+        let orchestrator = WatchSyncOrchestrator(
+            transport: transport,
+            paths: paths,
+            engine: engine,
+            bests: holder
+        )
+
+        await orchestrator.sync()
+        XCTAssertEqual(
+            transport.requestedHoldsBests,
+            [false],
+            "a wrist holding no frame asks for one rather than claiming to hold it"
+        )
+
+        _ = try await orchestrator.receive(try Fixtures.json("fixtures/valid/bests_down.json"))
+        XCTAssertTrue(holder.hasFrame)
+
+        await orchestrator.sync()
+        XCTAssertEqual(
+            transport.requestedHoldsBests,
+            [false, true],
+            "the frame the wrist holds is what the next request announces"
+        )
+
+        // A relaunch rebuilds the holder over the same store, exactly as a
+        // launch does, and the restored copy still says "holds".
+        let relaunchedHolder = WatchPersonalBests(
+            store: store,
+            validator: Harness.validator(),
+            clock: clock.call
+        )
+        await relaunchedHolder.restore()
+        XCTAssertTrue(relaunchedHolder.hasFrame)
+
+        let relaunchedTransport = RecordingTransport()
+        let relaunched = WatchSyncOrchestrator(
+            transport: relaunchedTransport,
+            paths: paths,
+            engine: engine,
+            bests: relaunchedHolder
+        )
+        await relaunched.sync()
+        XCTAssertEqual(
+            relaunchedTransport.requestedHoldsBests,
+            [true],
+            "a restored frame is held, so the relaunched wrist says so too"
+        )
+    }
+
+    // MARK: - S-3820 a sync names the exercise-list version the wrist holds
+
+    func testS3820TheRoutinesRequestCarriesTheExerciseListVersionOnlyWhenThereIsOne() async throws {
+        // The frame is built with the version only when the wrist holds a list,
+        // so a wrist that holds none sends exactly the frame it always did —
+        // which is why the contract's S-102/S-103 rows stay true (D-3820). The
+        // Dart twin now builds the same frame (plan 23e2), so both ends read
+        // this one contract entry instead of restating its fields.
+        let expected = try bridgeObject(try bridgeContract()["transportRequests"])
+        let routinesExercises = try bridgeObject(expected["routinesExercises"])
+        let version = try XCTUnwrap(routinesExercises["exercisesVersion"] as? String)
+
+        XCTAssertEqual(
+            WatchTransportRequest.routinesFrame(since: nil, exercisesVersion: version) as NSDictionary,
+            routinesExercises as NSDictionary
+        )
+        XCTAssertNil(
+            WatchTransportRequest.routinesFrame(since: nil)["exercisesVersion"],
+            "no list, no key — the key is omitted, never nulled"
+        )
+
+        let both = WatchTransportRequest.routinesFrame(
+            since: try parseUtcIso("2026-07-13T17:00:00Z"),
+            exercisesVersion: version
+        )
+        XCTAssertEqual(both["since"] as? String, utcIso(try parseUtcIso("2026-07-13T17:00:00Z")))
+        XCTAssertEqual(both["exercisesVersion"] as? String, version)
+
+        let harness = WatchBridgeHarness()
+        await harness.launch()
+        await harness.orchestrator.sync()
+        XCTAssertNil(
+            harness.session.sent.first?["exercisesVersion"],
+            "the wrist holds no list yet"
+        )
+
+        _ = await harness.paths.applyExercisesDown(
+            try Fixtures.json("fixtures/valid/exercises_down_single_batch.json")
+        )
+        harness.session.clearSent()
+        await harness.orchestrator.sync()
+
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1-3-9f8e7d6c")
+        XCTAssertEqual(
+            harness.session.sent.first?["exercisesVersion"] as? String,
+            "v1-3-9f8e7d6c",
+            "S-3819 the sync that follows a completed list names it"
+        )
     }
 
     // MARK: - S-104 a sync with no session asks for a snapshot
@@ -283,7 +551,67 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(harness.paths.routines.map(\.routineId), [routineId])
 
         let session = try await harness.paths.startFromRoutine(routineId)
-        XCTAssertEqual(session.exercises as NSArray, expectedSlots as NSArray)
+        // The wrist tokens the slot ids it mints: the routines_down sync took
+        // "cat-1", the start mints "cat-2" (plan 81 D-9).
+        let tokenedSlots = expectedSlots.map { slot -> [String: Any] in
+            var slot = slot
+            if let id = slot["sessionExerciseId"] as? String {
+                slot["sessionExerciseId"] = tokened(id, token: "cat-2")
+            }
+            return slot
+        }
+        XCTAssertEqual(session.exercises as NSArray, tokenedSlots as NSArray)
+    }
+
+    // MARK: - S-1410 the wrist's snapshot carries the number back
+
+    /// A wrist that picked a round exercise off the catalog states the length in
+    /// its own snapshot. The frame is the shared schema's to judge, and the
+    /// phone's shape comparison reads three identity fields, so a length the two
+    /// peers hold differently starts no disagreement (D-1413).
+    @MainActor
+    func testS1410AWristSnapshotCarriesTheNumberBack() async throws {
+        let harness = WatchBridgeHarness()
+        await harness.launch()
+
+        let roundRoutine = try bridgeObject(try bridgeContract()["roundRoutine"])
+        await harness.deliver(try bridgeObject(roundRoutine["routinesDown"]))
+        let picker = try bridgeObject(roundRoutine["picker"])
+        let number = picker["roundDurationSecs"] as? Int
+        let soccer = try XCTUnwrap(harness.paths.fallbackExercises.first {
+            $0.exerciseId == picker["exerciseId"] as? String
+        })
+
+        _ = await harness.paths.startFreeWorkout()
+        _ = await harness.paths.addExerciseToSession(soccer)
+
+        let snapshot = try XCTUnwrap(harness.engine.sessionSnapshot())
+        let payload = try bridgeObject(snapshot["payload"])
+        let slot = try XCTUnwrap(try bridgeObjects(payload["exercises"]).first)
+        XCTAssertEqual(slot[WatchCatalogExercise.roundDurationKey] as? Int, number)
+
+        await harness.bridge.send(snapshot)
+        XCTAssertTrue(harness.failures.isEmpty, "a slot with the field is still a property list")
+
+        let sent = try XCTUnwrap(harness.session.sent.last)
+        let sentPayload = try bridgeObject(sent["payload"])
+        let sentSlot = try XCTUnwrap(try bridgeObjects(sentPayload["exercises"]).first)
+        XCTAssertEqual(
+            sentSlot[WatchCatalogExercise.roundDurationKey] as? Int,
+            number,
+            "the number survives the plist round trip"
+        )
+
+        XCTAssertTrue(
+            SyncProtocolValidator.incomingRejections(Harness.validator(), sent).isEmpty,
+            "the shared schema declares the field on a sessionExercise"
+        )
+
+        // Sending changed nothing: the ladder the wrist holds still states the
+        // number, and reading it again is the same bytes.
+        let second = try XCTUnwrap(harness.engine.sessionSnapshot())
+        let secondSlots = try bridgeObjects(try bridgeObject(second["payload"])["exercises"])
+        XCTAssertEqual(secondSlots as NSArray, [slot] as NSArray)
     }
 
     // MARK: - S-112 the frames the wrist sends survive the plist round trip
@@ -437,6 +765,55 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(harness.session.sent.count, 1)
     }
 
+    // MARK: - S-206 a refused frame is reported once, and the row stays owed
+
+    func testS206ARefusedFrameIsReportedOnceAndTheRowStaysOwed() async throws {
+        let harness = WatchBridgeHarness()
+        await harness.launch()
+
+        _ = await harness.engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        try await harness.engine.appendObservation(setEvent(harness.clock, entryId: "e-1"))
+
+        let observation = try XCTUnwrap(harness.engine.pendingObservations().first)
+        let messageId = try XCTUnwrap(observation["messageId"] as? String)
+
+        // Both delivery paths refuse: the radio cannot carry the frame and the
+        // OS queue will not take it either (D-2).
+        harness.session.sendError = BridgeFixtureError.malformed("the radio refused it")
+        harness.session.queueError = BridgeFixtureError.malformed("the queue refused it")
+        await harness.bridge.send(observation)
+
+        // The wrist never claims the frame went out, and says so once.
+        XCTAssertTrue(harness.session.sent.isEmpty)
+        XCTAssertTrue(harness.session.queued.isEmpty)
+        XCTAssertEqual(harness.failures.count, 1, "a refusal is reported, once")
+
+        // The refused frame is still owed: it is not treated as delivered, so a
+        // later send can carry it again (D-196).
+        XCTAssertEqual(
+            harness.engine.pendingObservations().compactMap { $0["messageId"] as? String },
+            [messageId]
+        )
+        let pruned = await harness.engine.pruneConfirmed()
+        XCTAssertTrue(
+            pruned.isEmpty,
+            "nothing is confirmed, so the phone's receipt has not arrived"
+        )
+        XCTAssertEqual(
+            harness.engine.pendingObservations().compactMap { $0["messageId"] as? String },
+            [messageId],
+            "the row survives the sweep that drops confirmed ones"
+        )
+
+        // Once the radio takes it, the frame is out.
+        harness.session.sendError = nil
+        harness.session.queueError = nil
+        await harness.bridge.send(observation)
+        XCTAssertEqual(harness.session.sent.count, 1)
+        XCTAssertTrue(harness.session.queued.isEmpty)
+        XCTAssertEqual(harness.failures.count, 1)
+    }
+
     // MARK: - Reachability is read from the seam
 
     func testReachabilityIsReadFromTheSeam() async throws {
@@ -453,9 +830,9 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(observed, [false])
     }
 
-    // MARK: - S-111 the surface says the phone is unreachable only once observed
+    // MARK: - S-111 the surface says the phone is connected or unreachable only once observed
 
-    func testS111TheSurfaceSaysUnreachableOnlyAfterObservingIt() throws {
+    func testS111TheSurfaceSaysConnectedOrUnreachableOnlyAfterObservingIt() throws {
         // A cold start has asked the radio nothing, so there is nothing honest
         // to say (D-8) — the state a flag starting `false` would misreport as
         // "unreachable".
@@ -469,7 +846,10 @@ final class WatchConnectivityBridgeTests: XCTestCase {
             WatchPhoneStatus(reachability: .unreachable).sentence,
             WatchStartSurfaceCopy.unreachableLabel
         )
-        XCTAssertNil(WatchPhoneStatus(reachability: .reachable).sentence)
+        XCTAssertEqual(
+            WatchPhoneStatus(reachability: .reachable).sentence,
+            WatchStartSurfaceCopy.connectedLabel
+        )
 
         // The Sync button is offered in all three (D-9).
         for reachability in [WatchPhoneReachability.unknown, .reachable, .unreachable] {
@@ -477,15 +857,17 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         }
 
         XCTAssertEqual(WatchStartSurfaceCopy.unreachableLabel, "Phone not reachable")
+        XCTAssertEqual(WatchStartSurfaceCopy.connectedLabel, "Phone connected")
 
-        // The surface says it through that one constant, and keeps the
-        // no-automatic-sync sentence either way.
+        // The surface says it through that one constant, and carries no
+        // no-automatic-sync hint any more (S-82).
         let view = try String(
             contentsOf: Fixtures.sourcesRoot.appendingPathComponent("WatchStartView.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(view.contains("WatchStartSurfaceCopy.unreachableLabel"))
-        XCTAssertTrue(view.contains("WatchNoAutomaticSyncHint()"))
+        XCTAssertTrue(view.contains("WatchPhoneStatusHint(status: phoneStatus)"))
+        XCTAssertFalse(view.contains("Search on phone"))
+        XCTAssertFalse(view.contains("WatchNoAutomaticSyncHint"))
     }
 
     // MARK: - the two contract labels still match the package's copy
@@ -493,11 +875,11 @@ final class WatchConnectivityBridgeTests: XCTestCase {
     func testTheContractLabelsMatchWatchStartSurfaceCopy() throws {
         let surface = try bridgeObject(try bridgeContract()["startSurface"])
 
-        XCTAssertEqual(
-            surface["noAutoSyncLabel"] as? String,
-            WatchStartSurfaceCopy.noAutoSyncLabel
-        )
         XCTAssertEqual(surface["syncLabel"] as? String, WatchStartSurfaceCopy.syncLabel)
+
+        // The removed no-automatic-sync line is gone from the contract, not
+        // renamed (S-82).
+        XCTAssertNil(surface["noAutoSyncLabel"])
 
         // The unreachable sentence is deliberately not a contract value: the
         // Wear OS client reads the same file and has no transport, so it has no
@@ -629,11 +1011,12 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(rows.filter { $0.exerciseId == "ex-plank" }.count, 1)
         XCTAssertEqual(rows.map(\.id).count, Set(rows.map(\.id)).count, "every row is keyed uniquely")
 
-        // What follows is the fallback list, in its order, minus what the ladder
-        // already shows — including the exercise only the routine edit knows.
+        // What follows is the offered list, A to Z (D-3111), minus what the
+        // ladder already shows — including the exercise only the routine edit
+        // knows.
         XCTAssertEqual(
             rows.dropFirst(2).map(\.exerciseId),
-            harness.paths.fallbackExercises
+            harness.paths.addableExercises
                 .map(\.exerciseId)
                 .filter { !["ex-barbell-bench-press", "ex-plank"].contains($0) }
         )
@@ -643,7 +1026,10 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         // the way a `+1` advance does.
         let picked = await harness.paths.selectExercise(rows[0])
         XCTAssertEqual(picked?.currentExerciseIndex, 0)
-        XCTAssertEqual(harness.engine.currentExercise?["sessionExerciseId"] as? String, bench.slotId)
+        XCTAssertEqual(
+            harness.engine.currentExercise?["sessionExerciseId"] as? String,
+            bench.slotId(token: sessionToken(from: harness.sessionId))
+        )
 
         let payload = try bridgeObject(harness.emitted("session_lifecycle").last?["payload"])
         XCTAssertEqual(payload["state"] as? String, "exercise_advanced")
@@ -667,7 +1053,7 @@ final class WatchConnectivityBridgeTests: XCTestCase {
 
         XCTAssertFalse(rows.isEmpty)
         XCTAssertTrue(rows.allSatisfy { !$0.isInSession })
-        XCTAssertEqual(rows.map(\.exerciseId), harness.paths.fallbackExercises.map(\.exerciseId))
+        XCTAssertEqual(rows.map(\.exerciseId), harness.paths.addableExercises.map(\.exerciseId))
         XCTAssertEqual(rows.map(\.exerciseId).count, Set(rows.map(\.exerciseId)).count)
 
         // Picking an offered exercise appends it, exactly as the add path does.
@@ -675,5 +1061,490 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(added?.exercises.count, 1)
         XCTAssertEqual(added?.exercises.first?["exerciseId"] as? String, rows[0].exerciseId)
         XCTAssertEqual(added?.currentExerciseIndex, 0)
+    }
+
+    // MARK: - S-107/S-186 the wrist's activation catch-up (D-96, D-183)
+
+    func testS107TheWristCatchesUpOnAReachabilityEdgeOnce() async throws {
+        let harness = Harness(sessionId: "s-watch-1")
+        let engine = await harness.runningEngine()
+        let paths = WatchSessionStartPaths(
+            engine: engine,
+            store: harness.store,
+            validator: Harness.validator(),
+            clock: harness.clock.call,
+            idFactory: { "cat-1" }
+        )
+        let transport = GatedTransport()
+        let orchestrator = WatchSyncOrchestrator(transport: transport, paths: paths, engine: engine)
+
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.appendObservation(setEvent(harness.clock, entryId: "e-1"))
+        _ = try await engine.appendObservation(setEvent(harness.clock, entryId: "e-2"))
+        XCTAssertEqual(engine.pendingObservations().count, 2, "two owed entries")
+
+        // The first catch-up starts a sync and suspends inside the transport.
+        let first = Task { await orchestrator.catchUp(reachable: true) }
+        let deadline = Date().addingTimeInterval(2)
+        while !transport.gateEntered && Date() < deadline {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertTrue(transport.gateEntered, "the first sync must reach the transport")
+
+        // A second notification with the same value, while the first is still in
+        // flight, is dropped: never queued, never cancelling the running one.
+        await orchestrator.catchUp(reachable: true)
+        XCTAssertEqual(transport.requested.count, 1, "exactly one sync ran")
+        XCTAssertTrue(transport.sent.isEmpty, "and no send overlapped it")
+
+        transport.release()
+        await first.value
+
+        let entryIds = transport.sent.flatMap { frame -> [String] in
+            guard frame["type"] as? String == "observations_up" else { return [] }
+            let events = (frame["payload"] as? [String: Any])?["events"] as? [[String: Any]] ?? []
+            return events.compactMap { $0["entryId"] as? String }
+        }
+        XCTAssertEqual(entryIds, ["e-1", "e-2"], "the owed entries left exactly once")
+        XCTAssertEqual(
+            transport.sent.filter { $0["type"] as? String == "session_snapshot" }.count,
+            1,
+            "the wrist holding a session offers its own snapshot"
+        )
+        XCTAssertEqual(engine.session?.sessionId, "s-watch-1", "the wrist's session is unchanged")
+
+        // A later reachability edge runs again.
+        await orchestrator.catchUp(reachable: true)
+        XCTAssertEqual(transport.requested.count, 2, "a later trigger is not dropped")
+
+        // An unreachable radio starts nothing.
+        await orchestrator.catchUp(reachable: false)
+        XCTAssertEqual(transport.requested.count, 2, "an unreachable phone starts no sync")
+    }
+
+    /// S-186, the Swift half (was `testS108AWristWithNoSessionDoesNotSyncOnItsOwn`
+    /// before D-183). A wrist holding nothing is exactly the one that must ask:
+    /// the phone may hold the session it should be in, so a reachable activation
+    /// carries a routines request and a snapshot request and installs the answer.
+    func testS186AWristWithNoSessionAsksAtItsNextActivation() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        XCTAssertNil(harness.engine.session, "the wrist holds no session")
+        XCTAssertTrue(harness.engine.pendingObservations().isEmpty, "and owes nothing")
+
+        await harness.orchestrator.catchUp(reachable: true)
+
+        let routinesRequest = try XCTUnwrap(
+            harness.transport.requested.first,
+            "the wrist asks for routines at its activation"
+        )
+        XCTAssertNil(routinesRequest, "and the first pass asks for everything")
+        XCTAssertEqual(harness.transport.snapshotRequests, 1, "and for the phone's session")
+        XCTAssertTrue(harness.transport.sent.isEmpty, "nothing else leaves the wrist")
+        XCTAssertTrue(harness.paths.routines.isEmpty, "the routines surface is still empty")
+        XCTAssertNil(harness.preferences.current, "and so is the settings surface")
+
+        let answer = bridgeSnapshotFrame(
+            sessionId: "p1",
+            messageId: "msg-p1-1",
+            exercises: [exercise("u-squat"), exercise("u-press")],
+            entries: [
+                setEvent(harness.clock, entryId: "e-u-squat-1", slot: "u-squat"),
+                setEvent(harness.clock, entryId: "e-u-squat-2", slot: "u-squat"),
+                setEvent(harness.clock, entryId: "e-u-press-1", slot: "u-press"),
+            ]
+        )
+        let installed = try await harness.receive(answer)
+        XCTAssertTrue(installed, "the phone's answer is applied")
+
+        let session = try XCTUnwrap(harness.engine.session)
+        XCTAssertEqual(session.sessionId, "p1")
+        XCTAssertEqual(session.status, WatchSessionStatus.active)
+        XCTAssertEqual(
+            session.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["u-squat", "u-press"]
+        )
+        // Same instant for all three, so the projection's order is not the
+        // subject here — the entries it holds are.
+        XCTAssertEqual(
+            Set(harness.engine.entries.compactMap { $0.payload["entryId"] as? String }),
+            ["e-u-squat-1", "e-u-squat-2", "e-u-press-1"],
+            "the ladder the phone asserts arrives whole"
+        )
+    }
+
+    /// S-187, the Swift half: an activation with the phone out of reach carries
+    /// nothing and throws nothing; the reachability edge that follows does work.
+    func testS187AnUnreachableActivationIsANoOpAndTheEdgeDoesTheWork() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        await harness.orchestrator.catchUp(reachable: false)
+
+        XCTAssertTrue(harness.transport.requested.isEmpty, "an unreachable phone is not asked")
+        XCTAssertEqual(harness.transport.snapshotRequests, 0)
+        XCTAssertTrue(harness.transport.sent.isEmpty, "and nothing leaves the wrist")
+        XCTAssertNil(harness.engine.session, "the wrist still holds nothing")
+
+        await harness.orchestrator.catchUp(reachable: true)
+
+        XCTAssertEqual(harness.transport.requested.count, 1, "the edge runs the catch-up")
+        XCTAssertEqual(harness.transport.snapshotRequests, 1)
+
+        let answer = bridgeSnapshotFrame(
+            sessionId: "p1",
+            messageId: "msg-p1-2",
+            exercises: [exercise("u-squat"), exercise("u-press")]
+        )
+        let installed = try await harness.receive(answer)
+        XCTAssertTrue(installed)
+        XCTAssertEqual(harness.engine.session?.sessionId, "p1")
+    }
+
+    /// S-188, the Swift half: a burst of triggers from one wake runs one sync —
+    /// the rest are dropped, never queued — and the next trigger after that sync
+    /// completes runs a fresh catch-up.
+    func testS188AnActivationBurstIsDroppedAndTheLaterTriggerRuns() async throws {
+        let harness = Harness(sessionId: "s-watch-1")
+        let engine = await harness.runningEngine()
+        let paths = WatchSessionStartPaths(
+            engine: engine,
+            store: harness.store,
+            validator: Harness.validator(),
+            clock: harness.clock.call,
+            idFactory: { "cat-1" }
+        )
+        let transport = GatedRequestTransport()
+        let orchestrator = WatchSyncOrchestrator(transport: transport, paths: paths, engine: engine)
+        XCTAssertNil(engine.session, "a wrist with no session is the burst's case")
+
+        let first = Task { await orchestrator.catchUp(reachable: true) }
+        let deadline = Date().addingTimeInterval(2)
+        while !transport.gateEntered && Date() < deadline {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertTrue(transport.gateEntered, "the first catch-up must reach the transport")
+
+        await orchestrator.catchUp(reachable: true)
+        await orchestrator.catchUp(reachable: true)
+        XCTAssertTrue(transport.requested.isEmpty, "the triggers in flight are dropped")
+
+        transport.release()
+        await first.value
+
+        XCTAssertEqual(transport.requested.count, 1, "the burst ran one sync, not three")
+        XCTAssertEqual(transport.snapshotRequests, 1, "and asked once for the phone's session")
+
+        await orchestrator.catchUp(reachable: true)
+        XCTAssertEqual(transport.requested.count, 2, "a later trigger is not dropped")
+        XCTAssertEqual(transport.snapshotRequests, 2, "and runs a fresh pass")
+    }
+
+    // MARK: - S-216/S-212/S-215 the wrist's end is re-announced at its catch-up
+
+    func testS216TheEndIsReAnnouncedBehindTheWristsOwedObservations() async throws {
+        let wrist = LoggedWrist()
+        wrist.clock.now = octoberInstant()
+        let started = await wrist.engine.createSession(modality: nil, exercises: [exercise("u-squat")])
+        XCTAssertEqual(started.sessionId, "w9", "the fixture's session")
+
+        // Airplane mode: the wrist rates and ends `w9`, so the rating and the end
+        // are both owed. The live frames are still handed to the radio, which
+        // refuses them while apart (D-201) — this double records what it was
+        // asked to carry.
+        _ = try await wrist.engine.appendObservation(ratingEvent(wrist.clock, entryId: "rating-w9"))
+        _ = await wrist.engine.finishSession()
+        let live = try XCTUnwrap(
+            wrist.wire.frames.last { $0["type"] as? String == "session_lifecycle" },
+            "the fixture ends it, live"
+        )
+
+        // The catch-up while the pair is apart.
+        wrist.clock.advance(5400)
+        let apartRequests = wrist.wire.requested.count
+        let apartStart = wrist.wire.frames.count
+        await wrist.orchestrator.sync(reconnect: true)
+        let apart = Array(wrist.wire.frames[apartStart...])
+
+        XCTAssertEqual(
+            wrist.wire.requested.count, apartRequests + 1,
+            "S-212 the catch-up opens by asking for the routines"
+        )
+        XCTAssertEqual(
+            apart.first?["type"] as? String, "observations_up",
+            "S-212 what the wrist owes goes out first"
+        )
+        XCTAssertTrue(
+            apart.contains { $0["type"] as? String == "session_snapshot" },
+            "S-212 the exchange still answers with the wrist's own session"
+        )
+        XCTAssertFalse(
+            apart.contains { $0["type"] as? String == "session_lifecycle" },
+            "S-216 while the pair is apart nothing is re-announced (D-199)"
+        )
+
+        // Reachable: the owed rating, then the wrist's own end frame, then the
+        // exchange. The fixture reads the order frames were composed in; on the
+        // radio the forwarder may give the snapshot the wire first, which the
+        // phone's `consider` ignores for a status it already holds (D-199).
+        wrist.wire.isPhoneReachable = true
+        let reachableRequests = wrist.wire.requested.count
+        let reachStart = wrist.wire.frames.count
+        await wrist.orchestrator.sync(reconnect: true)
+        let carried = Array(wrist.wire.frames[reachStart...])
+
+        XCTAssertEqual(
+            wrist.wire.requested.count, reachableRequests + 1,
+            "S-212 the later catch-up asks for the routines again"
+        )
+        XCTAssertEqual(
+            carried.first?["type"] as? String, "observations_up",
+            "S-216 the rating leaves before the copy ends"
+        )
+        XCTAssertTrue(
+            carried.contains { $0["type"] as? String == "session_snapshot" },
+            "S-212 the exchange follows"
+        )
+        let frames = carried.enumerated().filter { $0.element["type"] as? String == "session_lifecycle" }
+        XCTAssertEqual(frames.count, 1, "S-212 exactly one end frame per catch-up")
+        let index = try XCTUnwrap(frames.first?.offset, "the replay arrived")
+        let lastOwed = try XCTUnwrap(
+            carried.lastIndex { $0["type"] as? String == "observations_up" },
+            "the owed observations were carried"
+        )
+        XCTAssertGreaterThan(
+            index, lastOwed,
+            "S-216 the replay follows everything the wrist owed (D-199)"
+        )
+
+        let replay = carried[index]
+        assertSameFrame(
+            replay, live,
+            "S-212 the catch-up repeats the live end frame, field for field"
+        )
+        XCTAssertEqual(replay["messageId"] as? String, "msg-rec-2", "the end row keys it")
+        XCTAssertEqual(
+            replay["sentAt"] as? String, "2026-10-08T10:00:00.000Z",
+            "S-212 the end's own instant, not the catch-up's"
+        )
+        XCTAssertEqual(
+            replay as NSDictionary,
+            [
+                "protocolVersion": 1,
+                "messageId": "msg-rec-2",
+                "sessionId": "w9",
+                "type": "session_lifecycle",
+                "origin": "watch",
+                "sentAt": "2026-10-08T10:00:00.000Z",
+                "payload": ["state": "completed", "at": "2026-10-08T10:00:00.000Z"],
+            ] as NSDictionary,
+            "S-212 the replayed frame itself, for the evidence file"
+        )
+
+        // S-215: the next catch-up repeats the same frame, and the wrist's own
+        // copy stays the end it recorded.
+        wrist.clock.advance(300)
+        let repeatStart = wrist.wire.frames.count
+        await wrist.orchestrator.catchUp(reachable: true)
+        let repeats = wrist.wire.frames[repeatStart...].filter { $0["type"] as? String == "session_lifecycle" }
+
+        XCTAssertEqual(repeats.count, 1, "S-215 one re-announcement per catch-up")
+        assertSameFrame(
+            try XCTUnwrap(repeats.first), live,
+            "S-215 the same message id at the same instant as the first"
+        )
+        XCTAssertEqual(
+            wrist.engine.session?.status, WatchSessionStatus.completed,
+            "S-215 the wrist's copy is still the end it recorded"
+        )
+        let stored = await wrist.store.readAll()
+        XCTAssertEqual(stored.sessions.count, 2, "S-215 the repeat mints no row")
+    }
+
+    // MARK: - S-10304 the bridge opens the gate only after it holds a handler
+
+    func testS10304TheBridgeOpensTheGateOnlyAfterItHoldsAHandler() async throws {
+        let session = FakeWatchConnectivitySession()
+        let bridge = WatchConnectivityBridge(session: session)
+        XCTAssertEqual(
+            session.openInboundCalls,
+            0,
+            "S-10304 nothing opened the gate before `onIncoming`"
+        )
+
+        var handled: [[String: Any]] = []
+        bridge.onIncoming { frame in
+            handled.append(frame)
+        }
+        XCTAssertEqual(
+            session.openInboundCalls,
+            1,
+            "S-10304 `onIncoming` opened the gate exactly once, after storing the handler"
+        )
+
+        await session.deliver(["n": 1])
+        XCTAssertEqual(
+            handled.count,
+            1,
+            "S-10304 a frame delivered after the gate opened reached the handler"
+        )
+    }
+
+    // MARK: - S-10305 a frame delivered before `onIncoming` is a drop at the bridge
+
+    func testS10305AFrameDeliveredBeforeOnIncomingIsADropAtTheBridge() async throws {
+        let session = FakeWatchConnectivitySession()
+        let bridge = WatchConnectivityBridge(session: session)
+
+        await session.deliver(["n": 1])
+
+        var handled: [[String: Any]] = []
+        bridge.onIncoming { frame in
+            handled.append(frame)
+        }
+        XCTAssertTrue(
+            handled.isEmpty,
+            "S-10305 the frame delivered before `onIncoming` was dropped, not replayed"
+        )
+    }
+}
+
+/// A transport whose first send waits for the test to release it, so a second
+/// catch-up can arrive while the first sync is still in flight (S-107).
+final class GatedTransport: WatchSyncTransport {
+    var isPhoneReachable: Bool
+    private(set) var requested: [Date?] = []
+
+    /// Whether each routines request said the wrist holds a bests frame,
+    /// parallel to `requested` (S-87c-16).
+    private(set) var requestedHoldsBests: [Bool] = []
+
+    /// Whether each routines request asked for the day's water count, parallel
+    /// to `requested` (plan 95 S-94b-17).
+    private(set) var requestedWantsWater: [Bool] = []
+
+    private(set) var sent: [[String: Any]] = []
+    private(set) var snapshotRequests = 0
+
+    /// True once the gated send has registered its continuation.
+    private(set) var gateEntered = false
+
+    private let lock = NSLock()
+    private var gateUsed = false
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    init(isPhoneReachable: Bool = true) {
+        self.isPhoneReachable = isPhoneReachable
+    }
+
+    func requestRoutines(
+        since: Date?,
+        exercisesVersion: String?,
+        holdsBests: Bool,
+        wantsWater: Bool
+    ) async {
+        requested.append(since)
+        requestedHoldsBests.append(holdsBests)
+        requestedWantsWater.append(wantsWater)
+    }
+
+    func requestSnapshot() async { snapshotRequests += 1 }
+
+    func send(_ envelope: [String: Any]) async {
+        let shouldGate = lock.withLock { () -> Bool in
+            let gate = !gateUsed
+            gateUsed = true
+            return gate
+        }
+
+        if shouldGate {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                lock.withLock {
+                    releaseContinuation = continuation
+                    gateEntered = true
+                }
+            }
+        }
+        sent.append(envelope)
+    }
+
+    /// Lets the gated send finish.
+    func release() {
+        let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            let held = releaseContinuation
+            releaseContinuation = nil
+            return held
+        }
+        continuation?.resume()
+    }
+}
+
+/// A transport whose first routines request waits for the test to release it, so
+/// a later trigger arrives while a session-less catch-up is in flight (S-188).
+/// A wrist with no session has no send to gate, so the gate sits on the request
+/// that catch-up makes first.
+final class GatedRequestTransport: WatchSyncTransport {
+    var isPhoneReachable: Bool
+    private(set) var requested: [Date?] = []
+
+    /// Whether each routines request said the wrist holds a bests frame,
+    /// parallel to `requested` (S-87c-16).
+    private(set) var requestedHoldsBests: [Bool] = []
+
+    /// Whether each routines request asked for the day's water count, parallel
+    /// to `requested` (plan 95 S-94b-17).
+    private(set) var requestedWantsWater: [Bool] = []
+
+    private(set) var sent: [[String: Any]] = []
+    private(set) var snapshotRequests = 0
+
+    /// True once the gated request has registered its continuation.
+    private(set) var gateEntered = false
+
+    private let lock = NSLock()
+    private var gateUsed = false
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    init(isPhoneReachable: Bool = true) {
+        self.isPhoneReachable = isPhoneReachable
+    }
+
+    func requestRoutines(
+        since: Date?,
+        exercisesVersion: String?,
+        holdsBests: Bool,
+        wantsWater: Bool
+    ) async {
+        let shouldGate = lock.withLock { () -> Bool in
+            let gate = !gateUsed
+            gateUsed = true
+            return gate
+        }
+
+        if shouldGate {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                lock.withLock {
+                    releaseContinuation = continuation
+                    gateEntered = true
+                }
+            }
+        }
+        requested.append(since)
+        requestedHoldsBests.append(holdsBests)
+        requestedWantsWater.append(wantsWater)
+    }
+
+    func requestSnapshot() async { snapshotRequests += 1 }
+
+    func send(_ envelope: [String: Any]) async { sent.append(envelope) }
+
+    /// Lets the gated request finish.
+    func release() {
+        let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            let held = releaseContinuation
+            releaseContinuation = nil
+            return held
+        }
+        continuation?.resume()
     }
 }

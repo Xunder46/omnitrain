@@ -137,7 +137,13 @@ void main() {
     // Add an exercise so the session is non-empty and goes through the
     // normal finish dialog → summary flow.
     final exercises = await deps.repository.getExercises();
-    await deps.workoutState.addExerciseToSession(exercises.first);
+    final effortId = await deps.workoutState.addExerciseToSession(
+      exercises.first,
+      // exercises.first is a timed exercise; without a modality the effort
+      // kind would default to 'set', so override to timed.
+      effortKindOverride: 'timed',
+    );
+    await deps.workoutState.startTimedEntry(effortId, 0);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -254,7 +260,13 @@ void main() {
 
     // Add an exercise so the session is non-empty and reaches the summary screen.
     final exercises = await deps.repository.getExercises();
-    await deps.workoutState.addExerciseToSession(exercises.first);
+    final effortId = await deps.workoutState.addExerciseToSession(
+      exercises.first,
+      // exercises.first is a timed exercise; without a modality the effort
+      // kind would default to 'set', so override to timed.
+      effortKindOverride: 'timed',
+    );
+    await deps.workoutState.startTimedEntry(effortId, 0);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -308,7 +320,8 @@ void main() {
     final effortId = await deps.workoutState.addExerciseToSession(exercise);
 
     // Simulate a rest that started (as the timer mixin does after a set).
-    await deps.workoutState.recordRestStart(effortId, 0);
+    // Index 1 marks set 0 logged, the way a real Log Set writes it.
+    await deps.workoutState.recordRestStart(effortId, 1);
 
     // End the session — persistOpenRests should close the open rest.
     await deps.workoutState.endSession();
@@ -336,7 +349,8 @@ void main() {
       final effortId = await deps.workoutState.addExerciseToSession(exercise);
 
       // Simulate a rest that started at least 1 ms ago.
-      await deps.workoutState.recordRestStart(effortId, 0);
+      // Index 1 marks set 0 logged, the way a real Log Set writes it.
+      await deps.workoutState.recordRestStart(effortId, 1);
 
       // Ensure endSession closes the open rest at a later timestamp.
       await Future<void>.delayed(const Duration(milliseconds: 5));

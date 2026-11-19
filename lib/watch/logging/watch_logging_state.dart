@@ -28,14 +28,6 @@ import '../session/watch_session_engine.dart';
 import '../session/watch_timer_math.dart';
 import 'watch_metric_stepping.dart';
 
-/// What the surfaces fall back on before the phone's prescription arrives.
-abstract final class WatchLoggingDefaults {
-  /// Length of the rest countdown after a set. A routine's per-effort rest
-  /// supersedes it once the prescription reaches the watch; until then the
-  /// wrist rests at the standing default.
-  static const int restSeconds = 90;
-}
-
 /// The effort kinds a value screen can be, in the protocol's vocabulary. A hold
 /// is a `drill` to the data layer and a `hold` on the wire, which is why both
 /// names appear here.
@@ -131,7 +123,6 @@ class WatchLoggingState {
     DateTime Function()? clock,
     String Function()? idFactory,
     this.units = const WatchUnitPreferences(),
-    this.restSeconds = WatchLoggingDefaults.restSeconds,
     WatchSensorRecorder? sensors,
   }) : _engine = engine,
        _clock = clock ?? _utcNow,
@@ -156,10 +147,15 @@ class WatchLoggingState {
     ExerciseCapability.distance,
   ];
 
-  /// Values the user has dialled in but not confirmed, by metric key. Cleared
-  /// on confirm, at which point the values come back from the logged
-  /// observation (for a set) or start fresh (for measured work).
-  final Map<String, double> _dialled = {};
+  /// Values the user has dialled in but not confirmed, by exercise slot and
+  /// then metric key. Cleared on confirm, at which point the values come back
+  /// from the logged observation (for a set) or start fresh (for measured
+  /// work).
+  ///
+  /// The slot is part of the key so an unconfirmed value belongs to the
+  /// exercise it was dialled on, not to whichever exercise the session moves to
+  /// next (D-5).
+  final Map<String, Map<String, double>> _dialled = {};
 
   final WatchSessionEngine _engine;
   final DateTime Function() _clock;
@@ -172,15 +168,14 @@ class WatchLoggingState {
   /// The saved unit preferences the wrist reads in.
   final WatchUnitPreferences units;
 
-  /// Rest countdown length after a set, in seconds.
-  final int restSeconds;
-
   // ---------------------------------------------------------------------------
   // What the screen is showing
   // ---------------------------------------------------------------------------
 
-  /// Whether there is an exercise in progress to log against.
-  bool get canLog => _engine.session != null && _slot != null;
+  /// Whether there is an exercise in progress to log against. A session that is
+  /// over — ended here or by the phone — is not a surface to log into (D-55).
+  bool get canLog =>
+      _engine.session?.status == WatchSessionStatus.active && _slot != null;
 
   /// The modality the session was started in, or null for free training.
   String? get modality => _engine.session?.modality;
@@ -193,6 +188,31 @@ class WatchLoggingState {
 
   /// The newest timer of [kind], which is the one that applies.
   WatchTimerRecord? timerFor(String kind) => _engine.timerFor(kind);
+
+  /// D-161: a rest is running and the workout is live — the watch shows its
+  /// rest screen.
+  bool get isResting {
+    final rest = _engine.timerFor(WatchTimerKind.rest);
+    return _engine.session?.status == WatchSessionStatus.active &&
+        rest != null &&
+        rest.state != WatchTimerState.stopped;
+  }
+
+  /// Ends the running rest at this instant (the rest screen's Next, D-161).
+  ///
+  /// [at] is the ending instant the caller already has — the instant the frame
+  /// it is about to send reports (D-223) — and defaults to this state's clock.
+  Future<void> endRest({DateTime? at}) async {
+    await _engine.stopTimer(kind: WatchTimerKind.rest, at: at);
+  }
+
+  /// The running rest's elapsed time in whole seconds as of now, or null when
+  /// none is running.
+  int? restElapsedSeconds() {
+    final rest = _engine.timerFor(WatchTimerKind.rest);
+    if (!isResting || rest == null) return null;
+    return activeElapsedMs(rest, _clock()) ~/ 1000;
+  }
 
   /// The current instant, read through this state's clock, so the screen and
   /// the events it logs agree on the time.
@@ -328,6 +348,9 @@ class WatchLoggingState {
 
   Map<String, Object?>? get _slot => _engine.currentExercise;
 
+  /// The slot the dialled values belong to; `""` when there is no exercise.
+  String get _dialledKey => _slot?['sessionExerciseId'] as String? ?? '';
+
   List<String> get _capabilities =>
       ((_slot?['capabilities'] as List?) ?? const [])
           .whereType<String>()
@@ -384,7 +407,7 @@ class WatchLoggingState {
     final measured = _isMeasured(metricKey);
     final value = measured
         ? _measuredValue(metricKey)
-        : _dialled[metricKey] ?? _initialValue(metricKey);
+        : _dialled[_dialledKey]?[metricKey] ?? _initialValue(metricKey);
     return WatchMetricField(
       metricKey: metricKey,
       label: _labelFor(metricKey),
@@ -511,9 +534,9 @@ class WatchLoggingState {
       case WatchMetricKey.rounds:
         return roundsLabel;
       case WatchMetricKey.roundDuration:
-        return 'Round length';
+        return '${ModalityDisplay.roundNoun(modality)} length';
       case WatchMetricKey.extraWeight:
-        return 'Extra load';
+        return 'Load';
       default:
         return metricKey;
     }
@@ -545,10 +568,9 @@ class WatchLoggingState {
         return OmniDateUtils.formatClock((value * 1000).round());
       case WatchMetricKey.weight:
       case WatchMetricKey.extraWeight:
-        return UnitFormatter.fromKilograms(
-          value,
-          units.weightUnit,
-        ).toStringAsFixed(1);
+        final converted = UnitFormatter.fromKilograms(value, units.weightUnit);
+        // A signed zero is a zero: `-0.0` must not print as "-0.0".
+        return (converted == 0 ? 0.0 : converted).toStringAsFixed(1);
       case WatchMetricKey.distance:
         return (value / UnitFormatter.metresPerUnit(units.distanceUnit))
             .toStringAsFixed(1);
@@ -569,7 +591,7 @@ class WatchLoggingState {
     final field = _fieldOrNull(metricKey);
     if (field == null || field.isMeasured) return;
 
-    _dialled[metricKey] = WatchMetricStepping.adjust(
+    (_dialled[_dialledKey] ??= {})[metricKey] = WatchMetricStepping.adjust(
       field.value,
       metricKey: metricKey,
       detents: detents,
@@ -603,6 +625,9 @@ class WatchLoggingState {
 
     final loggedAt = now ?? _clock();
     final id = _newId();
+    // The slot being confirmed, read once: the awaits below can move the
+    // session on, and the clear must reach the exercise this entry belongs to.
+    final loggedKey = _dialledKey;
     final event = <String, Object?>{
       'entryId': id,
       'eventId': id,
@@ -613,8 +638,13 @@ class WatchLoggingState {
       ..._metricPayload(loggedAt),
     };
 
+    // D-162: a rest can never outlive the entry that follows it, whichever
+    // path logs — a running rest ends at this log's instant.
+    if (isResting) await endRest(at: loggedAt);
+
+
     final stored = await _engine.appendObservation(event);
-    _dialled.clear();
+    _dialled.remove(loggedKey);
     await _startFollowOnTimer();
     return stored;
   }
@@ -638,10 +668,11 @@ class WatchLoggingState {
         // Unloaded work leaves `loadKg` off rather than sending a zero. The
         // phone sends 0.0 for the same case and the two are indistinguishable
         // once logged, so this is a choice, not an oversight: the field is
-        // optional and a wrist log of bodyweight reps makes no load claim.
+        // optional and a wrist log of bodyweight reps makes no load claim. A
+        // negative load is a band assist and is emitted with its sign (D-61).
         return {
           'reps': reps.round() < 1 ? 1 : reps.round(),
-          if (load != null && load > 0) 'loadKg': load,
+          if (load != null && load != 0) 'loadKg': load,
         };
       case WatchEffortKind.timed:
         return _windowPayload(loggedAt, distance: true);
@@ -696,15 +727,13 @@ class WatchLoggingState {
 
   double? _valueOf(String metricKey) => _fieldOrNull(metricKey)?.value;
 
-  /// The countdown the effort kind runs next: rest after a set, the next round
-  /// after a round, nothing after work that is measured rather than prescribed.
+  /// The timer the effort kind runs next: a rest after a set is a count-up
+  /// with no length (D-160), the next round after a round is a countdown,
+  /// nothing after work that is measured rather than prescribed.
   Future<void> _startFollowOnTimer() async {
     switch (effortKind) {
       case WatchEffortKind.set:
-        await _engine.startTimer(
-          WatchTimerKind.rest,
-          plannedDurationMs: restSeconds * Duration.millisecondsPerSecond,
-        );
+        await _engine.startTimer(WatchTimerKind.rest);
       case WatchEffortKind.round:
         final length = _valueOf(WatchMetricKey.roundDuration) ?? 0;
         await _engine.startTimer(

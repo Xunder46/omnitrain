@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/planned_down.schema.json",
+  "title": "planned_down",
+  "description": "Phone → watch. The phone's planned sessions: only the not-started plans inside the phone's sync window travel, and the wrist keeps only the rows whose scheduled day equals its own local today. One frame, never batched; sent from the same bundle that answers a routine request, so it travels with every `routines_down`.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "properties": {
+        "type": { "const": "planned_down" },
+        "origin": { "const": "phone" },
+        "payload": {
+          "type": "object",
+          "description": "Only the not-started plans for the phone's local today give or take the sync window travel; the wrist filters to its own today, so a plan scheduled for the phone alone may never start here.",
+          "required": ["generatedAt", "plans"],
+          "additionalProperties": false,
+          "properties": {
+            "generatedAt": {
+              "$ref": "envelope.schema.json#/$defs/timestamp"
+            },
+            "plans": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/plan" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "plan": {
+      "type": "object",
+      "description": "One planned session row as the phone stores it: what to call it, when it is scheduled, and where it came from.",
+      "required": ["plannedSessionId", "name", "scheduledDateMs", "createdAtMs", "updatedAtMs"],
+      "additionalProperties": false,
+      "properties": {
+        "plannedSessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The phone's name cascade: the plan's own title, else its routine template's name, else the phone's modality label, else \"Free Training\"."
+        },
+        "scheduledDateMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The phone's local start of day for the scheduled date, in epoch milliseconds as stored."
+        },
+        "createdAtMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "updatedAtMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "routineTemplateId": {
+          "type": "string",
+          "description": "The routine the plan was created from, on a routine plan. Omitted (never null) when the plan is a free workout."
+        },
+        "modality": {
+          "type": "string",
+          "description": "The phone's modality label, on a free plan with one. Omitted (never null) when the plan has none."
+        }
+      }
+    }
+  }
+}

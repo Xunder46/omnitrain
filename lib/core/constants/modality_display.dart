@@ -26,4 +26,16 @@ class ModalityDisplay {
         return 'Rounds';
     }
   }
+
+  /// The singular word for one round-kind entry. Sports says "Period" — the one
+  /// word that fits a half, a quarter or a bout for any sport, built-in or
+  /// custom — and every other modality says "Round".
+  static String roundNoun(String? modality) =>
+      modality == 'sports' ? 'Period' : 'Round';
+
+  /// "3 rounds" / "1 period": a count of round-kind entries, lower case.
+  static String roundCount(String? modality, int count) {
+    final noun = roundNoun(modality).toLowerCase();
+    return '$count $noun${count != 1 ? 's' : ''}';
+  }
 }

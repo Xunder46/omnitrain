@@ -690,6 +690,11 @@ class MacroFocusContent extends StatelessWidget {
   /// informational qualifier instead of a "%" string.
   final bool informational;
 
+  /// The macro's daily target in grams, or null / 0 when none is set. With a
+  /// target the detail line reads `<grams> of <target> g` and carries no
+  /// percent; fibre (`informational`) ignores it.
+  final int? targetGrams;
+
   const MacroFocusContent({
     super.key,
     required this.name,
@@ -697,6 +702,7 @@ class MacroFocusContent extends StatelessWidget {
     required this.percentOfCalories,
     required this.color,
     this.informational = false,
+    this.targetGrams,
   });
 
   @override
@@ -723,8 +729,11 @@ class MacroFocusContent extends StatelessWidget {
         ) ??
         const TextStyle();
 
+    final hasTarget = !informational && (targetGrams ?? 0) > 0;
     final detail = informational
         ? '$grams g'
+        : hasTarget
+        ? '$grams of $targetGrams g'
         : '$grams g · $percentOfCalories%';
 
     return Column(

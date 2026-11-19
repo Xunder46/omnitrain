@@ -1,7 +1,10 @@
 /// Catalog content version constants.
 ///
-/// The bundled app-authored catalog (exercises, capability / muscle-group /
-/// equipment relationships, and the food catalog) is versioned with an integer
+/// The bundled app-authored catalog (sport categories, disciplines, units,
+/// metrics and their effort kinds, tags, exercises, capability and
+/// muscle-group relationships, the food catalog and demo routines; equipment
+/// and food groups are written at first install only) is versioned with an
+/// integer
 /// that advances every time the bundled catalog changes. At app start, the
 /// device compares its stored version against [bundledCatalogVersion]; when
 /// the bundled version is newer, [CatalogRefreshService] walks the bundled
@@ -40,9 +43,39 @@
 ///   `_refreshDemoRoutines` to rewrite an *untouched* demo's segments /
 ///   efforts / targets; before it, the refresh patched the template row
 ///   alone, so no version bump could ever deliver a change below it.
+///   When the muscle hierarchy shipped (regions with child muscles via
+///   `parentId`, primary / secondary roles, the approved re-tagging and the
+///   Trapezius → Traps rename) we bumped to `11`, so existing installs
+///   receive the new groups, parent links, roles and renames on next launch.
+///   When `chicken_thigh_skin_on` ("Chicken thigh, with skin") was added we
+///   bumped to `12` so existing installs receive the new food on next launch.
+///   When Shins (`muscle-tibialis`, under Legs) was added and Tibialis Raise
+///   moved to it from Calves, we bumped to `13` so existing installs receive
+///   the new muscle and the corrected tagging on next launch.
+///   When Brachialis, Rotator cuff and Abductors were added, Cable Hip
+///   Abduction, Cable External Rotation and Hammer Curl were re-tagged and 28
+///   strength exercises were added, we bumped to `14` so existing installs
+///   receive them on next launch.
+///   When 20 core, leg/hip and press exercises were added (Sit-Up through
+///   Sled Drag) with the Trap Bar and Sled equipment rows, we bumped to `15`
+///   so existing installs receive the exercises on next launch; the two
+///   equipment rows reach new installs only.
+///   When the refresh learned to deliver sport categories, disciplines, units,
+///   metric definitions, metric effort kinds and tags, we bumped to `16` so
+///   every existing install reconciles them once on next launch; equipment,
+///   equipment links and the default food groups are still written at first
+///   install only.
+///   When 22 yoga poses were added under the Yoga discipline (Mountain Pose
+///   through Savasana) and Pigeon Pose and Child's Pose moved into it, we
+///   bumped to `17` so existing installs receive them on next launch; their
+///   equipment links reach new installs only.
+///   When the Conditioning discipline and 17 conditioning and plyometric
+///   exercises (Burpee through Thruster) were added, we bumped to `18` so
+///   existing installs receive the discipline and the exercises on next
+///   launch; their equipment links reach new installs only.
 library;
 
-const int bundledCatalogVersion = 10;
+const int bundledCatalogVersion = 18;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///
