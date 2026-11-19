@@ -311,6 +311,79 @@ class TimerManager {
     }
   }
 
+  /// Gives back an interval the phone took from the wire and the wrist no
+  /// longer runs (plan 244 D-24401): every active or paused interval of
+  /// [effortId] whose start is within [_sameStartToleranceMs] of [startedAtMs]
+  /// goes back to not started, so a hold the wrist stopped, or replaced with
+  /// another exercise's, never keeps counting on the phone. A finished
+  /// interval is never touched; the wrist's entry, when it arrives, fills the
+  /// first unfinished interval, which this one is again. Returns whether
+  /// anything changed. No notification is sent here: the session core bumps
+  /// the refresh revision and notifies once.
+  Future<bool> releaseRemoteTimer(
+    String effortId,
+    String effortKind,
+    int startedAtMs,
+  ) async {
+    _clearError();
+
+    try {
+      final nowMs = _clock().millisecondsSinceEpoch;
+      var changed = false;
+      if (effortKind == 'round') {
+        final list = _roundInstances[effortId];
+        if (list == null) return false;
+        for (var i = 0; i < list.length; i++) {
+          final old = list[i];
+          if (old.state != RoundState.active &&
+              old.state != RoundState.paused) {
+            continue;
+          }
+          if ((old.startedAtMs - startedAtMs).abs() > _sameStartToleranceMs) {
+            continue;
+          }
+          final released = old.copyWith(
+            state: RoundState.notStarted,
+            startedAtMs: 0,
+            pausedAtMs: null,
+            totalPausedDurationMs: 0,
+            updatedAtMs: nowMs,
+          );
+          await _repository.updateRoundInstance(released);
+          list[i] = released;
+          changed = true;
+        }
+      } else {
+        final list = _timedInstances[effortId];
+        if (list == null) return false;
+        for (var i = 0; i < list.length; i++) {
+          final old = list[i];
+          if (old.state != TimedState.active &&
+              old.state != TimedState.paused) {
+            continue;
+          }
+          if ((old.startedAtMs - startedAtMs).abs() > _sameStartToleranceMs) {
+            continue;
+          }
+          final released = old.copyWith(
+            state: TimedState.notStarted,
+            startedAtMs: 0,
+            pausedAtMs: null,
+            totalPausedDurationMs: 0,
+            updatedAtMs: nowMs,
+          );
+          await _repository.updateTimedInstance(released);
+          list[i] = released;
+          changed = true;
+        }
+      }
+      return changed;
+    } catch (e) {
+      _setError('Failed to release the remote timer: $e');
+      return false;
+    }
+  }
+
   /// How far apart two starts may be and still be one interval's start: the
   /// watch's start crosses the wire as an ISO string.
   static const int _sameStartToleranceMs = 1000;

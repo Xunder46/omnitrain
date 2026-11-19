@@ -247,6 +247,13 @@ class WorkoutState extends ChangeNotifier {
   Future<bool> adoptRemoteWorkTimer(String effortId, RemoteWorkTimer remote) =>
       _sessionCore.adoptRemoteWorkTimer(effortId, remote);
 
+  /// Gives back the interval of [effortId] that a watch timer started at
+  /// [startedAtMs] had taken, when the wrist no longer runs it and it is
+  /// still running here (plan 244 D-24401). Bumps the watch refresh revision
+  /// and notifies once when something changed; returns whether it did.
+  Future<bool> releaseRemoteWorkTimer(String effortId, int startedAtMs) =>
+      _sessionCore.releaseRemoteWorkTimer(effortId, startedAtMs);
+
   Future<void> populateSessionFromManifest(RoutineSessionManifest manifest) =>
       _sessionCore.populateSessionFromManifest(manifest);
   /// Ends the session. [writeToHealth] false skips the Health write-back: the

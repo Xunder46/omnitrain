@@ -1109,6 +1109,7 @@ class _Pass {
             index: logged,
             position: logged,
           );
+          _noteIntervalPlaced(entry, effortId, logged, 'already_logged');
           continue;
         }
       }
@@ -1119,6 +1120,18 @@ class _Pass {
           ? await _unfinishedInstanceToFill(effortId, entry)
           : null;
       final index = unfinished ?? fill?.number ?? interval?.index ?? next++;
+      if (isInterval) {
+        _noteIntervalPlaced(
+          entry,
+          effortId,
+          index,
+          unfinished != null
+              ? 'retry'
+              : interval != null
+              ? 'filled'
+              : 'appended',
+        );
+      }
       if (fill != null) {
         // The planned row's own rows go: what the wrist logged fills the spot
         // they held, and nothing the routine preset survives beside it.
@@ -1374,6 +1387,26 @@ class _Pass {
       if (inProgress(candidate)) return candidate;
     }
     return unfinished.isEmpty ? null : unfinished.first;
+  }
+
+  /// Notes where a wrist interval entry landed (plan 244 D-24403): `filled`
+  /// took the phone's unfinished interval, `appended` added a new one,
+  /// `already_logged` matched a finished interval of the same start, `retry` is
+  /// a pass that finds its own earlier placement. Observation only.
+  void _noteIntervalPlaced(
+    _Entry entry,
+    String effortId,
+    int index,
+    String how,
+  ) {
+    final startMs = entry.startedAtMs;
+    diagnostics?.note(
+      'entry_placed',
+      session: sessionId,
+      detail:
+          'kind=${entry.wireKind} effort=$effortId index=$index how=$how'
+          '${startMs == null ? '' : ' start=${_noteIso(startMs)}'}',
+    );
   }
 
   /// The index of the FINISHED interval of [effortId] that started with

@@ -17,7 +17,11 @@
 /// 1. **The mirror must hold the phone's session.** A timer for a session the
 ///    phone is not running is not this phone's news.
 /// 2. **A stop is not applied** (A-2): the wrist's logged entry fills and
-///    finishes the interval (43a), which stops the phone's ticker.
+///    finishes the interval (43a), which stops the phone's ticker. Since plan
+///    244 an interval the phone took from the wire is also given back (to not
+///    started) once the wire stops naming it (the timer stopped, or another
+///    exercise's timer replaced it) and it is still running here, so a hold
+///    whose entry never filled it cannot keep counting.
 /// 3. **The encoding last applied per kind is remembered,** whether or not the
 ///    adoption wrote: a refused timer is not retried until the frame changes.
 ///
@@ -28,6 +32,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import '../../core/services/diagnostics_log.dart';
 import '../../core/sync_protocol/wire_timestamps.dart';
 import '../workout/timer_manager.dart';
 import '../workout/workout_state.dart';
@@ -38,10 +43,19 @@ class WatchTimerAdoption {
   WatchTimerAdoption({
     required LiveSessionMirrorState mirror,
     void Function(Object error, StackTrace stack)? onFailure,
+    DiagnosticsLog? diagnostics,
   }) : _mirror = mirror,
-       _onFailure = onFailure {
+       _onFailure = onFailure,
+       _diagnostics = diagnostics {
     _mirror.addListener(_onChanged);
   }
+
+  /// The phone's diagnostics log (plan 244 D-24403); null records nothing.
+  final DiagnosticsLog? _diagnostics;
+
+  /// The timer each wire kind last gave an interval to, so the phone can give
+  /// it back when the wire stops naming it (plan 244 D-24402).
+  final Map<String, ({String slot, int startedAtMs})> _adopted = {};
 
   /// The wire kinds this adoption reads, in the order a pass visits them.
   static const List<String> _wireKinds = ['round', 'hold', 'elapsed'];
@@ -123,6 +137,7 @@ class WatchTimerAdoption {
       }
       if (_sessionId != session.id) {
         _applied.clear();
+        _adopted.clear();
         _sessionId = session.id;
       }
 
@@ -131,6 +146,19 @@ class WatchTimerAdoption {
 
       for (final kind in _wireKinds) {
         final timer = timers[kind];
+
+        // Plan 244 D-24402: what the wire names now. An interval an earlier
+        // pass took from this kind and the wire no longer names (stopped, or
+        // replaced by another exercise's or a later interval) goes back first.
+        final running = timer is Map && timer['state'] != 'stopped';
+        final namedSlot = running ? timer['sessionExerciseId'] : null;
+        await _releaseWhatTheWristLeft(
+          state,
+          session.id,
+          kind,
+          namedSlot is String ? namedSlot : null,
+        );
+
         if (timer is! Map) continue;
         if (timer['state'] == 'stopped') continue;
         final slot = timer['sessionExerciseId'];
@@ -148,8 +176,17 @@ class WatchTimerAdoption {
           accumulatedPauseMs: (timer['accumulatedPauseMs'] as int?) ?? 0,
           plannedDurationMs: timer['plannedDurationMs'] as int?,
         );
-        await state.adoptRemoteWorkTimer(slot, remote);
+        final changed = await state.adoptRemoteWorkTimer(slot, remote);
         _applied[kind] = encoded;
+        if (changed) {
+          _adopted[kind] = (slot: slot, startedAtMs: remote.startedAtMs);
+          _diagnostics?.note(
+            'timer_adopted',
+            session: session.id,
+            detail:
+                'kind=$kind slot=$slot start=${_iso(remote.startedAtMs)}',
+          );
+        }
       }
     } on Exception catch (e, s) {
       // A timer that cannot be applied must not disturb the phone — but it is
@@ -157,6 +194,42 @@ class WatchTimerAdoption {
       _report(e, s);
     }
   }
+
+  /// Gives back the interval [kind] last took, when the wire no longer names
+  /// it (plan 244 D-24402). [slot] is the exercise the wire names as running,
+  /// null for nothing running. The same exercise keeps the interval whatever
+  /// the start: a later start of the same exercise is the wrist's next
+  /// interval, which the adoption's earlier-start rule handles and whose
+  /// entry fills the old one (S-6323 pins that the phone finishing the old
+  /// interval must not stop the new clock). A stop, or another exercise's
+  /// timer, ends the claim: the interval goes back to not started if it is
+  /// still running here.
+  Future<void> _releaseWhatTheWristLeft(
+    WorkoutState state,
+    String sessionId,
+    String kind,
+    String? slot,
+  ) async {
+    final held = _adopted[kind];
+    if (held == null) return;
+    if (slot != null && slot == held.slot) return;
+
+    _adopted.remove(kind);
+    final released = await state.releaseRemoteWorkTimer(
+      held.slot,
+      held.startedAtMs,
+    );
+    _diagnostics?.note(
+      'timer_released',
+      session: sessionId,
+      detail:
+          'kind=$kind slot=${held.slot} start=${_iso(held.startedAtMs)} '
+          'reason=${slot == null ? 'stopped' : 'replaced'} reset=$released',
+    );
+  }
+
+  static String _iso(int ms) =>
+      DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
 
   static String _encode(Object? payload) => jsonEncode(_sorted(payload));
 

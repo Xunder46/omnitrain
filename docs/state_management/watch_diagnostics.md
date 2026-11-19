@@ -120,18 +120,24 @@ platform, event count) and the events, oldest first, on the clipboard. Verified 
 `test/watch_session_adoption_bridge_test.dart` and `test/watch_session_import_test.dart`. Not yet recorded: the
 phone's own validation refusals.
 
-**The phone's decisions.** Six kinds record what the phone decided about a watch session, each naming the session
-and nothing that varies but fixed words and UTC instants (plan 174, D-17402): `adoption_decision`, the bridge's
+**The phone's decisions.** Nine kinds record what the phone decided about a watch session, each naming the session
+and nothing that varies but fixed words, UTC instants and (the last three) exercise slot ids and interval numbers (plan 174, D-17402): `adoption_decision`, the bridge's
 verdict on a snapshot — `adopted status=active start=<UTC>`, `skipped reason=held_session held=<session id>` (the
 phone already holds another session, D-10) or `skipped reason=already_history`; `session_row_created`, a row the
 phone wrote itself — `path=snapshot|started|import start=<UTC> end=<UTC|none>`; `session_start_corrected`, a start
 moved to the wrist's own (`from=<UTC> to=<UTC> path=merge|import`, plan 167 D-16705); `end_clamped`, an end cut to
 this phone's clock plus five minutes (`from=<UTC> to=<UTC> who=lifecycle|import`, plan 164's bound — this line, not
 the bound's own prose, is the phone's record of a cut); `end_applied`, an end the session now holds
-(`who=catchup|end_session|import instant=<UTC|none> status=<the row's status>`); and `discard_applied`, a wrist
-discard (`who=held|finished`). Only `adoption_decision` is deduplicated, per session and detail, in memory
+(`who=catchup|end_session|import instant=<UTC|none> status=<the row's status>`); `discard_applied`, a wrist
+discard (`who=held|finished`); and, since plan 244, three that say where a watch timer or entry went on the phone:
+`timer_adopted`, a watch timer starting a phone interval (`kind=<elapsed|hold|round> slot=<slot id> start=<UTC>`);
+`timer_released`, the phone giving back an interval the wire stopped naming
+(`kind=… slot=… start=<UTC> reason=stopped|replaced reset=<true|false>`, `reset=true` when the interval was still
+running); and `entry_placed`, where a watch timed, hold or round entry landed
+(`kind=<wire kind> effort=<effort id> index=<n> how=filled|appended|already_logged|retry`, plus `start=<UTC>`).
+Only `adoption_decision` is deduplicated, per session and detail, in memory
 (D-17404): a snapshot resent fifty times is one line, because a decision the phone repeats is not a new decision,
-while the other five are recorded every time they happen. Instants are this phone's clock; nothing recorded here is
+while the other eight are recorded every time they happen. Instants are this phone's clock; nothing recorded here is
 a name, a weight or a number the owner typed, which is the privacy rule above. Verified by
 `test/watch_session_adoption_bridge_test.dart` group `plan 174 the log records what the bridge decided`
 (`S-17401 a fresh adoption notes its decision and the row it wrote`,
@@ -149,7 +155,9 @@ a name, a weight or a number the owner typed, which is the privacy rule above. V
 (`S-17405 an imported history row is noted with both stamps`,
 `S-17406 A a merge’s start correction is noted`, `S-17406 B an import’s start correction is noted`,
 `S-17408 an import clamps a future end and notes it`, `S-17408 b the catch-up bound is noted too`,
-`S-17409 an applied import end names who and the instant`).
+`S-17409 an applied import end names who and the instant`); the three plan 244 kinds by
+`test/watch_timer_release_test.dart` (`S-24418 the diagnostics lines: the adoption, the release and the entry, in order, with no names`,
+`S-24419`, `S-24422`, `S-24423a`, `S-24423b`, `S-24423c`).
 
 **Send to phone (plan 144).** The wrist's log reaches the phone only when the owner asks. The Diagnostics screen's
 last button, "Send to phone", copies the log file (`WatchDiagnosticsLog.snapshotFile`, a file named

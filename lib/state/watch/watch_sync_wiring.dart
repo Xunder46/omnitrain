@@ -396,6 +396,7 @@ Future<WatchSyncGraph?> createWatchSync({
   final timerAdoption = WatchTimerAdoption(
     mirror: mirror,
     onFailure: onFailure,
+    diagnostics: diagnostics,
   );
 
   // The wrist's running energy total (plan 135 D-13521): routed right here,

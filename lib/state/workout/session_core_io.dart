@@ -329,6 +329,34 @@ extension SessionCoreIOMethods on SessionCore {
     }
   }
 
+  /// Gives an interval back to the phone when the wrist no longer runs the
+  /// timer that had taken it (plan 244 D-24401): the effort's active or paused
+  /// interval that started with [startedAtMs] returns to not started, then the
+  /// watch refresh revision is bumped and listeners notified once when
+  /// something changed. An effort this state does not hold changes nothing.
+  Future<bool> releaseRemoteWorkTimer(String effortId, int startedAtMs) async {
+    _clearError();
+
+    try {
+      final effort = _findEffort(effortId);
+      if (effort == null) return false;
+
+      final changed = await _timerManager.releaseRemoteTimer(
+        effortId,
+        effort.effortKind,
+        startedAtMs,
+      );
+      if (changed) {
+        _watchRefreshRevision++;
+        _notify();
+      }
+      return changed;
+    } catch (e) {
+      _setError('Failed to release the remote timer: $e');
+      return false;
+    }
+  }
+
   Future<void> populateSessionFromManifest(
     RoutineSessionManifest manifest,
   ) async {

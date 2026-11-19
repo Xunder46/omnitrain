@@ -454,9 +454,9 @@ about a second apart until the next pause; `test/watch_timer_adoption_test.dart`
 ignored whatever the other intervals' states (a stale copy the wrist keeps
 showing never starts or rewinds the next interval; `test/watch_timer_adoption_test.dart`
 `S-12171`–`S-12174`). A stopped timer, one for a
-slot the phone does not hold, or the wrong kind for the effort is ignored, and
-a wrist stop is not applied — the wrist's logged entry fills and finishes the
-interval (plan 43a). The write bumps `watchRefreshRevision` once so the open
+slot the phone does not hold, or the wrong kind for the effort is ignored as a start, and
+a wrist stop gives back a phone interval the wire took and nobody finished, and the wrist's logged entry fills and finishes the
+interval (plan 43a). Since plan 244 `WatchTimerAdoption` remembers the timer each wire kind gave an interval to and, when the wire stops naming it (stopped, gone, or replaced by another exercise's timer; a later start of the same exercise is the wrist's next interval and keeps the held one: `S-24421b`, `test/watch_timer_push_test.dart` `S-6323`), puts the interval back to not started through `WorkoutState.releaseRemoteWorkTimer` if it is still running or paused (`test/watch_timer_release_test.dart` `S-24411`, `S-24412`, `S-24417`; the entry that arrives later fills the first unfinished interval, which is that interval again: `S-24413`, `S-24414`). The write bumps `watchRefreshRevision` once so the open
 session screen resyncs: `_adoptRunningTimerState`
 (`lib/features/session/workout_session_timer_mixin.dart`, called from
 `_resyncExercisesFromState` in `workout_session_screen.dart`) gives an interval
