@@ -132,8 +132,15 @@ void main() {
       await rig.workoutState.createNewSession(
         modality: Modality.isometricStretching,
       );
-      await rig.addExercise('exercise-mountain-pose');
-      await rig.addExercise('exercise-mountain-pose');
+      final firstPose = await rig.addExercise('exercise-mountain-pose');
+      final secondPose = await rig.addExercise('exercise-mountain-pose');
+      // Plan 257: a hold nobody started is dropped at Finish, so the poses
+      // hold the way the screen holds them: the first entry of each pose
+      // starts and finishes.
+      await rig.workoutState.startTimedEntry(firstPose, 0);
+      await rig.workoutState.finishTimedEntry(firstPose, 0);
+      await rig.workoutState.startTimedEntry(secondPose, 0);
+      await rig.workoutState.finishTimedEntry(secondPose, 0);
       await rig.workoutState.endSession();
 
       expect(rig.writtenKind, equals(HealthActivityKind.yoga));
@@ -144,8 +151,15 @@ void main() {
       await rig.workoutState.createNewSession(
         modality: Modality.isometricStretching,
       );
-      await rig.addExercise('exercise-mountain-pose');
-      await rig.addExercise('exercise-rowing-intervals');
+      final pose = await rig.addExercise('exercise-mountain-pose');
+      final intervals = await rig.addExercise('exercise-rowing-intervals');
+      // Plan 257: a hold or interval nobody started is dropped at Finish and
+      // the exercise it emptied leaves with it, so both exercises keep one
+      // started-and-finished entry — the mix the test is about.
+      await rig.workoutState.startTimedEntry(pose, 0);
+      await rig.workoutState.finishTimedEntry(pose, 0);
+      await rig.workoutState.startTimedEntry(intervals, 0);
+      await rig.workoutState.finishTimedEntry(intervals, 0);
       await rig.workoutState.endSession();
 
       expect(rig.writtenKind, equals(HealthActivityKind.flexibility));
@@ -156,7 +170,12 @@ void main() {
       await rig.workoutState.createNewSession(
         modality: Modality.isometricStretching,
       );
-      await rig.addExercise('exercise-mountain-pose');
+      final pose = await rig.addExercise('exercise-mountain-pose');
+      // Plan 257: a hold nobody started is dropped at Finish, so the pose
+      // holds once the way the screen holds it — the effort the store reads
+      // survives the end.
+      await rig.workoutState.startTimedEntry(pose, 0);
+      await rig.workoutState.finishTimedEntry(pose, 0);
       // The effort names a row the store no longer holds: an absent discipline
       // is not a Yoga discipline, so the session is not all-Yoga.
       await rig.repo.deleteExercise('exercise-mountain-pose');

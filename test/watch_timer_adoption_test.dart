@@ -570,7 +570,19 @@ void main() {
       await deliver(lastTimerFrame());
       await graph.timerAdoption.flush();
 
-      expectNothingAdopted(revisionBefore);
+      // Plan 257: the phone's two never-started intervals are dropped at
+      // Finish, and the ended session adopts nothing — no instance is active
+      // or finished, and no write resyncs the screen.
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId),
+        isEmpty,
+        reason: 'the intervals are dropped at Finish, nothing adopted',
+      );
+      expect(
+        phoneState.watchRefreshRevision,
+        revisionBefore,
+        reason: 'no write, so no screen resync',
+      );
       expect(
         _asObject(graph.mirror.state['timers'])['elapsed'],
         isNotNull,

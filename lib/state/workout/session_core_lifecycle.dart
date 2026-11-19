@@ -41,6 +41,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
             )).any((row) => row.origin == WatchInboxEntry.originWatch);
         if (!wristHadAHand) {
           await _dropUnloggedSets();
+          await _dropNeverStartedTimers();
         } else {
           // Plan 218: a workout the watch took part in drops its planned sets
           // too, but keeps every exercise (a late wrist set for a removed
@@ -49,8 +50,12 @@ extension SessionCoreLifecycleMethods on SessionCore {
           final queue = _afterPendingWristImports;
           if (queue == null) {
             await _dropUnloggedSets(keepEfforts: true);
+            await _dropNeverStartedTimers(keepEfforts: true);
           } else {
-            await queue(() => _dropUnloggedSets(keepEfforts: true));
+            await queue(() async {
+              await _dropUnloggedSets(keepEfforts: true);
+              await _dropNeverStartedTimers(keepEfforts: true);
+            });
           }
         }
       } catch (_) {}
@@ -176,6 +181,61 @@ extension SessionCoreLifecycleMethods on SessionCore {
         }
       }
     }
+  }
+
+  /// Plan 257: Finish also drops the intervals, holds and rounds nobody
+  /// started, the way [_dropUnloggedSets] drops the sets nobody logged (D-25701).
+  ///
+  /// An entry whose timer state is `notStarted` goes through the manager's own
+  /// delete (which re-indexes the entries after it and deletes the entry's rows)
+  /// and its rest is re-keyed, the order [deleteEntry] uses. The walk is from
+  /// the last entry to the first so the indexes still to visit never move. A
+  /// running or paused entry is never dropped. An exercise left with no entry
+  /// is removed unless [keepEfforts] (a workout the watch took part in keeps its
+  /// exercises, as for sets). Quiet apart from the manager's own change
+  /// notifications: `endSession` notifies once at the end.
+  Future<void> _dropNeverStartedTimers({bool keepEfforts = false}) async {
+    for (final effortList in _efforts.values) {
+      for (final effort in List<SegmentEffort>.of(effortList)) {
+        final kind = effort.effortKind;
+        if (kind != 'timed' && kind != 'drill' && kind != 'round') continue;
+
+        var dropped = 0;
+        if (kind == 'round') {
+          final rounds = _timerManager.getRoundsForEffort(effort.id);
+          for (var i = rounds.length - 1; i >= 0; i--) {
+            if (rounds[i].state != RoundState.notStarted) continue;
+            if (await _timerManager.deleteRound(effort.id, i)) {
+              await _timerManager.rekeyEntryRestsAfterDelete(effort.id, i);
+              dropped++;
+            }
+          }
+        } else {
+          final timed = _timerManager.getTimedInstancesForEffort(effort.id);
+          for (var i = timed.length - 1; i >= 0; i--) {
+            if (timed[i].state != TimedState.notStarted) continue;
+            if (await _timerManager.deleteTimedEntry(effort.id, i)) {
+              await _timerManager.rekeyEntryRestsAfterDelete(effort.id, i);
+              dropped++;
+            }
+          }
+        }
+
+        final left = kind == 'round'
+            ? _timerManager.getRoundsForEffort(effort.id).length
+            : _timerManager.getTimedInstancesForEffort(effort.id).length;
+        if (!keepEfforts && dropped > 0 && left == 0) {
+          await _repository.deleteEffort(effort.id);
+          _observations.remove(effort.id);
+          _timerManager.removeEffort(effort.id);
+          effortList.removeWhere((e) => e.id == effort.id);
+        }
+      }
+    }
+    // D-10: a failing drop leaves the placeholder where it is and is never an
+    // error. The manager's deletes report a failure on the error channel, so it
+    // is cleared here (`endSession` cleared it before the drop started).
+    _clearError();
   }
 
   /// Plan 157a D-2 / plan 217: a set at [position] is logged exactly when an

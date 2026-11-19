@@ -353,8 +353,8 @@ void main() {
         );
       });
 
-      test('S-15707 Finish leaves timed and round efforts with their entries '
-          'alone', () async {
+      test('S-15707 (plan 257) Finish drops a never-started timed and round '
+          'exercise', () async {
         await openLiveSession();
         final timedId = await seedAndAdd(
           'ex-run',
@@ -366,22 +366,23 @@ void main() {
           'Heavy Bag',
           effortKindOverride: 'round',
         );
-        final timedBefore = (await repo.getTimedInstances(timedId)).length;
-        final roundBefore = (await repo.getRoundInstances(roundId)).length;
 
         await state.endSession();
 
         final efforts = await repo.getSegmentEfforts(segmentId());
-        expect(efforts.map((e) => e.id), containsAll([timedId, roundId]));
+        expect(efforts.map((e) => e.id), isNot(contains(timedId)),
+            reason: 'the interval exercise has no entry left, so it goes');
+        expect(efforts.map((e) => e.id), isNot(contains(roundId)),
+            reason: 'the round exercise has no round left, so it goes');
         expect(
-          (await repo.getTimedInstances(timedId)).length,
-          timedBefore,
-          reason: 'the never-started interval is untouched',
+          await repo.getTimedInstances(timedId),
+          isEmpty,
+          reason: 'the never-started interval is dropped',
         );
         expect(
-          (await repo.getRoundInstances(roundId)).length,
-          roundBefore,
-          reason: 'the not-started round is untouched',
+          await repo.getRoundInstances(roundId),
+          isEmpty,
+          reason: 'the not-started round is dropped',
         );
       });
 

@@ -10,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/models/exercise_metric.dart';
 import 'package:omnitrain/core/models/training_load.dart';
 import 'package:omnitrain/core/services/stats_progress_service.dart';
-import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
@@ -114,8 +113,12 @@ void main() {
       );
       await state.addExerciseToSession(exercise, effortKindOverride: 'round');
       final sessionId = state.currentSession!.id;
+      // Plan 257: the never-started round the effort holds is dropped at
+      // Finish together with its exercise, so the nothing-done end runs the
+      // way a workout the watch took part in does (as the neighbouring
+      // S-22404 lift does).
       await Future<void>.delayed(const Duration(milliseconds: 1100));
-      await state.endSession();
+      await state.endSession(writeToHealth: false);
 
       expect(
         await StatsProgressService(repo).sessionTimeBySectionFor(sessionId),
@@ -136,24 +139,12 @@ void main() {
       );
       final sessionId = state.currentSession!.id;
 
-      // A finished round the session screen would have persisted: started
-      // after the session, finished, holding its measured seconds.
-      final startedAtMs = state.currentSession!.startedAtMs + 100;
-      await repo.createRoundInstance(
-        RoundInstance(
-          id: 'ri-$effortId-0',
-          effortId: effortId,
-          roundIndex: 0,
-          plannedDurationSecs: 60,
-          actualDurationSecs: 60,
-          startedAtMs: startedAtMs,
-          finishedAtMs: startedAtMs + 60000,
-          completed: true,
-          state: RoundState.finished,
-          createdAtMs: startedAtMs,
-          updatedAtMs: startedAtMs,
-        ),
-      );
+      // Plan 257: Finish deletes the effort's in-memory notStarted round, so
+      // the finished round goes through the state, the way the screen runs
+      // it: started after the session start, finished, holding its measured
+      // seconds (planned 60 s) the Mix reads.
+      await state.startRound(effortId, 0);
+      await state.completeRound(effortId, 0);
       await Future<void>.delayed(const Duration(milliseconds: 1100));
       await state.endSession();
 

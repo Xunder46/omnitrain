@@ -695,8 +695,12 @@ void main() {
         )!.effortKind,
       );
       expect(effortId, isNotEmpty);
-      // `addExerciseToSession` logs the effort's first entry itself.
+      // `addExerciseToSession` creates the effort's first entry never started,
+      // and plan 257 drops a never-started entry at Finish — so run it here
+      // the way a real workout would.
       expect(state.getTimedInstancesForEffort(effortId), hasLength(1));
+      await state.startTimedEntry(effortId, 0);
+      await state.finishTimedEntry(effortId, 0);
 
       await _pumpSummary(
         tester,
