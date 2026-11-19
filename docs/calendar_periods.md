@@ -65,6 +65,9 @@ yet.` with hint `Add one with the button below.` Verified by
 `test/screen_widget_test.dart` (group `DaySessionListScreen`: `empty day
 renders the shared OmniEmptyState (S-2802)`).
 
+In the planned-session form, `Add Session` stays off in Routine mode until a routine is chosen, so a plan
+never saves as Free Training by accident (plan 262, `test/add_session_needs_routine_test.dart`).
+
 **Past days are read-only.** Today and future days allow adding, editing and deleting a planned session, and today also allows starting a
 planned session; a past day allows none of those. Tapping a completed entry opens its summary;
 tapping a planned entry opens its edit sheet; the play button on a planned entry of today starts the workout via the routine build flow or the free/modality flow

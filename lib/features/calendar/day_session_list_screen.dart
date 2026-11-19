@@ -851,7 +851,11 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                     ),
                   ),
                 ),
-                onPressed: _submit,
+                // A Routine plan needs a routine: without one the button is
+                // off, so it can never save as Free Training (plan 262).
+                onPressed: (_mode == 'routine' && _selectedTemplateId == null)
+                    ? null
+                    : _submit,
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
