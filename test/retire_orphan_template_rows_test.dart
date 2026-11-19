@@ -458,7 +458,7 @@ void main() {
 
       test('S-19207 the version sequence carries the cleanup step at 17',
           () async {
-        expect(currentDataVersion, 19);
+        expect(currentDataVersion, greaterThanOrEqualTo(19));
         final steps = _steps(repo);
         expect(
           steps.firstWhere((s) => s.name == _stepName).targetVersion,

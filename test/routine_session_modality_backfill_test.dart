@@ -514,7 +514,7 @@ void main() {
       test(
         'S-12214 the pinned sequence carries the back-fill step at 18',
         () async {
-          expect(currentDataVersion, 19);
+          expect(currentDataVersion, greaterThanOrEqualTo(19));
           final steps = _steps(repo);
           final sequence = [
             for (final step in steps) '${step.targetVersion}:${step.name}',
@@ -533,7 +533,7 @@ void main() {
       );
 
       test('S-12215 a fresh install runs the step over nothing', () async {
-        expect(currentDataVersion, 19);
+        expect(currentDataVersion, greaterThanOrEqualTo(19));
         expect(await repo.getDataVersion(), currentDataVersion);
         final before = await _sessionMaps(repo);
         expect(

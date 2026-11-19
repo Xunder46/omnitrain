@@ -15,6 +15,7 @@ import '../../core/services/data_migration_service.dart';
 import '../../core/services/retired_template_rows_cleanup.dart';
 import '../../core/services/routine_session_modality_backfill.dart';
 import '../../core/services/shipped_food_groups_repair.dart';
+import 'day_key_repair.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../core/utils/entry_rows.dart';
@@ -422,6 +423,17 @@ class HiveWorkoutRepository implements WorkoutRepository {
         19,
         'restoreShippedFoodGroups',
         () => ShippedFoodGroupsRepair(repo).run(),
+      ),
+      // ONE-OFF (plan 264) — retire after launch. See DayKeyRepair and
+      // docs/db_integration.md.
+      _MethodStep(
+        20,
+        'repairDayKeys',
+        () => DayKeyRepair.run(
+          targets: repo._nutritionTargetsByDateBox,
+          water: repo._waterLogBox,
+          foods: repo._consumedFoodsBox,
+        ),
       ),
     ];
   }

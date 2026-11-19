@@ -310,6 +310,10 @@ class MockWorkoutRepository implements WorkoutRepository {
         'restoreShippedFoodGroups',
         () => ShippedFoodGroupsRepair(repo).run(),
       ),
+      // ONE-OFF (plan 264) — retire after launch. The Mock keeps local-midnight
+      // days in memory with no key encoding, so there is nothing to repair; the
+      // step exists so both stores walk the same version sequence.
+      _MockMigrationStep(20, 'repairDayKeys', () async {}),
     ];
   }
 

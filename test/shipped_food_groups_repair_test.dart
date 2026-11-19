@@ -236,12 +236,13 @@ void main() {
         },
       );
 
-      test('S-13708 a second run writes nothing; the version is 19', () async {
-        expect(currentDataVersion, 19);
+      test('S-13708 a second run writes nothing; the step is version 19', () async {
+        // Step 20 (plan 264) now follows it; the step itself stays version 19.
+        expect(currentDataVersion, greaterThanOrEqualTo(19));
 
-        final steps = _steps(repo);
-        expect(steps.last.targetVersion, 19);
-        expect(steps.last.name, _stepName);
+        final step = _repairStep(repo);
+        expect(step.targetVersion, 19);
+        expect(step.name, _stepName);
 
         // A freshly opened store is already migrated, with no archived
         // shipped category.

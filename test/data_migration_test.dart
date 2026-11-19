@@ -546,10 +546,18 @@ void main() {
   test(
     'S-156: steps 15 to 19 are appended to both migration sequences',
     () async {
-      expect(currentDataVersion, equals(19));
+      expect(currentDataVersion, equals(20));
 
-      final mockSteps = MockWorkoutRepository().dataMigrationStepsForTest();
-      final hiveSteps = HiveWorkoutRepository().dataMigrationStepsForTest();
+      final allMock = MockWorkoutRepository().dataMigrationStepsForTest();
+      final allHive = HiveWorkoutRepository().dataMigrationStepsForTest();
+      // Step 20 (plan 264) is checked at the end; the earlier steps are
+      // addressed from the end of the sequence up to 19.
+      final mockSteps = allMock.where((s) => s.targetVersion <= 19).toList();
+      final hiveSteps = allHive.where((s) => s.targetVersion <= 19).toList();
+      expect(allMock.last.targetVersion, equals(20));
+      expect(allMock.last.name, equals('repairDayKeys'));
+      expect(allHive.last.targetVersion, equals(20));
+      expect(allHive.last.name, equals('repairDayKeys'));
 
       expect(mockSteps[mockSteps.length - 5].targetVersion, equals(15));
       expect(
@@ -646,6 +654,7 @@ void main() {
           'retireOrphanTemplateRows',
           'backfillRoutineSessionModality',
           'restoreShippedFoodGroups',
+          'repairDayKeys',
         ]),
       );
       expect(await mock.getDataVersion(), equals(currentDataVersion));
@@ -722,6 +731,7 @@ void main() {
           'retireOrphanTemplateRows',
           'backfillRoutineSessionModality',
           'restoreShippedFoodGroups',
+          'repairDayKeys',
         ]),
       );
       expect(await repo.getDataVersion(), equals(currentDataVersion));
@@ -762,8 +772,16 @@ void main() {
     'S-8: both migration sequences carry 16:muscleLinkRoles just before '
     '17:retireOrphanTemplateRows and 18:backfillRoutineSessionModality',
     () {
-      final mockSteps = MockWorkoutRepository().dataMigrationStepsForTest();
-      final hiveSteps = HiveWorkoutRepository().dataMigrationStepsForTest();
+      final allMock = MockWorkoutRepository().dataMigrationStepsForTest();
+      final allHive = HiveWorkoutRepository().dataMigrationStepsForTest();
+      // Step 20 (plan 264) is checked at the end; the earlier steps are
+      // addressed from the end of the sequence up to 19.
+      final mockSteps = allMock.where((s) => s.targetVersion <= 19).toList();
+      final hiveSteps = allHive.where((s) => s.targetVersion <= 19).toList();
+      expect(allMock.last.targetVersion, equals(20));
+      expect(allMock.last.name, equals('repairDayKeys'));
+      expect(allHive.last.targetVersion, equals(20));
+      expect(allHive.last.name, equals('repairDayKeys'));
 
       expect(mockSteps.last.targetVersion, equals(19));
       expect(mockSteps.last.name, equals('restoreShippedFoodGroups'));
