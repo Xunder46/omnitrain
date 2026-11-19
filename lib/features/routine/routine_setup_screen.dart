@@ -497,7 +497,6 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                 itemBuilder: (context, effortIndex) {
                   final effort = efforts[effortIndex];
                   final exercise = _exerciseCache[effort.exerciseId];
-                  final restLabel = _formatRestLabel(effort);
                   final targets = widget.routineState.getEffortTargets(
                     effort.id,
                   );
@@ -512,7 +511,6 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                         index: effortIndex,
                         effort: effort,
                         exercise: exercise,
-                        restLabel: restLabel,
                         setCount: setCount,
                         onDelete: () => _removeExercise(effort.id),
                         onChangeTracking: () =>
@@ -935,24 +933,6 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     }
   }
 
-  String? _formatRestLabel(TemplateEffort effort) {
-    final restSeconds = effort.restSeconds;
-    if (restSeconds == null || restSeconds <= 0) return null;
-    final minutes = restSeconds ~/ 60;
-    final seconds = restSeconds % 60;
-    final timeLabel = minutes > 0
-        ? '${minutes}m ${seconds.toString().padLeft(2, '0')}s'
-        : '${seconds}s';
-
-    if (effort.restType == null || effort.restType == 'between_sets') {
-      return 'Rest $timeLabel between sets';
-    }
-    if (effort.restType == 'after_exercise') {
-      return 'Rest $timeLabel after exercise';
-    }
-    return 'Rest $timeLabel';
-  }
-
   Future<void> _saveRoutine() async {
     if (_nameController.text.trim().isEmpty) {
       OmniMessage.show(context, 'Please enter a routine name');
@@ -1096,7 +1076,6 @@ class ExerciseCard extends StatelessWidget {
   final int index;
   final TemplateEffort effort;
   final Exercise? exercise;
-  final String? restLabel;
   final int setCount;
   final VoidCallback onDelete;
   final VoidCallback onChangeTracking;
@@ -1107,7 +1086,6 @@ class ExerciseCard extends StatelessWidget {
     required this.index,
     required this.effort,
     required this.exercise,
-    this.restLabel,
     required this.setCount,
     required this.onDelete,
     required this.onChangeTracking,
@@ -1161,15 +1139,6 @@ class ExerciseCard extends StatelessWidget {
                               theme.colorScheme.onSurface.withOpacity(0.7),
                         ),
                       ),
-                      if (restLabel != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          restLabel!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.primary.withOpacity(0.8),
-                          ),
-                        ),
-                      ],
                       const SizedBox(height: 8),
                       Text(
                         '$setCount set${setCount == 1 ? '' : 's'}',

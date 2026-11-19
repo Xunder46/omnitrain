@@ -49,7 +49,6 @@ import 'package:omnitrain/features/calendar/day_session_list_screen.dart';
 import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/features/home/home_screen.dart';
 import 'package:omnitrain/features/routine/my_routines_screen.dart';
-import 'package:omnitrain/features/session/session_overview_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
@@ -244,27 +243,6 @@ Future<void> _pumpSessionScreen(
   await tester.pumpWidget(
     MaterialApp(
       home: WorkoutSessionScreen(
-        workoutState: workoutState,
-        routineState: RoutineState(repo),
-        sessionSummaryService: SessionSummaryService(repo),
-        settingsState: SettingsState(repo, fakePreferencesService()),
-        timerAlertService: FakeTimerAlertService(),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-}
-
-Future<void> _pumpOverviewScreen(
-  WidgetTester tester,
-  MockWorkoutRepository repo,
-  WorkoutState workoutState,
-) async {
-  await tester.binding.setSurfaceSize(const Size(600, 1200));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(
-      home: SessionOverviewScreen(
         workoutState: workoutState,
         routineState: RoutineState(repo),
         sessionSummaryService: SessionSummaryService(repo),
@@ -822,82 +800,6 @@ void main() {
             .toList();
         expect(kinds, hasLength(1));
         expect(kinds.single, 'drill');
-      },
-    );
-  });
-
-  group('plan 122 — session overview add (S-12217)', () {
-    testWidgets(
-      'S-12217: overview add in a focused routine asks the kind and opens '
-      'the picker unranked (red today)',
-      (tester) async {
-        final repo = await _freshRepo();
-        await _seedExercise(
-          repo,
-          id: 'ex-122-squat',
-          name: 'Goblet Squat 122',
-          capabilities: [
-            ExerciseCapability.reps,
-            ExerciseCapability.sets,
-            ExerciseCapability.load,
-          ],
-        );
-        await repo.createTemplate(
-          WorkoutTemplate(
-            id: _tplIso,
-            name: 'Evening Stretch',
-            focusModality: Modality.isometricStretching,
-            createdAtMs: _f122AtMs,
-            updatedAtMs: _f122AtMs,
-          ),
-        );
-        final workoutState = WorkoutState(repo);
-        // Stamped routine session, built directly (no Phase 1 dependency).
-        await workoutState.createNewSession(
-          modality: Modality.isometricStretching,
-          intent: 'routine',
-          routineTemplateId: _tplIso,
-          title: 'Evening Stretch',
-        );
-        await _pumpOverviewScreen(tester, repo, workoutState);
-
-        await tester.tap(find.text('Add Exercise'));
-        await tester.pumpAndSettle();
-        expect(find.byType(ExercisePickerScreen), findsOneWidget);
-
-        // D-12213: the picker is built with sessionModality == null
-        // (red today: 'isometric_stretching').
-        final picker = tester.widget<ExercisePickerScreen>(
-          find.byType(ExercisePickerScreen),
-        );
-        expect(picker.sessionModality, isNull);
-
-        // D-12205: overview add in a routine session still asks the kind
-        // (red today: the dialog is skipped for the stamped fixture).
-        await tester.enterText(
-          find.widgetWithText(TextField, 'Search exercises...'),
-          'Goblet Squat 122',
-        );
-        await tester.pump(const Duration(milliseconds: 400));
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.descendant(
-            of: find.byType(ListTile),
-            matching: find.text('Goblet Squat 122'),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        expect(find.byType(ModalityPickerDialog), findsOneWidget);
-        await tester.tap(_dialogOption('Resistance'));
-        await tester.pumpAndSettle();
-
-        final kinds = workoutState
-            .getEffortsForSegment(workoutState.segments.first.id)
-            .map((e) => e.effortKind)
-            .toList();
-        expect(kinds, hasLength(1));
-        expect(kinds.single, 'set');
       },
     );
   });

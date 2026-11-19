@@ -25,7 +25,6 @@ import 'package:omnitrain/features/profile/profile_screen.dart';
 import 'package:omnitrain/features/profile/widgets/measurement_history_chart_sheet.dart';
 import 'package:omnitrain/features/routine/my_routines_screen.dart';
 import 'package:omnitrain/features/routine/routine_setup_screen.dart';
-import 'package:omnitrain/features/session/session_overview_screen.dart';
 import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
@@ -661,34 +660,6 @@ void main() {
 
       expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-    });
-  });
-
-  group('OmniBackHeader presence – SessionOverviewScreen', () {
-    testWidgets('uses OmniBackHeader with subtitle', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final workoutState = WorkoutState(repo);
-      final settingsState = SettingsState(repo, fakePreferencesService());
-      await settingsState.initialize();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: SessionOverviewScreen(
-            workoutState: workoutState,
-            routineState: RoutineState(repo),
-            sessionSummaryService: SessionSummaryService(repo),
-            settingsState: settingsState,
-            timerAlertService: FakeTimerAlertService(),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byType(OmniBackHeader), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-      expect(find.text('Workout Session'), findsOneWidget);
     });
   });
 

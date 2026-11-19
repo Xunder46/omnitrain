@@ -130,7 +130,7 @@ lib/
 │   ├── period/           # PeriodListScreen, CreatePeriodScreen
 │   ├── profile/          # ProfileScreen + widgets/
 │   ├── routine/          # MyRoutinesScreen, RoutineSetupScreen + widgets/
-│   ├── session/          # SessionOverviewScreen, WorkoutSessionScreen, SessionSummaryScreen
+│   ├── session/          # WorkoutSessionScreen, SessionSummaryScreen
 │   ├── settings/         # SettingsScreen
 │   ├── splash/           # OmniSplashScreen (disabled)
 │   ├── startup/          # StartupFailureScreen

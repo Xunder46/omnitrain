@@ -247,8 +247,9 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('Mock S-2605b DaySessionListScreen headers', () {
-    testWidgets('a completed, a planned and an open session give three '
-        'uppercase OmniCardHeaders', (tester) async {
+    testWidgets('a completed and a planned session give two uppercase '
+        'OmniCardHeaders, and an open session adds no IN PROGRESS section '
+        '(plan 268)', (tester) async {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
       final day = DateTime(2099, 12, 31);
@@ -274,8 +275,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(OmniCardHeader), findsNWidgets(3));
-      for (final title in const ['COMPLETED', 'PLANNED', 'IN PROGRESS']) {
+      expect(find.byType(OmniCardHeader), findsNWidgets(2));
+      expect(find.text('IN PROGRESS'), findsNothing);
+      for (final title in const ['COMPLETED', 'PLANNED']) {
         expect(
           find.descendant(
             of: find.byType(OmniCardHeader),

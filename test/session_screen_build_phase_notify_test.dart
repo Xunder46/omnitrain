@@ -13,9 +13,7 @@
 // Each case mounts the real screen under a real ancestor listener — the
 // production hierarchy — and asserts the scheduler phase the state notified in
 // as well as `tester.takeException()`: a phase other than `postFrameCallbacks`
-// is the defect itself, the reported exception its symptom. The overview screen
-// is pumped in the same frame as the session screen, so both sites of the
-// defect class are covered by one harness (S-152).
+// is the defect itself, the reported exception its symptom.
 //
 // `_MountedBelowTheListener` keeps one component element between the listener
 // and the screens. Mounted as the listener's own child the defect cannot show:
@@ -32,7 +30,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
-import 'package:omnitrain/features/session/session_overview_screen.dart';
 import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -180,15 +177,6 @@ WorkoutSessionScreen _sessionScreen(_Phone phone, {bool editMode = false}) =>
       editMode: editMode,
     );
 
-SessionOverviewScreen _overviewScreen(_Phone phone) => SessionOverviewScreen(
-  workoutState: phone.workoutState,
-  routineState: phone.routineState,
-  sessionSummaryService: phone.summaryService,
-  settingsState: phone.settingsState,
-  timerAlertService: FakeTimerAlertService(),
-  restNotificationService: FakeRestNotificationService(),
-);
-
 void main() {
   testWidgets('S-150 the session screen notifies nobody while the frame builds', (
     WidgetTester tester,
@@ -295,60 +283,6 @@ void main() {
       exception,
       isNull,
       reason: 'S-151(b) the failure is reported on screen, not thrown out of the frame',
-    );
-  });
-
-  testWidgets('S-152 the overview screen pumped in the same frame notifies nobody', (
-    WidgetTester tester,
-  ) async {
-    // Two screens share the frame; the default 800x600 surface leaves the
-    // overview less height than its body needs.
-    tester.view.physicalSize = const Size(800, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-
-    final phone = await _phone(withSession: false);
-    phone.recordNotificationPhases();
-
-    await tester.pumpWidget(
-      _harness(phone.workoutState, [
-        _sessionScreen(phone),
-        _overviewScreen(phone),
-      ]),
-    );
-    final exception = tester.takeException();
-
-    expect(
-      phone.notificationPhases.take(1).toList(),
-      [SchedulerPhase.postFrameCallbacks],
-      reason:
-          'S-152 `createNewSession` and `loadSessionData` notify `WorkoutState` before they yield, '
-          'so the same deferral as the session screen (D-150) has to hold for the overview screen',
-    );
-    expect(
-      exception,
-      isNull,
-      reason: 'S-152 the ancestor listener is not asked to rebuild while the frame is building',
-    );
-
-    await tester.pump();
-    expect(
-      find.byType(SessionOverviewScreen),
-      findsOneWidget,
-      reason: 'S-152 the same frame mounted both screens',
-    );
-    expect(
-      find.text('0 exercises planned'),
-      findsOneWidget,
-      reason: 'S-152 the deferred load ran: the overview shows the session body',
-    );
-    expect(
-      find.descendant(
-        of: find.byType(SessionOverviewScreen),
-        matching: find.byType(CircularProgressIndicator),
-      ),
-      findsNothing,
-      reason: 'S-152 the overview finished its first load (spinner `:41` off)',
     );
   });
 

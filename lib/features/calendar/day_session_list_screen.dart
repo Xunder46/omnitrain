@@ -71,9 +71,6 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
   List<CalendarEntry> get _completedEntries =>
       _allEntries.where((e) => e.isCompleted).toList();
 
-  List<CalendarEntry> get _inProgressEntries =>
-      _allEntries.where((e) => !e.isCompleted && e.session != null).toList();
-
   List<CalendarEntry> get _plannedEntries => _allEntries
       .where((e) => !e.isCompleted && e.plannedSession != null)
       .toList();
@@ -107,10 +104,8 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
           listenable: widget.calendarState,
           builder: (context, _) {
             final completed = _completedEntries;
-            final inProgress = _inProgressEntries;
             final planned = _plannedEntries;
-            final isEmpty =
-                completed.isEmpty && inProgress.isEmpty && planned.isEmpty;
+            final isEmpty = completed.isEmpty && planned.isEmpty;
 
             return Column(
               children: [
@@ -192,24 +187,6 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                                   ),
                                 );
                               }),
-                            ],
-                            if (inProgress.isNotEmpty) ...[
-                              const SizedBox(height: 12),
-                              const OmniCardHeader(
-                                title: 'IN PROGRESS',
-                                padding: EdgeInsets.only(bottom: 8, top: 4),
-                              ),
-                              ...inProgress.map(
-                                (e) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: _SessionRow(
-                                    entry: e,
-                                    routineState: widget.routineState,
-                                    onTap: null,
-                                    onDelete: null,
-                                  ),
-                                ),
-                              ),
                             ],
                           ],
                         ),
@@ -557,13 +534,8 @@ class _SessionRow extends StatelessWidget {
 
   String _buildSubtitle() {
     final ps = entry.plannedSession;
-    final session = entry.session;
     final modalityLabel = ModalityColorUtils.labelForModality(entry.modality);
     final stateLabel = entry.isCompleted ? 'Completed' : 'Planned';
-
-    if (session != null && !entry.isCompleted) {
-      return '$modalityLabel  ·  In Progress';
-    }
 
     // If title is template name, don't repeat it — just show modality + state.
     if (ps?.routineTemplateId != null) {

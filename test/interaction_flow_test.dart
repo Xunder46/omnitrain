@@ -16,7 +16,6 @@ import 'package:omnitrain/features/period/period_list_screen.dart';
 import 'package:omnitrain/features/profile/widgets/measurement_history_chart_sheet.dart';
 import 'package:omnitrain/features/routine/my_routines_screen.dart';
 import 'package:omnitrain/features/routine/routine_setup_screen.dart';
-import 'package:omnitrain/features/session/session_overview_screen.dart';
 import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
@@ -1188,114 +1187,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No exercises found'), findsOneWidget);
-    });
-  });
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // SessionOverviewScreen – interaction: Start Workout navigation
-  // ══════════════════════════════════════════════════════════════════════════
-
-  group('SessionOverviewScreen interactions', () {
-    testWidgets('tapping Start Workout navigates to WorkoutSessionScreen', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final repo = await _freshRepo();
-      final workoutState = WorkoutState(repo);
-      final routineState = RoutineState(repo);
-      final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo, _fakePrefs());
-      await settingsState.initialize();
-
-      await workoutState.createNewSession();
-      final exercises = await repo.getExercises();
-      await workoutState.addExerciseToSession(
-        exercises.first,
-        chosenMetric: 'reps',
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: SessionOverviewScreen(
-            workoutState: workoutState,
-            routineState: routineState,
-            sessionSummaryService: sessionSummaryService,
-            timerAlertService: FakeTimerAlertService(),
-            settingsState: settingsState,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Start Workout'));
-      await tester.pump(Duration.zero);
-      await tester.pump();
-
-      expect(find.byType(WorkoutSessionScreen), findsOneWidget);
-    });
-
-    testWidgets('removing all exercises disables Start Workout button', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final workoutState = WorkoutState(repo);
-      final routineState = RoutineState(repo);
-      final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo, _fakePrefs());
-      await settingsState.initialize();
-
-      // No exercises added
-      await tester.pumpWidget(
-        MaterialApp(
-          home: SessionOverviewScreen(
-            workoutState: workoutState,
-            routineState: routineState,
-            sessionSummaryService: sessionSummaryService,
-            timerAlertService: FakeTimerAlertService(),
-            settingsState: settingsState,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final startBtn = tester.widget<FilledButton>(
-        find.ancestor(
-          of: find.text('Start Workout'),
-          matching: find.byType(FilledButton),
-        ),
-      );
-      expect(startBtn.onPressed, isNull);
-    });
-
-    testWidgets('tapping Add Exercise opens ExercisePickerScreen', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final repo = await _freshRepo();
-      final workoutState = WorkoutState(repo);
-      final routineState = RoutineState(repo);
-      final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo, _fakePrefs());
-      await settingsState.initialize();
-      await workoutState.createNewSession();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: SessionOverviewScreen(
-            workoutState: workoutState,
-            routineState: routineState,
-            sessionSummaryService: sessionSummaryService,
-            timerAlertService: FakeTimerAlertService(),
-            settingsState: settingsState,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Add Exercise'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(ExercisePickerScreen), findsOneWidget);
     });
   });
 

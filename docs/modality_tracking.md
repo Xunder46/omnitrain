@@ -519,7 +519,7 @@ Would require duplicate exercises for different contexts (e.g., "Cardio Squats" 
 - **Models**: `lib/data/models/models.dart` (Exercise with capabilities field)
 - **Repositories**: `lib/data/repositories/` (workout_repository.dart, mock_workout_repository.dart)
 - **State**: `lib/state/workout/workout_state.dart` (WorkoutState with modality awareness)
-- **UI**: `lib/features/` (home_screen.dart, session_overview_screen.dart, workout_session_screen.dart)
+- **UI**: `lib/features/` (home_screen.dart, workout_session_screen.dart)
 - **Widgets**: `lib/widgets/pickers/` (metric_chooser_dialog.dart, modality_picker_dialog.dart); the exercise picker is a full screen at `lib/features/exercise/exercise_picker_screen.dart`
 - **Utilities**: `lib/core/utils/observation_grouper.dart`
 - **Schema**: `scripts/sqlite_schema.sql` (app_exercise_capability table)

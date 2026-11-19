@@ -652,8 +652,7 @@ exercises by relevance.
 
 Pushed from `WorkoutSessionScreen`,
 `RoutineSetupScreen`, and the save-as-routine sheet on
-`SessionSummaryScreen`. (`SessionOverviewScreen` also pushes it, but that screen
-is not reachable from the app — no code in `lib/` builds it.)
+`SessionSummaryScreen`.
 
 ### `MetricChooserDialog`
 

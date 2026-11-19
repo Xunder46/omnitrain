@@ -126,7 +126,6 @@ described here.
 ```
 HomeScreen
   ├── modality tiles / Free Training  → WorkoutSessionScreen → SessionSummaryScreen
-  │                                       ├── SessionOverviewScreen  (edit session; not reachable from the app — see Screen Inventory)
   │                                       └── CalendarScreen
   ├── My Routines tile                → MyRoutinesScreen → RoutineSetupScreen
   │                                       └── ExercisePickerScreen
@@ -149,8 +148,7 @@ HomeScreen
 
 `ExercisePickerScreen` is pushed from `WorkoutSessionScreen`,
 `RoutineSetupScreen`, and the save-as-routine sheet on `SessionSummaryScreen`; it returns the
-selected `Exercise` on pop. (`SessionOverviewScreen` also pushes it, but that screen is not
-reachable from the app.) `ModalityPickerDialog` and `MetricChooserDialog` are the null-modality
+selected `Exercise` on pop. `ModalityPickerDialog` and `MetricChooserDialog` are the null-modality
 resolution path — see [Modality Tracking](modality_tracking.md).
 
 The maintenance sheet is rendered by `_buildMaintenanceGrid` in
@@ -190,7 +188,6 @@ Day rollover:
 | `EditFoodScreen` | `lib/features/nutrition/edit_food_screen.dart` | Edit a single food. Nothing is written until the bottom `Save` (key `food_form_save`), which pops on success; leaving with edits asks `Unsaved changes` first (`edit-food-unsaved-keep` / `edit-food-unsaved-discard`), and a changed photo is saved with the rest of the form rather than on pick. A default food saves, after a confirmation, as a new food of the user's own through `FoodLibraryState.createOwnCopyOfDefault`; a user-created catalog food saves through `updateCatalogFood`, whose edit still propagates to personal library rows through the durable `catalogId` linkage; past `ConsumedFood` snapshots are unaffected. Verified by `test/library_row_toggle_test.dart` (group `Library row toggle (plan 77a S-12710..S-12717)`: `S-12719: the Edit screen routes a default food's save through the copy flow`, `S-12720: the Edit screen routes a user-created catalog food's save through updateCatalogFood (propagates to the library copy)`) and by `test/edit_default_food_test.dart` (group `Edit a default food (plan 133)`: `S-13311 Save on an edited default asks first; Cancel writes nothing; an untouched form pops with no dialog`, `S-13313 Confirm on an in-list logged default replaces it and carries today's amount`) and by `test/edit_food_save_test.dart` (`S-92a.3: back with edits asks; Discard drops them and Keep editing stays`, `S-92a.18: Save pops without the guard`). |
 | `NutritionTargetScreen` | `lib/features/nutrition/nutrition_target_screen.dart` | Set today's daily targets: calories plus protein, carbs and fat in grams. Persists through `NutritionState` with forward-propagation to future dates that still hold the old value. |
 | `NutritionTrendScreen` | `lib/features/nutrition/nutrition_trend_screen.dart` | Full-history nutrition trend under a back header: a CALORIES card stacked above a MACROS card (one empty-state card when nothing is logged), no toggle. Loads through `StatsProgressService` (`computeNutritionTrend(days: null)`, `computeNutritionAdherence()`) from the repository. Reached from the Stats screen's Fuel row (`test/fuel_row_screen_test.dart`, `S-1109`) and from the Nutrition entry on Records & Trends (`test/records_nutrition_entry_test.dart`). |
-| `SessionOverviewScreen` | `lib/features/session/session_overview_screen.dart` | Exercise list for current session, add/remove exercises. **Not reachable from the app**: no code in `lib/` pushes or builds it; it is exercised only by tests (`test/session_screen_build_phase_notify_test.dart`, `test/interaction_flow_test.dart`, `test/screen_widget_test.dart`, `test/header_standardization_test.dart`). |
 | `WorkoutSessionScreen` | `lib/features/session/workout_session_screen.dart` | Core workout tracking (list view + detail view), split across part files: main coordinator, timer mixin, list-view builders, detail-view builders. Also hosts the session discard action and the rest overlay. |
 | `SessionSummaryScreen` | `lib/features/session/session_summary_screen.dart` | Post-workout summary, PRs, save-as-routine, distance entry. Also reused for **historical** sessions reached from the calendar (tap a past day with one entry → `SessionSummaryScreen`). Accepts an optional `openedFromCalendar: true` + `originatingCalendarState` to differentiate the two flows: when set, the summary shows an exercise list and no calendar grid, the "Open Calendar" button **pops back** instead of pushing a fresh `CalendarScreen`, and "Discard" deletes the historical record and returns to the originating calendar / day list. When omitted (post-workout flow), "Open Calendar" pushes a fresh calendar, and "Discard" returns to the home hub via `popUntil(isFirst)`. |
 | `MyRoutinesScreen` | `lib/features/routine/my_routines_screen.dart` | List of saved routines |
