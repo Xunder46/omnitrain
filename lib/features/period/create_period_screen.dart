@@ -7,6 +7,7 @@ import '../../state/period/period_state.dart';
 import '../../core/constants/modality.dart';
 import '../../data/models/models.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_back_header.dart';
 
@@ -415,10 +416,15 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
       );
     }
 
+    if (!mounted) return;
     setState(() => _isSaving = false);
 
-    if (success && mounted) {
+    if (success) {
       Navigator.of(context).pop(true);
+    } else {
+      // Validation already passed above, so this is a failed write: stay on
+      // the form with Save back on (plan 266).
+      OmniMessage.error(context, 'Could not save. Try again.');
     }
   }
 }

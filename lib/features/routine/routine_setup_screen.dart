@@ -965,9 +965,14 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       return;
     }
 
-    await widget.routineState.saveRoutine();
+    final saved = await widget.routineState.saveRoutine();
 
     if (!mounted) return;
+    if (!saved) {
+      // Stay on the screen with the edits intact (plan 266).
+      OmniMessage.error(context, 'Could not save. Try again.');
+      return;
+    }
     OmniMessage.show(context, 'Routine saved successfully');
 
     // Reset is internal to saveRoutine(); pop without re-prompting.

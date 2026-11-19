@@ -229,8 +229,11 @@ class RoutineState extends ChangeNotifier {
   }
 
   /// Save the current routine to repository
-  Future<void> saveRoutine() async {
-    if (_currentTemplate == null || _currentSegments.isEmpty) return;
+  /// Saves the routine being edited. Returns true when it was written; false
+  /// when there was nothing to save or the storage write failed (plan 266: the
+  /// screen must not report success, or close, on a failure).
+  Future<bool> saveRoutine() async {
+    if (_currentTemplate == null || _currentSegments.isEmpty) return false;
 
     _isLoading = true;
     _clearError();
@@ -254,8 +257,11 @@ class RoutineState extends ChangeNotifier {
 
       _isLoading = false;
       notifyListeners();
+      return true;
     } catch (e) {
       _setError('Failed to save routine: $e');
+      notifyListeners();
+      return false;
     }
   }
 

@@ -130,9 +130,16 @@ class PeriodState extends ChangeNotifier {
       updatedAtMs: now,
     );
 
-    await _repository.createPeriod(period);
-    await load();
-    return true;
+    // A failed write returns false so the form can stay open and say so
+    // (plan 266); validation failures also return false, but the form has
+    // already shown those.
+    try {
+      await _repository.createPeriod(period);
+      await load();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> updatePeriod({
@@ -163,9 +170,13 @@ class PeriodState extends ChangeNotifier {
       updatedAtMs: now,
     );
 
-    await _repository.updatePeriod(period);
-    await load();
-    return true;
+    try {
+      await _repository.updatePeriod(period);
+      await load();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> deletePeriod(String id) async {

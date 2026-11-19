@@ -267,23 +267,28 @@ class NutritionState extends ChangeNotifier {
 
   /// Save nutrition target for a specific date and propagate forward
   /// to future dates that still have the old values.
-  Future<void> saveNutritionTargetForDate(
+  /// Saves the target for [dateMs]. Returns true when it was written; false on
+  /// a storage failure, which leaves the target on screen as it was (plan 266).
+  Future<bool> saveNutritionTargetForDate(
     int dateMs,
     NutritionTarget target,
   ) async {
     _isLoading = true;
     notifyListeners();
 
+    var saved = false;
     try {
       await _repository.saveNutritionTargetForDate(dateMs, target);
       _nutritionTarget = target.copyWith(dateMs: dateMs);
       _targetsByDate[dateMs] = _nutritionTarget;
+      saved = true;
     } catch (e) {
-      _nutritionTarget = null;
+      // Keep the previous target: a failed write must not blank the ring.
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+    return saved;
   }
 
   /// Get today's nutrition target (convenience method).
@@ -363,9 +368,8 @@ class NutritionState extends ChangeNotifier {
     await loadNutritionTargetForDate(_todayMs());
   }
 
-  Future<void> saveNutritionTarget(NutritionTarget target) async {
-    await saveNutritionTargetForDate(_todayMs(), target);
-  }
+  Future<bool> saveNutritionTarget(NutritionTarget target) =>
+      saveNutritionTargetForDate(_todayMs(), target);
 
   // ─── Consumed-food operations (today's day-log) ───────────────────────
   // Powers the calorie ring on the nutrition page. The repository is the

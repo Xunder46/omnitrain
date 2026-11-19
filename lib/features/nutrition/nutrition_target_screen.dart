@@ -5,6 +5,7 @@ import '../../core/utils/macro_targets.dart';
 import '../../state/nutrition_state.dart';
 import '../../data/models/models.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 import '../../widgets/inputs/select_all_on_focus.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 
@@ -168,7 +169,7 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
       ).toDouble();
     }
 
-    await widget.nutritionState.saveNutritionTarget(
+    final saved = await widget.nutritionState.saveNutritionTarget(
       NutritionTarget(
         calories: calories,
         protein: protein,
@@ -176,9 +177,13 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
         fat: fat,
       ),
     );
-    if (mounted) {
-      Navigator.of(context).pop();
+    if (!mounted) return;
+    if (!saved) {
+      // Stay on the form with the numbers intact (plan 266).
+      OmniMessage.error(context, 'Could not save. Try again.');
+      return;
     }
+    Navigator.of(context).pop();
   }
 
   /// True when any box differs from the text it held on entry.
