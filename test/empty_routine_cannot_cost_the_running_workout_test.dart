@@ -314,7 +314,7 @@ void main() {
 
         _clockNow = DateTime(2026, 6, 10, 10);
 
-        await tester.tap(find.text('Plan Empty 240'));
+        await tester.tap(find.byTooltip('Start session'));
         await tester.pumpAndSettle();
 
         await tester.tap(
@@ -344,7 +344,7 @@ void main() {
 
         _clockNow = DateTime(2026, 6, 10, 10);
 
-        await tester.tap(find.text('Plan Today 230'));
+        await tester.tap(find.byTooltip('Start session'));
         await tester.pumpAndSettle();
 
         await tester.tap(

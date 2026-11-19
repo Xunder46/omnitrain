@@ -187,7 +187,7 @@ void main() {
         final runningId = workoutState.currentSession!.id;
         await pumpDay(tester, repo, workoutState, calendarState);
 
-        await tester.tap(find.text('Plan Today 230'));
+        await tester.tap(find.byTooltip('Start session'));
         await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('day-session-new-start-cancel')),
@@ -217,7 +217,7 @@ void main() {
         // never collide.
         _clockNow = DateTime(2026, 6, 10, 10);
 
-        await tester.tap(find.text('Plan Today 230'));
+        await tester.tap(find.byTooltip('Start session'));
         await tester.pumpAndSettle();
 
         await tester.tap(

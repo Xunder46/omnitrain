@@ -65,9 +65,9 @@ yet.` with hint `Add one with the button below.` Verified by
 `test/screen_widget_test.dart` (group `DaySessionListScreen`: `empty day
 renders the shared OmniEmptyState (S-2802)`).
 
-**Past days are read-only.** Today and future days allow adding, editing, deleting, and starting a
+**Past days are read-only.** Today and future days allow adding, editing and deleting a planned session, and today also allows starting a
 planned session; a past day allows none of those. Tapping a completed entry opens its summary;
-tapping a planned entry starts the workout via the routine build flow or the free/modality flow
+tapping a planned entry opens its edit sheet; the play button on a planned entry of today starts the workout via the routine build flow or the free/modality flow
 depending on whether it is routine-linked.
 
 When a workout is saved from the summary, the originating `PlannedSession` is marked completed and
@@ -291,7 +291,7 @@ Supporting flows:
 2. Indicator style communicates state (filled vs outlined).
 3. Day list is grouped: Completed first, Planned second, In Progress third.
 4. Past days are read-only in day list.
-5. Planned-session tap starts workout using correct modality/routine path.
+5. Planned-session play button (today only) starts workout using correct modality/routine path; the row tap opens edit.
 6. Completed-session tap opens summary.
 7. Period overlap is rejected before save.
 8. Period colors are curated presets and used as calendar highlights.

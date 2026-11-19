@@ -578,7 +578,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Plan Today 122'));
+        await tester.tap(find.byTooltip('Start session'));
         await tester.pumpAndSettle();
 
         // D-12201b: the planned-routine branch stamps the Focus

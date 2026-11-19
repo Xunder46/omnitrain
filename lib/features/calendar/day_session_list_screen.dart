@@ -28,7 +28,10 @@ import '../../widgets/common/omni_empty_state.dart';
 /// Behavior by date:
 ///   Past:          read-only list, no add/edit/delete.
 ///   Today/Future:  completed sessions shown but non-editable;
-///                  planned sessions can be added, edited, deleted, and tapped to start.
+///                  planned sessions can be added, edited and deleted; tapping a
+///                  planned row opens its edit sheet (no pencil button). Only a
+///                  planned row of TODAY has a play button that starts the
+///                  workout (plan 248).
 class DaySessionListScreen extends StatefulWidget {
   final DateTime date;
   final CalendarState calendarState;
@@ -153,7 +156,6 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                                     entry: e,
                                     routineState: widget.routineState,
                                     onTap: () => _tapCompleted(context, e),
-                                    onEdit: null,
                                     onDelete: null,
                                   ),
                                 ),
@@ -174,10 +176,12 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                                     entry: e,
                                     routineState: widget.routineState,
                                     onTap: isEditable
-                                        ? () => _tapPlanned(context, e)
-                                        : null,
-                                    onEdit: isEditable
                                         ? () => _editPlanned(context, e)
+                                        : null,
+                                    onStart:
+                                        isEditable &&
+                                            OmniDateUtils.isToday(widget.date)
+                                        ? () => _startPlanned(context, e)
                                         : null,
                                     onDelete: isEditable
                                         ? () => _deletePlanned(
@@ -202,7 +206,6 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                                     entry: e,
                                     routineState: widget.routineState,
                                     onTap: null,
-                                    onEdit: null,
                                     onDelete: null,
                                   ),
                                 ),
@@ -248,9 +251,9 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
     await widget.workoutState.resumeSuspendedLiveSession();
   }
 
-  // ─── Navigation: Tap planned session → start workout ─────────────────────
+  // ─── Navigation: Start button on a planned session → start workout ───────
 
-  Future<void> _tapPlanned(BuildContext context, CalendarEntry entry) async {
+  Future<void> _startPlanned(BuildContext context, CalendarEntry entry) async {
     final ps = entry.plannedSession;
     if (ps == null) return;
 
@@ -421,14 +424,14 @@ class _SessionRow extends StatelessWidget {
   final CalendarEntry entry;
   final RoutineState routineState;
   final VoidCallback? onTap;
-  final VoidCallback? onEdit;
+  final VoidCallback? onStart;
   final VoidCallback? onDelete;
 
   const _SessionRow({
     required this.entry,
     required this.routineState,
     this.onTap,
-    this.onEdit,
+    this.onStart,
     this.onDelete,
   });
 
@@ -500,16 +503,17 @@ class _SessionRow extends StatelessWidget {
                   ),
               ],
             ),
-            trailing: (onEdit != null || onDelete != null)
+            trailing: (onStart != null || onDelete != null)
                 ? Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (onEdit != null)
+                      if (onStart != null)
                         IconButton(
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          color: OmniTheme.colors.textSecondary,
-                          tooltip: 'Edit session',
-                          onPressed: onEdit,
+                          key: const Key('day-session-start'),
+                          icon: const Icon(Icons.play_arrow, size: 24),
+                          color: OmniTheme.colors.primary,
+                          tooltip: 'Start session',
+                          onPressed: onStart,
                         ),
                       if (onDelete != null)
                         IconButton(

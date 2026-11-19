@@ -4761,7 +4761,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byIcon(Icons.edit_outlined).first);
+        await tester.tap(find.text('Planned Test'));
         await tester.pumpAndSettle();
 
         expect(find.text('Edit Session'), findsOneWidget);

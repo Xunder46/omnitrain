@@ -491,7 +491,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Plan Today 124'));
+        await tester.tap(find.byTooltip('Start session'));
         await tester.pumpAndSettle();
 
         final rowAfter = (await _plannedRowMaps(
