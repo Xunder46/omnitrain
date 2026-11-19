@@ -96,6 +96,16 @@ extension SessionCoreLifecycleMethods on SessionCore {
       return;
     }
 
+    // Plan 251: the plan this routine workout fulfils. Outside the persistence
+    // try/catch and shielded on its own: a failure here never turns the end
+    // into an error.
+    final endedSession = _currentSession;
+    if (endedSession != null) {
+      try {
+        await _onSessionEnded?.call(endedSession);
+      } catch (_) {}
+    }
+
     // Platform health write. Deliberately outside the persistence
     // try/catch above: the session is already saved and the service is
     // contract-bound never to throw, so nothing here can flip the

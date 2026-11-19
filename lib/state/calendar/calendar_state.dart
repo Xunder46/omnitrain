@@ -295,6 +295,40 @@ class CalendarState extends ChangeNotifier {
     await _loadMonth();
   }
 
+  /// Links the plan a finished routine workout fulfils (plan 251): the
+  /// unstarted plan for the SAME routine on the day the workout STARTED (the
+  /// first one created when there are several), exactly as the day-list path
+  /// links the plan it started. A workout with no routine, a day with no such
+  /// plan, and a workout a plan is already linked to change nothing.
+  Future<void> completePlanFor(TrainingSession session) async {
+    final routineId = session.routineTemplateId;
+    if (routineId == null) return;
+    final all = await _repository.getPlannedSessions();
+    if (all.any((p) => p.linkedSessionId == session.id)) return;
+    final day = OmniDateUtils.startOfDayMs(
+      OmniDateUtils.fromMs(session.startedAtMs),
+    );
+    final matches =
+        all
+            .where(
+              (p) =>
+                  !p.isCompleted &&
+                  p.linkedSessionId == null &&
+                  p.routineTemplateId == routineId &&
+                  OmniDateUtils.startOfDayMs(
+                        OmniDateUtils.fromMs(p.scheduledDateMs),
+                      ) ==
+                      day,
+            )
+            .toList()
+          ..sort((a, b) {
+            final byCreated = a.createdAtMs.compareTo(b.createdAtMs);
+            return byCreated != 0 ? byCreated : a.id.compareTo(b.id);
+          });
+    if (matches.isEmpty) return;
+    await completePlannedSession(matches.first.id, session.id);
+  }
+
   // ─── Monthly stats (derived from _entriesByDay) ──────────────────────────
 
   /// Count of completed sessions for the loaded month.

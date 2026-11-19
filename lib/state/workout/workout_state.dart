@@ -69,6 +69,10 @@ class WorkoutState extends ChangeNotifier {
     /// watch: the drop then runs directly.
     Future<void> Function(Future<void> Function() action)?
     afterPendingWristImports,
+
+    /// Plan 251: told once when Finish stores the end of a session (the
+    /// calendar completes the plan a routine workout fulfils).
+    Future<void> Function(TrainingSession session)? onSessionEnded,
     ScreenAwakePort? screenAwake,
     ActiveEnergyService? activeEnergy,
     ValueListenable<({String sessionId, double kcal, DateTime at})?>?
@@ -100,6 +104,7 @@ class WorkoutState extends ChangeNotifier {
       lateEntryRecovery: watchLateEntryRecovery,
       wristRunsSession: wristRunsSession,
       afterPendingWristImports: afterPendingWristImports,
+      onSessionEnded: onSessionEnded,
       activeEnergy: activeEnergy,
       clock: clock,
     );

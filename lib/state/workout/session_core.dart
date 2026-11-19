@@ -82,6 +82,7 @@ class SessionCore {
   /// watch: the drop then runs directly.
   final Future<void> Function(Future<void> Function() action)?
   _afterPendingWristImports;
+  final Future<void> Function(TrainingSession session)? _onSessionEnded;
 
   /// Optional store of a finished session's active-energy estimate (plan 134
   /// D-13407/D-13408). Null in tests and in builds that do not store energy;
@@ -139,6 +140,11 @@ class SessionCore {
     /// watch: the drop then runs directly.
     Future<void> Function(Future<void> Function() action)?
     afterPendingWristImports,
+
+    /// Plan 251: told once, after Finish stores the end of a session, so the
+    /// plan a routine workout fulfils can be completed. Null in tests and builds
+    /// that wire nothing.
+    Future<void> Function(TrainingSession session)? onSessionEnded,
     ActiveEnergyService? activeEnergy,
     DateTime Function()? clock,
   }) : _notify = notify,
@@ -151,6 +157,7 @@ class SessionCore {
        _lateEntryRecovery = lateEntryRecovery,
        _wristRunsSession = wristRunsSession,
        _afterPendingWristImports = afterPendingWristImports,
+       _onSessionEnded = onSessionEnded,
        _activeEnergy = activeEnergy {
     _blockManager = SessionBlockManager(
       _repository,

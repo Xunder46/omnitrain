@@ -71,7 +71,7 @@ tapping a planned entry opens its edit sheet; the play button on a planned entry
 depending on whether it is routine-linked.
 
 When a workout is saved from the summary, the originating `PlannedSession` is marked completed and
-linked via `linkedSessionId`.
+linked via `linkedSessionId`. A routine workout started anywhere else (the Routines list, Home) completes the unstarted plan for the same routine on the day it started when it is finished (`completePlanFor`: the first created when there are several; free-training plans are not matched). Verified by `test/plan_completes_on_routine_finish_test.dart` (`S-25101` to `S-25111`).
 
 **Effort tint.** A completed session row's left border carries its session effort rating on the
 theme's one-color intensity ramp (`feelingColor(rating, themeColors)`), so a week reads as an
@@ -227,6 +227,7 @@ Responsibilities:
 - Exposes period list for highlights
 - Handles planned session CRUD
 - Handles `completePlannedSession(plannedSessionId, linkedSessionId)`
+- Handles `completePlanFor(session)`: called by `WorkoutState` when Finish stores a session's end (`onSessionEnded`), it links the first-created unstarted plan for the session's routine on the day the session started, if any
 - Computes monthly stats and current streak from loaded data
 
 #### Monthly Stats Getters (derived from `_entriesByDay`)

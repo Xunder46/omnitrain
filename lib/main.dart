@@ -421,6 +421,8 @@ Future<Widget> runStartup({
     // Plan 218: the phone's end of a wrist-linked workout drops its planned
     // sets behind the inbox's queued import passes.
     afterPendingWristImports: watchSync?.afterPendingImports,
+    // Plan 251: a routine workout finished anywhere completes its day's plan.
+    onSessionEnded: calendarState.completePlanFor,
     activeEnergy: activeEnergy,
     // Plan 135 (D-13522): the wrist's running energy total fills the open
     // session screen's Calories chip while the wrist reports it.
