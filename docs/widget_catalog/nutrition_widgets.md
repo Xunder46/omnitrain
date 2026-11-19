@@ -66,7 +66,9 @@ injected via constructor.
 **File**: `lib/features/nutrition/widgets/log_food_row.dart`
 
 One row per food in the "Foods I Eat" list, and the actual logging affordance: the thumbnail is
-the toggle that logs or unlogs the food for today, alongside an amount input and a single-line
+the toggle that logs or unlogs the food for the viewed day (verified by
+`test/nutrition_day_switcher_screen_test.dart`, group `plan 247: nutrition day switcher screen`:
+`S-24724: ticking a food on yesterday writes that day only`), alongside an amount input and a single-line
 macro summary.
 
 **Amount edits auto-commit on a logged row.** Editing the amount on a food already

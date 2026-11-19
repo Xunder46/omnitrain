@@ -259,7 +259,7 @@ void main() {
       final calorieRing = File(
         'lib/features/nutrition/widgets/calorie_ring_card.dart',
       ).readAsStringSync();
-      expect(calorieRing, contains('todayConsumedSodium > 0'));
+      expect(calorieRing, contains('totals.sodium > 0'));
     });
   });
 }

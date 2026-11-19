@@ -81,7 +81,11 @@ The single source of truth for section eyebrows and per-card titles.
 reason it exists — before it, every screen re-declared its own header style and they drifted. Raw
 `Text` widgets above outlined cards are not permitted (see
 [Global Conventions](../global_conventions.md)). An optional actions slot hosts trailing controls
-so callers never need to rebuild the row.
+so callers never need to rebuild the row. Optional `leading` and `trailing` widgets flank the
+title (with an optional `titleMinWidth` so a trailing control keeps its place as the title text
+changes length); with neither set the row is exactly the plain header. Verified by
+`test/nutrition_day_switcher_screen_test.dart` (group `plan 247: nutrition day switcher screen`:
+`S-24731: the header flanks and keeps its title key`).
 
 ### `OmniSurface`
 

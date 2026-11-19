@@ -112,3 +112,22 @@ String foodUnitCaption(Food food) {
   label = label.replaceFirst(RegExp(r'^\d+(\.\d+)?\s*'), '').trim();
   return label.isEmpty ? original : label;
 }
+
+/// A display [Food] built from a logged row's own frozen name and numbers, for
+/// a food that is no longer in the library (plan 247). Its id is the ROW's id,
+/// not a library id, so it can never be mistaken for a library food.
+Food foodFromConsumedSnapshot(ConsumedFood c) => Food(
+  id: c.id,
+  name: c.name,
+  groupId: c.groupIdSnapshot,
+  unitType: c.unitType,
+  referenceAmount: c.referenceAmount,
+  referenceLabel: c.referenceLabel,
+  protein: c.protein,
+  carbs: c.carbs,
+  fiber: c.fiber,
+  fat: c.fat,
+  sodium: c.sodium,
+  createdAtMs: c.createdAtMs,
+  updatedAtMs: c.updatedAtMs,
+);

@@ -17,7 +17,7 @@ import 'water_tracker_control.dart';
 /// edit-targets icon in the card's top-right corner.
 ///
 /// Composition:
-///   - A [MacroDonutChart] (outer) that shows today's macro
+///   - A [MacroDonutChart] (outer) that shows the viewed day's macro
 ///     distribution as colored arc sections. Each section is
 ///     tappable; tapping a section focuses it.
 ///   - A [CalorieRing] (inner) nested inside the donut's hollow
@@ -49,7 +49,7 @@ import 'water_tracker_control.dart';
 ///     [NutritionState] and [ConsumedFood].
 ///   - All colors come from [OmniTheme.colors].
 class CalorieRingCard extends StatefulWidget {
-  /// Source of today's target and consumed-foods cache. Required.
+  /// Source of the viewed day's target and consumed-foods cache. Required.
   final NutritionState nutritionState;
 
   /// Tap handler for the edit-targets icon. The widget does not
@@ -96,23 +96,20 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
         // NutritionTarget AND its calories value is > 0. A target
         // whose calories field is 0 (e.g. cleared or only macros
         // set) is treated as "no goal" for the ring.
-        final target = widget.nutritionState.nutritionTarget;
+        final target = widget.nutritionState.viewedTarget;
         final targetCalories = (target != null && target.calories > 0)
             ? target.calories
             : null;
-        final consumed = widget.nutritionState.todayConsumedCalories;
+        final totals = widget.nutritionState.viewedTotals;
+        final consumed = totals.calories;
 
         // The chart's section list drives both the chart's
         // opacities and the center content. Compute it here so
         // we can also derive the focus-survival fallback.
-        final protein = widget.nutritionState.todayConsumedProtein;
-        final netCarbsRaw = math.max(
-          0,
-          widget.nutritionState.todayConsumedCarbs -
-              widget.nutritionState.todayConsumedFiber,
-        );
-        final fiber = widget.nutritionState.todayConsumedFiber;
-        final fat = widget.nutritionState.todayConsumedFat;
+        final protein = totals.protein;
+        final netCarbsRaw = math.max(0, totals.carbs - totals.fiber);
+        final fiber = totals.fiber;
+        final fat = totals.fat;
         final sections = computeMacroSections(
           protein: protein,
           netCarbs: netCarbsRaw,
@@ -191,9 +188,7 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
           final showsTotalCarbs = s.name == 'Net Carbs' && focusTarget != null;
           centerOverride = MacroFocusContent(
             name: showsTotalCarbs ? 'Carbs' : s.name,
-            grams: showsTotalCarbs
-                ? widget.nutritionState.todayConsumedCarbs
-                : s.grams,
+            grams: showsTotalCarbs ? totals.carbs : s.grams,
             percentOfCalories: pct ?? 0,
             color: s.color,
             informational: isInformational,
@@ -294,24 +289,23 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    if (widget.nutritionState.todayConsumedSodium > 0)
+                    if (totals.sodium > 0)
                       _SodiumTotalChip(
-                        sodiumMg: widget.nutritionState.todayConsumedSodium,
+                        sodiumMg: totals.sodium,
                         themeColors: themeColors,
                       )
                     else
                       const SizedBox.shrink(),
                     WaterTrackerControl(
-                      volumeMl: widget.nutritionState.waterTodayMl,
+                      volumeMl: widget.nutritionState.viewedWaterMl,
                       volumeUnit: widget.nutritionState.waterVolumeUnit,
+                      dayLabel: widget.nutritionState.isViewingToday
+                          ? 'today'
+                          : 'on ${OmniDateUtils.formatShort(DateTime.fromMillisecondsSinceEpoch(widget.nutritionState.viewedDayMs))}',
                       onIncrement: () =>
-                          widget.nutritionState.incrementWaterForDate(
-                            OmniDateUtils.todayMidnightMs(),
-                          ),
+                          widget.nutritionState.incrementWaterViewed(),
                       onDecrement: () =>
-                          widget.nutritionState.decrementWaterForDate(
-                            OmniDateUtils.todayMidnightMs(),
-                          ),
+                          widget.nutritionState.decrementWaterViewed(),
                     ),
                   ],
                 ),
@@ -324,7 +318,7 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
   }
 }
 
-/// Small chip-style label that renders today's consumed sodium as
+/// Small chip-style label that renders the viewed day's consumed sodium as
 /// `"Na 148 mg"`. Sits at the bottom-left of the calorie-ring card,
 /// opposite the water tracker (D-7 / S-043); hidden on days with
 /// nothing logged.
@@ -334,8 +328,8 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
 /// the active color scheme so it does not compete with the
 /// "Today" title or the edit icon.
 class _SodiumTotalChip extends StatelessWidget {
-  /// Today's consumed sodium in milligrams (already rounded to int
-  /// by the state's `todayConsumedSodium` getter). Rendered as-is.
+  /// The viewed day's consumed sodium in milligrams (already rounded to
+  /// int by the state's `viewedTotals.sodium` getter). Rendered as-is.
   final int sodiumMg;
 
   final OmniThemeColors themeColors;

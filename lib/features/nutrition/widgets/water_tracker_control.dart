@@ -46,12 +46,17 @@ class WaterTrackerControl extends StatelessWidget {
   /// [volumeMl] is `0` so the visual and the no-op agree.
   final VoidCallback onDecrement;
 
+  /// How the day is named in the spoken label: `today`, or `on Nov 17` for an
+  /// earlier day (plan 247).
+  final String dayLabel;
+
   const WaterTrackerControl({
     super.key,
     required this.volumeMl,
     required this.volumeUnit,
     required this.onIncrement,
     required this.onDecrement,
+    this.dayLabel = 'today',
   });
 
   @override
@@ -66,7 +71,7 @@ class WaterTrackerControl extends StatelessWidget {
     return Semantics(
       container: true,
       label:
-          'Water today: ${UnitFormatter.formatWaterSpoken(volumeMl, volumeUnit)}',
+          'Water $dayLabel: ${UnitFormatter.formatWaterSpoken(volumeMl, volumeUnit)}',
       child: Row(
         key: const Key('water_tracker_control'),
         mainAxisSize: MainAxisSize.min,

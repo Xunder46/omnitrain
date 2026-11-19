@@ -64,7 +64,11 @@ and `test/records_nutrition_entry_test.dart`.
 
 ### `NutritionScreen`
 
-Today's view, and the only screen that fires the feature's loads. It starts four
+Today's view by default, with arrows to any earlier day, and the only screen that fires the feature's loads.
+(verified by
+`test/nutrition_day_switcher_screen_test.dart`, group
+`plan 247: nutrition day switcher screen`:
+`S-24722: prev shows yesterday then D-2, next walks back`). It starts four
 independent loads — today's target, today's consumed foods, today's water and the
 food library — and none gates another, so a slow library does not delay the
 calorie ring. The body renders a loading state while `NutritionState` reports
@@ -116,6 +120,19 @@ Verified by `test/first_run_path_test.dart` (`S-12910`) and
 
 Verified by `test/nutrition_test.dart`, `test/nutrition_primer_test.dart`,
 `test/home_nutrition_summary_card_test.dart`.
+
+### Earlier days
+
+The `nutrition_day_prev` / `nutrition_day_next` arrows step back and forward and the title
+reads `TODAY`, `YESTERDAY` or the uppercased date (`test/nutrition_day_switcher_screen_test.dart`,
+group `plan 247: nutrition day switcher screen`: `S-24721: opens on today with prev enabled and
+next disabled`, `S-24722: prev shows yesterday then D-2, next walks back`). Edits — tick, untick,
+amount, water — write to the viewed day only, never today's caches (same group: `S-24724: ticking
+a food on yesterday writes that day only`, `S-24726: an amount change on yesterday edits that row
+only`); the target button shows on today only (`S-24723`) and reopening starts on today
+(`S-24728`). A food no longer in Foods I Eat keeps its own editable named row under `No longer in
+Foods I Eat`, never creating a library food (`S-24727`; state: group `Mock: viewed day` ·
+`S-24709 editing a removed-food row on yesterday never writes a library food`).
 
 ### `AddFoodScreen`
 

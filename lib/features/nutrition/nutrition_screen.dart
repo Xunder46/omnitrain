@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/utils/date_utils.dart';
 import '../../core/utils/foods_i_eat_order.dart';
+import '../../core/utils/food_helpers.dart';
 import '../../data/models/models.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
@@ -37,6 +39,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
   @override
   void initState() {
     super.initState();
+    // Every visit starts on today (plan 247); silent: the first build follows.
+    widget.nutritionState.resetDayView();
     // Load today's nutrition target, today's consumed foods, today's
     // water volume, and the food library in parallel. All four are
     // independent — each is fired and not awaited so the others are
@@ -95,6 +99,22 @@ class _NutritionScreenState extends State<NutritionScreen> {
       _loadConsumedToday();
       _loadWaterForToday();
     });
+  }
+
+  void _showPreviousDay() =>
+      unawaited(widget.nutritionState.shiftViewedDay(-1));
+
+  void _showNextDay() => unawaited(widget.nutritionState.shiftViewedDay(1));
+
+  /// `TODAY`, `YESTERDAY`, then the short date uppercased, with the year when
+  /// it is not [today]'s year (plan 247, D-24708).
+  static String dayTitle(DateTime day, DateTime today) {
+    final d = DateTime(day.year, day.month, day.day);
+    final t = DateTime(today.year, today.month, today.day);
+    if (d == t) return 'TODAY';
+    if (d == DateTime(t.year, t.month, t.day - 1)) return 'YESTERDAY';
+    final short = OmniDateUtils.formatShort(d).toUpperCase();
+    return d.year == t.year ? short : '$short, ${d.year}';
   }
 
   /// Pushes the Manage Food Library screen. The food library is already loaded
@@ -200,50 +220,75 @@ class _NutritionScreenState extends State<NutritionScreen> {
                   // same `NutritionTargetScreen` via
                   // `_navigateToTargets()`.
                   OmniCardHeader(
-                    title: 'TODAY',
+                    leading: _DayArrow(
+                      buttonKey: const Key('nutrition_day_prev'),
+                      icon: Icons.chevron_left,
+                      tooltip: 'Previous day',
+                      onPressed: _showPreviousDay,
+                    ),
+                    trailing: _DayArrow(
+                      buttonKey: const Key('nutrition_day_next'),
+                      icon: Icons.chevron_right,
+                      tooltip: 'Next day',
+                      onPressed: widget.nutritionState.canViewNextDay
+                          ? _showNextDay
+                          : null,
+                    ),
+                    titleMinWidth: 120,
+                    title: dayTitle(
+                      DateTime.fromMillisecondsSinceEpoch(
+                        widget.nutritionState.viewedDayMs,
+                      ),
+                      DateTime.fromMillisecondsSinceEpoch(
+                        widget.nutritionState.todayDayMs,
+                      ),
+                    ),
                     actions: [
-                      Builder(
-                        builder: (context) {
-                          final target = widget.nutritionState.nutritionTarget;
-                          final hasTarget =
-                              target != null && target.calories > 0;
-                          return OutlinedButton.icon(
-                            key: const Key('nutrition_target_button'),
-                            icon: Icon(
-                              Icons.tune,
-                              size: 16,
-                              color: theme.colorScheme.primary,
-                            ),
-                            label: Text(
-                              hasTarget ? 'Change target' : 'Set target',
-                              style: TextStyle(
+                      // The target is today's: no button on an earlier day.
+                      if (widget.nutritionState.isViewingToday)
+                        Builder(
+                          builder: (context) {
+                            final target =
+                                widget.nutritionState.nutritionTarget;
+                            final hasTarget =
+                                target != null && target.calories > 0;
+                            return OutlinedButton.icon(
+                              key: const Key('nutrition_target_button'),
+                              icon: Icon(
+                                Icons.tune,
+                                size: 16,
                                 color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                                letterSpacing: 0.2,
                               ),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  OmniTheme.buttonUtilityRadius,
+                              label: Text(
+                                hasTarget ? 'Change target' : 'Set target',
+                                style: TextStyle(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  letterSpacing: 0.2,
                                 ),
                               ),
-                              side: BorderSide(
-                                color: theme.colorScheme.primary,
-                                width: 1,
+                              style: OutlinedButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(
+                                    OmniTheme.buttonUtilityRadius,
+                                  ),
+                                ),
+                                side: BorderSide(
+                                  color: theme.colorScheme.primary,
+                                  width: 1,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                minimumSize: const Size(0, 36),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              minimumSize: const Size(0, 36),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            onPressed: _navigateToTargets,
-                          );
-                        },
-                      ),
+                              onPressed: _navigateToTargets,
+                            );
+                          },
+                        ),
                     ],
                   ),
                   ListenableBuilder(
@@ -281,17 +326,66 @@ class _NutritionScreenState extends State<NutritionScreen> {
                   ),
                   OmniSurface(
                     padding: const EdgeInsets.all(16),
-                    child: _FoodLibraryBrowseSection(
-                      foodLibraryState: widget.foodLibraryState,
-                      nutritionState: widget.nutritionState,
-                      onChooseFoods: _openManageLibrary,
-                    ),
+                    // An earlier day's rows are built only once its reads have
+                    // landed, and keyed by the day, so every row starts from
+                    // that day's amounts (a row reads its amount once).
+                    child: widget.nutritionState.isViewedDayLoaded
+                        ? KeyedSubtree(
+                            key: ValueKey(widget.nutritionState.viewedDayMs),
+                            child: _FoodLibraryBrowseSection(
+                              foodLibraryState: widget.foodLibraryState,
+                              nutritionState: widget.nutritionState,
+                              onChooseFoods: _openManageLibrary,
+                            ),
+                          )
+                        : const SizedBox(
+                            height: 96,
+                            child: Center(child: CircularProgressIndicator()),
+                          ),
                   ),
                 ],
               ),
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// One day-step arrow of the header (plan 247): 48 dp tap target, muted when
+/// disabled.
+class _DayArrow extends StatelessWidget {
+  final Key buttonKey;
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  const _DayArrow({
+    required this.buttonKey,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return IconButton(
+      key: buttonKey,
+      icon: Icon(
+        icon,
+        size: 24,
+        color: onPressed == null
+            ? OmniTheme.colors.textDisabled
+            : theme.colorScheme.primary,
+      ),
+      tooltip: tooltip,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonIconRadius),
+        ),
       ),
     );
   }
@@ -316,7 +410,7 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: foodLibraryState,
+      listenable: Listenable.merge([foodLibraryState, nutritionState]),
       builder: (context, _) {
         if (foodLibraryState.isLoadingGroups ||
             foodLibraryState.isLoadingFoods) {
@@ -328,12 +422,23 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
 
         final foods = foodLibraryState.foods;
 
-        // Empty state: show whenever the user's Foods I Eat list is empty,
-        // regardless of category count. The presence of 0, 9, or any number of
+        // Foods logged on the viewed day that the library no longer holds. A
+        // logged row carries its own name and numbers, so each one can be
+        // shown and edited (plan 247).
+        final libraryIds = {for (final f in foods) f.id};
+        final removed = [
+          for (final c in nutritionState.viewedConsumed)
+            if (c.sourceFoodId == null || !libraryIds.contains(c.sourceFoodId))
+              c,
+        ]..sort((a, b) => a.loggedAtMs.compareTo(b.loggedAtMs));
+
+        // Empty state: show whenever the user's Foods I Eat list is empty and
+        // no removed foods are logged on the viewed day, regardless of category
+        // count. The presence of 0, 9, or any number of
         // default/custom categories has no effect on this condition. The
         // Choose foods button leads to the picker (the Library) via
         // [onChooseFoods].
-        if (foods.isEmpty) {
+        if (foods.isEmpty && removed.isEmpty) {
           return OmniEmptyState(
             icon: Icons.restaurant_menu_outlined,
             title: 'Pick the foods you eat',
@@ -371,6 +476,14 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
                 foodLibraryState: foodLibraryState,
                 nutritionState: nutritionState,
               ),
+            if (removed.isNotEmpty)
+              _GroupBlock(
+                groupName: 'No longer in Foods I Eat',
+                foods: [for (final c in removed) foodFromConsumedSnapshot(c)],
+                removedRows: removed,
+                foodLibraryState: foodLibraryState,
+                nutritionState: nutritionState,
+              ),
           ],
         );
       },
@@ -386,12 +499,16 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
 class _GroupBlock extends StatelessWidget {
   final String groupName;
   final List<Food> foods;
+
+  /// Parallel to [foods] for the removed-foods section; null for a library group.
+  final List<ConsumedFood>? removedRows;
   final FoodLibraryState foodLibraryState;
   final NutritionState nutritionState;
 
   const _GroupBlock({
     required this.groupName,
     required this.foods,
+    this.removedRows,
     required this.foodLibraryState,
     required this.nutritionState,
   });
@@ -430,7 +547,9 @@ class _GroupBlock extends StatelessWidget {
                 thickness: 1,
               ),
             LogFoodRow(
+              key: removedRows == null ? null : ValueKey(removedRows![i].id),
               food: foods[i],
+              removedRow: removedRows?[i],
               foodLibraryState: foodLibraryState,
               nutritionState: nutritionState,
             ),

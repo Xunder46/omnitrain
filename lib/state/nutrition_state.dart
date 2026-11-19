@@ -4,6 +4,7 @@ import '../core/utils/date_utils.dart';
 import '../core/utils/unit_formatter.dart';
 import '../data/models/models.dart';
 import '../data/repositories/workout_repository.dart';
+import 'nutrition/nutrition_day_totals.dart';
 import 'settings/settings_state.dart';
 
 class NutritionState extends ChangeNotifier {
@@ -104,7 +105,7 @@ class NutritionState extends ChangeNotifier {
   /// Sums `caloriesConsumed` across the cached [consumedToday] list.
   /// Returns 0 for an empty list. Pure / derived — no repo call.
   int get todayConsumedCalories =>
-      _consumedToday.fold<int>(0, (sum, c) => sum + c.caloriesConsumed);
+      NutritionDayTotals.of(_consumedToday).calories;
 
   // ─── Daily water log ───────────────────────────────────────────────────
   // Source of truth for the water tracker on the bottom-right of the
@@ -201,7 +202,8 @@ class NutritionState extends ChangeNotifier {
   /// Returns whether storage changed (false for a tap already applied or a
   /// full day). The cache and its listeners hear of it only when [dateMs] is
   /// the day the cache was loaded for; a tap on any other day — or before
-  /// any load — leaves both alone.
+  /// any load — leaves both alone. A tap on the past day the Nutrition
+  /// screen is showing refreshes that view's water (plan 247).
   Future<bool> applyWatchWaterTap({
     required int dateMs,
     required String tapId,
@@ -216,6 +218,14 @@ class NutritionState extends ChangeNotifier {
     if (applied && _waterDayMs == dateMs) {
       _waterTodayMl = await _repository.getWaterVolumeForDate(dateMs);
       notifyListeners();
+    } else if (applied && _pastViewMs == dateMs) {
+      final ml = await _repository.getWaterVolumeForDate(dateMs);
+      // The view may have moved to another day during the read.
+      if (_pastViewMs == dateMs) {
+        _viewedWaterMl = ml;
+        _viewWriteEpoch++;
+        notifyListeners();
+      }
     }
     return applied;
   });
@@ -625,7 +635,9 @@ class NutritionState extends ChangeNotifier {
   /// same food and day updates the row's amount. A new row freezes THAT day's
   /// saved targets, not today's. Today's cache (`consumedToday`) is never
   /// touched, because the row is not today's. A [loggedAt] on or after today
-  /// is today's log and goes through [logConsumedFoodAt].
+  /// is today's log and goes through [logConsumedFoodAt]. When that day is
+  /// the one the Nutrition screen is showing, the viewed rows are re-read
+  /// (plan 247).
   Future<String?> logConsumedFoodOnDay(
     Food food,
     double amount, {
@@ -655,6 +667,7 @@ class NutritionState extends ChangeNotifier {
           existing.copyWith(amountConsumed: amount, updatedAtMs: now),
         );
         await _writeThroughLastAmount(food, amount);
+        await _reloadViewedRows(dayMs);
         notifyListeners();
         return existing.id;
       }
@@ -683,6 +696,7 @@ class NutritionState extends ChangeNotifier {
       );
       final id = await _repository.createConsumedFood(entry);
       await _writeThroughLastAmount(food, amount);
+      await _reloadViewedRows(dayMs);
       notifyListeners();
       return id;
     } catch (_) {
@@ -701,6 +715,249 @@ class NutritionState extends ChangeNotifier {
     if (existing == null) return false;
     return deleteConsumedFood(existing.id);
   }
+
+  // ─── Viewed day (plan 247) ────────────────────────────────────────────────
+  // The Nutrition screen can show an earlier day. Those rows, water and target
+  // live in caches of their own, so Home, the watch and the rollover keep
+  // reading the today caches above and never see an earlier day. While the
+  // screen shows today, every viewed member answers from the today caches (or
+  // delegates to the today method), so behaviour on today is unchanged.
+
+  /// The earlier day shown, as a local midnight; null shows today.
+  int? _viewDayMs;
+  List<ConsumedFood> _viewedConsumed = const [];
+  int _viewedWaterMl = 0;
+  NutritionTarget? _viewedTarget;
+  bool _viewedLoaded = true;
+
+  /// Request counter: only the newest `viewDay` may apply its reads.
+  int _viewSeq = 0;
+
+  /// Bumped whenever a write refreshes the viewed cache. `viewDay` compares it
+  /// before and after its reads: a write that landed in between is not lost.
+  int _viewWriteEpoch = 0;
+
+  /// The viewed day when it is before today, else null. A stored day at or
+  /// after today (clock moved back, zone change) counts as today.
+  int? get _pastViewMs {
+    final v = _viewDayMs;
+    return v != null && v < _todayMs() ? v : null;
+  }
+
+  bool get isViewingToday => _pastViewMs == null;
+
+  /// False on today: there are no future days.
+  bool get canViewNextDay => _pastViewMs != null;
+
+  /// The viewed day as a local midnight (today's when viewing today).
+  int get viewedDayMs => _pastViewMs ?? _todayMs();
+
+  /// Today as a local midnight, by this state's clock; the screen titles the
+  /// viewed day against it.
+  int get todayDayMs => _todayMs();
+
+  /// False from the moment an earlier day is requested until its reads land.
+  bool get isViewedDayLoaded => _pastViewMs == null || _viewedLoaded;
+
+  List<ConsumedFood> get viewedConsumed =>
+      List.unmodifiable(_pastViewMs == null ? _consumedToday : _viewedConsumed);
+
+  NutritionDayTotals get viewedTotals => NutritionDayTotals.of(
+    _pastViewMs == null ? _consumedToday : _viewedConsumed,
+  );
+
+  int get viewedWaterMl => _pastViewMs == null ? _waterTodayMl : _viewedWaterMl;
+
+  NutritionTarget? get viewedTarget =>
+      _pastViewMs == null ? _nutritionTarget : _viewedTarget;
+
+  /// Shows [day] (any time of that local day). A day at or after today shows
+  /// today. An earlier day clears the viewed caches at once, so no day ever
+  /// shows under another day's numbers, then reads that day's rows, water and
+  /// target. A later call wins: a read that finishes after a newer request is
+  /// dropped.
+  Future<void> viewDay(DateTime day) async {
+    final ms = OmniDateUtils.startOfDayMs(day);
+    final seq = ++_viewSeq;
+    _viewedConsumed = const [];
+    _viewedWaterMl = 0;
+    _viewedTarget = null;
+    if (ms >= _todayMs()) {
+      _viewDayMs = null;
+      _viewedLoaded = true;
+      notifyListeners();
+      return;
+    }
+    _viewDayMs = ms;
+    _viewedLoaded = false;
+    notifyListeners();
+    var rows = const <ConsumedFood>[];
+    var water = 0;
+    NutritionTarget? target;
+    // A write to this day can land between the reads and the apply below. The
+    // write epoch tells; the reads then run once more so the write is not lost.
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final epoch = _viewWriteEpoch;
+      try {
+        rows = await _repository.getConsumedFoodsForDate(ms);
+      } catch (_) {}
+      try {
+        water = await _repository.getWaterVolumeForDate(ms);
+      } catch (_) {}
+      try {
+        target = await _repository.getNutritionTargetForDate(ms);
+      } catch (_) {}
+      if (seq != _viewSeq) return;
+      if (epoch == _viewWriteEpoch) break;
+    }
+    _viewedConsumed = rows;
+    _viewedWaterMl = water;
+    _viewedTarget = target;
+    _viewedLoaded = true;
+    notifyListeners();
+  }
+
+  /// Moves the view [delta] calendar days (negative = earlier). Calendar
+  /// arithmetic, not 24-hour steps: a clock-change day is 23 or 25 hours long.
+  Future<void> shiftViewedDay(int delta) {
+    final base = DateTime.fromMillisecondsSinceEpoch(viewedDayMs);
+    return viewDay(DateTime(base.year, base.month, base.day + delta));
+  }
+
+  /// Back to today without notifying; the screen calls it from `initState`,
+  /// before its first build.
+  void resetDayView() {
+    _viewSeq++;
+    _viewDayMs = null;
+    _viewedConsumed = const [];
+    _viewedWaterMl = 0;
+    _viewedTarget = null;
+    _viewedLoaded = true;
+  }
+
+  /// Re-reads the viewed rows after a write to [dayMs], only while [dayMs] is
+  /// still the viewed day. Does not notify: the caller does.
+  Future<void> _reloadViewedRows(int dayMs) async {
+    if (_pastViewMs != dayMs) return;
+    try {
+      final rows = await _repository.getConsumedFoodsForDate(dayMs);
+      if (_pastViewMs == dayMs) {
+        _viewedConsumed = rows;
+        _viewWriteEpoch++;
+      }
+    } catch (_) {
+      // Leave the previous viewed rows.
+    }
+  }
+
+  /// The viewed day's row for [foodId], or null.
+  ConsumedFood? findLoggedViewedForFood(String foodId) {
+    if (_pastViewMs == null) return findLoggedTodayForFood(foodId);
+    for (final c in _viewedConsumed) {
+      if (c.sourceFoodId == foodId) return c;
+    }
+    return null;
+  }
+
+  bool isFoodLoggedViewed(String foodId) =>
+      findLoggedViewedForFood(foodId) != null;
+
+  /// Logs [food] on the viewed day, or changes that day's amount (one row per
+  /// food per day). On today it is [logConsumedFoodAt]; on an earlier day it is
+  /// [logConsumedFoodOnDay], so a new row freezes THAT day's saved target.
+  Future<String?> logConsumedFoodViewed(Food food, double amount) {
+    final past = _pastViewMs;
+    if (past == null) return logConsumedFoodAt(food, amount);
+    return logConsumedFoodOnDay(
+      food,
+      amount,
+      loggedAt: DateTime.fromMillisecondsSinceEpoch(past),
+    );
+  }
+
+  /// Removes the viewed day's row for [foodId]; false when there is none.
+  Future<bool> unlogFoodViewed(String foodId) async {
+    if (_pastViewMs == null) return unlogFoodToday(foodId);
+    final row = findLoggedViewedForFood(foodId);
+    if (row == null) return false;
+    return deleteConsumedFoodViewed(row.id);
+  }
+
+  /// Removes the viewed day's row [id]; false when that day has no such row.
+  Future<bool> deleteConsumedFoodViewed(String id) async {
+    final past = _pastViewMs;
+    if (past == null) return deleteConsumedFood(id);
+    if (!_viewedConsumed.any((c) => c.id == id)) return false;
+    try {
+      await _repository.deleteConsumedFood(id);
+    } catch (_) {
+      return false;
+    }
+    await _reloadViewedRows(past);
+    notifyListeners();
+    return true;
+  }
+
+  /// Sets the amount of [row] (a row on the viewed day) and nothing else. For a
+  /// food that is no longer in the library: it never writes a library food
+  /// (`updateFood` is a plain put on both stores and would create one).
+  Future<bool> setLoggedAmountViewed(ConsumedFood row, double amount) async {
+    if (!amount.isFinite || amount <= 0) return false;
+    final past = _pastViewMs;
+    final updated = row.copyWith(
+      amountConsumed: amount,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
+    try {
+      await _repository.updateConsumedFood(updated);
+    } catch (_) {
+      return false;
+    }
+    if (past == null) {
+      _consumedToday = _consumedToday
+          .map((c) => c.id == row.id ? updated : c)
+          .toList();
+    } else {
+      await _reloadViewedRows(past);
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// One water step more on the viewed day (today: [incrementWaterForDate]).
+  Future<void> incrementWaterViewed() {
+    final past = _pastViewMs;
+    return past == null
+        ? incrementWaterForDate(_todayMs())
+        : _stepViewedWater(past, add: true);
+  }
+
+  /// One water step less on the viewed day, floored at 0 ml (today:
+  /// [decrementWaterForDate]).
+  Future<void> decrementWaterViewed() {
+    final past = _pastViewMs;
+    return past == null
+        ? decrementWaterForDate(_todayMs())
+        : _stepViewedWater(past, add: false);
+  }
+
+  /// The earlier-day water step. Sets only the viewed cache: the today water
+  /// cache is not this day's (an earlier day must never reuse
+  /// [incrementWaterForDate], which writes `_waterTodayMl` whatever the date).
+  Future<void> _stepViewedWater(int dayMs, {required bool add}) =>
+      _serialiseWater(() async {
+        final step = waterStepMl;
+        final current = await _repository.getWaterVolumeForDate(dayMs);
+        if (!add && current <= 0) return;
+        final raw = add ? current + step : current - step;
+        final next = raw < 0 ? 0 : raw;
+        await _repository.saveWaterVolumeForDate(dayMs, next);
+        if (_pastViewMs == dayMs) {
+          _viewedWaterMl = next;
+          _viewWriteEpoch++;
+          notifyListeners();
+        }
+      });
 
   // ─── food lastAmountConsumed write-through (food-last-amount-plan) ──
   // A successful `logConsumedFoodAt` / `logConsumedFood` call must also
@@ -749,32 +1006,17 @@ class NutritionState extends ChangeNotifier {
   /// (which is also rounded once) and avoids per-row rounding drift —
   /// e.g. a 30g-protein-per-100g food at 1.5 portions contributes
   /// 0.45 g per row; rounding per row to 0 would erase the entry.
-  int get todayConsumedProtein => _consumedToday
-      .fold<double>(
-        0,
-        (sum, c) => sum + c.protein * c.amountConsumed / c.referenceAmount,
-      )
-      .round();
+  int get todayConsumedProtein => NutritionDayTotals.of(_consumedToday).protein;
 
   /// Sum of `(carbs * amountConsumed / referenceAmount)` across the
   /// cached [consumedToday] list, accumulated as a double and rounded
   /// once at the end. Returns 0 for an empty list.
-  int get todayConsumedCarbs => _consumedToday
-      .fold<double>(
-        0,
-        (sum, c) => sum + c.carbs * c.amountConsumed / c.referenceAmount,
-      )
-      .round();
+  int get todayConsumedCarbs => NutritionDayTotals.of(_consumedToday).carbs;
 
   /// Sum of `(fat * amountConsumed / referenceAmount)` across the
   /// cached [consumedToday] list, accumulated as a double and rounded
   /// once at the end. Returns 0 for an empty list.
-  int get todayConsumedFat => _consumedToday
-      .fold<double>(
-        0,
-        (sum, c) => sum + c.fat * c.amountConsumed / c.referenceAmount,
-      )
-      .round();
+  int get todayConsumedFat => NutritionDayTotals.of(_consumedToday).fat;
 
   /// Sum of `(fiber * amountConsumed / referenceAmount)` across the
   /// cached [consumedToday] list, accumulated as a double and rounded
@@ -785,12 +1027,7 @@ class NutritionState extends ChangeNotifier {
   /// separates **net carbs** (`carbs - fiber`) from **fiber**, so this
   /// getter returns the raw fiber grams — net carbs must be derived at
   /// the chart site as `max(0, todayConsumedCarbs - todayConsumedFiber)`.
-  int get todayConsumedFiber => _consumedToday
-      .fold<double>(
-        0,
-        (sum, c) => sum + (c.fiber ?? 0) * c.amountConsumed / c.referenceAmount,
-      )
-      .round();
+  int get todayConsumedFiber => NutritionDayTotals.of(_consumedToday).fiber;
 
   /// Sum of `(sodium * amountConsumed / referenceAmount)` across the
   /// cached [consumedToday] list, accumulated as a double and rounded
@@ -803,13 +1040,7 @@ class NutritionState extends ChangeNotifier {
   /// as 0 (the field defaults to null and is treated as 0 here) —
   /// the ring card renders "Na 0 mg" until those days are re-logged
   /// with the new code path.
-  int get todayConsumedSodium => _consumedToday
-      .fold<double>(
-        0,
-        (sum, c) =>
-            sum + (c.sodium ?? 0) * c.amountConsumed / c.referenceAmount,
-      )
-      .round();
+  int get todayConsumedSodium => NutritionDayTotals.of(_consumedToday).sodium;
 
   // ─── Per-macro calorie contributions (D-4 / D-5) ───────────────────────
   // The home nutrition strip (D-5) needs the calorie contribution of

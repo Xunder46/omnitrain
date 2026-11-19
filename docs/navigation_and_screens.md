@@ -161,7 +161,11 @@ reached from the `NutritionSummaryCard` below the tile grid.
 
 Nutrition is entered from the `NutritionSummaryCard` on the home screen, which
 lands on `NutritionScreen` (daily summary); the labelled target button in the
-`TODAY` card header at the top of that screen pushes `NutritionTargetScreen`. The
+day-title card header (`TODAY`, `YESTERDAY` or the date) at the top of that screen
+pushes `NutritionTargetScreen` (verified by
+`test/nutrition_day_switcher_screen_test.dart`, group
+`plan 247: nutrition day switcher screen`:
+`S-24721: opens on today with prev enabled and next disabled`). The
 legacy bottom "Edit Targets" button is gone. The legacy placeholder still exists
 as unreachable dead code (see Non-Production Screens below).
 
@@ -181,7 +185,7 @@ Day rollover:
 | Screen | File | Purpose |
 |--------|------|---------|
 | `HomeScreen` | `lib/features/home/home_screen.dart` | Modality tile grid, the nutrition summary card, and the maintenance sheet. Owns day-rollover for the nutrition target. |
-| `NutritionScreen` | `lib/features/nutrition/nutrition_screen.dart` | Daily nutrition summary: calorie ring, macro donut, sodium and water totals, and the grouped "Foods I Eat" browse card. |
+| `NutritionScreen` | `lib/features/nutrition/nutrition_screen.dart` | Daily nutrition summary: calorie ring, macro donut, sodium and water totals, and the grouped "Foods I Eat" browse card, with arrows to look back at and edit earlier days. Verified by `test/nutrition_day_switcher_screen_test.dart` (group `plan 247: nutrition day switcher screen`: `S-24722: prev shows yesterday then D-2, next walks back`). |
 | `AddFoodScreen` | `lib/features/nutrition/add_food_screen.dart` | Two-tab management surface: the Library list (catalog foods, foods the user created tagged Yours, and older custom foods) and food groups, with a header "+" for New Food / New Category. A created food's editor (`EditFoodScreen`) also offers Delete food (`food_delete_created`, `test/library_merge_test.dart` `S-12815`). |
 | `EditFoodScreen` | `lib/features/nutrition/edit_food_screen.dart` | Edit a single food. Nothing is written until the bottom `Save` (key `food_form_save`), which pops on success; leaving with edits asks `Unsaved changes` first (`edit-food-unsaved-keep` / `edit-food-unsaved-discard`), and a changed photo is saved with the rest of the form rather than on pick. A default food saves, after a confirmation, as a new food of the user's own through `FoodLibraryState.createOwnCopyOfDefault`; a user-created catalog food saves through `updateCatalogFood`, whose edit still propagates to personal library rows through the durable `catalogId` linkage; past `ConsumedFood` snapshots are unaffected. Verified by `test/library_row_toggle_test.dart` (group `Library row toggle (plan 77a S-12710..S-12717)`: `S-12719: the Edit screen routes a default food's save through the copy flow`, `S-12720: the Edit screen routes a user-created catalog food's save through updateCatalogFood (propagates to the library copy)`) and by `test/edit_default_food_test.dart` (group `Edit a default food (plan 133)`: `S-13311 Save on an edited default asks first; Cancel writes nothing; an untouched form pops with no dialog`, `S-13313 Confirm on an in-list logged default replaces it and carries today's amount`) and by `test/edit_food_save_test.dart` (`S-92a.3: back with edits asks; Discard drops them and Keep editing stays`, `S-92a.18: Save pops without the guard`). |
 | `NutritionTargetScreen` | `lib/features/nutrition/nutrition_target_screen.dart` | Set today's daily targets: calories plus protein, carbs and fat in grams. Persists through `NutritionState` with forward-propagation to future dates that still hold the old value. |

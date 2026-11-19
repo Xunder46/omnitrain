@@ -9,6 +9,8 @@ import '../../core/constants/omni_theme.dart';
 /// than pushing the title below half. The default bottom padding is
 /// 8 dp — the gap that callers historically hand-rolled with a
 /// `SizedBox(height: 8)` between the header and the card below.
+/// Optionally, a [leading] widget sits directly left of the title and
+/// a [trailing] widget directly right of it (a flanked title row).
 ///
 /// Title typography follows the canonical section/card-header style
 /// (`labelSmall` + `w600` + `letterSpacing: 2.0` + `textMuted`) so every
@@ -24,6 +26,9 @@ class OmniCardHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.actions,
+    this.leading,
+    this.trailing,
+    this.titleMinWidth,
     this.padding = const EdgeInsets.fromLTRB(0, 0, 0, 8),
   });
 
@@ -39,6 +44,19 @@ class OmniCardHeader extends StatelessWidget {
   /// so the header sits cleanly above the card beneath it. Callers can
   /// override to add horizontal padding or change the gap.
   final EdgeInsetsGeometry padding;
+
+  /// Optional widget directly left of the title (a day-step arrow). With
+  /// [leading] or [trailing] the title sits between them, left-aligned; with
+  /// neither the row is exactly the plain header.
+  final Widget? leading;
+
+  /// Optional widget directly right of the title.
+  final Widget? trailing;
+
+  /// Minimum width of the title text when it is flanked, so a [trailing]
+  /// control keeps its place as the title text changes length. Ignored without
+  /// [leading] or [trailing].
+  final double? titleMinWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -61,23 +79,41 @@ class OmniCardHeader extends StatelessWidget {
           final maxActionsWidth = constraints.maxWidth.isFinite
               ? constraints.maxWidth * 0.5
               : double.infinity;
+          final titleText = Text(
+            title,
+            key: const Key('omniCardHeader_title'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: OmniTheme.colors.textMuted,
+              letterSpacing: 2.0,
+              fontWeight: FontWeight.w600,
+            ),
+          );
+          final flanked = leading != null || trailing != null;
           return Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Expanded(
-                child: Text(
-                  title,
-                  key: const Key('omniCardHeader_title'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: OmniTheme.colors.textMuted,
-                    letterSpacing: 2.0,
-                    fontWeight: FontWeight.w600,
+              if (flanked)
+                Expanded(
+                  child: Row(
+                    children: [
+                      ?leading,
+                      Flexible(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minWidth: titleMinWidth ?? 0,
+                          ),
+                          child: Align(widthFactor: 1.0, child: titleText),
+                        ),
+                      ),
+                      ?trailing,
+                    ],
                   ),
-                ),
-              ),
+                )
+              else
+                Expanded(child: titleText),
               if (hasActions)
                 // The cap bounds the cluster; the loose `Flexible`s pass that
                 // bound down to each action so a long label (the window chip)

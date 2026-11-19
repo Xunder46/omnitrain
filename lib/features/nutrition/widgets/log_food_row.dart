@@ -85,11 +85,17 @@ class LogFoodRow extends StatefulWidget {
   /// mutations are performed through it from this row.
   final FoodLibraryState foodLibraryState;
 
+  /// Set when this row stands for a food that is no longer in the library: the
+  /// logged row itself (its own frozen name and numbers). The row then edits
+  /// that logged row only and never writes a library food (plan 247).
+  final ConsumedFood? removedRow;
+
   const LogFoodRow({
     super.key,
     required this.food,
     required this.nutritionState,
     required this.foodLibraryState,
+    this.removedRow,
   });
 
   @override
@@ -117,7 +123,35 @@ class _LogFoodRowState extends State<LogFoodRow> {
   /// enough to coalesce multi-keystroke edits.
   static const Duration _autoCommitDelay = Duration(milliseconds: 250);
 
-  /// Default amount when the food is NOT logged today. The
+  /// The viewed day's logged row this widget stands for: a removed food's own
+  /// row (still in the viewed rows), else the library food's row on the viewed
+  /// day. Null when it is not logged on the viewed day.
+  ConsumedFood? get _loggedRow {
+    final removed = widget.removedRow;
+    if (removed != null) {
+      for (final c in widget.nutritionState.viewedConsumed) {
+        if (c.id == removed.id) return c;
+      }
+      return null;
+    }
+    return widget.nutritionState.findLoggedViewedForFood(widget.food.id);
+  }
+
+  /// Writes [amount] (already in the food's own unit) to the viewed day: a
+  /// removed food's row is changed alone, a library food goes through the
+  /// viewed-day log.
+  Future<void> _commitAmount(double amount) async {
+    if (widget.removedRow != null) {
+      final row = _loggedRow;
+      if (row != null) {
+        await widget.nutritionState.setLoggedAmountViewed(row, amount);
+      }
+      return;
+    }
+    await widget.nutritionState.logConsumedFoodViewed(widget.food, amount);
+  }
+
+  /// Default amount when the food is NOT logged on the viewed day. The
   /// preference order is:
   ///
   ///  1. **Remembered last amount** — the food row's
@@ -130,8 +164,8 @@ class _LogFoodRowState extends State<LogFoodRow> {
   ///     for grams-type (e.g. 100 g) or `1.0` for count-type (a
   ///     multiplier of 1).
   ///
-  /// Today-log pre-fill (in `initState`) still wins over both
-  /// when the food is already logged today.
+  /// Viewed-day log pre-fill (in `initState`) still wins over both
+  /// when the food is already logged on the viewed day.
   double get _defaultAmount {
     final remembered = widget.food.lastAmountConsumed;
     if (remembered != null) return remembered;
@@ -151,9 +185,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
     // input with the existing consumed amount.
     // For grams: show the actual amount consumed.
     // For count: show the multiplier (amountConsumed / referenceAmount).
-    final existing = widget.nutritionState.findLoggedTodayForFood(
-      widget.food.id,
-    );
+    final existing = _loggedRow;
     if (existing != null) {
       final displayValue = widget.food.unitType == FoodUnitType.grams
           ? existing.amountConsumed
@@ -257,11 +289,11 @@ class _LogFoodRowState extends State<LogFoodRow> {
   }
 
   /// Restart the auto-commit debounce. When the timer fires, if
-  /// the food is already logged today and the current input is
-  /// valid, call [NutritionState.logConsumedFoodAt] (translating
+  /// the food is already logged on the viewed day and the current
+  /// input is valid, call [_commitAmount] (translating
   /// the multiplier to the food's own-unit amount) to update the
-  /// existing row in place. A no-op if the food is not logged
-  /// today or the input is invalid.
+  /// existing row in place. A no-op if the food is not logged on
+  /// the viewed day or the input is invalid.
   void _scheduleAutoCommit() {
     _autoCommitDebounce?.cancel();
     _autoCommitDebounce = Timer(_autoCommitDelay, _autoCommitIfLogged);
@@ -272,10 +304,10 @@ class _LogFoodRowState extends State<LogFoodRow> {
   /// the debounce timer (see [_scheduleAutoCommit]).
   Future<void> _autoCommitIfLogged() async {
     if (!mounted) return;
-    if (!widget.nutritionState.isFoodLoggedToday(widget.food.id)) return;
+    if (_loggedRow == null) return;
     final amount = _amountInOwnUnit();
     if (amount == null) return;
-    await widget.nutritionState.logConsumedFoodAt(widget.food, amount);
+    await _commitAmount(amount);
   }
 
   /// Toggle the food's log state. Called from the thumb
@@ -284,7 +316,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
   /// cleared the amount field before tapping), the toggle is a
   /// no-op and the inline error is surfaced.
   Future<void> _toggle(bool nextState) async {
-    final isLogged = widget.nutritionState.isFoodLoggedToday(widget.food.id);
+    final isLogged = _loggedRow != null;
     if (nextState == true && !isLogged) {
       // Log on. Translate the typed value to the food's
       // own-unit amount before handing off to the state.
@@ -293,10 +325,15 @@ class _LogFoodRowState extends State<LogFoodRow> {
         setState(() {}); // surface the validation error
         return;
       }
-      await widget.nutritionState.logConsumedFoodAt(widget.food, amount);
+      await _commitAmount(amount);
     } else if (nextState == false && isLogged) {
       // Unlog.
-      await widget.nutritionState.unlogFoodToday(widget.food.id);
+      final removed = widget.removedRow;
+      if (removed != null) {
+        await widget.nutritionState.deleteConsumedFoodViewed(removed.id);
+      } else {
+        await widget.nutritionState.unlogFoodViewed(widget.food.id);
+      }
     }
     // `nextState == isLogged` is a no-op (the user tapped a
     // thumb that was already in the target state — e.g. tapped
@@ -316,7 +353,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
   /// number — pressing Done on the untouched default must not log
   /// by accident.
   Future<void> _recommitIfLogged() async {
-    final isLogged = widget.nutritionState.isFoodLoggedToday(widget.food.id);
+    final isLogged = _loggedRow != null;
     // An unlogged food is logged by typing only when the user changed the
     // number: pressing Done on the untouched default must not log by accident.
     if (!isLogged &&
@@ -328,7 +365,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
       setState(() {});
       return;
     }
-    await widget.nutritionState.logConsumedFoodAt(widget.food, amount);
+    await _commitAmount(amount);
   }
 
   @override
@@ -341,7 +378,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
     return ListenableBuilder(
       listenable: widget.nutritionState,
       builder: (context, _) {
-        final isLogged = widget.nutritionState.isFoodLoggedToday(food.id);
+        final isLogged = _loggedRow != null;
         // Single-line macro string (S-007). Format parity with
         // `AddFoodScreen`'s catalog rows. `formatGrams` keeps the
         // no-suffix display for whole-number macros (`21.0 -> 21`)
@@ -409,7 +446,9 @@ class _LogFoodRowState extends State<LogFoodRow> {
                           decimal: true,
                           signed: false,
                         ),
-                        inputFormatters: const [DecimalInputFormatter(maxFractionDigits: 3)],
+                        inputFormatters: const [
+                          DecimalInputFormatter(maxFractionDigits: 3),
+                        ],
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: themeColors.textDominant,
                           fontFeatures: const [FontFeature.tabularFigures()],
@@ -451,7 +490,6 @@ class _LogFoodRowState extends State<LogFoodRow> {
       },
     );
   }
-
 }
 
 /// Tappable food thumbnail that IS the log/unlog toggle on a

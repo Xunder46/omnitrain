@@ -140,12 +140,16 @@ Tap-only +/− stepper for the day's water. Water has **no goal** — the widget
 bar, target, or percentage. The number is the day's total in the user's volume unit (`750 ml`,
 `1.5 L`, `48 oz`) and the caption under the glass icon is the per-tap step (`250 ml` or `8 oz`);
 the widget never reads or writes ml itself, and the step amount is sourced from `waterStepMlFor`
-so a future change propagates automatically. Decrement is disabled at zero. Verified by
+so a future change propagates automatically. Decrement is disabled at zero. An optional `dayLabel` (default `today`) names the
+day in the spoken Semantics label, `Water <dayLabel>: <amount>` — `Water on Nov 17: ...`
+for an earlier day. Verified by
 `test/nutrition_test.dart` (group `WaterTrackerControl — total in the volume unit
 (S-13207, S-13210, S-13214)`: `S-13207 1500 ml in ml reads 1.5 L with step 250 ml`,
 `S-13207 each tap calls its own callback exactly once`, `S-13214 an unknown volume unit reads
 as ml`), and the step wording by `test/utils_test.dart` (group `UnitFormatter volume (S-13201,
-S-13202, S-13203)`: `waterStepLabel: the per-tap amount for each unit (S-13203)`).
+S-13202, S-13203)`: `waterStepLabel: the per-tap amount for each unit (S-13203)`); the day
+label by `test/nutrition_day_switcher_screen_test.dart` (group `plan 247: nutrition day
+switcher screen`: `S-24725: water on yesterday speaks that day and not today`).
 
 ### `MacroDonutChart`
 
@@ -195,7 +199,12 @@ single owner of the rule for both this card and the watch's synced list. Verifie
 
 Rows are `LogFoodRow` (`lib/features/nutrition/widgets/log_food_row.dart`), which owns the logging
 affordance; this section owns the grouped list layout only. Archived groups and archived foods are
-excluded.
+excluded. A food logged on the viewed day that the library no longer holds keeps its own frozen
+name and numbers in a trailing `No longer in Foods I Eat` group, and its row edits that logged
+row only — no library food is ever created for it. Verified by
+`test/nutrition_day_switcher_screen_test.dart` (group `plan 247: nutrition day switcher screen`:
+`S-24727: a removed food keeps its own editable row`, `S-24730: a logged row shows even with an
+empty library`).
 
 ---
 
