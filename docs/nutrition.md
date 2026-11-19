@@ -134,6 +134,18 @@ only`); the target button shows on today only (`S-24723`) and reopening starts o
 Foods I Eat`, never creating a library food (`S-24727`; state: group `Mock: viewed day` ·
 `S-24709 editing a removed-food row on yesterday never writes a library food`).
 
+### Search
+
+A `nutrition_search_field` box sits on top of the Foods I Eat list, above the "Pick the foods you
+eat" prompt too, so a new user can search at once (`test/nutrition_search_screen_test.dart`,
+`S-25608`). Typing filters Foods I Eat by name, case-insensitive and trimmed, keeping the category
+headings (`S-25602`, `S-25603`); below them `From the catalog` lists the catalog foods that match
+and are not in Foods I Eat yet (at most 20, alphabetical, each with its calories per portion and an
+`Add & log` button; a catalog food already in the list is not offered twice, `S-25604`). `Add & log`
+puts the food into Foods I Eat and logs it on the day the screen shows with its first portion (a
+grams food its reference amount, a count food 1; `S-25606`, `S-25607`, `S-25610`), clears the search
+and says `Added to Foods I Eat and logged`. No match shows `No foods match "x"` (`S-25605`).
+
 ### `AddFoodScreen`
 
 Two tabs — Library and Categories. The old My Foods tab is gone: everything it

@@ -10,7 +10,9 @@ import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
 import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../core/navigation/navigation.dart';
+import '../../widgets/buttons/omni_utility_button.dart';
 import '../../widgets/common/omni_empty_state.dart';
+import '../../widgets/feedback/omni_message.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
 import 'add_food_screen.dart';
@@ -391,12 +393,7 @@ class _DayArrow extends StatelessWidget {
   }
 }
 
-/// Read-only, scrollable, grouped list of foods for the Food Library card.
-///Each row is a [LogFoodRow] — the food library card now doubles as
-/// the "log a food as consumed" affordance. The per-row checkbox +
-/// amount input live in [LogFoodRow]; this section is responsible for
-/// the grouped list layout only.
-class _FoodLibraryBrowseSection extends StatelessWidget {
+class _FoodLibraryBrowseSection extends StatefulWidget {
   final FoodLibraryState foodLibraryState;
   final NutritionState nutritionState;
   final VoidCallback onChooseFoods;
@@ -408,7 +405,181 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
   });
 
   @override
+  State<_FoodLibraryBrowseSection> createState() =>
+      _FoodLibraryBrowseSectionState();
+}
+
+class _FoodLibraryBrowseSectionState extends State<_FoodLibraryBrowseSection> {
+  final TextEditingController _search = TextEditingController();
+  String _query = '';
+  bool _adding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Plan 256: the catalog cache is what the search offers; load it once when
+    // it is empty (the same call `AddFoodScreen` makes).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.foodLibraryState.catalogFoods.isEmpty) {
+        unawaited(widget.foodLibraryState.loadCatalogFoods());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _clearSearch() {
+    _search.clear();
+    setState(() => _query = '');
+  }
+
+  Widget _searchField() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        key: const Key('nutrition_search_field'),
+        controller: _search,
+        decoration: InputDecoration(
+          hintText: 'Search foods',
+          prefixIcon: const Icon(Icons.search),
+          isDense: true,
+          border: const OutlineInputBorder(),
+          suffixIcon: _query.isEmpty
+              ? null
+              : IconButton(
+                  key: const Key('nutrition_search_clear'),
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Clear',
+                  onPressed: _clearSearch,
+                ),
+        ),
+        onChanged: (v) => setState(() => _query = v),
+      ),
+    );
+  }
+
+  /// Puts a catalog food into Foods I Eat and logs it on the day the screen
+  /// shows, with its first portion (plan 256 D-25605).
+  Future<void> _addAndLog(Food catalogFood) async {
+    if (_adding) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
+    setState(() => _adding = true);
+    var ok = false;
+    try {
+      final libraryId = await widget.foodLibraryState.addCatalogFoodToLibrary(
+        catalogFood.id,
+      );
+      Food? food;
+      for (final f in widget.foodLibraryState.foods) {
+        if (f.id == libraryId) {
+          food = f;
+          break;
+        }
+      }
+      if (food != null) {
+        final amount = food.unitType == FoodUnitType.grams
+            ? food.referenceAmount
+            : 1.0;
+        final id = await widget.nutritionState.logConsumedFoodViewed(
+          food,
+          amount,
+        );
+        ok = id != null;
+      }
+    } catch (_) {
+      ok = false;
+    }
+    if (!mounted) return;
+    setState(() => _adding = false);
+    if (!ok) {
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Could not add the food. Try again.',
+      );
+      return;
+    }
+    _clearSearch();
+    OmniMessage.showOn(messenger, theme, 'Added to Foods I Eat and logged');
+  }
+
+  /// What the typed query finds (plan 256 D-25603): the matching Foods I Eat
+  /// under their headings, then the catalog foods that match and are not in
+  /// Foods I Eat yet.
+  List<Widget> _searchResults(List<Food> foods, String query) {
+    final foodLibraryState = widget.foodLibraryState;
+    final mine = [
+      for (final f in foods)
+        if (f.name.toLowerCase().contains(query)) f,
+    ];
+    final catalog = [
+      for (final f in foodLibraryState.catalogFoods)
+        if (!f.isArchived &&
+            f.name.toLowerCase().contains(query) &&
+            !foodLibraryState.isInLibrary(f.id))
+          f,
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final shownCatalog = catalog.take(20).toList();
+    if (mine.isEmpty && shownCatalog.isEmpty) {
+      return [
+        OmniEmptyState(
+          icon: Icons.search_off,
+          title: 'No foods match "${_query.trim()}"',
+          hint: 'Try a different search.',
+        ),
+      ];
+    }
+    final sections = foodsIEatSections(
+      foods: mine,
+      groups: foodLibraryState.activeFoodGroups,
+    );
+    final theme = Theme.of(context);
+    return [
+      for (final section in sections)
+        _GroupBlock(
+          groupName: section.title,
+          foods: section.foods,
+          foodLibraryState: foodLibraryState,
+          nutritionState: widget.nutritionState,
+        ),
+      if (shownCatalog.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'From the catalog',
+                key: const Key('nutrition_search_catalog_heading'),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: OmniTheme.titleLetterSpacing,
+                  color: OmniTheme.colors.textDominant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              for (final f in shownCatalog)
+                _CatalogMatchRow(
+                  food: f,
+                  busy: _adding,
+                  onAddAndLog: () => unawaited(_addAndLog(f)),
+                ),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final foodLibraryState = widget.foodLibraryState;
+    final nutritionState = widget.nutritionState;
     return ListenableBuilder(
       listenable: Listenable.merge([foodLibraryState, nutritionState]),
       builder: (context, _) {
@@ -422,6 +593,15 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
 
         final foods = foodLibraryState.foods;
 
+        // A typed query replaces the list with what it finds (plan 256).
+        final query = _query.trim().toLowerCase();
+        if (query.isNotEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [_searchField(), ..._searchResults(foods, query)],
+          );
+        }
+
         // Foods logged on the viewed day that the library no longer holds. A
         // logged row carries its own name and numbers, so each one can be
         // shown and edited (plan 247).
@@ -434,27 +614,33 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
 
         // Empty state: show whenever the user's Foods I Eat list is empty and
         // no removed foods are logged on the viewed day, regardless of category
-        // count. The presence of 0, 9, or any number of
-        // default/custom categories has no effect on this condition. The
-        // Choose foods button leads to the picker (the Library) via
-        // [onChooseFoods].
+        // count. The Choose foods button leads to the picker (the Library) via
+        // [onChooseFoods]. The search box above it lets a new user find and
+        // log a catalog food without opening the picker (plan 256).
         if (foods.isEmpty && removed.isEmpty) {
-          return OmniEmptyState(
-            icon: Icons.restaurant_menu_outlined,
-            title: 'Pick the foods you eat',
-            hint: 'Choose them from the library, then tick them off each day.',
-            action: FilledButton(
-              key: const Key('foods_i_eat_choose_button'),
-              onPressed: onChooseFoods,
-              style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonBorderRadius,
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _searchField(),
+              OmniEmptyState(
+                icon: Icons.restaurant_menu_outlined,
+                title: 'Pick the foods you eat',
+                hint:
+                    'Choose them from the library, then tick them off each day.',
+                action: FilledButton(
+                  key: const Key('foods_i_eat_choose_button'),
+                  onPressed: widget.onChooseFoods,
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonBorderRadius,
+                      ),
+                    ),
                   ),
+                  child: const Text('Choose foods'),
                 ),
               ),
-              child: const Text('Choose foods'),
-            ),
+            ],
           );
         }
 
@@ -469,6 +655,7 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _searchField(),
             for (final section in sections)
               _GroupBlock(
                 groupName: section.title,
@@ -487,6 +674,68 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// One catalog food a search found: its name, its calories per portion and an
+/// Add & log button (plan 256 D-25604).
+class _CatalogMatchRow extends StatelessWidget {
+  final Food food;
+  final bool busy;
+  final VoidCallback onAddAndLog;
+
+  const _CatalogMatchRow({
+    required this.food,
+    required this.busy,
+    required this.onAddAndLog,
+  });
+
+  String get _caption {
+    final cal = calculateCalories(food);
+    if (food.unitType != FoodUnitType.grams) return '$cal cal each';
+    final amount = food.referenceAmount;
+    final shown = amount == amount.truncateToDouble()
+        ? amount.toStringAsFixed(0)
+        : amount.toStringAsFixed(1);
+    return '$cal cal per $shown ${foodUnitCaption(food)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  food.name,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: OmniTheme.colors.textDominant,
+                  ),
+                ),
+                Text(
+                  _caption,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: OmniTheme.colors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          OmniUtilityButton(
+            buttonKey: Key('nutrition_search_add_${food.id}'),
+            label: 'Add & log',
+            icon: Icons.add,
+            onPressed: busy ? null : onAddAndLog,
+          ),
+        ],
+      ),
     );
   }
 }

@@ -82,6 +82,18 @@ The row's selected and unselected states are visually distinct without relying o
 Calories come from the macros unless the food carries its own `caloriesOverride` (plan 253, set from the food form's Calories box, plan 254) — `calculateCalories` in
 `lib/core/utils/food_helpers.dart` reads `Food.calories`, the one owner of that rule.
 
+### `_CatalogMatchRow` (private to `NutritionScreen`)
+
+**File**: `lib/features/nutrition/nutrition_screen.dart`
+
+One catalog food the Daily Nutrition search found (plan 256): its name, its calories per portion
+(`<N> cal per <amount> <unit>` for a grams food, `<N> cal each` for a count food) and an
+`OmniUtilityButton` `Add & log` (key `nutrition_search_add_<catalogId>`), which adds the food to Foods
+I Eat and logs it on the viewed day with its first portion. The search itself is the `TextField`
+`nutrition_search_field` (clear button `nutrition_search_clear`) at the top of the Foods I Eat list,
+under the `From the catalog` heading `nutrition_search_catalog_heading`. Verified by
+`test/nutrition_search_screen_test.dart` (`S-25603`, `S-25606`).
+
 ### `FoodThumbnail`
 
 **File**: `lib/features/nutrition/widgets/food_thumbnail.dart`
