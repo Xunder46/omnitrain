@@ -202,12 +202,16 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     );
   }
 
-  Widget _buildExerciseTileCard(Map<String, dynamic> exercise, ThemeData theme) {
+  Widget _buildExerciseTileCard(
+    Map<String, dynamic> exercise,
+    ThemeData theme,
+  ) {
     final subtitle = _buildExerciseSubtitle(exercise);
     final effortId = exercise['id'] as String;
     final idx = _exercises.indexWhere((e) => e['id'] == effortId);
 
     final tileColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
+    final moves = _moveAvailability(exercise);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -245,9 +249,37 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               onSelected: (value) {
                 if (value == 'remove') {
                   unawaited(_confirmAndRemoveExercise(exercise));
+                } else if (value == 'up') {
+                  unawaited(_moveExercise(exercise, -1));
+                } else if (value == 'down') {
+                  unawaited(_moveExercise(exercise, 1));
                 }
               },
               itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  key: Key('exercise_tile_up_$effortId'),
+                  value: 'up',
+                  enabled: moves.up,
+                  child: const Row(
+                    children: [
+                      Icon(Icons.arrow_upward, size: 18),
+                      SizedBox(width: 8),
+                      Text('Move up'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  key: Key('exercise_tile_down_$effortId'),
+                  value: 'down',
+                  enabled: moves.down,
+                  child: const Row(
+                    children: [
+                      Icon(Icons.arrow_downward, size: 18),
+                      SizedBox(width: 8),
+                      Text('Move down'),
+                    ],
+                  ),
+                ),
                 PopupMenuItem<String>(
                   key: Key('exercise_tile_remove_$effortId'),
                   value: 'remove',
@@ -277,6 +309,39 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               ),
       ),
     );
+  }
+
+  /// Whether the exercise has a neighbour to swap places with (plan 270):
+  /// inside a block, among that block's exercises; outside one, among the
+  /// blocks and loose exercises of the list (a rolling list has none outside
+  /// a block).
+  ({bool up, bool down}) _moveAvailability(Map<String, dynamic> exercise) {
+    final effortId = exercise['id'] as String;
+    final blockId = exercise['blockId'] as String?;
+    if (blockId != null) {
+      final group = _sortExercisesForBlock(
+        _exercises.where((e) => e['blockId'] == blockId).toList(),
+      );
+      final at = group.indexWhere((e) => e['id'] == effortId);
+      return (up: at > 0, down: at != -1 && at < group.length - 1);
+    }
+    if (widget.workoutState.isRollingSession) return (up: false, down: false);
+    final items = _buildNonRollingTopLevelItems(_exercises);
+    final at = items.indexWhere((i) => i.exercise?['id'] == effortId);
+    return (up: at > 0, down: at != -1 && at < items.length - 1);
+  }
+
+  /// Plan 270: moves an exercise one place earlier or later and redraws.
+  Future<void> _moveExercise(Map<String, dynamic> exercise, int delta) async {
+    final moved = await widget.workoutState.moveExercise(
+      exercise['id'] as String,
+      delta,
+    );
+    if (!moved || !mounted) return;
+    if (widget.editMode) _hasStructuralChanges = true;
+    await _loadExercises();
+    if (!mounted) return;
+    _updateUi(() {});
   }
 
   /// Plan 269: removes a whole exercise from the workout after asking, without

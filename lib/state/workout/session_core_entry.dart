@@ -786,4 +786,128 @@ extension SessionCoreEntryMethods on SessionCore {
       _setError('Failed to remove exercise: $e');
     }
   }
+
+  /// Moves an exercise one place earlier ([delta] -1) or later (+1) among the
+  /// items beside it (plan 270): inside a block, among that block's exercises;
+  /// outside any block, among the blocks and loose exercises of the list.
+  /// Positions are renumbered 0..n-1 in the order the list shows them, which
+  /// also settles any legacy ties. Returns false when there is nothing to move
+  /// or the write failed.
+  Future<bool> moveExercise(String effortId, int delta) async {
+    if (delta != -1 && delta != 1) return false;
+    final moving = _findEffort(effortId);
+    if (moving == null) return false;
+    _clearError();
+
+    try {
+      final all = [for (final list in _efforts.values) ...list];
+      int topOf(SegmentEffort e) => e.topLevelOrderIndex ?? e.orderIndex;
+      int blockOf(SegmentEffort e) => e.blockOrderIndex ?? e.orderIndex;
+
+      Future<void> writeEffort(
+        SegmentEffort e, {
+        int? top,
+        int? inBlock,
+      }) async {
+        final next = SegmentEffort(
+          id: e.id,
+          segmentId: e.segmentId,
+          orderIndex: e.blockId == null
+              ? (top ?? e.orderIndex)
+              : (inBlock ?? e.orderIndex),
+          topLevelOrderIndex: top ?? e.topLevelOrderIndex,
+          blockOrderIndex: e.blockId == null
+              ? null
+              : (inBlock ?? e.blockOrderIndex),
+          effortKind: e.effortKind,
+          exerciseId: e.exerciseId,
+          note: e.note,
+          blockId: e.blockId,
+          createdAtMs: e.createdAtMs,
+          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        );
+        if (next.orderIndex == e.orderIndex &&
+            next.topLevelOrderIndex == e.topLevelOrderIndex &&
+            next.blockOrderIndex == e.blockOrderIndex) {
+          return;
+        }
+        await _repository.updateEffort(next);
+        final list = _efforts[e.segmentId];
+        final at = list?.indexWhere((x) => x.id == e.id) ?? -1;
+        if (list != null && at != -1) list[at] = next;
+      }
+
+      if (moving.blockId != null) {
+        final group = all.where((e) => e.blockId == moving.blockId).toList()
+          ..sort((a, b) {
+            final byBlock = blockOf(a).compareTo(blockOf(b));
+            if (byBlock != 0) return byBlock;
+            final byTop = topOf(a).compareTo(topOf(b));
+            return byTop != 0 ? byTop : a.id.compareTo(b.id);
+          });
+        final from = group.indexWhere((e) => e.id == effortId);
+        final to = from + delta;
+        if (from == -1 || to < 0 || to >= group.length) return false;
+        group.insert(to, group.removeAt(from));
+        for (var i = 0; i < group.length; i++) {
+          await writeEffort(group[i], inBlock: i);
+        }
+        _notify();
+        return true;
+      }
+
+      // Top level: blocks and loose exercises together, as the list shows them.
+      final blocks = _blockManager.getSessionBlocks();
+      final items =
+          <({String id, bool isBlock, int top})>[
+            for (final b in blocks)
+              (
+                id: b.id,
+                isBlock: true,
+                top: b.topLevelOrderIndex ?? b.orderIndex,
+              ),
+            for (final e in all.where((e) => e.blockId == null))
+              (id: e.id, isBlock: false, top: topOf(e)),
+          ]..sort((a, b) {
+            final byTop = a.top.compareTo(b.top);
+            if (byTop != 0) return byTop;
+            if (a.isBlock != b.isBlock) return a.isBlock ? 1 : -1;
+            return a.id.compareTo(b.id);
+          });
+      final from = items.indexWhere((i) => !i.isBlock && i.id == effortId);
+      final to = from + delta;
+      if (from == -1 || to < 0 || to >= items.length) return false;
+      items.insert(to, items.removeAt(from));
+      for (var i = 0; i < items.length; i++) {
+        final item = items[i];
+        if (item.isBlock) {
+          final block = blocks.firstWhere((b) => b.id == item.id);
+          if ((block.topLevelOrderIndex ?? block.orderIndex) != i) {
+            await _blockManager.updateSessionBlock(
+              SessionBlock(
+                id: block.id,
+                sessionId: block.sessionId,
+                name: block.name,
+                orderIndex: block.orderIndex,
+                topLevelOrderIndex: i,
+                createdAtMs: block.createdAtMs,
+                updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+              ),
+            );
+          }
+          // A block's exercises carry its top-level place.
+          for (final inside in all.where((e) => e.blockId == block.id)) {
+            await writeEffort(inside, top: i);
+          }
+        } else {
+          await writeEffort(all.firstWhere((e) => e.id == item.id), top: i);
+        }
+      }
+      _notify();
+      return true;
+    } catch (e) {
+      _setError('Failed to move exercise: $e');
+      return false;
+    }
+  }
 }

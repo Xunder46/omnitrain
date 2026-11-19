@@ -370,6 +370,11 @@ class WorkoutState extends ChangeNotifier {
   Future<void> removeExerciseFromSession(String effortId) =>
       _sessionCore.removeExerciseFromSession(effortId);
 
+  /// Moves an exercise one place earlier (-1) or later (+1) in the list
+  /// (plan 270); false when there is nothing to move or the write failed.
+  Future<bool> moveExercise(String effortId, int delta) =>
+      _sessionCore.moveExercise(effortId, delta);
+
   Future<String> addSessionBlock({String? name}) =>
       _sessionCore.addSessionBlock(name: name);
   Future<void> updateSessionBlock(SessionBlock block) =>
