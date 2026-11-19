@@ -592,6 +592,9 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           )
           .then((_) {
         if (!mounted) return;
+        // Plan 255: the entry is finished now, so a list tile that is on stage
+        // (the user went back while the hold ran) shows its new count and mark.
+        setState(() {});
         // Plan 241: finished and resting from the real end, not from the
         // instant the app noticed.
         final endMs =

@@ -577,10 +577,10 @@ logged set`, `S-4220: − on an all-logged effort drops the last set`,
   - Standalone (no-block) exercises are ordered by `createdAtMs`, then `executionOrder`, then id.
   - Rolling sessions: exercises render grouped by session block order.
 - Summary stats per exercise:
-  - **set**: "3 sets"
+  - **set**: "2 of 3 sets" (logged of total; a check mark at the right end of the tile once every set is logged; edit mode keeps "3 sets" and no mark; verified by `test/session_list_progress_test.dart` `S-25501` to `S-25508`) (plan 255)
   - **timed**: "05:30 total"
   - **round**: "5 rounds"
-  - **drill**: "3 holds"
+  - **drill**: "1 of 3 holds", with the same check mark when every hold is finished (`S-25505`, and `S-25509` for a hold that finishes itself while the list is showing)
 - Tap exercise to enter detail view
 - Inline add-exercise-and-block bar at the end of the list (centred in the empty state); there is no FAB
 - Non-rolling list view does not render modality group headers.

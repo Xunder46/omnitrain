@@ -118,6 +118,29 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
   // ── Exercise subtitle (used by _buildExerciseTile) ────────────────────────
 
+  /// How many of the exercise's entries are logged (plan 255): the app's own
+  /// rule, the same one the detail view's dots use (`_isSetLogged`).
+  int _loggedEntryCount(Map<String, dynamic> exercise) {
+    final entries = exercise['entries'] as List<dynamic>? ?? const [];
+    final effortId = exercise['id'] as String;
+    final effortKind = exercise['effortKind'] as String? ?? 'set';
+    var logged = 0;
+    for (var i = 0; i < entries.length; i++) {
+      if (_isSetLogged(effortId, i, effortKind)) logged++;
+    }
+    return logged;
+  }
+
+  /// True when a set or hold exercise has at least one entry and every entry
+  /// is logged; never while editing a finished workout (plan 255).
+  bool _exerciseProgressDone(Map<String, dynamic> exercise) {
+    if (widget.editMode) return false;
+    final effortKind = exercise['effortKind'] as String? ?? 'set';
+    if (effortKind != 'set' && effortKind != 'drill') return false;
+    final entries = exercise['entries'] as List<dynamic>? ?? const [];
+    return entries.isNotEmpty && _loggedEntryCount(exercise) == entries.length;
+  }
+
   String _buildExerciseSubtitle(Map<String, dynamic> exercise) {
     final entries = exercise['entries'] as List<dynamic>? ?? [];
     final effortKind = exercise['effortKind'] as String? ?? 'set';
@@ -125,7 +148,11 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
     switch (effortKind) {
       case 'set':
-        return '${entries.length} set${entries.length != 1 ? 's' : ''}';
+        if (widget.editMode || entries.isEmpty) {
+          return '${entries.length} set${entries.length != 1 ? 's' : ''}';
+        }
+        return '${_loggedEntryCount(exercise)} of ${entries.length} '
+            'set${entries.length != 1 ? 's' : ''}';
       case 'timed':
         int totalDuration = 0;
         for (int i = 0; i < entries.length; i++) {
@@ -153,7 +180,11 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
           totalRounds,
         );
       case 'drill':
-        return '${entries.length} hold${entries.length != 1 ? 's' : ''}';
+        if (widget.editMode || entries.isEmpty) {
+          return '${entries.length} hold${entries.length != 1 ? 's' : ''}';
+        }
+        return '${_loggedEntryCount(exercise)} of ${entries.length} '
+            'hold${entries.length != 1 ? 's' : ''}';
       default:
         return '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
     }
@@ -197,6 +228,14 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
             color: OmniTheme.colors.textSecondary,
           ),
         ),
+        trailing: _exerciseProgressDone(exercise)
+            ? Icon(
+                Icons.check_circle,
+                key: Key('exercise_tile_done_$effortId'),
+                color: tileColors.primary,
+                semanticLabel: 'Done',
+              )
+            : null,
         onTap: idx == -1
             ? null
             : () => unawaited(
