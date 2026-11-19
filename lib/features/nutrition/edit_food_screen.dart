@@ -170,6 +170,7 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
           fiber: draft.fiber,
           fat: draft.fat,
           sodium: draft.sodium,
+          caloriesOverride: draft.caloriesOverride,
           notes: draft.notes,
           imagePath: draft.imagePath,
         );

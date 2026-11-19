@@ -9,7 +9,7 @@
 // (select-all on the label-like text), S-92c.16 (the always-on label is
 // macro-only).
 //
-// Phase 2B: S-92c.1 (the live calories line and its place between Sodium and
+// Phase 2B: S-92c.1 (the live calories box and its place between Sodium and
 // Notes), S-92c.7 (the photo tile below the name), S-92c.8 (the duplicate
 // note), S-92c.10 (padded / different-case names), S-92c.11 (clearing the
 // name hides the note), S-92c.12 (one note for two rows), S-92c.13 (the
@@ -123,10 +123,6 @@ Future<(FoodFormController, List<FoodDraft>)> _pumpForm(
 String _fieldText(WidgetTester tester, String key) =>
     tester.widget<TextFormField>(find.byKey(Key(key))).controller?.text ?? '';
 
-/// The text of the single-line `Text` under [key].
-String _line(WidgetTester tester, String key) =>
-    tester.widget<Text>(find.byKey(Key(key))).data ?? '';
-
 const _duplicateNoteKey = Key('food_form_duplicate_note');
 
 /// Loads the shipped catalog into the form's state (the duplicate-note
@@ -179,17 +175,20 @@ void main() {
 
       for (final key in _macroKeys) {
         expect(_fieldText(tester, key), isEmpty, reason: '$key starts blank');
+        expect(
+          find.descendant(of: find.byKey(Key(key)), matching: find.text('0')),
+          findsOneWidget,
+          reason: '$key shows the faint 0 hint without focus',
+        );
       }
       expect(
         find.text('0.0'),
         findsNothing,
         reason: 'a new food must not prefill 0.0',
       );
-      expect(
-        find.text('0'),
-        findsNWidgets(5),
-        reason: 'each empty macro box shows the faint 0 hint without focus',
-      );
+      // Plan 254: the Calories box is no longer a hint line — on a blank
+      // form it shows the macro sum (0) as its own text.
+      expect(_fieldText(tester, 'food_form_calories_field'), '0');
     },
   );
 
@@ -355,7 +354,16 @@ void main() {
         reason: '$label is visible without focusing anything',
       );
     }
-    expect(find.text('0'), findsNWidgets(5));
+    // Plan 254: the Calories box also shows its number on a blank form (the
+    // macro sum, `0`), so the bare `0` count is no longer just the five
+    // macro hints — the hints are checked per macro box instead.
+    for (final key in _macroKeys) {
+      expect(
+        find.descendant(of: find.byKey(Key(key)), matching: find.text('0')),
+        findsOneWidget,
+        reason: '$key keeps the always-visible faint 0 hint',
+      );
+    }
 
     for (final key in ['food_form_name', 'food_form_group']) {
       final decoration = _decorationOf(tester, key);
@@ -373,9 +381,7 @@ void main() {
 
   // ─── Phase 2B ─────────────────────────────────────────────────────────
 
-  testWidgets('S-92c.1: the calories line follows the macros', (
-    tester,
-  ) async {
+  testWidgets('S-92c.1: the calories box follows the macros', (tester) async {
     await _pumpForm(tester, showNotesField: true);
 
     await tester.enterText(find.byKey(const Key('food_form_protein')), '10');
@@ -383,25 +389,25 @@ void main() {
     await tester.enterText(find.byKey(const Key('food_form_fat')), '12');
     await tester.pump();
 
-    expect(_line(tester, 'food_form_calories'), '= 220 cal');
+    expect(_fieldText(tester, 'food_form_calories_field'), '220');
 
     // Clearing fat drops the 9 kcal/g term.
     await tester.enterText(find.byKey(const Key('food_form_fat')), '');
     await tester.pump();
-    expect(_line(tester, 'food_form_calories'), '= 112 cal');
+    expect(_fieldText(tester, 'food_form_calories_field'), '112');
 
     // A lone `.` in carbs does not parse and counts 0.
     await tester.enterText(find.byKey(const Key('food_form_fat')), '12');
     await tester.enterText(find.byKey(const Key('food_form_carbs')), '.');
     await tester.pump();
-    expect(_line(tester, 'food_form_calories'), '= 148 cal');
+    expect(_fieldText(tester, 'food_form_calories_field'), '148');
 
     // Fiber and sodium never enter the formula.
     await tester.enterText(find.byKey(const Key('food_form_carbs')), '18');
     await tester.enterText(find.byKey(const Key('food_form_fiber')), '5');
     await tester.enterText(find.byKey(const Key('food_form_sodium')), '300');
     await tester.pump();
-    expect(_line(tester, 'food_form_calories'), '= 220 cal');
+    expect(_fieldText(tester, 'food_form_calories_field'), '220');
 
     // The same values through the one formula give the same number.
     final same = _food(
@@ -415,7 +421,7 @@ void main() {
 
     // D-92c.1: directly under the last macro field, above Notes.
     final caloriesDy = tester
-        .getTopLeft(find.byKey(const Key('food_form_calories')))
+        .getTopLeft(find.byKey(const Key('food_form_calories_field')))
         .dy;
     final sodiumDy = tester
         .getTopLeft(find.byKey(const Key('food_form_sodium')))
@@ -655,7 +661,7 @@ void main() {
     expect(saved.single.name, 'My Bar');
   });
 
-  testWidgets('S-92c.13: fractional macros agree on the line and the row', (
+  testWidgets('S-92c.13: fractional macros agree on the box and the row', (
     tester,
   ) async {
     final (controller, saved) = await _pumpForm(tester);
@@ -668,8 +674,8 @@ void main() {
     await tester.pump();
 
     expect(
-      _line(tester, 'food_form_calories'),
-      '= 5 cal',
+      _fieldText(tester, 'food_form_calories_field'),
+      '5',
       reason: '0.5 g of fat alone is 4.5 kcal, rounded half away from zero',
     );
 
@@ -692,9 +698,9 @@ void main() {
           'formula (`<cal> cal per ...`, add_food_screen.dart)',
     );
     expect(
-      _line(tester, 'food_form_calories'),
-      '= ${calculateCalories(stored)} cal',
-      reason: 'the form line and the Library row show the same number',
+      _fieldText(tester, 'food_form_calories_field'),
+      '${calculateCalories(stored)}',
+      reason: 'the form box and the Library row show the same number',
     );
   });
 }

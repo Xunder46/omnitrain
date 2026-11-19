@@ -144,7 +144,7 @@ screen: on the Library tab the header "+" (`OmniHeaderAddButton`, read aloud
 Categories tab the same header "+" reads `New Category` (`new_group_button`).
 There is no bottom button. The form it opens is the shared label-like
 `FoodForm`: macro boxes blank with a faint `0`, printed in package order,
-a live `= <N> cal` line, the photo below the name and a quiet duplicate-name
+a Calories (kcal) box that follows the macros, the photo below the name and a quiet duplicate-name
 note that never blocks Save (see
 [`widget_catalog/nutrition_widgets.md`](widget_catalog/nutrition_widgets.md),
 section `FoodForm`). Verified by `test/food_form_label_test.dart`
@@ -322,8 +322,8 @@ The macro boxes and the duplicate-name note are the form's label-like block
 (see [`widget_catalog/nutrition_widgets.md`](widget_catalog/nutrition_widgets.md),
 section `FoodForm`): Fat, Carbs, Fiber, Protein, Sodium in package order, a
 blank box showing a faint `0`, blank Protein/Carbs/Fat saving as `0` and blank
-Fiber/Sodium saving as unset, a live `= <N> cal` line from
-`caloriesFromMacros`, and a note when
+Fiber/Sodium saving as unset, a Calories (kcal) box that follows
+`caloriesFromMacros` until the user types their own number, and a note when
 the typed name already exists — name-only, ignoring the food being edited and
 its catalog/library twin, and never blocking Save. Verified by
 `test/food_form_label_test.dart` (`S-92c.2: the macros run top to bottom in
@@ -573,8 +573,8 @@ reference amount, stored as `calories_override`). When it is set it replaces the
 (`caloriesPerServing`) and, frozen into the logged row at log time, in `ConsumedFood.caloriesConsumed`,
 which the day ring, the trend and the Stats nutrition numbers all add up. A row logged before the
 override existed, or from a food without one, keeps the macro sum. Macros, sodium and the macro
-donut never change because of it. The form that sets it follows in a later plan. Verified by
-`test/calories_override_test.dart` (`S-25301` to `S-25310`).
+donut never change because of it. The food form's Calories (kcal) box sets it: the box follows the macros until the user types a number of their own (a number that rounds to the macro sum, or a blank box, stores none), and a quiet `Macros give N cal` line with a `Use macros` button brings the computed value back (plan 254). Verified by
+`test/calories_override_test.dart` (`S-25301` to `S-25310`) and, for the box, `test/calories_field_form_test.dart` (`S-25406` to `S-25415`) and `test/calories_field_state_test.dart` (`S-25401` to `S-25405`, `S-25414`).
 
 Verified by `test/models_test.dart`, `test/nutrition_data_audit_test.dart`.
 

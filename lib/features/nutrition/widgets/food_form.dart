@@ -47,8 +47,9 @@ export '../../../core/models/food_draft.dart' show FoodDraft;
 ///   * Fiber (g) — macro field (blank saves "not recorded")
 ///   * Protein (g) — macro field (blank saves 0)
 ///   * Sodium (mg) — macro field (blank saves "not recorded")
-///   * Calories — "= N cal", derived from protein/carbs/fat through
-///     `caloriesFromMacros` and live as the boxes change (D-92c.1)
+///   * Calories (kcal) — a box that follows protein/carbs/fat (through
+///     `caloriesFromMacros`) until the user types a number of their own; a
+///     number equal to the macro sum or a blank box stores no override (plan 254)
 ///   * Notes (when [showNotesField] is true)
 ///
 /// **Primary bottom CTA**: the form no longer renders an inline
@@ -201,6 +202,7 @@ class _FoodFormState extends State<FoodForm> {
   late final TextEditingController _fiber;
   late final TextEditingController _fat;
   late final TextEditingController _sodium;
+  late final TextEditingController _calories;
   late final TextEditingController _notes;
   // Per-field focus nodes. Numeric value fields are wired to
   // select-all on focus so the user can retype a value without
@@ -215,6 +217,7 @@ class _FoodFormState extends State<FoodForm> {
   final _fiberFocus = FocusNode();
   final _fatFocus = FocusNode();
   final _sodiumFocus = FocusNode();
+  final _caloriesFocus = FocusNode();
   final _notesFocus = FocusNode();
   final ImagePicker _imagePicker = ImagePicker();
 
@@ -260,6 +263,11 @@ class _FoodFormState extends State<FoodForm> {
   String? _groupId; // null = Ungrouped
 
   bool _saving = false;
+
+  /// True once the user typed in the Calories box (or opened a food that
+  /// already holds its own number): the box then stays put while the macros
+  /// change. False means the box follows the macro sum (plan 254 D-25404).
+  bool _caloriesEdited = false;
 
   @override
   void initState() {
@@ -325,6 +333,14 @@ class _FoodFormState extends State<FoodForm> {
     _sodium = TextEditingController(
       text: sodium == null ? '' : formatGrams(sodium),
     );
+    // Plan 254: a stored calories number opens as the user's own (the box shows
+    // it and stays put); otherwise the box follows the macro sum.
+    final storedCalories = initial?.caloriesOverride;
+    _caloriesEdited = storedCalories != null;
+    _calories = TextEditingController(
+      text: storedCalories != null ? formatGrams(storedCalories) : '',
+    );
+    _syncCalories();
     _notes = TextEditingController(text: initial?.notes ?? '');
     _groupId = initial?.groupId;
     _imagePath = initial?.imagePath;
@@ -347,6 +363,7 @@ class _FoodFormState extends State<FoodForm> {
       bindSelectAllOnFocus(focusNode: _fiberFocus, controller: _fiber),
       bindSelectAllOnFocus(focusNode: _fatFocus, controller: _fat),
       bindSelectAllOnFocus(focusNode: _sodiumFocus, controller: _sodium),
+      bindSelectAllOnFocus(focusNode: _caloriesFocus, controller: _calories),
     ]);
   }
 
@@ -363,6 +380,7 @@ class _FoodFormState extends State<FoodForm> {
     _fiberFocus.dispose();
     _fatFocus.dispose();
     _sodiumFocus.dispose();
+    _caloriesFocus.dispose();
     _notesFocus.dispose();
     _name.removeListener(_onNameChanged);
     _name.dispose();
@@ -373,6 +391,7 @@ class _FoodFormState extends State<FoodForm> {
     _fiber.dispose();
     _fat.dispose();
     _sodium.dispose();
+    _calories.dispose();
     _notes.dispose();
     super.dispose();
   }
@@ -492,6 +511,7 @@ class _FoodFormState extends State<FoodForm> {
         fiber: fiberRaw.isEmpty ? null : parseDecimal(fiberRaw),
         fat: parseDecimal(_fat.text) ?? 0.0,
         sodium: sodiumRaw.isEmpty ? null : parseDecimal(sodiumRaw),
+        caloriesOverride: _caloriesOverrideForSave,
         notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
         imagePath: _imagePath,
       );
@@ -646,11 +666,6 @@ class _FoodFormState extends State<FoodForm> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final calories = caloriesFromMacros(
-      protein: _parsed(_protein),
-      carbs: _parsed(_carbs),
-      fat: _parsed(_fat),
-    );
     return ListenableBuilder(
       listenable: widget.foodLibraryState,
       builder: (context, _) {
@@ -876,16 +891,10 @@ class _FoodFormState extends State<FoodForm> {
                   label: 'Sodium (mg)',
                 ),
                 const SizedBox(height: 8),
-                // The derived calories, live as the boxes change. One
-                // formula for the form and every stored food (D-92c.1);
-                // fiber and sodium never enter it.
-                Text(
-                  '= $calories cal',
-                  key: const Key('food_form_calories'),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: OmniTheme.colors.textSecondary,
-                  ),
-                ),
+                // Calories (plan 254): follows the macros until the user types a
+                // number of their own; the note and the reset appear only while
+                // the number differs from the macro sum.
+                _caloriesField(theme),
                 if (widget.showNotesField) ...[
                   const SizedBox(height: 12),
                   TextFormField(
@@ -911,6 +920,87 @@ class _FoodFormState extends State<FoodForm> {
             ),
         );
       },
+    );
+  }
+
+  /// The macro sum as whole-number calories, the way every stored food reads it
+  /// (D-92c.1): fiber and sodium never enter it.
+  int get _macroCalories => caloriesFromMacros(
+    protein: _parsed(_protein),
+    carbs: _parsed(_carbs),
+    fat: _parsed(_fat),
+  );
+
+  /// Auto mode (plan 254): until the user types a number of their own the box
+  /// shows the macro sum and follows the macro boxes.
+  void _syncCalories() {
+    if (_caloriesEdited) return;
+    final text = '$_macroCalories';
+    if (_calories.text != text) _calories.text = text;
+  }
+
+  /// The number the draft carries: the user's own, or null for "computed from
+  /// the macros" (an untouched box, a blank box, or a number equal to the macro
+  /// sum store no override).
+  double? get _caloriesOverrideForSave {
+    if (!_caloriesEdited) return null;
+    final typed = parseDecimal(_calories.text);
+    if (typed == null) return null;
+    return typed.round() == _macroCalories ? null : typed;
+  }
+
+  Widget _caloriesField(ThemeData theme) {
+    final macro = _macroCalories;
+    final typed = parseDecimal(_calories.text);
+    final overriding =
+        _caloriesEdited && typed != null && typed.round() != macro;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          key: const Key('food_form_calories_field'),
+          controller: _calories,
+          focusNode: _caloriesFocus,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: const [DecimalInputFormatter()],
+          onChanged: (_) => setState(() => _caloriesEdited = true),
+          decoration: InputDecoration(
+            labelText: 'Calories (kcal)',
+            hintText: '$macro',
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            border: const OutlineInputBorder(),
+          ),
+          validator: (v) {
+            final trimmed = v?.trim() ?? '';
+            if (trimmed.isEmpty) return null;
+            if (parseDecimal(trimmed) == null) return 'Must be a number';
+            return null;
+          },
+        ),
+        if (overriding) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Macros give $macro cal',
+            key: const Key('food_form_calories'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: OmniTheme.colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OmniUtilityButton(
+              buttonKey: const Key('food_form_calories_reset'),
+              label: 'Use macros',
+              icon: Icons.restart_alt,
+              onPressed: () => setState(() {
+                _caloriesEdited = false;
+                _syncCalories();
+              }),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -945,7 +1035,10 @@ class _FoodFormState extends State<FoodForm> {
       inputFormatters: const [DecimalInputFormatter()],
       // Rebuild as the box changes so readers derived from the text follow
       // typing (D-92c.10).
-      onChanged: (_) => setState(() {}),
+      onChanged: (_) {
+        _syncCalories();
+        setState(() {});
+      },
       decoration: InputDecoration(
         labelText: label,
         hintText: '0',

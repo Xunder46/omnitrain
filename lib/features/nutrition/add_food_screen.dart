@@ -307,6 +307,7 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
       fiber: draft.fiber,
       fat: draft.fat,
       sodium: draft.sodium,
+      caloriesOverride: draft.caloriesOverride,
       notes: draft.notes,
       imagePath: draft.imagePath,
     );

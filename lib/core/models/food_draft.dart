@@ -27,6 +27,10 @@ class FoodDraft {
   final double? fiber;
   final double fat;
   final double? sodium;
+
+  /// The food's own calories per reference amount when the user typed one,
+  /// else null ("computed from the macros", plan 253/254).
+  final double? caloriesOverride;
   final String? notes;
   final String? imagePath;
 
@@ -43,5 +47,6 @@ class FoodDraft {
     required this.sodium,
     required this.notes,
     required this.imagePath,
+    this.caloriesOverride,
   });
 }

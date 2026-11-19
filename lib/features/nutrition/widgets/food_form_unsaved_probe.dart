@@ -30,9 +30,11 @@ class FoodFormUnsavedProbe {
   /// First value seen per rendered field key (the untouched baseline).
   final Map<Key, Object?> _firstSeen = <Key, Object?>{};
 
-  /// Text controllers already hooked; holding them keeps a typing signal
-  /// alive after the field's element has been disposed.
-  final Set<TextEditingController> _hooked = <TextEditingController>{};
+  /// Text controllers already hooked, with the listener each one got. A
+  /// listener fires for a selection change too (tapping into a box, or
+  /// select-all on focus), so it only counts a change of the TEXT as typing.
+  final Map<TextEditingController, VoidCallback> _hooked =
+      <TextEditingController, VoidCallback>{};
   bool _typed = false;
 
   /// Latest photo path reported through `FoodForm.onImageChanged`; only
@@ -80,19 +82,24 @@ class FoodFormUnsavedProbe {
     for (final field in _renderedFields()) {
       _firstSeen.putIfAbsent(field.key, () => field.value);
       final controller = field.controller;
-      if (controller != null && _hooked.add(controller)) {
-        controller.addListener(_onTyped);
+      if (controller != null && !_hooked.containsKey(controller)) {
+        var lastText = controller.text;
+        void onChange() {
+          if (controller.text == lastText) return;
+          lastText = controller.text;
+          _typed = true;
+        }
+        _hooked[controller] = onChange;
+        controller.addListener(onChange);
       }
     }
   }
 
-  void _onTyped() => _typed = true;
-
   /// Release the controller hooks. [ChangeNotifier.removeListener] is safe
   /// on a controller `FoodForm` has already disposed.
   void dispose() {
-    for (final controller in _hooked) {
-      controller.removeListener(_onTyped);
+    for (final e in _hooked.entries) {
+      e.key.removeListener(e.value);
     }
     _hooked.clear();
   }

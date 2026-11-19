@@ -79,8 +79,8 @@ first log of an unlogged food.
 
 The row's selected and unselected states are visually distinct without relying on colour alone.
 
-Calories are derived from the macros, never stored on `Food` — `calculateCalories` in
-`lib/core/utils/food_helpers.dart` is the owner of that derivation.
+Calories come from the macros unless the food carries its own `caloriesOverride` (plan 253, set from the food form's Calories box, plan 254) — `calculateCalories` in
+`lib/core/utils/food_helpers.dart` reads `Food.calories`, the one owner of that rule.
 
 ### `FoodThumbnail`
 
@@ -195,11 +195,15 @@ unrecorded. The blank-save contract follows from that: a blank Protein,
 Carbs or Fat saves `0`, a blank Fiber or Sodium saves "not recorded"
 (`null`), and a lone `.` surfaces `Must be a number` without saving — the
 macro validator never requires a value, and amount fields keep `Required`
-for their own positive check. Calories are derived, never stored: the line
-under Sodium (key `food_form_calories`, `= <N> cal`) computes from the
-parsed boxes through `caloriesFromMacros` in
-`lib/core/utils/food_helpers.dart`, the same function `calculateCalories`
-delegates to, so the line and every stored food's `<cal> cal` agree. Macros
+for their own positive check. Calories come from the macros unless the user
+types their own (plan 254): the Calories (kcal) box under Sodium (key
+`food_form_calories_field`) shows the macro sum from `caloriesFromMacros` in
+`lib/core/utils/food_helpers.dart` and follows Fat, Carbs and Protein until
+the user types in it; from then on it stays put, a quiet `Macros give N cal`
+line (key `food_form_calories`) and a `Use macros` button (key
+`food_form_calories_reset`) appear while the number differs from the macro
+sum, and the saved `FoodDraft.caloriesOverride` is that number (null for an
+untouched, blank or equal-after-rounding box). Macros
 are stored as `double` on `Food` / `FoodDraft` so fractional grams persist;
 fiber is exposed alongside carbs, matching `Food.fiber`, and
 `calculateNetCarbs(food)` owns the net-carb math.
