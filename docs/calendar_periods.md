@@ -133,6 +133,12 @@ Period capabilities:
 
 Calendar highlights days covered by periods with a semi-transparent background.
 
+Changing month keeps the previous month's grid on screen until the new one has loaded (no spinner
+flash after the first load). Swiping the grid left shows the next month and right the previous one;
+a `Today` icon in the header (key `calendar_today_button`) appears while another month is showing and
+returns to the current one; and a screen reader hears each day as its number and session count, such as
+`16, 2 sessions` (plan 261, `test/calendar_navigation_polish_test.dart`).
+
 The period you are in today is named in a small line under the month title (key
 `calendar_period_name`) while the month on screen overlaps it; with no such period
 there is no line. The list screen's title is also `Training periods`, and the period

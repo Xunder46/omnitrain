@@ -95,9 +95,13 @@ class CalendarState extends ChangeNotifier {
   // ─── Loading ──────────────────────────────────────────────────────────────
 
   bool _isLoading = false;
+  bool _hasLoaded = false;
   String? _error;
 
   bool get isLoading => _isLoading;
+
+  /// True once a month load has finished at least once (plan 261).
+  bool get hasLoaded => _hasLoaded;
   String? get error => _error;
 
   // ─── Initialization ───────────────────────────────────────────────────────
@@ -119,6 +123,21 @@ class CalendarState extends ChangeNotifier {
     } else {
       _month -= 1;
     }
+    await _loadMonth();
+  }
+
+  /// True while the month on screen is the current local month.
+  bool get isViewingCurrentMonth {
+    final now = _now();
+    return _year == now.year && _month == now.month;
+  }
+
+  /// Back to the current local month (plan 261); does nothing when already there.
+  Future<void> goToToday() async {
+    if (isViewingCurrentMonth) return;
+    final now = _now();
+    _year = now.year;
+    _month = now.month;
     await _loadMonth();
   }
 
@@ -201,6 +220,7 @@ class CalendarState extends ChangeNotifier {
       _error = e.toString();
     } finally {
       _isLoading = false;
+      _hasLoaded = true;
       notifyListeners();
     }
   }

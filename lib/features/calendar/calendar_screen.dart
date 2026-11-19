@@ -51,6 +51,9 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
+  int? _gridYear;
+  int? _gridMonth;
+
   static const _mondayLabels = [
     'Mon',
     'Tue',
@@ -93,6 +96,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
       appBar: OmniBackHeader(
         title: 'Calendar',
         actions: [
+          // Back to this month; only shown while another month is on screen
+          // (plan 261).
+          ListenableBuilder(
+            listenable: widget.calendarState,
+            builder: (context, _) => widget.calendarState.isViewingCurrentMonth
+                ? const SizedBox.shrink()
+                : IconButton(
+                    key: const Key('calendar_today_button'),
+                    icon: const Icon(Icons.today),
+                    color: OmniTheme.colors.textDominant,
+                    tooltip: 'Today',
+                    onPressed: widget.calendarState.goToToday,
+                  ),
+          ),
           // Goes to the Training periods list, so it is an icon for that
           // place, never a "+" (a header "+" only creates, plan 91 D-91.7).
           // The tooltip is its one screen-reader label (no Semantics wrapper).
@@ -112,6 +129,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
             widget.settingsState,
           ]),
           builder: (context, _) {
+            // The month last loaded stays on screen while the next one loads,
+            // so changing month never flashes a spinner (plan 261).
+            if (!widget.calendarState.isLoading &&
+                widget.calendarState.hasLoaded) {
+              _gridYear = widget.calendarState.year;
+              _gridMonth = widget.calendarState.month;
+            }
+            final hasGrid = _gridYear != null && _gridMonth != null;
             return Column(
               children: [
                 _MonthHeader(
@@ -122,20 +147,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   onNext: widget.calendarState.goToNextMonth,
                 ),
                 _WeekDayRow(labels: _weekLabels),
-                if (widget.calendarState.isLoading)
+                if (!hasGrid)
                   const Expanded(
                     child: Center(child: CircularProgressIndicator()),
                   )
                 else ...[
                   Flexible(
                     fit: FlexFit.loose,
-                    child: _MonthGrid(
-                      year: widget.calendarState.year,
-                      month: widget.calendarState.month,
-                      entriesByDay: widget.calendarState.entriesByDay,
-                      periods: widget.calendarState.periods,
-                      startOfWeek: _startOfWeek,
-                      onDayTap: (date) => _onDayTap(context, date),
+                    // Swipe left for the next month, right for the previous
+                    // (plan 261). Ignored while a month is loading.
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onHorizontalDragEnd: (details) {
+                        if (widget.calendarState.isLoading) return;
+                        final v = details.primaryVelocity ?? 0;
+                        if (v < -300) {
+                          widget.calendarState.goToNextMonth();
+                        } else if (v > 300) {
+                          widget.calendarState.goToPreviousMonth();
+                        }
+                      },
+                      child: _MonthGrid(
+                        year: _gridYear!,
+                        month: _gridMonth!,
+                        entriesByDay: widget.calendarState.entriesByDay,
+                        periods: widget.calendarState.periods,
+                        startOfWeek: _startOfWeek,
+                        onDayTap: (date) => _onDayTap(context, date),
+                      ),
                     ),
                   ),
                   Padding(
@@ -173,7 +212,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
     for (final p in widget.calendarState.periods) {
       final coversToday = p.startDateMs <= todayMs && p.endDateMs >= todayMs;
-      final coversMonth = p.startDateMs <= monthEnd && p.endDateMs >= monthStart;
+      final coversMonth =
+          p.startDateMs <= monthEnd && p.endDateMs >= monthStart;
       if (coversToday && coversMonth) return p.name;
     }
     return null;
@@ -520,39 +560,52 @@ class _DayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final periodHighlightColor = _resolvePeriodHighlightColor(context);
 
-    return GestureDetector(
-      onTap: entries.isNotEmpty || OmniDateUtils.isTodayOrFuture(date)
-          ? onTap
-          : null,
-      child: Container(
-        decoration: BoxDecoration(
-          color: periodHighlightColor,
-          borderRadius: BorderRadius.circular(8),
-          border: isToday
-              ? Border.all(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
-                  width: 1.5,
-                )
-              : null,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const SizedBox(height: 4),
-            Text(
-              '${date.day}',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
-                color: isToday
-                    ? Theme.of(context).colorScheme.primary
-                    : OmniTheme.colors.textDominant.withOpacity(0.85),
+    final tappable = entries.isNotEmpty || OmniDateUtils.isTodayOrFuture(date);
+    // A screen reader hears the day and its sessions: "16, 2 sessions"
+    // (plan 261).
+    final count = entries.length;
+    final spoken = count == 0
+        ? '${date.day}'
+        : '${date.day}, $count ${count == 1 ? 'session' : 'sessions'}';
+    return Semantics(
+      label: spoken,
+      button: tappable,
+      excludeSemantics: true,
+      onTap: tappable ? onTap : null,
+      child: GestureDetector(
+        onTap: tappable ? onTap : null,
+        child: Container(
+          decoration: BoxDecoration(
+            color: periodHighlightColor,
+            borderRadius: BorderRadius.circular(8),
+            border: isToday
+                ? Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withOpacity(0.6),
+                    width: 1.5,
+                  )
+                : null,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 4),
+              Text(
+                '${date.day}',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
+                  color: isToday
+                      ? Theme.of(context).colorScheme.primary
+                      : OmniTheme.colors.textDominant.withOpacity(0.85),
+                ),
               ),
-            ),
-            const SizedBox(height: 3),
-            if (entries.isNotEmpty)
-              Expanded(child: _SessionIndicators(entries: entries)),
-          ],
+              const SizedBox(height: 3),
+              if (entries.isNotEmpty)
+                Expanded(child: _SessionIndicators(entries: entries)),
+            ],
+          ),
         ),
       ),
     );
