@@ -257,17 +257,24 @@ the name line reads "Barbell Bench Press · Set 2 done" for a set effort that ha
 logged sets, and the exercise name alone for a timed, hold or round effort or an
 exercise with nothing logged yet; a "Next set: …" or "Next exercise: …" line
 above the Next button names the next set ("Next set: Set 3 of 3" with a plan,
-"Next set: Set 4" without), the next period ("Next set: Period 2"), the next
-unfinished exercise ("Next exercise: Barbell Back Squat · Set 1 of 2") or
+"Next set: Set 4" without), the next period ("Next set: Period 2"), the
+following exercise ("Next exercise: Barbell Back Squat · Set 1 of 2") or
 "Nothing planned next"; since plan 201
 only a one-exercise ladder says "Nothing planned next" and
-once every exercise is done, Next goes on to the following exercise in turn,
+since plan 243 Next always goes on to the following exercise in the list, done or not,
 the last one being followed by the first: the line
-above Next reads "Next exercise: <that exercise>" by name alone, Next opens its
-logger where extra sets can be logged, and Next keeps cycling. An undone
-exercise still wins over the cycle. Verified by
+above Next reads "Next exercise: <that exercise>" with its count when it is
+short of its plan and by name alone when it is done, Next opens its
+logger where extra sets can be logged, and Next keeps cycling and never prefers an undone
+exercise elsewhere in the list (going back to an earlier exercise, logging it
+and tapping Next opens the exercise right after it, not the first unlogged
+one). Verified by
 `WatchRestLabelsTests` (`testS20101AfterTheLastExerciseNextGoesBackToTheFirst`,
-`…testS20104AnUndoneExerciseWinsOverTheCycle`) and
+`…testS20104TheFollowingExerciseWinsOverAnUndoneOneElsewhere`,
+`…testS24301TheFollowingExerciseIsNamedAlthoughALaterOneIsUnlogged`,
+`…testS24302TheLastExerciseIsFollowedByTheFirstWhateverIsUnlogged`,
+`…testS24303AFollowingExerciseShortOfItsPlanKeepsItsCount`),
+`WatchRestAdvanceTests.testS24306TheRestsNextOpensTheFollowingExerciseNotTheUnloggedOne` and
 `WatchRestNextHoldTests.testS20105TheListStartsOverAfterTheLastExerciseAndKeepsCycling`.
 The line's word is the rule, not decoration: "Next set: "
 while Next stays on the exercise it is on, "Next exercise: " only when the line
@@ -314,7 +321,7 @@ and Next keeps going on in turn, or swipe back to it. Verified by
 reach its own plan — its planned sets logged for a set, the phone's
 `plannedEfforts` for a hold, interval or round — or, with no plan, when
 anything is logged
-(`…testS7603cAnExerciseWithItsPlanExactlyLoggedIsSkipped`,
+(`…testS7603cTheFollowingExerciseIsNamedWhetherOrNotItIsDone`,
 `…testS7611OnlySetEntriesCountAsSets`); a planned hold, interval or round keeps
 the line on itself with its count ("Next set: Hold 2 of 3"), a planned round never
 shows the plan-less period line, and a count past the plan is accepted and never
@@ -325,9 +332,11 @@ printed past it
 `…testS14924AFourthHoldIsAcceptedAndNeverReadsPastItsPlan`,
 `…testS14925OutOfOrderCountingKeysOnTheSlotId`,
 `…testS14926NoPlannedAmountKeepsTodaysRule`,
-`…testS14928APlanOfOneBehavesAsTheOneEffortRule`); the next exercise is searched
-forward from the current one, then from the top, naming each slot's own count
-("Wall Sit · Hold 1 of 2"); the phone's logged sets count like the wrist's. The Dart twin `lib/watch/logging/watch_rest_screen.dart` does not show
+`…testS14928APlanOfOneBehavesAsTheOneEffortRule`); the next exercise is the one after the current one in the list
+(the last is followed by the first), naming its own count when it is short of its plan
+("Wall Sit · Hold 1 of 2") and its name alone when it is done
+(`…testS24301TheFollowingExerciseIsNamedAlthoughALaterOneIsUnlogged`,
+`…testS24305APartlyLoggedFollowingExerciseKeepsItsCount`); the phone's logged sets count like the wrist's. The Dart twin `lib/watch/logging/watch_rest_screen.dart` does not show
 these two lines yet (parity gap, plan 51b D-5).
 The rest screen carries the same list button the logging surface does, and both
 open the one session menu: a jump or an add made from there moves nothing the

@@ -195,7 +195,7 @@ The wrist reads `plannedEfforts` for a non-`set` effort only. An exercise is don
 once the efforts of its OWN kind reach that count, so a planned hold, interval or
 round keeps the rest line on itself with its count ("Hold 2 of 3", "Interval 2 of
 3", "Period 2 of 3") until the plan is met, and only then does the line name the
-next not-done exercise with its own count (`Wall Sit · Hold 1 of 2`); a `round`
+next exercise in list order with its own count (`Wall Sit · Hold 1 of 2`); a `round`
 with no plan keeps the unbounded period line, and a slot with no plan keeps the
 one-effort rule. A count past the plan is accepted and never printed past its
 plan. Entries are counted per slot id and per wire kind, so out-of-order logging

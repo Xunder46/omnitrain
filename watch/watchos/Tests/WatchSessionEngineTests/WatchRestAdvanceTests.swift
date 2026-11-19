@@ -193,6 +193,46 @@ final class WatchRestAdvanceTests: XCTestCase {
         )
     }
 
+    // MARK: - S-24306 through the engine: the announced id is the following exercise
+
+    func testS24306TheRestsNextOpensTheFollowingExerciseNotTheUnloggedOne() async throws {
+        let harness = await RestAdvanceHarness().launch()
+        _ = await harness.engine.createSession(
+            modality: nil,
+            exercises: [
+                advanceSlot("q1", "Quartz", planned: 1),
+                advanceSlot("q2", "Garnet", planned: 1),
+                advanceSlot("q3", "Jasper", planned: 1),
+            ]
+        )
+        let logging = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+
+        // q1's set, then q2's from the menu, then back to q1 for a second set
+        // past its plan of 1: the rest is running, q1 is the current exercise,
+        // q2 is logged and q3 is not.
+        try await logging.log()
+        await logging.endRest()
+        await harness.menu.jump(to: "q2")
+        try await logging.log()
+        await logging.endRest()
+        await harness.menu.jump(to: "q1")
+        try await logging.log()
+
+        // The announced exercise is the one after q1 in the list, q2 — not
+        // the unlogged q3.
+        let target = logging.restLabels.nextSlotId
+        let moved = await logging.leaveRest { await harness.menu.jump(to: $0) }
+
+        XCTAssertEqual(target, "q2", "S-24306 the line announces q2, the exercise after q1")
+        XCTAssertEqual(moved, "q2", "S-24306 Next opens q2, not the unlogged q3")
+        XCTAssertEqual(
+            harness.engine.currentExercise?["sessionExerciseId"] as? String,
+            "q2",
+            "S-24306 the session is on the exercise the line named"
+        )
+        XCTAssertFalse(logging.isResting, "S-24306 the rest ended")
+    }
+
     // MARK: - S-9109 the source keeps the order
 
     func testS9109TheNextLeavesThroughTheOneOrderedStep() throws {

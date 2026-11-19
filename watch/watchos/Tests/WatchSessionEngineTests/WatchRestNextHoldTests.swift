@@ -7,13 +7,14 @@
 //  moves the session there; the logger that comes back must be that exercise's,
 //  and the next Log must write to it. A hold may now carry a planned count: the
 //  phone sends it as `plannedEfforts` (plan 149 PR 1) and plan 149 PR 2 counts
-//  it per kind. This file's fixtures carry no plan — the no-plan world, where a
-//  hold exercise with one hold logged is "done" and Next names the next not-done
-//  exercise; the planned half is asserted below in the plan 149 cases.
+//  it per kind. This file's fixtures carry no plan — the no-plan world, where
+//  a hold exercise with one hold logged is "done" and Next goes on to the
+//  exercise that follows it in the list (plan 243, D-24301); the planned half
+//  is asserted below in the plan 149 cases.
 //
-//  Also the out-of-order rules: logging an exercise reached from the list counts
-//  against that exercise's own slot, and Next names the first not-done exercise
-//  after the one just logged, then from the top.
+//  Also the out-of-order rules: logging an exercise reached from the list
+//  counts against that exercise's own slot, and Next names the exercise that
+//  follows the one just logged in the list, done or not.
 //
 
 import Foundation
@@ -181,7 +182,7 @@ final class WatchRestNextHoldTests: XCTestCase {
 
     // MARK: - Out of order
 
-    func testLoggingOutOfOrderCountsPerSlotAndNextGoesForwardFromTheLoggedOne() async throws {
+    func testLoggingOutOfOrderCountsPerSlotAndNextGoesToTheFollowingExercise() async throws {
         let (harness, state) = await holdLadder()
 
         // Jump to C from the list and log it.
@@ -192,18 +193,21 @@ final class WatchRestNextHoldTests: XCTestCase {
         await state.endRest()
         try await expectHold(harness, state, on: "A")
 
-        // Forward from A: B is the first not-done exercise (C is done).
+        // After A the following exercise is B, whether or not it is logged.
         XCTAssertEqual(state.restLabels.now, "Plank")
         XCTAssertEqual(state.restLabels.nextSlotId, "B")
         await state.leaveRest { await harness.menu.jump(to: $0) }
         try await expectHold(harness, state, on: "B")
 
-        // Forward from B: C is done, so D.
-        XCTAssertEqual(state.restLabels.nextSlotId, "D")
-        await state.leaveRest { await harness.menu.jump(to: $0) }
+        // After B the following exercise is C, already logged: it is named
+        // anyway, and Next would move there. Not into C here: jump to D from
+        // the menu instead.
+        XCTAssertEqual(state.restLabels.nextSlotId, "C")
+        await harness.menu.jump(to: "D")
+        await state.endRest()
         try await expectHold(harness, state, on: "D")
 
-        // Everything is logged once: the list starts over (plan 201, D-20101).
+        // After D (the last) the following exercise is A, the list's first.
         XCTAssertEqual(state.restLabels.nextSlotId, "A")
         XCTAssertEqual(state.restLabels.next, "Next exercise: Plank")
         for id in ["A", "B", "C", "D"] {
@@ -215,26 +219,27 @@ final class WatchRestNextHoldTests: XCTestCase {
         XCTAssertEqual(perSlot.mapValues(\.count), ["A": 1, "B": 1, "C": 1, "D": 1])
     }
 
-    func testNextWrapsToTheTopWhenNothingIsLeftAfterTheLoggedExercise() async throws {
+    func testNextIsTheFollowingExerciseEvenWhenItIsAlreadyLogged() async throws {
         let (harness, state) = await holdLadder()
 
         await harness.menu.jump(to: "D")
         try await expectHold(harness, state, on: "D")
-        // D is last: nothing after it, so the search wraps to the top.
+        // D is last: the following exercise is the first, A.
         XCTAssertEqual(state.restLabels.nextSlotId, "A")
 
         await harness.menu.jump(to: "B")
         await state.endRest()
         try await expectHold(harness, state, on: "B")
-        // After B: C is the first not-done exercise.
+        // After B the following exercise is C, whether or not it is logged.
         XCTAssertEqual(state.restLabels.nextSlotId, "C")
 
         await harness.menu.jump(to: "C")
         await state.endRest()
         try await expectHold(harness, state, on: "C")
-        // After C: D is done, so the search wraps to A (B is done too).
-        XCTAssertEqual(state.restLabels.nextSlotId, "A")
-        XCTAssertEqual(state.restLabels.next, "Next exercise: Plank")
+        // After C the following exercise is D, already logged: it is named
+        // by its name alone.
+        XCTAssertEqual(state.restLabels.nextSlotId, "D")
+        XCTAssertEqual(state.restLabels.next, "Next exercise: Hollow")
     }
 
     func testS20105TheListStartsOverAfterTheLastExerciseAndKeepsCycling() async throws {

@@ -586,8 +586,8 @@ frame (plan 87b, open question d;
     (`testS9104TheWholeLadderDoneCyclesToTheFollowingExercise`,
     `…testS20101AfterTheLastExerciseNextGoesBackToTheFirst`,
     `…testS20103AOneExerciseLadderNeverAnnouncesAMove`,
-    `…testS20104AnUndoneExerciseWinsOverTheCycle`,
-    `…testS7603cAnExerciseWithItsPlanExactlyLoggedIsSkipped`) and
+    `…testS20104TheFollowingExerciseWinsOverAnUndoneOneElsewhere`,
+    `…testS7603cTheFollowingExerciseIsNamedWhetherOrNotItIsDone`) and
     `WatchRestNextHoldTests.testS20105TheListStartsOverAfterTheLastExerciseAndKeepsCycling`.
 47. **End Session keeps a running effort and the buttons wear their colours — (owner, plan 201).** (a) Open the
     session menu: **End Session** is a filled button in the watch's theme

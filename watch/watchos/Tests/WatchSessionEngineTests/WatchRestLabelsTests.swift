@@ -232,11 +232,11 @@ final class WatchRestLabelsTests: XCTestCase {
         )
     }
 
-    // MARK: - S-7603c a plan exactly logged is skipped
+    // MARK: - S-7603c the following exercise is named whether or not it is done
 
-    func testS7603cAnExerciseWithItsPlanExactlyLoggedIsSkipped() {
-        // A's plan is logged exactly, so A is done and is not named while
-        // another exercise is still undone.
+    func testS7603cTheFollowingExerciseIsNamedWhetherOrNotItIsDone() {
+        // The exercise after C is A (the list starts over), and A is named
+        // although its plan is logged exactly.
         let skipping = deriveRestLabels(
             sessionExercises: [slot("a1", "A", planned: 2), slot("b1", "B", planned: 3), slot("c1", "C", planned: 1)],
             entries: entries("a1", 2) + entries("b1", 1) + entries("c1", 1),
@@ -244,7 +244,16 @@ final class WatchRestLabelsTests: XCTestCase {
             effortKind: WatchEffortKind.set,
             nextRound: nil
         )
-        XCTAssertEqual(skipping.nextSlotId, "b1", "S-7603c A's plan is logged exactly, so it is done and not named")
+        XCTAssertEqual(
+            skipping.nextSlotId,
+            "a1",
+            "S-7603c the following exercise is named even though its plan is logged exactly"
+        )
+        XCTAssertEqual(
+            skipping.next,
+            WatchRestLabelCopy.nextExercisePrefix + "A",
+            "S-7603c A is done, so its name alone"
+        )
 
         // Both plans logged: the list starts over (plan 201, D-20101).
         let ladder = [slot("a1", "A", planned: 2), slot("b1", "B", planned: 3)]
@@ -869,9 +878,10 @@ final class WatchRestLabelsTests: XCTestCase {
         )
     }
 
-    func testS20104AnUndoneExerciseWinsOverTheCycle() {
+    func testS20104TheFollowingExerciseWinsOverAnUndoneOneElsewhere() {
         // A planned 2 logged, B planned 3 with only 2 logged, C planned 1
-        // logged; the current exercise is C, the last.
+        // logged; the current exercise is C, the last. The exercise after C
+        // is A (the list starts over), although B is short of its plan.
         let ladder = [
             slot("A", "Squat", planned: 2),
             slot("B", "Bench", planned: 3),
@@ -886,8 +896,130 @@ final class WatchRestLabelsTests: XCTestCase {
         )
         XCTAssertEqual(
             labels.nextSlotId,
+            "A",
+            "S-20104 the following exercise is named even though B is short of its plan"
+        )
+    }
+
+    // MARK: - S-243xx
+
+    func testS24301TheFollowingExerciseIsNamedAlthoughALaterOneIsUnlogged() {
+        let labels = deriveRestLabels(
+            sessionExercises: [
+                slot("A", "Squat", planned: 2),
+                slot("B", "Bench", planned: 3),
+                slot("C", "Row", planned: 1),
+            ],
+            entries: entries("A", 2) + entries("B", 3) + entries("C", 0),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            labels.nextSlotId,
             "B",
-            "S-20104 B is short of its plan, so the undone search wins over the circle"
+            "S-24301 the following exercise is named although C is unlogged"
+        )
+        XCTAssertEqual(
+            labels.next,
+            WatchRestLabelCopy.nextExercisePrefix + "Bench",
+            "S-24301 B is done, so its name alone"
+        )
+    }
+
+    func testS24302TheLastExerciseIsFollowedByTheFirstWhateverIsUnlogged() {
+        let labels = deriveRestLabels(
+            sessionExercises: [
+                slot("A", "Squat", planned: 2),
+                slot("B", "Bench", planned: 3),
+                slot("C", "Row", planned: 1),
+                slot("D", "Lunge", planned: 1),
+            ],
+            entries: entries("A", 2) + entries("B", 3) + entries("D", 1),
+            currentIndex: 3,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            labels.nextSlotId,
+            "A",
+            "S-24302 the last exercise is followed by the first although C is unlogged"
+        )
+        XCTAssertEqual(
+            labels.next,
+            WatchRestLabelCopy.nextExercisePrefix + "Squat",
+            "S-24302 A is done, so its name alone"
+        )
+    }
+
+    func testS24303AFollowingExerciseShortOfItsPlanKeepsItsCount() {
+        let labels = deriveRestLabels(
+            sessionExercises: [
+                slot("A", "Squat", planned: 2),
+                slot("B", "Bench", planned: 3),
+                slot("C", "Row", planned: 1),
+                slot("D", "Lunge", planned: 1),
+            ],
+            entries: entries("A", 2) + entries("B", 3) + entries("C", 1) + entries("D", 0),
+            currentIndex: 2,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            labels.nextSlotId,
+            "D",
+            "S-24303 the following exercise carries the id although it is unlogged"
+        )
+        XCTAssertEqual(
+            labels.next,
+            WatchRestLabelCopy.nextExercisePrefix + "Lunge · Set 1 of 1",
+            "S-24303 an exercise short of its plan keeps its count"
+        )
+    }
+
+    func testS24304ASetWithSetsLeftStillStays() {
+        let labels = deriveRestLabels(
+            sessionExercises: [
+                slot("A", "Squat", planned: 3),
+                slot("B", "Bench", planned: 2),
+            ],
+            entries: entries("A", 1),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertNil(
+            labels.nextSlotId,
+            "S-24304 the plan is not met, so Next stays"
+        )
+        XCTAssertEqual(
+            labels.next,
+            WatchRestLabelCopy.nextSetPrefix + "Set 2 of 3",
+            "S-24304 the stay rule keeps its own words"
+        )
+    }
+
+    func testS24305APartlyLoggedFollowingExerciseKeepsItsCount() {
+        let labels = deriveRestLabels(
+            sessionExercises: [
+                slot("A", "Squat", planned: 2),
+                slot("B", "Bench", planned: 3),
+                slot("C", "Row", planned: 1),
+            ],
+            entries: entries("A", 2) + entries("B", 2) + entries("C", 0),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(
+            labels.nextSlotId,
+            "B",
+            "S-24305 the following exercise carries the id although C is unlogged"
+        )
+        XCTAssertEqual(
+            labels.next,
+            WatchRestLabelCopy.nextExercisePrefix + "Bench · Set 3 of 3",
+            "S-24305 a partly logged following exercise keeps its count"
         )
     }
 

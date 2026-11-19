@@ -865,9 +865,11 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     it appears under the exercise on screen (open the exercise list: the
     count moved on that exercise, not on its neighbour). Then log out of
     order: open the list, jump to the last exercise, log a hold, and tap Next
-    on the rest screen: it names the first exercise after it that has no
-    hold yet, or, with none after it, the first one from the top that has
-    none. A set exercise with sets left still says "Next set: Set 2 of 3" and
+    on the rest screen: it names the exercise right after it in the list
+    (the last exercise is followed by the first), whether or not that one has a
+    hold yet. Likewise, with three exercises logged in order, jump back to the
+    first from the list, log it and tap Next: it opens the second, not an
+    unlogged third. A set exercise with sets left still says "Next set: Set 2 of 3" and
     stays on its exercise. The line's word says which of the two it is —
     "Next set: " while Next stays, "Next exercise: " only when it names the
     exercise Next opens (`WatchRestLabelsTests.testS14941AMetHoldPlanMovesUnderTheExercisePrefix`,

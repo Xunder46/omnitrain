@@ -210,22 +210,18 @@ public func deriveRestLabels(
         return WatchRestLabels(now: now, next: "\(stayPrefix)\(nextRound)")
     }
 
-    let order = Array((here + 1)..<slots.count) + Array(0..<here)
-    for index in order where !slots[index].isDone {
-        return WatchRestLabels(
-            now: now,
-            next: "\(movePrefix)\(slots[index].nextLabel(roundNoun: roundNoun))",
-            nextSlotId: slots[index].slotId
-        )
-    }
-    // Plan 201, D-20101: every exercise is done, so the list starts over. Next
-    // goes on to the following exercise in turn (the last is followed by the
-    // first), done or not; a one-exercise ladder has nowhere to go.
+    // Plan 243, D-24301: Next goes on to the following exercise in the list's
+    // own order (the last is followed by the first), done or not; a
+    // one-exercise ladder has nowhere to go. An exercise still short of its
+    // plan keeps its count in the line; a done one is named by its name alone.
     if slots.count > 1 {
         let following = slots[(here + 1) % slots.count]
+        let line = following.isDone
+            ? following.name
+            : following.nextLabel(roundNoun: roundNoun)
         return WatchRestLabels(
             now: now,
-            next: "\(movePrefix)\(following.name)",
+            next: "\(movePrefix)\(line)",
             nextSlotId: following.slotId
         )
     }
