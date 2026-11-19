@@ -108,7 +108,10 @@ rules matter beyond the row list:
 - **Silent mode:** the phone's silent switch silences the **rest ping** sound (the haptic tap still
   fires), because the ping is a nudge, not an alarm. The effort-timer alert and the sound preview
   still play with the switch on, since the user asked to hear them (`TimerAlertAudio.nudge` /
-  `.alarm` in `TimerAlertService`). Not yet confirmed on a device.
+  `.alarm` in `TimerAlertService`). Not yet confirmed on a device. An interval, hold or round the
+  screen notices more than 3 seconds after it ended (the phone was locked) plays no in-app alert,
+  because the scheduled notification already announced it (plan 275,
+  `test/late_expiry_quiet_test.dart`).
 
 There is no setting for the Weight block on Stats: it shows whenever the
 weigh-in rule is met (see [Stats Screen](stats_screen.md#weight-block)).

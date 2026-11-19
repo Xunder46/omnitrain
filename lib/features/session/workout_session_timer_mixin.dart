@@ -96,6 +96,9 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
             entryIndex,
             effortKind,
             round.plannedDurationSecs,
+            playAlert: _noticedOnTime(
+              (round.elapsedMs / 1000).round() - round.plannedDurationSecs,
+            ),
           );
         }
       } else if (effortKind == 'timed' || effortKind == 'drill') {
@@ -116,12 +119,20 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
               entryIndex,
               effortKind,
               targetSecs,
+              playAlert: _noticedOnTime(
+                (instance.elapsedMs / 1000).round() - targetSecs,
+              ),
             );
           }
         }
       }
     }
   }
+
+  /// Plan 273: an expiry noticed more than a few seconds after it happened
+  /// (the phone was locked) was already announced by the scheduled
+  /// notification, so the in-app alert stays quiet instead of repeating it.
+  bool _noticedOnTime(int lateBySecs) => lateBySecs <= 3;
 
   // ── Timer restore from persisted state ───────────────────────────────────
 
@@ -531,8 +542,9 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
     String effortId,
     int entryIndex,
     String effortKind,
-    int targetSeconds,
-  ) {
+    int targetSeconds, {
+    bool playAlert = true,
+  }) {
     final timerKey = '$effortId-$entryIndex';
     if (_effortAlerted[timerKey] == true) return;
 
@@ -551,11 +563,13 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
       // navigates forward via the arrow — never calling _logSet/_resetTimerState.
       // The stale key then blocks _toggleEffortTimer for the next round entry.
       _inProgressKeys.remove(timerKey);
-      unawaited(
-        widget.timerAlertService.fireEffortTimerAlert(
-          widget.settingsState.effortTimerSound,
-        ),
-      );
+      if (playAlert) {
+        unawaited(
+          widget.timerAlertService.fireEffortTimerAlert(
+            widget.settingsState.effortTimerSound,
+          ),
+        );
+      }
       // After auto-expiry, open a rest for the NEXT entry (entryIndex + 1).
       // The manual `_logSet` path records a rest for `_currentSet` (which is
       // `entryIndex + 1` for the just-logged entry). Mirroring that contract
@@ -595,11 +609,13 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
       // after a timed entry auto-completes leaves a stale key that blocks
       // starting the next interval.
       _inProgressKeys.remove(timerKey);
-      unawaited(
-        widget.timerAlertService.fireEffortTimerAlert(
-          widget.settingsState.effortTimerSound,
-        ),
-      );
+      if (playAlert) {
+        unawaited(
+          widget.timerAlertService.fireEffortTimerAlert(
+            widget.settingsState.effortTimerSound,
+          ),
+        );
+      }
       // Parity with the round path: record a rest for the next entry and
       // schedule rest pings so the rest overlay chip appears after a timed
       // or drill entry auto-completes. The manual `_logSet` path does the
@@ -847,6 +863,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
         entryIndex,
         effortKind,
         targetSeconds,
+        playAlert: _noticedOnTime(elapsed - targetSeconds),
       );
       return;
     }
