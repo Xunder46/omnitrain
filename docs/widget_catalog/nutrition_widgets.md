@@ -299,7 +299,10 @@ dropdown's orphan-category handling is verified by
 category (S-001 / S-002)'). Decimal entry and per-field select-all
 are verified by `test/food_form_decimals_and_autofocus_test.dart`
 (groups 'FoodForm: decimal macros (S-001/S-002/S-003)' and 'FoodForm:
-auto-select on focus (S-004/S-005/S-006)').
+auto-select on focus (S-004/S-005/S-006)'). A comma is accepted as the
+decimal point in the macro, package-size and food-row amount boxes
+(`DecimalInputFormatter` / `parseDecimal`, plan 242;
+`test/decimal_comma_input_test.dart`).
 
 **Test seam**: `handlePickedImage(XFile)` and `clearImage()` are
 both `@visibleForTesting` on the form's state. Production callers

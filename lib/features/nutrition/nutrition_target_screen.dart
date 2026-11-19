@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/utils/decimal_input.dart';
 import '../../core/utils/macro_targets.dart';
 import '../../state/nutrition_state.dart';
 import '../../data/models/models.dart';
@@ -64,7 +65,7 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
 
   /// Grams in a box, or null when it is empty or not a number.
   static double? _valueOf(TextEditingController controller) =>
-      double.tryParse(controller.text.trim());
+      parseDecimal(controller.text);
 
   static String _gramsText(double grams) =>
       grams > 0 ? grams.round().toString() : '';
@@ -207,7 +208,7 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
 
   static String? _validateGrams(String? value) {
     if (value == null || value.isEmpty) return null;
-    final parsed = double.tryParse(value);
+    final parsed = parseDecimal(value);
     if (parsed == null || !parsed.isFinite) {
       return 'Please enter a valid number';
     }

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/constants/profile_measurements.dart';
 import '../../core/navigation/omni_navigator.dart';
+import '../../core/utils/decimal_input.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 import '../../state/profile/profile_state.dart';
@@ -976,7 +977,7 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
       await _saveHeightFtin();
       return;
     }
-    final value = double.tryParse(_valueController.text.trim());
+    final value = parseDecimal(_valueController.text);
     if (value == null) {
       setState(() {
         _valueError = 'Enter a valid number.';
@@ -1288,7 +1289,7 @@ class _HeightDialogState extends State<_HeightDialog> {
       ).pop(UnitFormatter.toCanonicalHeightFeetInches(feet, inches));
       return;
     }
-    final value = double.tryParse(_valueController.text.trim());
+    final value = parseDecimal(_valueController.text);
     if (value == null) {
       setState(() {
         _valueError = 'Enter a valid number.';

@@ -1,12 +1,12 @@
 // filepath: lib/features/nutrition/widgets/food_form.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/constants/omni_theme.dart';
 import '../../../core/models/food_draft.dart';
 import '../../../core/services/image_storage_service.dart';
+import '../../../core/utils/decimal_input.dart';
 import '../../../core/utils/food_helpers.dart';
 import '../../../core/utils/food_serving.dart';
 import '../../../data/models/models.dart';
@@ -487,11 +487,11 @@ class _FoodFormState extends State<FoodForm> {
         unitType: servingUnitType,
         referenceAmount: servingAmount,
         referenceLabel: servingLabel,
-        protein: double.tryParse(_protein.text.trim()) ?? 0.0,
-        carbs: double.tryParse(_carbs.text.trim()) ?? 0.0,
-        fiber: fiberRaw.isEmpty ? null : double.tryParse(fiberRaw),
-        fat: double.tryParse(_fat.text.trim()) ?? 0.0,
-        sodium: sodiumRaw.isEmpty ? null : double.tryParse(sodiumRaw),
+        protein: parseDecimal(_protein.text) ?? 0.0,
+        carbs: parseDecimal(_carbs.text) ?? 0.0,
+        fiber: fiberRaw.isEmpty ? null : parseDecimal(fiberRaw),
+        fat: parseDecimal(_fat.text) ?? 0.0,
+        sodium: sodiumRaw.isEmpty ? null : parseDecimal(sodiumRaw),
         notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
         imagePath: _imagePath,
       );
@@ -540,7 +540,7 @@ class _FoodFormState extends State<FoodForm> {
 
   ServingChoice _packageChoiceOrBase(String label) {
     if (_packageOpen) {
-      final amount = double.tryParse(_packageAmountController.text.trim());
+      final amount = parseDecimal(_packageAmountController.text);
       if (amount != null && amount > 0) {
         return PackageServing(amount: amount, label: label);
       }
@@ -766,11 +766,7 @@ class _FoodFormState extends State<FoodForm> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^\d*\.?\d*$'),
-                          ),
-                        ],
+                        inputFormatters: const [DecimalInputFormatter()],
                         decoration: InputDecoration(
                           labelText: 'Serving size ($_packageLabel)',
                           hintText: '30',
@@ -921,18 +917,18 @@ class _FoodFormState extends State<FoodForm> {
   /// A blank or half-typed macro box counts as 0 for the calories line
   /// (D-92c.1).
   static double _parsed(TextEditingController controller) =>
-      double.tryParse(controller.text.trim()) ?? 0.0;
+      parseDecimal(controller.text) ?? 0.0;
 
   /// Macro text field with decimal input. Every box is optional: a blank
   /// Protein, Carbs or Fat saves 0, a blank Fiber or Sodium saves "not
   /// recorded" (null). Non-numeric text (a lone `.`) still surfaces
   /// `"Must be a number"`.
   ///
-  /// Accepts the same `^\d*\.?\d*$` pattern as the package-size field
-  /// (one optional decimal point, digits on either side).
+  /// Accepts the same pattern as the package-size field (`DecimalInputFormatter`:
+  /// one optional decimal point or comma, digits on either side; plan 242).
   /// This widens the prior `digitsOnly` contract that rejected
   /// `0.5` and `1.25`, so the user can store fractional grams
-  /// like `0.5` g of fat. The validator uses `double.tryParse`
+  /// like `0.5` g of fat. The validator uses `parseDecimal`
   /// to accept both `12` and `0.5`, surfacing `"Must be a number"`
   /// for any other input.
   Widget _macroField({
@@ -946,9 +942,7 @@ class _FoodFormState extends State<FoodForm> {
       controller: controller,
       focusNode: focusNode,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
-      ],
+      inputFormatters: const [DecimalInputFormatter()],
       // Rebuild as the box changes so readers derived from the text follow
       // typing (D-92c.10).
       onChanged: (_) => setState(() {}),
@@ -963,7 +957,7 @@ class _FoodFormState extends State<FoodForm> {
       validator: (v) {
         final trimmed = v?.trim() ?? '';
         if (trimmed.isEmpty) return null;
-        if (double.tryParse(trimmed) == null) {
+        if (parseDecimal(trimmed) == null) {
           return 'Must be a number';
         }
         return null;
@@ -975,7 +969,7 @@ class _FoodFormState extends State<FoodForm> {
   /// reference amount because the macros are expressed "per" it.
   String? _validatePositiveDouble(String? v) {
     if (v == null || v.trim().isEmpty) return 'Required';
-    final parsed = double.tryParse(v.trim());
+    final parsed = parseDecimal(v);
     if (parsed == null) return 'Must be a number';
     if (parsed <= 0) return 'Must be greater than 0';
     return null;

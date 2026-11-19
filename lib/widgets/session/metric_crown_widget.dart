@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/utils/decimal_input.dart';
 import '../inputs/numeric_field_with_done_bar.dart';
 
 // ── Parse / clamp math (used by the numeric edit dialog below) ─
@@ -29,7 +30,7 @@ class MetricStepCalc {
         ? normalised.substring(1)
         : normalised;
 
-    final parsed = double.tryParse(withoutLeadingPlus);
+    final parsed = parseDecimal(withoutLeadingPlus);
     if (parsed == null) return null;
 
     switch (metricType) {

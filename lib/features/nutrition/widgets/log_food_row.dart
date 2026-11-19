@@ -2,10 +2,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../core/constants/omni_theme.dart';
 import '../../../core/services/image_storage_service.dart';
+import '../../../core/utils/decimal_input.dart';
 import '../../../core/utils/food_helpers.dart';
 import '../../../data/models/models.dart';
 import '../../../state/food_library_state.dart';
@@ -203,7 +203,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
   double? _parseAmount() {
     final text = _amountController.text.trim();
     if (text.isEmpty) return null;
-    final parsed = double.tryParse(text);
+    final parsed = parseDecimal(text);
     if (parsed == null || !parsed.isFinite) return null;
     return parsed;
   }
@@ -409,7 +409,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
                           decimal: true,
                           signed: false,
                         ),
-                        inputFormatters: [_AmountInputFormatter()],
+                        inputFormatters: const [DecimalInputFormatter(maxFractionDigits: 3)],
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: themeColors.textDominant,
                           fontFeatures: const [FontFeature.tabularFigures()],
@@ -647,38 +647,5 @@ class _ThumbToggleState extends State<_ThumbToggle> {
         ),
       ),
     );
-  }
-}
-
-/// `TextInputFormatter` for the multiplier input on a food row.
-///
-/// Accepts digits and at most one dot, with up to 3 fractional
-/// digits. Intermediate states are allowed (e.g. a trailing dot, a
-/// leading dot) so the user can type freely on any keyboard. The
-/// validation in [_LogFoodRowState._validateMultiplier] rejects the
-/// final value if it's empty, non-numeric, zero, or negative.
-class _AmountInputFormatter extends TextInputFormatter {
-  static final RegExp _disallowed = RegExp(r'[^\d.]');
-
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final text = newValue.text;
-    if (text.isEmpty) return newValue;
-
-    if (_disallowed.hasMatch(text)) return oldValue;
-    if (text.indexOf('.') != text.lastIndexOf('.')) {
-      return oldValue;
-    }
-
-    final dotIdx = text.indexOf('.');
-    if (dotIdx >= 0) {
-      final fractional = text.substring(dotIdx + 1);
-      if (fractional.length > 3) return oldValue;
-    }
-
-    return newValue;
   }
 }
