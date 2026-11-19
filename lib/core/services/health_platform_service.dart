@@ -88,9 +88,23 @@ abstract class HealthPlatformService {
   Future<List<HealthWeightSample>> readBodyWeightSince(DateTime since);
 }
 
+/// Reads the user's daily ACTIVE energy from the platform health store
+/// (Apple Health on iOS, Health Connect on Android). A separate interface so
+/// the existing `HealthPlatformService` fakes stay untouched (plan 208 D-12).
+abstract class HealthActiveEnergySource {
+  /// Asks for READ access to active energy; false when refused or unavailable.
+  Future<bool> requestActiveEnergyReadPermission();
+
+  /// Active kcal per local day. [dayStarts] are local midnights; the result is
+  /// keyed by the day-start epoch milliseconds. A day the store cannot answer
+  /// is absent. Never throws.
+  Future<Map<int, double>> readDailyActiveEnergy(List<DateTime> dayStarts);
+}
+
 /// No-op gateway for platforms without a writable health store (web,
 /// desktop) and for tests.
-class UnavailableHealthPlatformService implements HealthPlatformService {
+class UnavailableHealthPlatformService
+    implements HealthPlatformService, HealthActiveEnergySource {
   const UnavailableHealthPlatformService();
 
   @override
@@ -98,6 +112,13 @@ class UnavailableHealthPlatformService implements HealthPlatformService {
 
   @override
   Future<bool> requestReadPermission() async => false;
+
+  @override
+  Future<bool> requestActiveEnergyReadPermission() async => false;
+
+  @override
+  Future<Map<int, double>> readDailyActiveEnergy(List<DateTime> dayStarts) =>
+      Future.value(const {});
 
   @override
   Future<bool> writeWorkout(HealthWorkoutDraft workout) async => false;

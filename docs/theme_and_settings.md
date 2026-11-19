@@ -150,7 +150,21 @@ The Settings screen does not include account-management rows such as sign-in, ex
 
 The platform-health toggles are the one settings area that can fail to take effect: an OS permission
 denial is persisted as its own toggle state (rather than silently reading as off) so the row can
-point the user at system settings. The gate each pipeline reads is owned by `SettingsState`; see
+point the user at system settings. They also include a third row, `Read active energy` below
+`Read body weight`, on iPhone and Android only — absent on web and desktop — and off by default.
+Turning it on asks Health once for read access to active energy; the granted / refused / denied
+result persists like the other toggles' and a denial shows the same notice pointing at system
+settings. iOS never reports a refused read: the read simply comes back empty and the Fuel row's
+burned-per-day line stays hidden, while Health Connect on Android does report the refusal. The
+Android path is verified by host tests only, not on a device, and the manifest carries
+`READ_ACTIVE_CALORIES_BURNED`. Verified by `test/health_active_energy_settings_screen_test.dart`
+(`S-20829 iOS shows Read active energy below Read body weight`, `S-20829 Android shows it too`,
+`S-20829 macOS shows no Read active energy row`, `S-20829 turning it on asks Health once and
+persists`, `S-20829 Read body weight is unchanged on all three platforms`) and by
+`test/health_active_energy_read_test.dart` (`S-20823 the active-energy switch lifecycle — asks
+once, persists, disables without asking, refusal is denied`, `S-20824 readDailyActiveEnergy only
+when the switch is on and a source exists`, `S-20846 the Android manifest declares the
+active-calories read permission beside the Health permissions`). The gate each pipeline reads is owned by `SettingsState`; see
 [State Management](state_management.md). With Write workouts on, deleting a finished session also
 asks Health to remove the workout this phone saved for it; with it off, Health is left alone.
 With it on, a finished session's effort rating is also sent as that workout's Workout Effort, and

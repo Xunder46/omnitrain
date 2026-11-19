@@ -16,6 +16,14 @@ library;
 /// Logged days the Fuel row needs before it shows averages.
 const int kFuelMinLoggedDays = 3;
 
+/// Logged days each side of the training/rest split needs before the Fuel row
+/// draws the split.
+const int kFuelMinSplitDays = 2;
+
+/// Days with Health active-energy data the Fuel row needs before it shows
+/// Burned per day.
+const int kFuelMinActiveEnergyDays = 3;
+
 class FuelSummary {
   /// Days in the window with at least one `ConsumedFood` row.
   final int loggedDays;
@@ -56,17 +64,15 @@ class FuelSummary {
   /// window logged nothing on a training day.
   final double? trainingCaloriesAverage;
 
-  /// Mean protein grams per logged day on the window's training days, or null
-  /// when the window logged nothing on a training day.
-  final double? trainingProteinAverage;
+  /// Logged days in the window that fall on a training day.
+  final int trainingLoggedDays;
 
   /// Mean kcal per logged day on the window's rest days, or null when the
   /// window logged nothing on a rest day.
   final double? restCaloriesAverage;
 
-  /// Mean protein grams per logged day on the window's rest days, or null
-  /// when the window logged nothing on a rest day.
-  final double? restProteinAverage;
+  /// Logged days in the window that fall on a rest day.
+  final int restLoggedDays;
 
   /// Mean stored active kcal over the window's finished sessions that carry
   /// an energy row — the burned-per-session average — or null when no such
@@ -79,6 +85,15 @@ class FuelSummary {
   /// Whether at least one row feeding [burnedKcalAverage] is an estimate, so
   /// the average carries a `~` on screen.
   final bool burnedIsEstimate;
+
+  /// Mean daily active kcal from the platform health store over the window's
+  /// days that have data (at least [kFuelMinActiveEnergyDays] of them), or null.
+  final double? burnedPerDayAverage;
+
+  /// Whether food was logged in the last `kFuelVisibilityDays` days. False
+  /// means the card is in burn-only mode: no intake part, no tap (plan 208 D-19);
+  /// `loggedDays` is 0 and every intake average is null then.
+  final bool hasRecentFood;
 
   /// The day's calorie target, or `0` when none is set.
   final double targetCalories;
@@ -103,12 +118,14 @@ class FuelSummary {
     required this.previousCarbsAverage,
     required this.previousFatAverage,
     required this.trainingCaloriesAverage,
-    required this.trainingProteinAverage,
+    required this.trainingLoggedDays,
     required this.restCaloriesAverage,
-    required this.restProteinAverage,
+    required this.restLoggedDays,
     this.burnedKcalAverage,
     this.burnedSessionCount = 0,
     this.burnedIsEstimate = false,
+    this.burnedPerDayAverage,
+    this.hasRecentFood = true,
     required this.targetCalories,
     required this.targetProtein,
     required this.targetCarbs,
@@ -132,4 +149,19 @@ class FuelSummary {
   /// Below [kFuelMinLoggedDays] the row says so in words instead (D-17204); the
   /// figures are still carried so the model stays complete.
   bool get showsAverages => loggedDays >= kFuelMinLoggedDays;
+
+  /// Whether the Training/Rest split is drawn: the window shows averages and
+  /// BOTH sides hold at least [kFuelMinSplitDays] logged days. Otherwise the
+  /// split is absent, never a dash line.
+  bool get showsSplit =>
+      showsAverages &&
+      trainingCaloriesAverage != null &&
+      restCaloriesAverage != null &&
+      trainingLoggedDays >= kFuelMinSplitDays &&
+      restLoggedDays >= kFuelMinSplitDays;
+
+  /// Whether the Burned-per-day line draws. The [kFuelMinActiveEnergyDays]
+  /// floor is applied where the average is made, so a present value is always
+  /// showable.
+  bool get showsBurnedPerDay => burnedPerDayAverage != null;
 }

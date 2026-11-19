@@ -246,6 +246,25 @@ Future<void> _seedEveryDayLogged(WorkoutRepository repo) async {
   }
 }
 
+/// One logged day of [calories] kcal on each of the [daysAgo] days, so a
+/// scenario names its days in round kcal without the 10 g / 100 kcal ladder
+/// of `_seedEveryDayLogged`: `4 × (calories / 4)` with no carbs or fat.
+Future<void> _seedFoodOnDays(
+  WorkoutRepository repo, {
+  required List<int> daysAgo,
+  required double calories,
+}) async {
+  for (final day in daysAgo) {
+    await _seedDay(
+      repo,
+      id: 'food-$day',
+      daysAgo: day,
+      protein: calories / 4,
+      calories: calories,
+    );
+  }
+}
+
 /// Five logged days of 2000 kcal / 100 g protein, and five logged days a week
 /// earlier of 1600 kcal / 80 g — so a comparison against the target and one
 /// against the previous window read differently.
@@ -452,9 +471,9 @@ void main() {
         });
       });
 
-      // ─── S-1105: the training-day / rest-day split ────────────────────────
+      // ─── S-20801: the calories-only training-day / rest-day split ─────────
 
-      group('S-1105', () {
+      group('S-20801', () {
         setUp(() async {
           await _seedEveryDayLogged(repo);
           await _seedSessionOnDay(repo, sessionId: 's-1', daysAgo: 1);
@@ -472,27 +491,26 @@ void main() {
         testWidgets('the split covers every logged day exactly once, and a '
             'running session is not a training day', (tester) async {
           // The seven window days carry 200…800 kcal and 20…80 g.
-          // Training days 1 and 3: (200 + 400) / 2 = 300 kcal,
-          // (20 + 40) / 2 = 30 g.
+          // Training days 1 and 3: (200 + 400) / 2 = 300 kcal.
           expect(model.trainingCaloriesAverage, 300);
-          expect(model.trainingProteinAverage, 30);
+          expect(model.trainingLoggedDays, 2);
           // Every other day, the running day 5 included:
-          // (300 + 500 + 600 + 700 + 800) / 5 = 580 kcal,
-          // (30 + 50 + 60 + 70 + 80) / 5 = 58 g.
+          // (300 + 500 + 600 + 700 + 800) / 5 = 580 kcal.
           expect(model.restCaloriesAverage, 580);
-          expect(model.restProteinAverage, 58);
+          expect(model.restLoggedDays, 5);
 
           await pumpStats(tester);
 
-          expect(_fuelText('fuel_split_training'), 'Training days: 300 kcal · 30 g protein');
-          expect(_fuelText('fuel_split_rest'), 'Rest days: 580 kcal · 58 g protein');
+          expect(_fuelText('fuel_split'), 'Training days 300 · Rest days 580 kcal');
+          expect(find.byKey(const Key('fuel_split_training')), findsNothing);
+          expect(find.byKey(const Key('fuel_split_rest')), findsNothing);
         });
       });
 
-      // ─── S-1106: a side with no logged days ───────────────────────────────
+      // ─── S-20802 / S-20803: a side with no logged days ────────────────────
 
-      group('S-1106', () {
-        group('every logged day is a training day', () {
+      group('S-20802/S-20803', () {
+        group('S-20802 every logged day is a training day', () {
           setUp(() async {
             // Three logged days, all of them training days, so the split
             // draws (D-17204): a window with fewer than three logged days
@@ -524,25 +542,24 @@ void main() {
             model = await readModel();
           });
 
-          testWidgets('the rest side reads a dash', (tester) async {
-            // Training days 1, 3 and 5: (100 + 300 + 500) / 3 = 300 kcal,
-            // (10 + 30 + 50) / 3 = 30 g.
+          testWidgets('draws no split at all', (tester) async {
+            // Training days 1, 3 and 5: (100 + 300 + 500) / 3 = 300 kcal.
             expect(model.trainingCaloriesAverage, 300);
-            expect(model.trainingProteinAverage, 30);
+            expect(model.trainingLoggedDays, 3);
+            expect(model.restLoggedDays, 0);
             expect(model.restCaloriesAverage, isNull);
-            expect(model.restProteinAverage, isNull);
 
             await pumpStats(tester);
 
+            expect(find.byKey(const Key('fuel_split')), findsNothing);
             expect(
-              _fuelText('fuel_split_training'),
-              'Training days: 300 kcal · 30 g protein',
+              _fuelTexts().where((t) => t.contains('Rest days')),
+              isEmpty,
             );
-            expect(_fuelText('fuel_split_rest'), 'Rest days: $_kAbsent');
           });
         });
 
-        group('no training day at all', () {
+        group('S-20803 no training day at all', () {
           setUp(() async {
             // The only session is outside the window, so the window holds no
             // training day — while the screen still has a session, and so is
@@ -574,16 +591,72 @@ void main() {
             model = await readModel();
           });
 
-          testWidgets('the training side reads a dash', (tester) async {
+          testWidgets('draws no split at all', (tester) async {
             expect(model.trainingCaloriesAverage, isNull);
-            expect(model.trainingProteinAverage, isNull);
+            expect(model.trainingLoggedDays, 0);
 
             await pumpStats(tester);
 
-            expect(_fuelText('fuel_split_training'), 'Training days: $_kAbsent');
-            // Rest days 1, 3 and 5: (100 + 300 + 500) / 3 = 300 kcal,
-            // (10 + 30 + 50) / 3 = 30 g.
-            expect(_fuelText('fuel_split_rest'), 'Rest days: 300 kcal · 30 g protein');
+            expect(find.byKey(const Key('fuel_split')), findsNothing);
+          });
+        });
+      });
+
+      // ─── S-20804: the ≥ 2 logged-days boundary on each side ───────────────
+
+      group('S-20804', () {
+        group('two logged days on each side', () {
+          setUp(() async {
+            // Food d1 2000, d2 1000 (training, a completed session each) and
+            // d3 1800, d4 1600 (rest): training (2000 + 1000) / 2 = 1500,
+            // rest (1800 + 1600) / 2 = 1700.
+            await _seedFoodOnDays(repo, daysAgo: [1], calories: 2000);
+            await _seedFoodOnDays(repo, daysAgo: [2], calories: 1000);
+            await _seedFoodOnDays(repo, daysAgo: [3], calories: 1800);
+            await _seedFoodOnDays(repo, daysAgo: [4], calories: 1600);
+            await _seedSessionOnDay(repo, sessionId: 's-1', daysAgo: 1);
+            await _seedSessionOnDay(repo, sessionId: 's-2', daysAgo: 2);
+            model = await readModel();
+          });
+
+          testWidgets('the split draws with one calories-only caption', (
+            tester,
+          ) async {
+            expect(model.trainingLoggedDays, 2);
+            expect(model.trainingCaloriesAverage, 1500);
+            expect(model.restLoggedDays, 2);
+            expect(model.restCaloriesAverage, 1700);
+
+            await pumpStats(tester);
+
+            expect(
+              _fuelText('fuel_split'),
+              'Training days 1500 · Rest days 1700 kcal',
+            );
+          });
+        });
+
+        group('one logged training day', () {
+          setUp(() async {
+            // Five logged days of 2000 kcal; completed sessions on d1 and on
+            // d6, and d6 has NO food — so only d1 is a logged training day.
+            await _seedFoodOnDays(
+              repo,
+              daysAgo: [1, 2, 3, 4, 5],
+              calories: 2000,
+            );
+            await _seedSessionOnDay(repo, sessionId: 's-1', daysAgo: 1);
+            await _seedSessionOnDay(repo, sessionId: 's-6', daysAgo: 6);
+            model = await readModel();
+          });
+
+          testWidgets('the split draws no caption', (tester) async {
+            expect(model.trainingLoggedDays, 1);
+            expect(model.trainingCaloriesAverage, 2000);
+
+            await pumpStats(tester);
+
+            expect(find.byKey(const Key('fuel_split')), findsNothing);
           });
         });
       });
@@ -629,8 +702,7 @@ void main() {
             expect(find.byKey(const Key('fuel_protein_change')), findsNothing);
             expect(find.byKey(const Key('fuel_carbs_change')), findsNothing);
             expect(find.byKey(const Key('fuel_fat_change')), findsNothing);
-            expect(find.byKey(const Key('fuel_split_training')), findsNothing);
-            expect(find.byKey(const Key('fuel_split_rest')), findsNothing);
+            expect(find.byKey(const Key('fuel_split')), findsNothing);
           });
         });
 
@@ -796,8 +868,7 @@ void main() {
           expect(find.byKey(const Key('fuel_protein_change')), findsNothing);
           expect(find.byKey(const Key('fuel_carbs_change')), findsNothing);
           expect(find.byKey(const Key('fuel_fat_change')), findsNothing);
-          expect(find.byKey(const Key('fuel_split_training')), findsNothing);
-          expect(find.byKey(const Key('fuel_split_rest')), findsNothing);
+          expect(find.byKey(const Key('fuel_split')), findsNothing);
           expect(_fuelTexts(), isNot(contains('0 kcal')));
           expect(_fuelTexts(), isNot(contains('0 g')));
         });

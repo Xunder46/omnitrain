@@ -122,6 +122,18 @@ Layering rationale — the plugin boundary is deliberately narrow:
 - `health_platform_service.dart` declares the plugin-free `HealthPlatformService`
   contract, the `HealthWorkoutDraft` / `HealthWeightSample` value types, and an
   `UnavailableHealthPlatformService` no-op.
+- `health_platform_gateway_io.dart` also implements the plugin-free
+  `HealthActiveEnergySource` — `requestActiveEnergyReadPermission()` and
+  `readDailyActiveEnergy(List<DateTime>) -> Map<int, double>` keyed by day-start
+  epoch ms — used by the Fuel burned-per-day line, not part of
+  `HealthPlatformService`. It issues one query per local day behind a `dayQuery`
+  seam (iOS HealthKit statistics sum, Android Health Connect aggregate), with
+  the pure helpers `activeEnergyDayBounds` / `activeEnergyTotalsByDay`;
+  `UnavailableHealthPlatformService` returns `{}` and `false`. Verified by
+  `test/health_active_energy_read_test.dart` (`S-20827 the per-day read calls
+  the day query once per local day, on iOS and Android, and never throws`,
+  `S-20828 web and desktop are inert: the unavailable gateway reads nothing and
+  asks nothing`).
 - `health_platform_gateway.dart` conditionally exports the io gateway
   (`health_platform_gateway_io.dart`, backed by the `health` package) or a stub,
   mirroring `image_storage_service.dart`. The `health` package imports `dart:io`,

@@ -148,7 +148,9 @@ class _StatsScreenState extends State<StatsScreen> {
       // screen (plan 212).
       FuelSummary? fuelSummary;
       try {
-        fuelSummary = await service.computeFuelSummary();
+        fuelSummary = await service.computeFuelSummary(
+          readDailyActiveEnergy: widget.settingsState.readDailyActiveEnergy,
+        );
       } catch (_) {
         fuelSummary = null;
       }

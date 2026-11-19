@@ -128,7 +128,7 @@ Manages profile identity and body-measurement flows used by `ProfileScreen`.
 ### `SettingsState`
 
 **File**: `lib/state/settings/settings_state.dart`
-**Depends on**: `WorkoutRepository`, `PreferencesService`, optional `HealthPlatformService`
+**Depends on**: `WorkoutRepository`, `PreferencesService`, optional `HealthPlatformService`, optional `HealthActiveEnergySource`
 
 Owns persisted app appearance, calendar, timer-alert, and workout follow-up preferences. See [Theme & Settings](../theme_and_settings.md) for full documentation.
 
@@ -158,6 +158,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `notificationPermissionAsked` | Getter — whether notification permission has been contextually requested yet |
 | `healthWriteWorkouts` | Getter — `off` / `on` / `permissionDenied` state of the platform-health write toggle |
 | `healthReadBodyWeight` | Getter — `off` / `on` / `permissionDenied` state of the platform-health read toggle |
+| `healthReadActiveEnergy` | Getter — `off` / `on` / `permissionDenied` state of the active-energy read toggle (the Stats Fuel card's Burned per day line) |
 | `setAppTheme(AppTheme)` | Persists theme by enum name and notifies listeners for immediate UI updates |
 | `setPreferredWeightUnit(String)` | Normalizes/persists the display weight unit and notifies listeners |
 | `setPreferredDistanceUnit(String)` | Normalizes/persists the display distance unit and notifies listeners |
@@ -169,6 +170,8 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `setNotificationPermissionAsked()` | Persists that notification permission has already been requested in-context |
 | `setHealthWriteWorkoutsEnabled(bool)` | Resolves the OS write permission via the injected `HealthPlatformService` and persists `off` / `on` / `permissionDenied` |
 | `setHealthReadBodyWeightEnabled(bool)` | Same contract for the body-weight read permission |
+| `setHealthReadActiveEnergyEnabled(bool)` | Same contract for the active-energy read permission, resolved through the optional `HealthActiveEnergySource` (null resolves to `permissionDenied`) |
+| `readDailyActiveEnergy(List<DateTime>)` | The user's active energy per local day (keyed by day-start epoch ms), read fresh from the source; `{}` unless the switch is `on` and a source exists |
 | `isTapHintLearned(TapHintControl)` | Whether the logger control kind's `tap to type` hint has been learned (dismissed) |
 | `markTapHintLearned(TapHintControl)` | Marks the control kind learned, notifies once and persists `true` under the control's `hint_seen_tap_to_type_*` key |
 | `_loadFromPrefs()` | Private — restores theme and unit preferences from repository-backed preference keys on init |

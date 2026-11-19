@@ -20,11 +20,14 @@ import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 
-/// Widget keys for the two platform-health toggles. Tests target a specific
+/// Widget keys for the three platform-health toggles. Tests target a specific
 /// control through these rather than "the Nth switch in the list", which
 /// depends on which rows the lazy list happens to have built.
 const Key healthWriteToggleKey = Key('health-write-toggle');
 const Key healthReadToggleKey = Key('health-read-toggle');
+const Key healthReadActiveEnergyToggleKey = Key(
+  'health-read-active-energy-toggle',
+);
 
 class SettingsScreen extends StatefulWidget {
   final SettingsState settingsState;
@@ -881,10 +884,11 @@ class _WorkoutSection extends StatelessWidget {
 
 // ── HEALTH ────────────────────────────────────────────────────────────────
 
-/// Phone health-store integration: two independent, off-by-default
+/// Phone health-store integration: three independent, off-by-default
 /// toggles. A denied OS permission is shown as the off switch plus a
 /// plain-language notice that points at the system settings, so the app
-/// stays fully usable without the integration (S-005).
+/// stays fully usable without the integration (S-005). The third toggle
+/// (Read active energy) is shown on iPhone and Android only.
 class _HealthSection extends StatelessWidget {
   final SettingsState settingsState;
 
@@ -894,6 +898,7 @@ class _HealthSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final writeState = settingsState.healthWriteWorkouts;
     final readState = settingsState.healthReadBodyWeight;
+    final energyState = settingsState.healthReadActiveEnergy;
 
     return OmniSurface(
       padding: EdgeInsets.zero,
@@ -928,6 +933,24 @@ class _HealthSection extends StatelessWidget {
           ),
           if (readState == HealthToggleState.permissionDenied)
             const _HealthDeniedNotice(),
+          if (!kIsWeb &&
+              (defaultTargetPlatform == TargetPlatform.iOS ||
+                  defaultTargetPlatform == TargetPlatform.android)) ...[
+            _SurfaceDivider(theme: Theme.of(context)),
+            _SettingsRow(
+              label: 'Read active energy',
+              subtitle:
+                  'Shows the calories you burn per day, from all movement, on '
+                  'the Stats Fuel card. Only active energy is read.',
+              trailing: Switch(
+                key: healthReadActiveEnergyToggleKey,
+                value: energyState == HealthToggleState.on,
+                onChanged: settingsState.setHealthReadActiveEnergyEnabled,
+              ),
+            ),
+            if (energyState == HealthToggleState.permissionDenied)
+              const _HealthDeniedNotice(),
+          ],
         ],
       ),
     );

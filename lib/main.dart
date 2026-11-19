@@ -315,6 +315,9 @@ Future<Widget> runStartup({
     repository,
     preferencesService,
     healthPlatform: healthPlatform,
+    activeEnergySource: healthPlatform is HealthActiveEnergySource
+        ? healthPlatform as HealthActiveEnergySource
+        : null,
   );
   await settingsState.initialize();
   final profileState = ProfileState(

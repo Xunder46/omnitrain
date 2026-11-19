@@ -78,6 +78,54 @@ HealthWorkoutActivityType pluginActivityTypeFor(
   }
 }
 
+/// One active-energy sample as the pure bucketing sees it: when it started and
+/// its kcal, or null for a value that is not numeric.
+typedef ActiveEnergyPoint = ({DateTime dateFrom, num? kcal});
+
+/// One day's query: [start, end) and the interval length in seconds.
+typedef ActiveEnergyDayQuery =
+    Future<List<ActiveEnergyPoint>> Function(
+      DateTime start,
+      DateTime end,
+      int intervalSeconds,
+    );
+
+/// The local day that begins at [dayStart]: from its local midnight to the NEXT
+/// local midnight by calendar arithmetic, so a DST day is 23 h or 25 h long.
+({DateTime start, DateTime end, int seconds}) activeEnergyDayBounds(
+  DateTime dayStart,
+) {
+  final start = DateTime(dayStart.year, dayStart.month, dayStart.day);
+  final end = DateTime(dayStart.year, dayStart.month, dayStart.day + 1);
+  return (start: start, end: end, seconds: end.difference(start).inSeconds);
+}
+
+/// Sums [points] per local day. A point belongs to the day in [dayStarts]
+/// whose bounds contain its `dateFrom` (`start <= dateFrom < end`); points of
+/// one day are summed; a non-numeric point (kcal null) is skipped and never
+/// creates a day. A day with at least one numeric point is in the result, even
+/// when the sum is 0.0. Keys are the day-start epoch milliseconds.
+Map<int, double> activeEnergyTotalsByDay({
+  required List<DateTime> dayStarts,
+  required Iterable<ActiveEnergyPoint> points,
+}) {
+  final totals = <int, double>{};
+  for (final day in dayStarts) {
+    final bounds = activeEnergyDayBounds(day);
+    for (final p in points) {
+      final kcal = p.kcal;
+      if (kcal == null) continue;
+      if (p.dateFrom.isBefore(bounds.start) ||
+          !p.dateFrom.isBefore(bounds.end)) {
+        continue;
+      }
+      final key = bounds.start.millisecondsSinceEpoch;
+      totals[key] = (totals[key] ?? 0.0) + kcal.toDouble();
+    }
+  }
+  return totals;
+}
+
 /// The Runner's own Workout Effort channel (plan 90 D-6,
 /// `ios/Runner/HealthEffortChannel.swift`). iOS only.
 const String healthEffortChannelName = 'omnitrain/health_effort';
@@ -85,15 +133,23 @@ const String healthEffortChannelName = 'omnitrain/health_effort';
 /// `health`-package-backed gateway. Constructed only on iOS/Android —
 /// see [createHealthPlatformService]. [isIOS] and [effortChannel] are
 /// injectable so the iOS-only channel use is testable off device.
-class HealthPluginPlatformService implements HealthPlatformService {
-  HealthPluginPlatformService({bool? isIOS, MethodChannel? effortChannel})
-    : _isIOS = isIOS ?? Platform.isIOS,
-      _effortChannel =
-          effortChannel ?? const MethodChannel(healthEffortChannelName);
+/// [dayQuery] overrides the plugin's per-day interval query, so the
+/// active-energy read (plan 208 D-18) is testable on the host.
+class HealthPluginPlatformService
+    implements HealthPlatformService, HealthActiveEnergySource {
+  HealthPluginPlatformService({
+    bool? isIOS,
+    MethodChannel? effortChannel,
+    ActiveEnergyDayQuery? dayQuery,
+  }) : _isIOS = isIOS ?? Platform.isIOS,
+       _effortChannel =
+           effortChannel ?? const MethodChannel(healthEffortChannelName),
+       _dayQueryOverride = dayQuery;
 
   final Health _health = Health();
   final bool _isIOS;
   final MethodChannel _effortChannel;
+  final ActiveEnergyDayQuery? _dayQueryOverride;
 
   /// Switching "Write workouts" on also asks for Workout Effort (plan 90
   /// OQ-4). The effort request goes first and includes the workout type, so
@@ -107,6 +163,57 @@ class HealthPluginPlatformService implements HealthPlatformService {
   @override
   Future<bool> requestReadPermission() async {
     return _requestPermission([HealthDataType.WEIGHT], write: false);
+  }
+
+  @override
+  Future<bool> requestActiveEnergyReadPermission() =>
+      _requestPermission([HealthDataType.ACTIVE_ENERGY_BURNED], write: false);
+
+  @override
+  Future<Map<int, double>> readDailyActiveEnergy(
+    List<DateTime> dayStarts,
+  ) async {
+    final query = _dayQueryOverride ?? _pluginDayQuery;
+    final totals = <int, double>{};
+    for (final day in dayStarts) {
+      final bounds = activeEnergyDayBounds(day);
+      try {
+        final points = await query(bounds.start, bounds.end, bounds.seconds);
+        totals.addAll(
+          activeEnergyTotalsByDay(dayStarts: [bounds.start], points: points),
+        );
+      } catch (e) {
+        // A day whose query fails (Health Connect missing, a plugin error) is
+        // left out; the other days stand. Never throws (D-18).
+        debugPrint('Health active energy read skipped (${bounds.start}): $e');
+      }
+    }
+    return totals;
+  }
+
+  /// The plugin call behind the seam: iOS runs HealthKit's statistics sum,
+  /// Android Health Connect's `aggregateGroupByDuration`, one query per local
+  /// day.
+  Future<List<ActiveEnergyPoint>> _pluginDayQuery(
+    DateTime start,
+    DateTime end,
+    int intervalSeconds,
+  ) async {
+    final points = await _health.getHealthIntervalDataFromTypes(
+      startDate: start,
+      endDate: end,
+      types: [HealthDataType.ACTIVE_ENERGY_BURNED],
+      interval: intervalSeconds,
+    );
+    return [
+      for (final p in points)
+        (
+          dateFrom: p.dateFrom,
+          kcal: p.value is NumericHealthValue
+              ? (p.value as NumericHealthValue).numericValue
+              : null,
+        ),
+    ];
   }
 
   @override

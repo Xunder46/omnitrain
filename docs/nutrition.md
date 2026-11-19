@@ -52,9 +52,11 @@ StatsScreen
 ```
 
 `NutritionScreen` is the feature's home. The full-history trend has two
-entries: the Stats screen's Fuel row (hidden once food has not been logged for
-about two weeks) and the Nutrition entry on Records & Trends (shown whenever any
-food has ever been logged). Nothing else constructs it.
+entries: the Stats screen's Fuel row, which with no recent food is burn-only
+and stops opening the trend, and the Nutrition entry on Records & Trends (shown
+whenever any food has ever been logged). Nothing else constructs it. Verified
+by `test/fuel_section_widget_test.dart` (`S-20841 burn-only is not tappable`)
+and `test/records_nutrition_entry_test.dart`.
 
 ---
 
@@ -636,14 +638,22 @@ averaging rule are documented in [Data Models](data_models.md#fuelsummary); its
 row is documented in [Stats Screen](stats_screen.md). Its window is the
 service's own — the `kFuelWindowDays` finished days ending **yesterday**, the
 previous range the same length immediately before, today in neither — never the
-Stats screen's four-week window, and the summary is `null` unless some logged
-day falls in the last `kFuelVisibilityDays` days, today included.
+Stats screen's four-week window, and the summary is `null` only when there is
+nothing to show: no logged day in the last `kFuelVisibilityDays` days, today
+included, and no burn figure either. The optional `readDailyActiveEnergy`
+callback reads the platform health store's daily active energy fresh on every load.
+Burned per day averages Apple Health or Health Connect active energy over the days with data, and a
+read that throws or outlives `kFuelActiveEnergyTimeout` hides only that line.
 
 Verified by `test/fuel_summary_window_test.dart` (`S-17201 window is the 7
 finished days ending yesterday`, `S-17203 a session started today does not make
 a training day`, `S-17204 visibility: today alone shows, d14 hides, d13 is
-previous`) and `test/fuel_row_screen_test.dart` (S-1101–S-1108, the entry-point
-half of S-1109, S-1111, S-1112, and S-1259–S-1261).
+previous`), `test/fuel_row_screen_test.dart` (S-1101–S-1104, S-1107, S-1108,
+S-20801–S-20804, the entry-point half of S-1109, S-1111, S-1112, and
+S-1259–S-1261) and `test/fuel_burned_per_day_test.dart` (`S-20834 the reader
+gets exactly d7..d1 and is called once`, `S-20837 a throwing reader hides only
+the burned-per-day line`, `S-20842 no food and no counted burn day: nothing to
+show`, `S-20845 food on d13 counts as recent, d14 does not`).
 
 ### Logged-day consistency
 
@@ -745,3 +755,5 @@ contract, not a live persistence path.
 | The target line steps at each saved target change | `test/stats_progress_test.dart`, `test/nutrition_trend_screen_test.dart` |
 | The Fuel summary averages over logged days only | `test/fuel_row_screen_test.dart` |
 | The Fuel window is the `kFuelWindowDays` finished days ending yesterday, today in neither the window nor the previous range | `test/fuel_summary_window_test.dart` |
+| The Fuel card hides only when nothing to show — no recent logged day and no burn figure | `test/fuel_burned_per_day_test.dart` |
+| Burned per day averages Apple Health or Health Connect active energy over the window's days with data | `test/fuel_burned_per_day_test.dart` |

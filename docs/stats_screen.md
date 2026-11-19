@@ -112,7 +112,7 @@ empty-window card when the window holds no session but history does, the
 otherwise, when the gate is unmet but the Mix layer exists, the locked
 Signals line in its slot —
 the [Instruments list](#instruments-list) when the window holds work, the
-[Fuel row](#fuel-row) when recent food exists, and the
+[Fuel row](#fuel-row) when recent food exists or a burn figure exists, and the
 [Weight block](#weight-block). Verified by
 `test/stats_legacy_removal_test.dart` (`S-1208`),
 `test/fuel_row_screen_test.dart` (`S-1112`),
@@ -124,7 +124,11 @@ unmet`),
 the card is one line` › `the empty window draws one line and no bar, strip or
 list`) and `test/stats_instruments_horizon_screen_test.dart` (group `S-17307
 ALL TIME is on Records & Trends only` › `Stats shows no all-time block, and
-its blocks keep their order`).
+its blocks keep their order`), by `test/fuel_burned_per_day_test.dart`
+(`S-20848 health burn alone makes a burn-only summary`, `S-20842 no food and
+no counted burn day: nothing to show`) and by
+`test/fuel_burned_per_day_screen_test.dart` (groups `S-20842 nothing to show
+hides the card`, `S-20849 the empty state keeps no Fuel card`).
 
 Every block's heading sits above its content, on the page background and never
 inside its card. Verified by `test/stats_heading_consistency_screen_test.dart`
@@ -409,18 +413,45 @@ never reads as a zero and never dilutes the average. Verified by the same file
 `kFuelMinLoggedDays` logged days (`FuelSummary.showsAverages`, declared in
 `lib/core/models/fuel_summary.dart`), the row draws one sentence (key
 `fuel_not_enough_days`) — `Log food on $kFuelMinLoggedDays days to see a weekly
-average` — instead of the four figures,
-their comparisons, the two split lines and the burned-per-session line; the logged-days line always draws,
-and the model still carries the averages. Verified by
+average` — instead of the four figures and their comparisons, the split line; the logged-days line and both burn lines always draw,
+whatever the logged-day count, and the model still carries the averages. Verified by
 `test/fuel_section_widget_test.dart` (`S-17205 Fuel with 2 logged days says so
 in words and draws no figures`, `S-17205 Fuel with 3
-logged days draws the averages and no sentence`) and `test/fuel_row_screen_test.dart`
+logged days draws the averages and no sentence`, `S-20805 with only 2 logged
+days the burn line still draws`, `S-20836 Burned per day draws with fewer than
+3 food days`) and `test/fuel_row_screen_test.dart`
 (group `S-1259/S-1260/S-1261` › group `a row with fewer than three logged days`).
 
-**Burned per session.** A third line under the logged-days indicator reads the
-mean active kcal the window's finished sessions have stored — `Burned per
-session: ~310 kcal · 5 sessions` (key `fuel_burned`), drawn in the same
-`showsAverages` block as the two split lines. A session counts when it is
+**Burned per day.** A caption line between the split and the burned-per-session
+line reads the window's daily **active** energy — walking plus workouts, not
+resting energy — from Apple Health on iPhone and Health Connect on Android:
+`Burned per day: 520 kcal · active, all movement` (key `fuel_burned_day`).
+The window is the same `kFuelWindowDays` finished days ending yesterday, each
+read as a local-midnight span. A day counts when the store reports a finite
+positive total for it; a missing, zero, negative, NaN or infinite day is no
+data, and the average is the mean over the counted days only — values keyed
+outside the window are ignored, and no target or previous week is involved.
+The line draws only when at least `kFuelMinActiveEnergyDays` window days have
+data. Health is read fresh on every Stats load; a read that throws or outlives
+`kFuelActiveEnergyTimeout` hides only this line. Verified by
+`test/fuel_burned_per_day_test.dart` (`S-20830 seven days of active energy
+average to the mean`, `S-20831 exactly 3 days is enough for the average`,
+`S-20832 exactly 2 days stays below the floor, summary still returned`,
+`S-20833 zero, NaN and negative days are no data`, `S-20833b an infinite day
+is no data too`, `S-20833c averageActiveEnergy ignores a key outside the day
+list`, `S-20834 the reader gets exactly d7..d1 and is called once`, `S-20835
+DST window: fuelWindowDayStarts stays on local midnight across the first 2026
+DST change`, `S-20836 the burn line is independent of the food-days gate`,
+`S-20837 a throwing reader hides only the burned-per-day line`, `S-20837 a
+reader that never completes times out to the same result`) and by
+`test/fuel_section_widget_test.dart` (`S-20839 the caption lines read in the
+D-7 order and wording`).
+
+**Burned per session.** A line below the split and the burned-per-day line
+reads the mean active kcal the window's finished sessions have stored —
+`Burned per session: ~310 kcal · 5 sessions` (key `fuel_burned`), drawn
+outside the food-days gate: it draws whether or not the window shows
+averages. A session counts when it is
 finished and started on a day in the window, and it counts only when a stored
 energy row backs it: a session with no row is in neither the mean nor the
 count, and a window with none reads `Burned per session: —`. The `~` marks the
@@ -431,11 +462,10 @@ ${harness.name}`: `S-13430 window sessions only: today, d8 and rolling
 excluded`, `S-13431 estimate flag: measured-only false, one estimate true`,
 `S-13432 no rows at all: null average, zero count, no estimate`, `S-13433 day
 edges: d7 counts, d8 does not, d1 counts`) and by
-`test/fuel_section_widget_test.dart` (`S-13434 the split and burned captions
-read the window averages in words`, `S-13434 the burned line rounds, drops the
+`test/fuel_section_widget_test.dart` (`S-13434 the burned line rounds, drops the
 tilde when measured, and singles one session`, `S-13434 a burned average with
-no row in the window reads a dash`, `S-13434 with only 2 logged days none of
-the three lines exists`).
+no row in the window reads a dash`, `S-20805 with only 2 logged days the burn
+line still draws`).
 
 **Comparison.** A figure is compared with the user's target for that field when
 the target is set, and with the previous range otherwise. A field with no target
@@ -460,25 +490,58 @@ label — under the same comparison rule. Carbs are total carbs. Verified by
 with a finished session and days without one — each logged day counts on exactly
 one side, and a day that is both is a training day. The split covers the same
 `kFuelWindowDays` finished days ending yesterday, so it no longer changes during
-the day. A session that is still running does not make its day a training day.
-A side with no logged day reads a dash rather than a zero. Verified by the same
-file (`S-1105`, `S-1106`) and by `test/fuel_summary_window_test.dart`
+the day. It is one calories-only caption (key `fuel_split`) — `Training days
+1950 · Rest days 1652 kcal`, whole kcal, no protein — drawn only when
+`FuelSummary.showsSplit` holds: the window shows averages and each side holds
+at least `kFuelMinSplitDays` logged days; otherwise no split line exists,
+never a dash. A session that is still running does not make its day a training
+day. Verified by `test/fuel_section_widget_test.dart` (`S-20801 the split is
+one calories-only line and the burned line reads the window average`,
+`S-20802 a rest side with no logged days draws no split at all`, `S-20803 a
+card with no training day draws no split`, `S-20804 the split needs two logged
+days on each side`), by `test/fuel_row_screen_test.dart` (groups `S-20801`,
+`S-20802/S-20803`, `S-20804`) and by `test/fuel_summary_window_test.dart`
 (`S-17203 a session started today does not make a training day`).
 
 **Absent values.** A figure with nothing to report — no logged day, no previous
-range, no target — reads a dash; the Instruments rows read new instead, never
-a zero and never a division by zero. The test reads each figure from the value
-type and from the rendered row, so the two cannot disagree. Verified by the same
-file (`S-1106`, `S-1108`, `S-1111`).
+range, no target, a burned-per-session with no backed window session — reads a
+dash; the split and the burned-per-day line are absent instead of drawing a
+dash. The Instruments rows read new instead, never a zero and never a division
+by zero. Verified by the same file (`S-1108`, `S-1111`) and by
+`test/fuel_section_widget_test.dart` (`S-20802 a rest side with no logged days
+draws no split at all`, `S-20839 Burned per day is absent when there is no
+figure`).
 
-**Visibility.** The row is absent when the last
-`StatsProgressService.kFuelVisibilityDays` days, today included, hold no logged
-food, and the screen's zero-session empty state wins over it: a repository with
-no completed session shows the empty state and no Fuel row, whatever the food
-log holds. Verified by `test/fuel_row_screen_test.dart` (`S-1107`),
+**Visibility.** The card shows when the last
+`StatsProgressService.kFuelVisibilityDays` days, today included, hold a logged
+day, or when a burn line has a figure; with no recent food it is the burn-only
+card below. With neither, the row is absent, and the screen's zero-session
+empty state wins over it: a repository with no completed session shows the
+empty state and no Fuel row, whatever the food log holds. Verified by
+`test/fuel_row_screen_test.dart` (`S-1107`),
 `test/fuel_summary_window_test.dart` (`S-17204 visibility: today alone shows,
-d14 hides, d13 is previous`) and `test/nutrition_trend_screen_test.dart`
+d14 hides, d13 is previous`),
+`test/fuel_burned_per_day_test.dart` (`S-20845 food on d13 counts as recent,
+d14 does not`, `S-20842 no food and no counted burn day: nothing to show`,
+`S-20848 health burn alone makes a burn-only summary`, `S-20843 food alone:
+today's card without a burn line`) and `test/nutrition_trend_screen_test.dart`
 (`S-1110(b)`).
+
+**Burn-only card.** With no logged food in the visibility range but a burn
+figure, the card renders the `FUEL` header, the `Last 7 days` line and only
+the burn lines that have a figure, in the order above: no intake figures, no
+`{n}/7 days logged` line, no sentence, no split, and never a dash line. The
+card is not tappable — no `fuel_row`, no `Nutrition trend` semantics — because
+the trend it would open is empty. Verified by
+`test/fuel_section_widget_test.dart` (`S-20841 burn-only shows only the
+header, the window line and the per-session line`, `S-20841 burn-only is not
+tappable`, `S-20841 with recent food the card is still tappable`, `S-20844
+burn-only with both burn lines reads them in the D-7 order`, `S-20848
+burn-only with only a per-day figure draws no per-session line and no dash`,
+`S-20848 burn-only with only a per-session figure draws no per-day line`) and
+by `test/fuel_burned_per_day_screen_test.dart` (groups `S-20841 burn-only is
+not tappable`, `S-20842 nothing to show hides the card`, `S-20848 no food,
+Health only`, `S-20849 the empty state keeps no Fuel card`).
 
 **Placement.** The row renders below the Instruments list; the Weight block
 sits below it when it shows (`S-17705`). Verified by the same file
@@ -642,7 +705,7 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `kStatsWindowDays` | Calendar days the Stats screen describes: the four weeks ending today, the window `statsWindow()` returns |
 | `kRecentTrainingDaysWindow` | Number of recent training days Records & Trends' lift selection falls back to when no period qualifies; the Stats screen no longer uses it |
 | `kFuelWindowDays` | The Fuel row's window: the finished calendar days ending yesterday that its averages cover; the previous range it compares against is the same length immediately before |
-| `kFuelVisibilityDays` | How many recent days, today included, the Fuel row looks at before it renders at all; wider than the window, so a window with no logged day still shows the row |
+| `kFuelVisibilityDays` | How many recent days, today included, hold a logged day before the Fuel card's intake part renders at all; a burn figure alone still shows the row, in burn-only mode |
 | `kInstrumentRowCap` | Max rows an Instruments section shows before offering the rest; declared in `lib/features/stats/widgets/instrument_list.dart` |
 | `kMixStripWeeks` | How many weeks the Mix layer's strip covers; declared in `lib/core/models/training_load.dart` |
 | `kTrainingLoadMinRatedWeeks` | How many of the last 12 seven-day weeks, today's included, must hold a rated session before the Mix layer reports load rather than time; declared in `lib/core/models/training_load.dart` |
@@ -668,12 +731,12 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `lib/features/stats/widgets/instrument_row.dart` | One Instruments row (name, figure, change chip, trend line) and `InstrumentChangeChip` |
 | `lib/features/stats/widgets/instrument_sparkline.dart` | The row's trend line, drawn only when the window holds at least two points |
 | `lib/features/stats/widgets/native_value_format.dart` | `formatNativeValue`, `formatNativeChange`, `nativeSecondaryLabel` and `nativePrimaryLabel` — the strings a row reads |
-| `lib/features/stats/widgets/fuel_section.dart` | `FuelSection` — the Fuel row: the logged-days indicator, the calories, protein, carbs and fat figures (each labelled, with its comparison readout, in two rows), the training-days and rest-days lines, the burned-per-session line, and the not-enough-logged-days sentence that replaces the figures and the split below `kFuelMinLoggedDays` logged days |
+| `lib/features/stats/widgets/fuel_section.dart` | `FuelSection` — the Fuel row: the logged-days indicator, the calories, protein, carbs and fat figures (each labelled, with its comparison readout, in two rows), the split line, the burned-per-day line, the burned-per-session line, and the not-enough-logged-days sentence that replaces the figures and the split below `kFuelMinLoggedDays` logged days |
 | `lib/features/nutrition/nutrition_trend_screen.dart` | The full-history nutrition trend screen, which the Fuel row opens |
 | `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `StatsWindow` (with `dayCount`, the window's calendar span), the per-section progress types (`LiftProgress`, `StatsPR`, `TrendPoint`) and the nutrition trend / adherence types (`NutritionTrendPoint`, `NutritionAdherenceTargetPoint`, `NutritionAdherence`) |
 | `lib/core/models/exercise_metric.dart` | `ExerciseSection` and the native-value types a row's figure is built from: `NativeMetric`, `NativeValue`, `ExerciseMetricPoint`, `ExerciseMetricSummary`, `StatsTotals` |
 | `lib/core/models/instrument_list.dart` | Value types behind the Instruments list: `InstrumentRow`, `InstrumentSectionData` |
-| `lib/core/models/fuel_summary.dart` | `FuelSummary` — the Fuel row's value type: the window's logged-day averages (calories, protein, carbs, fat), the previous range's, the training / rest split, the burned-per-session average, the targets, and `showsAverages`, the `kFuelMinLoggedDays` gate the row draws from |
+| `lib/core/models/fuel_summary.dart` | `FuelSummary` — the Fuel row's value type: the window's logged-day averages (calories, protein, carbs, fat), the previous range's, the training / rest split with its logged-day counts, the burned-per-session average, the burned-per-day average, the targets, and `showsAverages`, the `kFuelMinLoggedDays` gate the row draws from |
 | `lib/core/models/training_load.dart` | `MixLayerData` — the Mix layer's value type: the modality shares, the measure, the usual mix, the baseline note, the unrated session count (`unratedSessionCount`, which no widget reads), the strip's weeks, the last completed session's day (`lastSessionDay`) and the empty-window flag (`windowIsEmpty`); declares `kMixStripWeeks`, `kTrainingLoadMinRatedWeeks` and `kTrainingLoadMaxUnratedShare` |
 | `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service: `statsWindow()` (the Stats screen's four-week window), `computeTotals()`, `computeFuelSummary()`, `computeMixLayer()` and `computeInstrumentSections({required StatsWindow window})`; `computeProgressData()` and the `resolveWindow()` it calls now serve Records & Trends' lift selection only |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |

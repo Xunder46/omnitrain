@@ -480,25 +480,28 @@ Fuel row and discarded with it. Verified by `test/fuel_row_screen_test.dart`.
 
 Its defining invariant is that every figure is an average over **logged days
 only** — a window with three logged days is a three-day mean, not a window-length
-one — and that absence is never zero. A window with nothing logged inside the
-service's visibility floor yields `null` from the service rather than a summary of
-zeros, and any individual figure with no data reads the Fuel row's absent marker
-instead of `0`.
+one — and that absence is never zero. A summary with nothing to show — no recent logged day and no burn figure —
+yields `null` from the service rather than a summary of zeros, and any
+individual figure with no data reads the Fuel row's absent marker instead of
+`0`.
 
 Logged days are split by whether a completed session started that day: the
 training side and the rest side are each averaged over their own days, so the
 split covers the same logged days the overall average does.
 
 The summary carries the window's logged-day count; the window's calories,
-protein, carbs and fat averages and the preceding range's; the training and
-rest split of each; the mean active kcal per finished session in the window
-(`burnedKcalAverage`, `burnedSessionCount`, `burnedIsEstimate`); and the day's
+protein, carbs and fat averages and the preceding range's; the calories split
+into training and rest with `trainingLoggedDays` / `restLoggedDays`; the mean active kcal per finished session in the window
+(`burnedKcalAverage`, `burnedSessionCount`, `burnedIsEstimate`); the mean
+daily active kcal over the window's days that have data (`burnedPerDayAverage`);
+and the day's
 calorie, protein, carbs and fat targets, with
 `hasCalorieTarget` / `hasProteinTarget` / `hasCarbsTarget` / `hasFatTarget`
 reporting which are set. It also carries `showsAverages`, the gate over
 `kFuelMinLoggedDays` (declared beside the class) that tells the row whether the
-window holds enough logged days to show averages at all; below the floor the
-model still carries every average, and the row decides what to draw. The row
+window holds enough logged days to show averages at all, and `hasRecentFood`,
+false for the burn-only card. Below any floor the model still carries every
+average, and the row decides what to draw. The row
 compares
 an average against the target where one is set and against the previous range
 otherwise. The window it averages over is the service's own — the
@@ -508,8 +511,9 @@ Verified by `test/fuel_summary_window_test.dart` (`S-17201 window is the 7
 finished days ending yesterday`, `S-17202 three logged days show averages, two
 do not`) and by
 `test/fuel_row_screen_test.dart` (group `Fuel row — carbs and fat (plan 80)`:
-`S-14040 the averages are means of TOTAL carbs and fat over the logged days,
-against the saved targets`).
+`S-14040`), and by `test/fuel_burned_per_day_test.dart`
+(`S-20830 seven days of active energy average to the mean`, `S-20841 session
+burn alone keeps a burn-only summary`).
 
 ---
 

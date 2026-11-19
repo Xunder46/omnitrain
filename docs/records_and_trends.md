@@ -68,9 +68,10 @@ case, the Exercise Progress entry-point guard, and `S-913`) and by
 Records & Trends also carries a **Nutrition** entry, directly under the Recent PRs
 list when it renders (otherwise under the All-time card), that opens the full-history nutrition trend. It appears whenever any food
 has ever been logged and is absent when none has. It exists because the Stats
-screen's Fuel row hides once food has not been logged for a while, which would
-otherwise leave old history unreachable. Verified by
-`test/records_nutrition_entry_test.dart`.
+screen's Fuel card, once no recent food is logged, shows only its burn figures
+and stops opening the trend, which would otherwise leave old history
+unreachable. Verified by `test/records_nutrition_entry_test.dart` and by
+`test/fuel_section_widget_test.dart` (`S-20841 burn-only is not tappable`).
 
 ---
 

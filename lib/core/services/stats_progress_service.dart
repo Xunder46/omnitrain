@@ -219,6 +219,10 @@ class StatsProgressService {
   /// describe the past rather than the present.
   static const int kFuelVisibilityDays = 14;
 
+  /// How long the Fuel row waits for the platform health store before it
+  /// leaves "Burned per day" out (plan 208 D-11).
+  static const Duration kFuelActiveEnergyTimeout = Duration(seconds: 5);
+
   /// Compute the Stats screen's lift progress and personal records.
   ///
   /// Returns the window's trend lifts ([StatsProgressData.topLifts]), the
@@ -2173,16 +2177,22 @@ class StatsProgressService {
     return entry.value;
   }
 
-  /// The Fuel row's figures: intake averaged over logged days, split by
-  /// whether the day carried a completed session, against the day's target.
+  /// Compute the Stats screen's Fuel row figures.
   ///
   /// The window is the [kFuelWindowDays] finished days ending **yesterday**;
   /// today is in neither the window nor the previous range (D-17201).
   ///
-  /// Returns `null` when nothing has been logged within
-  /// [kFuelVisibilityDays] — the last 14 days, today included — so the row
-  /// is hidden rather than shown empty, matching the NUTRITION card's
-  /// behaviour (D-17202).
+  /// Returns `null` only when no food has been logged within
+  /// [kFuelVisibilityDays] — the last 14 days, today included — AND neither
+  /// burn line has a figure: the card is hidden rather than shown empty
+  /// (plan 208 D-19). With no recent food but a burn figure the summary comes
+  /// back with `hasRecentFood` false (burn-only mode): the card then shows
+  /// only its burn lines.
+  ///
+  /// [readDailyActiveEnergy] is the platform health store's daily active
+  /// energy read (null = no "Burned per day" line); it is called once with
+  /// the window's day starts, and a failure or a read slower than
+  /// [kFuelActiveEnergyTimeout] just leaves the line out (D-11).
   ///
   /// Averages divide by the number of **logged** days in the group, never
   /// by the window length: a week with three logged days is a three-day
@@ -2194,19 +2204,24 @@ class StatsProgressService {
   /// the same `endedAtMs != null` rule the rest of this service applies.
   /// An in-progress session does not move today's food into the training
   /// bucket.
-  Future<FuelSummary?> computeFuelSummary() async {
+  Future<FuelSummary?> computeFuelSummary({
+    Future<Map<int, double>> Function(List<DateTime> dayStarts)?
+    readDailyActiveEnergy,
+    Duration activeEnergyTimeout = kFuelActiveEnergyTimeout,
+  }) async {
     final points = await computeNutritionTrend(days: 2 * kFuelWindowDays + 1);
 
     final todayMs = OmniDateUtils.todayMidnightMs();
     final today = DateTime.fromMillisecondsSinceEpoch(todayMs);
-    // The row appears only when the last [kFuelVisibilityDays] days, today
-    // included, hold logged food (D-17202).
+    // Recent food — any logged day in the last [kFuelVisibilityDays], today
+    // included — decides whether the card is in burn-only mode, not whether
+    // it is visible by itself (D-17202, plan 208 D-19).
     final visibleFrom = DateTime(
       today.year,
       today.month,
       today.day - (kFuelVisibilityDays - 1),
     );
-    if (!points.any((p) => !p.date.isBefore(visibleFrom))) return null;
+    final hasRecentFood = points.any((p) => !p.date.isBefore(visibleFrom));
 
     // The window is the [kFuelWindowDays] finished days ending yesterday and
     // the previous range the same number before it; today is in neither
@@ -2249,6 +2264,25 @@ class StatsProgressService {
     final target = await _repository.getNutritionTargetForDate(todayMs);
     final burned = await _burnedInWindow(windowStart, yesterday);
 
+    // Health's daily active energy: read once, under a time limit; any
+    // failure or timeout just leaves the line out (D-11).
+    double? burnedPerDay;
+    final reader = readDailyActiveEnergy;
+    if (reader != null) {
+      final days = fuelWindowDayStarts(today);
+      try {
+        final byDay = await reader(days).timeout(activeEnergyTimeout);
+        burnedPerDay = averageActiveEnergy(byDay, days);
+      } catch (_) {
+        burnedPerDay = null;
+      }
+    }
+
+    // The card is absent only when it has nothing to show (D-19).
+    if (!hasRecentFood && burned.average == null && burnedPerDay == null) {
+      return null;
+    }
+
     return FuelSummary(
       loggedDays: window.length,
       caloriesAverage: _averageOf(window, (p) => p.calories.toDouble()),
@@ -2266,12 +2300,14 @@ class StatsProgressService {
         training,
         (p) => p.calories.toDouble(),
       ),
-      trainingProteinAverage: _averageOf(training, (p) => p.protein.toDouble()),
+      trainingLoggedDays: training.length,
       restCaloriesAverage: _averageOf(rest, (p) => p.calories.toDouble()),
-      restProteinAverage: _averageOf(rest, (p) => p.protein.toDouble()),
+      restLoggedDays: rest.length,
       burnedKcalAverage: burned.average,
       burnedSessionCount: burned.count,
       burnedIsEstimate: burned.estimated,
+      burnedPerDayAverage: burnedPerDay,
+      hasRecentFood: hasRecentFood,
       targetCalories: target?.calories ?? 0,
       targetProtein: target?.protein ?? 0,
       targetCarbs: target?.carbs ?? 0,
@@ -2292,6 +2328,33 @@ class StatsProgressService {
       total += pick(p);
     }
     return total / points.length;
+  }
+
+  /// The [kFuelWindowDays] finished days ending yesterday as local midnights,
+  /// oldest first (calendar arithmetic, so a DST day stays on midnight).
+  static List<DateTime> fuelWindowDayStarts(DateTime today) => [
+    for (var k = kFuelWindowDays; k >= 1; k--)
+      DateTime(today.year, today.month, today.day - k),
+  ];
+
+  /// Mean of the days in [dayStarts] whose value in [byDay] (keyed by the
+  /// day-start epoch ms) is finite and above zero. A missing, zero, negative,
+  /// NaN or infinite day is "no data". Null below [kFuelMinActiveEnergyDays]
+  /// such days. Keys outside [dayStarts] are ignored.
+  static double? averageActiveEnergy(
+    Map<int, double> byDay,
+    List<DateTime> dayStarts,
+  ) {
+    var total = 0.0;
+    var count = 0;
+    for (final day in dayStarts) {
+      final value = byDay[day.millisecondsSinceEpoch];
+      if (value == null || !value.isFinite || value <= 0) continue;
+      total += value;
+      count++;
+    }
+    if (count < kFuelMinActiveEnergyDays) return null;
+    return total / count;
   }
 
   /// The completed sessions that started on a day in `[from, to]` and carry an
