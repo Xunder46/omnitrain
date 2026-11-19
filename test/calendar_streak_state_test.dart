@@ -201,4 +201,19 @@ void main() {
       });
     }
   });
+
+  group('S-27203 the streak has no lookback limit (plan 272)', () {
+    test('130 consecutive days with a session count as 130', () async {
+      final repo = await _freshRepo();
+      final today = DateTime(2026, 6, 30);
+      for (var i = 0; i < 130; i++) {
+        await _session(repo, 'd$i', _day(today, -i));
+      }
+
+      final state = await _stateAt(repo, DateTime(2026, 6, 30, 20));
+
+      expect(state.streakDays, 130);
+      expect(state.isActiveStreak, isTrue);
+    });
+  });
 }

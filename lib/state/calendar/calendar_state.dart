@@ -436,10 +436,9 @@ class CalendarState extends ChangeNotifier {
       if (isCurrentMonth) {
         // Active streak anchored on today / yesterday — may span prior months.
         final toMs = OmniDateUtils.endOfDayMs(now);
-        final fromMs = OmniDateUtils.startOfDayMs(
-          now.subtract(const Duration(days: 90)),
-        );
-        final sessions = await _repository.getSessionsByDateRange(fromMs, toMs);
+        // No lookback limit (plan 272): a streak runs back as far as the
+        // consecutive days of completed sessions go.
+        final sessions = await _repository.getSessionsByDateRange(0, toMs);
 
         final completedDays = <int>{};
         for (final s in sessions) {
