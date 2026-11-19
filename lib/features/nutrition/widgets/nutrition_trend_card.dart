@@ -215,6 +215,8 @@ class NutritionTrendCard extends StatelessWidget {
     var currentTarget = targetLine.first;
     var currentTargetIdx = 0;
     for (var i = 0; i < trend.length; i++) {
+      // No line before the first saved target (plan 263).
+      if (trend[i].date.isBefore(targetLine.first.date)) continue;
       // Find the most recent target whose date is on or before
       // this actuals day.
       while (currentTargetIdx < targetLine.length - 1 &&
@@ -256,6 +258,8 @@ class NutritionTrendCard extends StatelessWidget {
       var currentTarget = targetLine.first;
       var currentTargetIdx = 0;
       for (var i = 0; i < trend.length; i++) {
+        // No line before the first saved target (plan 263).
+        if (trend[i].date.isBefore(targetLine.first.date)) continue;
         while (currentTargetIdx < targetLine.length - 1 &&
             !targetLine[currentTargetIdx + 1].date.isAfter(trend[i].date)) {
           currentTargetIdx++;

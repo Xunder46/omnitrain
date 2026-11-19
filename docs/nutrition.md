@@ -667,6 +667,12 @@ The target line is empty when no target has ever been saved or nothing has been
 logged, and the screen omits the line in that case rather than drawing a flat
 zero.
 
+When the earliest logged day is older than the first saved target, the line starts on the first
+day that has a target and nothing is drawn before it, on both the Calories and Macros charts; a
+day with no target is never filled in with a later one (plan 263,
+`test/nutrition_target_line_late_target_test.dart`, `test/nutrition_trend_card_late_target_test.dart`).
+The Daily Nutrition ring follows the same rule: a day before the first saved target shows no target.
+
 Verified by `test/stats_progress_test.dart`, `test/nutrition_trend_screen_test.dart`.
 
 ### `computeFuelSummary`

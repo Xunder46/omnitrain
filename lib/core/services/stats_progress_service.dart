@@ -2889,17 +2889,62 @@ class StatsProgressService {
       earliestDay.month,
       earliestDay.day,
     ).millisecondsSinceEpoch;
-    final firstTarget = await _repository.getNutritionTargetForDate(firstMs);
+    var anchorDay = earliestDay;
+    var firstTarget = await _repository.getNutritionTargetForDate(firstMs);
     if (firstTarget == null) {
-      // No target has ever been saved before / on the first
-      // actuals day. The line stays empty.
-      return NutritionAdherence(actuals: actuals, targetLine: []);
+      // The earliest logged day predates the first saved target (plan 263):
+      // the line starts on the first day that has one, instead of vanishing.
+      // A day with a target is always followed by days with one, so a binary
+      // search over the calendar days finds it in a few lookups.
+      final lastTarget = await _repository.getNutritionTargetForDate(
+        DateTime(
+          lastDay.year,
+          lastDay.month,
+          lastDay.day,
+        ).millisecondsSinceEpoch,
+      );
+      if (lastTarget == null) {
+        // No target has ever been saved up to the latest logged day.
+        return NutritionAdherence(actuals: actuals, targetLine: []);
+      }
+      var lo = 0; // a day with no target
+      var hi = DateTime.utc(
+        lastDay.year,
+        lastDay.month,
+        lastDay.day,
+      ).difference(
+        DateTime.utc(earliestDay.year, earliestDay.month, earliestDay.day),
+      ).inDays; // a day with a target
+      var hiTarget = lastTarget;
+      while (hi - lo > 1) {
+        final mid = (lo + hi) ~/ 2;
+        final day = DateTime(
+          earliestDay.year,
+          earliestDay.month,
+          earliestDay.day + mid,
+        );
+        final t = await _repository.getNutritionTargetForDate(
+          day.millisecondsSinceEpoch,
+        );
+        if (t == null) {
+          lo = mid;
+        } else {
+          hi = mid;
+          hiTarget = t;
+        }
+      }
+      anchorDay = DateTime(
+        earliestDay.year,
+        earliestDay.month,
+        earliestDay.day + hi,
+      );
+      firstTarget = hiTarget;
     }
-    steps[earliestDay] = firstTarget;
+    steps[anchorDay] = firstTarget;
 
     // Walk forward one day at a time; whenever the in-effect
     // target changes, emit a new step.
-    var cursor = earliestDay;
+    var cursor = anchorDay;
     var currentTarget = firstTarget;
     while (cursor.isBefore(lastDay)) {
       // Calendar arithmetic: a 24 h step drifts off midnight after a DST
