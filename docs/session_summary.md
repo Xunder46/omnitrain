@@ -511,6 +511,14 @@ Important SessionSummary fields used by the current UI:
 
 ---
 
+## Change date and time
+
+The summary's overflow menu has `Change date & time`: a date picker (no later than today), then a time
+picker opening on the current start time. The workout moves to the chosen start and keeps its length (a
+finished workout's end moves with it); a start in the future is refused with a message. Only the workout's
+own start and end move; the moments recorded inside it keep their original times (plan 267,
+`test/change_session_date_time_test.dart`).
+
 ## Save as Routine
 
 Available from the summary's overflow menu. The draft is editable — name, exercise order,

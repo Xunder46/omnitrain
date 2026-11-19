@@ -436,6 +436,50 @@ extension SessionCoreLifecycleMethods on SessionCore {
     }
   }
 
+  /// Moves the current session to start at [newStartedAtMs], keeping its
+  /// length (a finished session's end moves with it). Returns false, and
+  /// changes nothing, when there is no session, the new start is in the future,
+  /// or the write fails (plan 267). Only the session's own start and end move;
+  /// the moments recorded inside it keep their original times.
+  Future<bool> updateSessionStart(int newStartedAtMs) async {
+    final session = _currentSession;
+    if (session == null) return false;
+    final now = _clock().millisecondsSinceEpoch;
+    if (newStartedAtMs > now) return false;
+    _clearError();
+    try {
+      final ended = session.endedAtMs;
+      final newEndedAtMs = ended == null
+          ? null
+          : newStartedAtMs + (ended - session.startedAtMs);
+      final updatedSession = TrainingSession(
+        id: session.id,
+        ownerUserId: session.ownerUserId,
+        routineTemplateId: session.routineTemplateId,
+        startedAtMs: newStartedAtMs,
+        endedAtMs: newEndedAtMs,
+        title: session.title,
+        note: session.note,
+        locationText: session.locationText,
+        modality: session.modality,
+        intent: session.intent,
+        perceivedSessionRpe: session.perceivedSessionRpe,
+        sessionFeeling: session.sessionFeeling,
+        qualityRating: session.qualityRating,
+        isRolling: session.isRolling,
+        createdAtMs: session.createdAtMs,
+        updatedAtMs: now,
+      );
+      await _repository.updateSession(updatedSession);
+      _currentSession = updatedSession;
+      _notify();
+      return true;
+    } catch (e) {
+      _setError('Failed to change session time: $e');
+      return false;
+    }
+  }
+
   Future<void> updateSessionEndTime(int durationSecs) async {
     if (_currentSession == null) return;
     if (durationSecs <= 0) return;

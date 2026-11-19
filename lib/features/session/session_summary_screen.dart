@@ -529,6 +529,48 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
+  /// Plan 267: pick a new date, then a new start time, for this workout. The
+  /// workout keeps its length; a time in the future is refused.
+  Future<void> _changeDateAndTime() async {
+    final session = widget.workoutState.currentSession;
+    if (session == null) return;
+    final current = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
+    final now = DateTime.now();
+
+    final day = await showDatePicker(
+      context: context,
+      initialDate: current.isAfter(now) ? now : current,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(now.year, now.month, now.day),
+    );
+    if (day == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+    );
+    if (time == null || !mounted) return;
+
+    final next = DateTime(day.year, day.month, day.day, time.hour, time.minute);
+    if (next.millisecondsSinceEpoch == session.startedAtMs) return;
+
+    final moved = await widget.workoutState.updateSessionStart(
+      next.millisecondsSinceEpoch,
+    );
+    if (!mounted) return;
+    if (!moved) {
+      OmniMessage.error(
+        context,
+        next.isAfter(DateTime.now())
+            ? 'That time is in the future.'
+            : 'Could not change the date. Try again.',
+      );
+      return;
+    }
+    setState(() {});
+    OmniMessage.show(context, 'Date and time changed');
+  }
+
   Future<void> _openSaveAsRoutineSheet() async {
     final session = widget.workoutState.currentSession;
     if (session == null) return;
@@ -755,6 +797,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 case 'edit':
                   _openEditSession();
                   break;
+                case 'when':
+                  _changeDateAndTime();
+                  break;
                 case 'save':
                   _openSaveAsRoutineSheet();
                   break;
@@ -765,6 +810,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             },
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'edit', child: Text('Edit Session')),
+              PopupMenuItem(value: 'when', child: Text('Change date & time')),
               PopupMenuItem(value: 'save', child: Text('Save as Routine')),
               PopupMenuItem(value: 'discard', child: Text('Discard')),
             ],

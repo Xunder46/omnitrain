@@ -287,6 +287,11 @@ class WorkoutState extends ChangeNotifier {
       _sessionCore.discardUnfinishedSession();
   Future<void> updateSessionNote(String note) =>
       _sessionCore.updateSessionNote(note);
+
+  /// Moves the current session's start (and a finished session's end with it)
+  /// to [startedAtMs]; false when refused or the write failed (plan 267).
+  Future<bool> updateSessionStart(int startedAtMs) =>
+      _sessionCore.updateSessionStart(startedAtMs);
   Future<void> updateSessionEndTime(int durationSecs) =>
       _sessionCore.updateSessionEndTime(durationSecs);
   Future<void> updateSessionFeeling(
