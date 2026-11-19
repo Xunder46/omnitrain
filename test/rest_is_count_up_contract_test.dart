@@ -47,6 +47,7 @@ const List<String> restRuleRoots = [
   'docs/watch-app-qa-wrist-logging.md',
   'docs/theme_and_settings.md',
   'docs/modality_based_exercise_ui.md',
+  'docs/modality_based_exercise_ui/set_navigation_and_list_view.md',
 ];
 
 /// A stored rest length under any spelling, including `restCountdown`.

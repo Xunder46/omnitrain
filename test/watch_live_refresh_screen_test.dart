@@ -477,7 +477,7 @@ void main() {
     await _mount(tester, _screen(phone));
 
     expect(
-      find.text('1 set'),
+      find.text('0 of 1 set'),
       findsNWidgets(2),
       reason:
           'S-3511 the screen\'s first snapshot: two exercises, each with the one '
@@ -514,13 +514,13 @@ void main() {
           'two entries of the phone\'s own effort',
     );
     expect(
-      find.text('2 sets'),
+      find.text('2 of 2 sets'),
       findsOneWidget,
       reason:
           'S-3511 the open list shows the sets the wrist logged — the user never left the screen',
     );
     expect(
-      find.text('1 set'),
+      find.text('0 of 1 set'),
       findsOneWidget,
       reason: 'S-3511 the other exercise still shows its one unlogged set',
     );

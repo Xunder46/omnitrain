@@ -55,7 +55,7 @@ non-overlapping training periods).
 | Document | Description |
 |----------|-------------|
 | [Modality Tracking](modality_tracking.md) | How exercise capabilities, modalities, and effort kinds work together — the core differentiator |
-| [Modality-Based Exercise UI](modality_based_exercise_ui.md) | The adaptive workout session screen — per-modality controls, timer management, swipe gestures |
+| [Modality-Based Exercise UI](modality_based_exercise_ui.md) | The adaptive workout session screen — per-modality controls, timer management, swipe gestures. Set navigation and the list/detail toggle: [part page](modality_based_exercise_ui/set_navigation_and_list_view.md) |
 | [Exercise Info & Notes](exercise_info_and_notes.md) | Workout session detail header sheets: exercise info reference and persistent per-exercise notes |
 | [Exercise Ranking](exercise_ranking.md) | How exercises are scored and sorted for the exercise picker |
 | [Create New Exercise](create_new_exercise.md) | Modality-aware custom exercise creation and editing |
