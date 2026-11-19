@@ -178,12 +178,13 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                                             OmniDateUtils.isToday(widget.date)
                                         ? () => _startPlanned(context, e)
                                         : null,
-                                    onDelete: isEditable
-                                        ? () => _deletePlanned(
-                                            context,
-                                            e.plannedSession!,
-                                          )
-                                        : null,
+                                    // A missed plan stays visible, and can be
+                                    // deleted (plan 272): move and mark-done
+                                    // stay off for past days.
+                                    onDelete: () => _deletePlanned(
+                                      context,
+                                      e.plannedSession!,
+                                    ),
                                   ),
                                 );
                               }),

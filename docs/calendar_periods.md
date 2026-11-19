@@ -68,8 +68,8 @@ renders the shared OmniEmptyState (S-2802)`).
 In the planned-session form, `Add Session` stays off in Routine mode until a routine is chosen, so a plan
 never saves as Free Training by accident (plan 262, `test/add_session_needs_routine_test.dart`).
 
-**Past days are read-only.** Today and future days allow adding, editing and deleting a planned session, and today also allows starting a
-planned session; a past day allows none of those. Tapping a completed entry opens its summary;
+**Past days are read-only, except deleting a missed plan.** Today and future days allow adding, editing and deleting a planned session, and today also allows starting a
+planned session; a past day keeps its missed plans visible and lets you delete one (the bin, with the usual confirmation; plan 272, `test/day_planned_start_button_test.dart` `S-27201`), but not edit, move, mark done or start it. Tapping a completed entry opens its summary;
 tapping a planned entry opens its edit sheet; the play button on a planned entry of today starts the workout via the routine build flow or the free/modality flow
 depending on whether it is routine-linked.
 
@@ -258,13 +258,13 @@ Responsibilities:
 
 Called concurrently with `_loadPeriods()` at the end of each `_loadMonth()`:
 
-1. Fetches sessions for the last 90 days via `repository.getSessionsByDateRange`.
+1. Fetches every completed session up to today via `repository.getSessionsByDateRange` (no lookback limit, plan 273).
 2. Builds a `Set<int>` of local start-of-day timestamps, so two sessions on one day count once.
 3. Anchors on **today** if today has a session, else on **yesterday** if yesterday has one.
 4. Walks backwards one calendar day at a time, never 24 h, so a clock change cannot hide a day.
 5. Stores the result in `_streakDays` (0 on error; with no anchor day, the displayed month's longest run).
 
-> The 90-day window caps the displayed streak at 90. Increase the window if longer streaks are needed.
+> The streak is not capped: it runs back as far as the consecutive days go (`test/calendar_streak_state_test.dart` `S-27203`).
 
 ### PeriodState
 
@@ -306,7 +306,7 @@ Supporting flows:
 1. Calendar indicators include both planned and historical sessions.
 2. Indicator style communicates state (filled vs outlined).
 3. Day list is grouped: Completed first, Planned second, In Progress third.
-4. Past days are read-only in day list.
+4. Past days are read-only in the day list, apart from deleting a missed plan.
 5. Planned-session play button (today only) starts workout using correct modality/routine path; the row tap opens edit.
 6. Completed-session tap opens summary.
 7. Period overlap is rejected before save.

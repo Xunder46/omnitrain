@@ -186,20 +186,49 @@ void main() {
   );
 
   testWidgets(
-    'S-24804: yesterday, the row is read-only and the tap does nothing',
+    'S-24804: yesterday, the row can only be deleted: no play button and the '
+    'tap does nothing (plan 272)',
     (tester) async {
       final yesterday = _yesterday;
       final (repo, workoutState, calendarState) = await seeded(yesterday);
       await pumpDay(tester, yesterday, repo, workoutState, calendarState);
 
       expect(find.byTooltip('Start session'), findsNothing);
-      expect(find.byTooltip('Delete session'), findsNothing);
+      expect(find.byTooltip('Delete session'), findsOneWidget);
 
       await tester.tap(find.text('Plan A'));
       await tester.pumpAndSettle();
 
       expect(find.text('Edit Session'), findsNothing);
       expect(workoutState.currentSession, isNull);
+    },
+  );
+
+  testWidgets(
+    'S-27201: yesterday, the bin asks first; Cancel keeps the missed plan and '
+    'Delete removes it (plan 272)',
+    (tester) async {
+      final yesterday = _yesterday;
+      final (repo, workoutState, calendarState) = await seeded(yesterday);
+      await pumpDay(tester, yesterday, repo, workoutState, calendarState);
+
+      await tester.tap(find.byTooltip('Delete session'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('day-session-delete-cancel')));
+      await tester.pumpAndSettle();
+      expect(find.text('Plan A'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Delete session'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('day-session-delete-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Plan A'), findsNothing);
+      final left = await repo.getPlannedSessionsForDateRange(
+        yesterday.millisecondsSinceEpoch,
+        yesterday.millisecondsSinceEpoch + 86400000,
+      );
+      expect(left, isEmpty);
     },
   );
 
