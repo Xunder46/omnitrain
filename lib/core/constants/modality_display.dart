@@ -38,4 +38,22 @@ class ModalityDisplay {
     final noun = roundNoun(modality).toLowerCase();
     return '$count $noun${count != 1 ? 's' : ''}';
   }
+
+  /// The plain words for how an effort is tracked, the ones the routine editor
+  /// uses (plan 258): `set` -> `Reps & Sets`, `timed` -> `Time`, `drill` ->
+  /// `Hold Time`, `round` -> `Rounds`. Any other kind comes back unchanged.
+  static String effortKindLabel(String effortKind) {
+    switch (effortKind) {
+      case 'set':
+        return 'Reps & Sets';
+      case 'timed':
+        return 'Time';
+      case 'drill':
+        return 'Hold Time';
+      case 'round':
+        return 'Rounds';
+      default:
+        return effortKind;
+    }
+  }
 }

@@ -519,7 +519,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final date = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
     final defaultName =
         '${ModalityDisplay.getName(session.modality)} - ${_formatDate(date)}';
-    final nameController = TextEditingController(text: defaultName);
+    var routineName = defaultName;
 
     final exercises = List<SessionTemplateExercise>.from(_draftExercises);
 
@@ -622,9 +622,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    TextField(
+                    TextFormField(
                       textCapitalization: TextCapitalization.words,
-                      controller: nameController,
+                      initialValue: defaultName,
+                      onChanged: (value) => routineName = value,
                       decoration: const InputDecoration(
                         labelText: 'Routine name',
                       ),
@@ -646,7 +647,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                           return ListTile(
                             key: ValueKey('${exercise.exerciseId}-$index'),
                             title: Text(exercise.name),
-                            subtitle: Text(exercise.effortKind),
+                            subtitle: Text(
+                              ModalityDisplay.effortKindLabel(
+                                exercise.effortKind,
+                              ),
+                            ),
                             trailing: IconButton(
                               icon: const Icon(Icons.close),
                               tooltip: 'Remove exercise',
@@ -677,9 +682,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                             ? null
                             : () async {
                                 final draft = SessionTemplateDraft(
-                                  name: nameController.text.trim().isEmpty
+                                  name: routineName.trim().isEmpty
                                       ? defaultName
-                                      : nameController.text.trim(),
+                                      : routineName.trim(),
                                   focusModality: session.modality,
                                   exercises: exercises,
                                 );
@@ -693,7 +698,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                                 await widget.routineState.loadRoutines();
                                 if (!mounted) return;
                                 Navigator.pop(context);
-                                await _finishAndSaveSession();
+                                // Plan 258: saving the routine keeps the summary
+                                // open; Done still finishes the workout.
+                                OmniMessage.show(
+                                  this.context,
+                                  'Routine saved',
+                                  duration: const Duration(seconds: 2),
+                                );
                               },
                         child: const Text('Save'),
                       ),
@@ -706,8 +717,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         );
       },
     );
-
-    nameController.dispose();
   }
 
   @override

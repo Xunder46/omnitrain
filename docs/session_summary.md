@@ -513,7 +513,10 @@ Important SessionSummary fields used by the current UI:
 ## Save as Routine
 
 Available from the summary's overflow menu. The draft is editable — name, exercise order,
-additions and removals — before it is persisted through `saveRoutineFromDraft`.
+additions and removals — before it is persisted through `saveRoutineFromDraft`. Each exercise line
+names how it is tracked in plain words (`Reps & Sets`, `Time`, `Hold Time`, `Rounds`), and Save
+keeps the summary open with a `Routine saved` message (plan 258,
+`test/save_as_routine_labels_test.dart`).
 
 Each target's value comes from the entry's own row, read through `EntryRows` — never from the row a
 store happens to return first. A `timed` or `drill` template carries no distance target, and its
