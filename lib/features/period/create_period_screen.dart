@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/utils/date_utils.dart';
 import '../../core/utils/modality_color_utils.dart';
 import '../../state/period/period_state.dart';
 import '../../core/constants/modality.dart';
@@ -438,9 +439,7 @@ class _DateField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = value != null
-        ? '${value!.day.toString().padLeft(2, '0')}/'
-              '${value!.month.toString().padLeft(2, '0')}/'
-              '${value!.year}'
+        ? OmniDateUtils.formatDay(value!, DateTime.now())
         : 'Select';
 
     return GestureDetector(

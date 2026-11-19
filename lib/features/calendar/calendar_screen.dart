@@ -117,6 +117,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 _MonthHeader(
                   year: widget.calendarState.year,
                   month: widget.calendarState.month,
+                  periodName: _currentPeriodName(),
                   onPrevious: widget.calendarState.goToPreviousMonth,
                   onNext: widget.calendarState.goToNextMonth,
                 ),
@@ -158,6 +159,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
       ),
     );
+  }
+
+  /// The period that covers today, when it also covers some day of the month
+  /// on screen; the first of them if several do (plan 260).
+  String? _currentPeriodName() {
+    final todayMs = OmniDateUtils.startOfDayMs(DateTime.now());
+    final monthStart = OmniDateUtils.startOfDayMs(
+      DateTime(widget.calendarState.year, widget.calendarState.month, 1),
+    );
+    final monthEnd = OmniDateUtils.startOfDayMs(
+      DateTime(widget.calendarState.year, widget.calendarState.month + 1, 0),
+    );
+    for (final p in widget.calendarState.periods) {
+      final coversToday = p.startDateMs <= todayMs && p.endDateMs >= todayMs;
+      final coversMonth = p.startDateMs <= monthEnd && p.endDateMs >= monthStart;
+      if (coversToday && coversMonth) return p.name;
+    }
+    return null;
   }
 
   Future<void> _openPeriods(BuildContext context) async {
@@ -245,12 +264,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
 class _MonthHeader extends StatelessWidget {
   final int year;
   final int month;
+
+  /// The name of the training period the user is in today, when it covers some
+  /// of this month (plan 260); null shows no line.
+  final String? periodName;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
 
   const _MonthHeader({
     required this.year,
     required this.month,
+    this.periodName,
     required this.onPrevious,
     required this.onNext,
   });
@@ -268,10 +292,26 @@ class _MonthHeader extends StatelessWidget {
             onPressed: onPrevious,
           ),
           Expanded(
-            child: Text(
-              '${OmniDateUtils.fullMonthName(month)} $year',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${OmniDateUtils.fullMonthName(month)} $year',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                if (periodName != null)
+                  Text(
+                    periodName!,
+                    key: const Key('calendar_period_name'),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: OmniTheme.colors.textSecondary,
+                    ),
+                  ),
+              ],
             ),
           ),
           IconButton(

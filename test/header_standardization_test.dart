@@ -371,7 +371,7 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('S-9156: the Training periods icon opens the Periodization '
+    testWidgets('S-9156: the Training periods icon opens the Training periods '
         'list, and back returns to the Calendar', (WidgetTester tester) async {
       await pumpCalendar(tester);
 
@@ -380,7 +380,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(PeriodListScreen), findsOneWidget);
-      expect(inHeader(find.text('Periodization')), findsOneWidget);
+      expect(inHeader(find.text('Training periods')), findsOneWidget);
 
       await tester.pageBack();
       await tester.pumpAndSettle();

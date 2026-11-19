@@ -743,7 +743,7 @@ colour, press shrink and spoken label everywhere; the Exercise Library and
 Manage Food Library use it). A header action that goes somewhere else uses an icon that reads as that
 place, never a "+" — the Calendar's Training periods icon is the example.
 Bottom buttons stay where adding is the screen's main job (the day session
-list, Periodization, My Routines).
+list, Training periods, My Routines).
 
 Verified by `test/ui_standards_contract_test.dart` (group `S-9158 header
 plus` · "S-9159: no header in lib/ builds a raw +") and

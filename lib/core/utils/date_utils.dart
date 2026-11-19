@@ -203,6 +203,13 @@ class OmniDateUtils {
   static String formatShort(DateTime date) =>
       '${shortMonthName(date.month)} ${date.day.toString().padLeft(2, '0')}';
 
+  /// A day as "Nov 16", with the year ("Nov 16, 2025") when it is not
+  /// [today]'s year (plan 260).
+  static String formatDay(DateTime date, DateTime today) {
+    final text = '${shortMonthName(date.month)} ${date.day}';
+    return date.year == today.year ? text : '$text, ${date.year}';
+  }
+
   /// Formats a date range as "MMM DD – MMM DD, YYYY".
   static String formatRange(int startMs, int endMs) {
     final start = fromMs(startMs);

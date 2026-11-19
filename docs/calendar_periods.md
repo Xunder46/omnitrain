@@ -133,6 +133,12 @@ Period capabilities:
 
 Calendar highlights days covered by periods with a semi-transparent background.
 
+The period you are in today is named in a small line under the month title (key
+`calendar_period_name`) while the month on screen overlaps it; with no such period
+there is no line. The list screen's title is also `Training periods`, and the period
+form's Start and End dates read like `Nov 16` (with the year, `Nov 16, 2025`, when it
+is not this year), never `16/11/2025` (plan 260, `test/period_polish_test.dart`).
+
 An empty periods list is the shared empty state (`OmniEmptyState`, title
 `No training periods yet.`, hint `Add one with the button below.`). Verified
 by `test/screen_widget_test.dart` (group `PeriodListScreen`: `empty list

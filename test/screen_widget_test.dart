@@ -379,7 +379,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(OmniBackHeader), findsOneWidget);
-      expect(find.text('Periodization'), findsOneWidget);
+      expect(find.text('Training periods'), findsOneWidget);
       expect(find.text('No training periods yet.'), findsOneWidget);
     });
 
