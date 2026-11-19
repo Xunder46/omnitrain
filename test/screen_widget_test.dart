@@ -8624,7 +8624,12 @@ void main() {
 
       expect(find.text(exercises.first.name), findsOneWidget);
 
-      await tester.tap(find.byType(PopupMenuButton<String>));
+      // The block's own menu (the exercise tiles carry keyed menus, plan 269).
+      await tester.tap(
+        find.byWidgetPredicate(
+          (w) => w is PopupMenuButton<String> && w.key == null,
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete'));
       await tester.pumpAndSettle();

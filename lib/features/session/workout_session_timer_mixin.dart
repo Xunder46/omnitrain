@@ -335,6 +335,29 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
   /// entry's state, and its live ticker, down one place, the way the persisted
   /// instances were re-indexed. Without this the next set shows the deleted
   /// set's elapsed time and a ticker keeps writing an index that is gone.
+  /// Forgets every per-entry timer and progress key of an exercise that is
+  /// being removed whole (plan 269): running tickers stop and an expiry
+  /// notification for a running one is cancelled.
+  void _dropTimerStateForEffort(String effortId) {
+    final prefix = '$effortId-';
+    var hadRunning = false;
+    for (final key in _effortTimers.keys.toList()) {
+      if (key.startsWith(prefix)) _effortTimers.remove(key)?.cancel();
+    }
+    for (final key in _effortRunning.keys.toList()) {
+      if (key.startsWith(prefix) && _effortRunning.remove(key) == true) {
+        hadRunning = true;
+      }
+    }
+    _effortElapsed.removeWhere((k, _) => k.startsWith(prefix));
+    _effortAlerted.removeWhere((k, _) => k.startsWith(prefix));
+    _effortTargetDuration.removeWhere((k, _) => k.startsWith(prefix));
+    _inProgressKeys.removeWhere((k) => k.startsWith(prefix));
+    _pendingRoundTransitions.removeWhere((k) => k.startsWith(prefix));
+    _pendingTimedTransitions.removeWhere((k) => k.startsWith(prefix));
+    if (hadRunning) _cancelEffortExpiryNotification();
+  }
+
   void _rekeyTimerStateAfterDelete(String effortId, int deletedIndex) {
     final prefix = '$effortId-';
     int? indexOf(String key) => key.startsWith(prefix)

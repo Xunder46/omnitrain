@@ -228,14 +228,45 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
             color: OmniTheme.colors.textSecondary,
           ),
         ),
-        trailing: _exerciseProgressDone(exercise)
-            ? Icon(
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_exerciseProgressDone(exercise))
+              Icon(
                 Icons.check_circle,
                 key: Key('exercise_tile_done_$effortId'),
                 color: tileColors.primary,
                 semanticLabel: 'Done',
-              )
-            : null,
+              ),
+            PopupMenuButton<String>(
+              key: Key('exercise_tile_menu_$effortId'),
+              tooltip: 'Exercise options',
+              color: theme.colorScheme.surface,
+              onSelected: (value) {
+                if (value == 'remove') {
+                  unawaited(_confirmAndRemoveExercise(exercise));
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  key: Key('exercise_tile_remove_$effortId'),
+                  value: 'remove',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.delete,
+                        size: 18,
+                        color: theme.colorScheme.error,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text('Remove exercise'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
         onTap: idx == -1
             ? null
             : () => unawaited(
@@ -246,6 +277,47 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               ),
       ),
     );
+  }
+
+  /// Plan 269: removes a whole exercise from the workout after asking, without
+  /// having to delete its sets one by one. Everything logged for it goes too.
+  Future<void> _confirmAndRemoveExercise(Map<String, dynamic> exercise) async {
+    final effortId = exercise['id'] as String;
+    final name = exercise['name'] as String;
+    final confirmed = await ConfirmationDialog.showTwoChoice(
+      context: context,
+      title: 'Remove Exercise?',
+      body: Text(
+        'Remove "$name" and everything logged for it from this workout? '
+        'This cannot be undone.',
+      ),
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Remove',
+      dismissKey: const Key('exercise-tile-remove-cancel'),
+      confirmKey: const Key('exercise-tile-remove-confirm'),
+      isDestructive: true,
+    );
+    if (!confirmed || !mounted) return;
+
+    if (widget.editMode) _hasStructuralChanges = true;
+    final openRest = widget.workoutState
+        .getEntryRests(effortId)
+        .any((rest) => rest.restEndMs == null);
+    _dropTimerStateForEffort(effortId);
+    _loggedSetKeys.removeWhere((k) => k.startsWith('$effortId-'));
+    _editBuffer.removeWhere((k, _) => k.startsWith('$effortId-'));
+    await widget.workoutState.removeExerciseFromSession(effortId);
+    if (openRest) {
+      unawaited(widget.restNotificationService.cancelRestNotifications());
+      _lastRestPingFiredAt.remove(effortId);
+    }
+    await _loadExercises();
+    if (!mounted) return;
+    _updateUi(() {
+      _showListView = true;
+      _currentExerciseIndex = 0;
+      _currentSet = 1;
+    });
   }
 
   // ── Block card ────────────────────────────────────────────────────────────

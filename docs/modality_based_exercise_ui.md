@@ -582,6 +582,7 @@ logged set`, `S-4220: − on an all-logged effort drops the last set`,
   - **round**: "5 rounds"
   - **drill**: "1 of 3 holds", with the same check mark when every hold is finished (`S-25505`, and `S-25509` for a hold that finishes itself while the list is showing)
 - Tap exercise to enter detail view
+- Each tile has a `⋮` menu with `Remove exercise`: it asks (`Remove Exercise?`), then takes the whole exercise and everything logged for it out of the workout, in the live list and in Edit Session; its timers stop (plan 269, `test/remove_exercise_from_list_test.dart`)
 - Inline add-exercise-and-block bar at the end of the list (centred in the empty state); there is no FAB
 - Non-rolling list view does not render modality group headers.
 
