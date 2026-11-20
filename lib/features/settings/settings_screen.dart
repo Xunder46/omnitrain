@@ -7,7 +7,10 @@ import 'package:flutter/services.dart';
 import '../../core/constants/health_constants.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/models/app_version_info.dart';
+import '../../core/services/backup_file_gateway.dart';
+import '../../core/services/backup_service.dart';
 import '../../core/services/diagnostics_log.dart';
+import '../../core/utils/date_utils.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
@@ -45,6 +48,15 @@ class SettingsScreen extends StatefulWidget {
   /// without a log, and the row is absent.
   final DiagnosticsLog? diagnostics;
 
+  /// Backup service and file gateway, for the DATA section (plan 278b
+  /// D-27822). Null without either, and the section is absent.
+  final BackupService? backupService;
+  final BackupFileGateway? backupFileGateway;
+
+  /// Called after a restore replaced the store (plan 278b D-27828); the
+  /// caller shows the restart screen. Unused until P3b.
+  final VoidCallback? onDataRestored;
+
   SettingsScreen({
     super.key,
     required this.settingsState,
@@ -55,6 +67,9 @@ class SettingsScreen extends StatefulWidget {
     this.userHeightCm,
     this.watchLinkState,
     this.diagnostics,
+    this.backupService,
+    this.backupFileGateway,
+    this.onDataRestored,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
 
@@ -173,6 +188,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const OmniCardHeader(title: 'HEALTH'),
                   _HealthSection(settingsState: widget.settingsState),
                   const SizedBox(height: 24),
+                  if (widget.backupService != null &&
+                      widget.backupFileGateway != null) ...[
+                    const OmniCardHeader(title: 'DATA'),
+                    _DataSection(
+                      backupService: widget.backupService!,
+                      gateway: widget.backupFileGateway!,
+                      onDataRestored: widget.onDataRestored,
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                   const OmniCardHeader(title: 'APPEARANCE'),
                   OmniSurface(
                     padding: const EdgeInsets.all(0),
@@ -1120,12 +1145,15 @@ class _SettingsRow extends StatelessWidget {
   final String? subtitle;
   final Widget trailing;
   final VoidCallback? onTap;
+  final String? semanticsLabel;
 
   const _SettingsRow({
+    super.key,
     required this.label,
     this.subtitle,
     required this.trailing,
     this.onTap,
+    this.semanticsLabel,
   });
 
   @override
@@ -1168,8 +1196,17 @@ class _SettingsRow extends StatelessWidget {
       ),
     );
 
+    final wrapped = semanticsLabel == null
+        ? content
+        : Semantics(
+            label: semanticsLabel,
+            button: onTap != null,
+            excludeSemantics: true,
+            child: content,
+          );
+
     if (onTap == null) {
-      return content;
+      return wrapped;
     }
 
     return Material(
@@ -1177,7 +1214,176 @@ class _SettingsRow extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
         onTap: onTap,
-        child: content,
+        child: wrapped,
+      ),
+    );
+  }
+}
+
+/// Exports the whole store as a shareable backup text file, and (in P3b) the
+/// import flow (plan 278b D-27822, D-27823).
+class _DataSection extends StatefulWidget {
+  final BackupService backupService;
+  final BackupFileGateway gateway;
+  final VoidCallback? onDataRestored;
+
+  const _DataSection({
+    required this.backupService,
+    required this.gateway,
+    this.onDataRestored,
+  });
+
+  @override
+  State<_DataSection> createState() => _DataSectionState();
+}
+
+class _DataSectionState extends State<_DataSection> {
+  bool _exporting = false;
+  bool _importInFlight = false;
+
+  /// `19 Nov 2026`, in the device's local date (D-27827).
+  static String _backupDate(int exportedAtMs) {
+    final d = DateTime.fromMillisecondsSinceEpoch(exportedAtMs);
+    return '${d.day} ${OmniDateUtils.shortMonthName(d.month)} ${d.year}';
+  }
+
+  static String _count(int n, String one, String many) =>
+      '$n ${n == 1 ? one : many}';
+
+  Future<void> _exportData() async {
+    if (_exporting) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
+    setState(() => _exporting = true);
+    try {
+      final text = await widget.backupService.exportToText();
+      final shown = await widget.gateway.shareText(
+        fileName: BackupService.fileName(DateTime.now()),
+        text: text,
+      );
+      if (!shown && mounted) {
+        OmniMessage.errorOn(messenger, theme, 'Could not export. Try again.');
+      }
+    } catch (_) {
+      if (mounted) {
+        OmniMessage.errorOn(messenger, theme, 'Could not export. Try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  // plan 278b P3b
+  Future<void> _importData() async {
+    if (_importInFlight) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
+
+    String? text;
+    try {
+      text = await widget.gateway.pickText();
+    } catch (_) {
+      if (mounted) {
+        OmniMessage.errorOn(messenger, theme, 'Could not open the file. Try again.');
+      }
+      return;
+    }
+    if (text == null || !mounted) return; // cancelled
+
+    final check = widget.backupService.inspect(text);
+    final info = check.info;
+    if (info == null) {
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        check.refusal ?? 'This is not an OmniTrain backup file.',
+      );
+      return;
+    }
+
+    final confirmed = await ConfirmationDialog.showTwoChoice(
+      context: context,
+      title: 'Replace all data?',
+      body: Text(
+        'This replaces everything on this phone with the backup from '
+        '${_backupDate(info.exportedAtMs)}: '
+        '${_count(info.sessions, 'workout', 'workouts')}, '
+        '${_count(info.routines, 'routine', 'routines')}. '
+        'Your current data is not kept. This cannot be undone.',
+      ),
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Replace',
+      dismissKey: const Key('data-import-cancel'),
+      confirmKey: const Key('data-import-confirm'),
+      isDestructive: true,
+    );
+    if (!confirmed || !mounted) return;
+
+    _importInFlight = true;
+    // Blocking progress (D-27829): not dismissible, no back.
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const PopScope(
+          canPop: false,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ),
+    );
+    BackupRestoreResult result;
+    try {
+      result = await widget.backupService.restoreFromText(text);
+    } catch (_) {
+      result = const BackupRestoreResult.refused(BackupService.failedMessage);
+    }
+    _importInFlight = false;
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop(); // close the progress
+    if (result.isRestored) {
+      widget.onDataRestored?.call();
+    } else {
+      OmniMessage.errorOn(messenger, theme, result.refusal!);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return OmniSurface(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SettingsRow(
+            key: const Key('data-export-row'),
+            label: 'Export data',
+            subtitle: 'Save everything to a file',
+            trailing: Text(
+              'Share',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            semanticsLabel: 'Export data, saves everything to a file',
+            onTap: _exporting ? null : _exportData,
+          ),
+          _SurfaceDivider(theme: theme),
+          _SettingsRow(
+            key: const Key('data-import-row'),
+            label: 'Import data',
+            subtitle: 'Replace everything with a backup file',
+            trailing: Text(
+              'Choose file',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            semanticsLabel:
+                'Import data, replaces everything with a backup file',
+            onTap: _importData,
+          ),
+        ],
       ),
     );
   }

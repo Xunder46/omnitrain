@@ -22,6 +22,9 @@ import 'state/watch/watch_resume_sync.dart';
 import 'state/watch/watch_link_state.dart';
 import 'core/services/diagnostics_log.dart';
 
+import 'core/services/backup_file_gateway.dart';
+import 'core/services/backup_service.dart';
+
 import 'features/home/home_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'widgets/layout/omni_gradient_background.dart';
@@ -62,6 +65,11 @@ class MyApp extends StatelessWidget {
   /// Null without a log, and Settings then carries no Diagnostics row.
   final DiagnosticsLog? diagnostics;
 
+  /// Backup service and file gateway, handed on to Settings (plan 278b
+  /// D-27828). Null without either, and Settings then carries no DATA section.
+  final BackupService? backupService;
+  final BackupFileGateway? backupFileGateway;
+
   MyApp({
     super.key,
     required this.repository,
@@ -85,6 +93,8 @@ class MyApp extends StatelessWidget {
     this.onWatchResume,
     this.watchLinkState,
     this.diagnostics,
+    this.backupService,
+    this.backupFileGateway,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -180,6 +190,8 @@ class MyApp extends StatelessWidget {
                   appVersionInfo: appVersionInfo,
                   watchLinkState: watchLinkState,
                   diagnostics: diagnostics,
+                  backupService: backupService,
+                  backupFileGateway: backupFileGateway,
                 ),
         );
 

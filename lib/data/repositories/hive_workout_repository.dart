@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
+import '../models/backup_snapshot.dart';
 import '../models/muscle_taxonomy.dart';
 import '../datasources/food_catalog_loader.dart';
 import '../../mock/seed_data.dart';
@@ -77,6 +78,68 @@ class HiveWorkoutRepository implements WorkoutRepository {
   static const String _dataVersionKey = 'data_version';
   static const String _dataVersionLastFromKey = 'data_version_last_from';
   static const String _dataVersionLastToKey = 'data_version_last_to';
+
+  // The backup allowlist (D-27803). Every box `initialize` opens must be
+  // classified here or in [_backupExcludedBoxes];
+  // `test/backup_snapshot_repository_test.dart` (S-27818) reads these
+  // declarations as source text and fails for an unclassified box. One quoted
+  // name per line: that guard's regex depends on this formatting.
+  static const List<String> _backupMapBoxes = [
+    'exercises',
+    'sessions',
+    'user_profile',
+    'body_measurements',
+    'segments',
+    'efforts',
+    'observations',
+    'units',
+    'metrics',
+    'muscle_groups',
+    'disciplines',
+    'sport_categories',
+    'equipment',
+    'tags',
+    'templates',
+    'template_segments',
+    'template_efforts',
+    'template_targets',
+    'nutrition_targets',
+    'nutrition_targets_by_date',
+    'food_groups',
+    'foods',
+    'consumed_foods',
+    'water_log',
+    'round_instances',
+    'timed_instances',
+    'entry_rests',
+    'exercise_notes',
+    'planned_sessions',
+    'training_periods',
+    'session_blocks',
+    'watch_inbox',
+    'sensor_summaries',
+    'session_energy',
+  ];
+
+  static const List<String> _backupListBoxes = [
+    'exercise_muscle_groups',
+    'exercise_equipment',
+    'exercise_tags',
+    'metric_effort_kinds',
+    'exercise_capabilities',
+  ];
+
+  /// Boxes `initialize` opens that the backup never carries: the bundled food
+  /// catalog, which the app rebuilds (D-27801).
+  static const Set<String> _backupExcludedBoxes = {'foods_catalog'};
+
+  /// Meta values that belong to this device, not to the user's data: the
+  /// notification prompt and the diagnostic data-version transition.
+  static const Set<String> _backupDeviceOnlyMetaKeys = {
+    'notification_permission_asked',
+    'data_version_last_from',
+    'data_version_last_to',
+  };
 
   /// The Hive meta-box key for the one-shot category→groupId migration.
   /// Exposed via [visibleForTesting] so migration tests can clear the
@@ -3497,6 +3560,116 @@ class HiveWorkoutRepository implements WorkoutRepository {
     final raw = _sessionEnergyBox.get(sessionId);
     if (raw == null) return null;
     return SessionEnergy.fromMap(_asStringMap(raw));
+  }
+
+  // ===== BACKUP (D-27801, D-27803) =====
+
+  @override
+  Future<BackupSnapshot> exportSnapshot() async {
+    final collections = <String, Map<String, Object?>>{};
+    for (final name in _backupMapBoxes) {
+      final rows = <String, Object?>{};
+      for (final entry in Hive.box<Map>(name).toMap().entries) {
+        rows[entry.key.toString()] = _jsonSafeValue(entry.value);
+      }
+      collections[name] = rows;
+    }
+
+    final lists = <String, Map<String, List<Object?>>>{};
+    for (final name in _backupListBoxes) {
+      final rows = <String, List<Object?>>{};
+      for (final entry in Hive.box<List>(name).toMap().entries) {
+        rows[entry.key.toString()] = _jsonSafeList(entry.value);
+      }
+      lists[name] = rows;
+    }
+
+    final meta = <String, Object?>{};
+    for (final entry in _metaBox.toMap().entries) {
+      final name = entry.key.toString();
+      if (_backupDeviceOnlyMetaKeys.contains(name)) continue;
+      final value = entry.value;
+      if (value is bool || value is int || value is String) {
+        meta[name] = value;
+      }
+    }
+
+    return BackupSnapshot(
+      collections: collections,
+      lists: lists,
+      meta: meta,
+      dataVersion: await getDataVersion(),
+      catalogVersion: await getCatalogVersion(),
+    );
+  }
+
+  @override
+  Future<void> importSnapshot(BackupSnapshot snapshot) async {
+    // Validate every name before writing anything, so an unknown collection
+    // leaves the store exactly as it was.
+    for (final name in snapshot.collections.keys) {
+      if (_backupExcludedBoxes.contains(name) ||
+          !_backupMapBoxes.contains(name)) {
+        throw ArgumentError('Unknown backup collection: $name');
+      }
+    }
+    for (final name in snapshot.lists.keys) {
+      if (!_backupListBoxes.contains(name)) {
+        throw ArgumentError('Unknown backup collection: $name');
+      }
+    }
+
+    for (final entry in snapshot.collections.entries) {
+      final rows = <String, Map<String, dynamic>>{
+        for (final row in entry.value.entries)
+          row.key: Map<String, dynamic>.from(row.value as Map),
+      };
+      final box = Hive.box<Map>(entry.key);
+      await box.clear();
+      await box.putAll(rows);
+    }
+
+    for (final entry in snapshot.lists.entries) {
+      final rows = <String, List<dynamic>>{
+        for (final row in entry.value.entries)
+          row.key: List<dynamic>.from(row.value),
+      };
+      final box = Hive.box<List>(entry.key);
+      await box.clear();
+      await box.putAll(rows);
+    }
+
+    // Replace the carried meta values; a device-only key is never written,
+    // even when the snapshot carries it.
+    final staleKeys = <dynamic>[
+      for (final key in _metaBox.keys)
+        if (!_backupDeviceOnlyMetaKeys.contains(key.toString())) key,
+    ];
+    await _metaBox.deleteAll(staleKeys);
+    for (final entry in snapshot.meta.entries) {
+      if (_backupDeviceOnlyMetaKeys.contains(entry.key)) continue;
+      await _metaBox.put(entry.key, entry.value);
+    }
+  }
+
+  /// A JSON-safe deep copy of a stored value: maps become string-keyed maps,
+  /// lists become lists, and scalars (int, double, bool, String, null) are
+  /// kept as they are (D-27803).
+  static Object? _jsonSafeValue(Object? value) {
+    if (value is Map) return _jsonSafeMap(value);
+    if (value is List) return _jsonSafeList(value);
+    return value;
+  }
+
+  static Map<String, Object?> _jsonSafeMap(Map<dynamic, dynamic> value) {
+    return <String, Object?>{
+      for (final entry in value.entries)
+        entry.key.toString(): _jsonSafeValue(entry.value),
+    };
+  }
+
+  static List<Object?> _jsonSafeList(List<dynamic> value) {
+    return <Object?>[for (final item in value) _jsonSafeValue(item)];
   }
 
   /// D-131: every summary carries its session, so none outlives it.

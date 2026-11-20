@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/backup_snapshot.dart';
 import '../models/models.dart';
 import '../models/muscle_taxonomy.dart';
 import '../../mock/seed_data.dart';
@@ -45,6 +46,27 @@ class _MockMigrationStep extends DataMigrationStep {
   Future<void> run() async {
     await _body?.call();
   }
+}
+
+/// One map box of [MockWorkoutRepository]'s backup table: the box name the
+/// file engine writes, the read that produces its rows and the write that
+/// replaces them (D-27805). A row is `{key: the shape Hive stores}`, and the
+/// key is the id the Hive writer puts the row under.
+class _MockBackupStore {
+  _MockBackupStore(this.name, {required this.read, required this.write});
+
+  final String name;
+  final Map<String, Object?> Function() read;
+  final void Function(Map<String, Object?> rows) write;
+}
+
+/// A list box of the same table: one list per parent id.
+class _MockBackupListStore {
+  _MockBackupListStore(this.name, {required this.read, required this.write});
+
+  final String name;
+  final Map<String, List<Object?>> Function() read;
+  final void Function(Map<String, List<Object?>> rows) write;
 }
 
 /// In-memory mock implementation of WorkoutRepository for development/testing.
@@ -104,16 +126,19 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   // Catalog version + per-entry tombstones used by CatalogRefreshService.
   // Mirrors the Hive-backed meta-box layout (`catalog_version` and
-  // `seed_entry_touched_<entityType>_<id>`). Defaults to `0` so legacy
-  // installs trigger a one-time refresh on first launch.
-  int _catalogVersion = 0;
+  // `seed_entry_touched_<entityType>_<id>`). Null until a refresh writes it,
+  // so a backup carries the key only when the Hive meta box holds it; the
+  // getter's default stands in for the absent key (0, so legacy installs
+  // trigger a one-time refresh on first launch).
+  int? _catalogVersion;
   final Map<String, bool> _seedEntryTouched = {};
 
   // Data-migration version sequence: mirrors the Hive-backed meta-box
   // layout (`data_version` int + `data_version_last_from`/`_last_to` ints).
-  // Defaults to `1` so legacy installs trigger the back-compat shim on
-  // first launch under the new system.
-  int _dataVersion = 1;
+  // Null until a migration writes it, so the backup carries the key exactly
+  // when the Hive meta box does; the getter's default (1) stands in for the
+  // absent key, so a legacy install still triggers the back-compat shim.
+  int? _dataVersion;
   int? _dataVersionLastFrom;
   int? _dataVersionLastTo;
 
@@ -1928,7 +1953,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<int> getCatalogVersion({int defaultValue = 0}) async {
-    return _catalogVersion;
+    return _catalogVersion ?? defaultValue;
   }
 
   @override
@@ -1955,7 +1980,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<int> getDataVersion({int defaultValue = 1}) async {
-    return _dataVersion;
+    return _dataVersion ?? defaultValue;
   }
 
   @override
@@ -2572,6 +2597,582 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<SessionEnergy?> getSessionEnergy(String sessionId) async =>
       _sessionEnergy[sessionId];
+
+  // ===== BACKUP =====
+  //
+  // The Mock holds the same rows HiveWorkoutRepository stores, so a snapshot
+  // taken here is the one the file engine writes to disk, and a snapshot
+  // imported here leaves the store the same values a Hive import does
+  // (D-27801, D-27803, D-27805). The tables below are the Mock's half of the
+  // Hive allowlist: one entry per box, with the read and the write of the
+  // store behind it.
+
+  /// Every map box a snapshot carries, in the order the Hive runtime declares
+  /// them. The legacy by-id `nutrition_targets` box has no Mock store and
+  /// exports empty, and an import of it is accepted and ignored; the bundled
+  /// `foods_catalog` box is not carried at all and is refused on import, the
+  /// way the Hive runtime refuses it (D-27810).
+  static const List<String> _backupMapBoxes = [
+    'exercises',
+    'sessions',
+    'user_profile',
+    'body_measurements',
+    'segments',
+    'efforts',
+    'observations',
+    'units',
+    'metrics',
+    'muscle_groups',
+    'disciplines',
+    'sport_categories',
+    'equipment',
+    'tags',
+    'templates',
+    'template_segments',
+    'template_efforts',
+    'template_targets',
+    'nutrition_targets',
+    'nutrition_targets_by_date',
+    'food_groups',
+    'foods',
+    'consumed_foods',
+    'water_log',
+    'round_instances',
+    'timed_instances',
+    'entry_rests',
+    'exercise_notes',
+    'planned_sessions',
+    'training_periods',
+    'session_blocks',
+    'watch_inbox',
+    'sensor_summaries',
+    'session_energy',
+  ];
+
+  static const List<String> _backupListBoxes = [
+    'exercise_muscle_groups',
+    'exercise_equipment',
+    'exercise_tags',
+    'metric_effort_kinds',
+    'exercise_capabilities',
+  ];
+
+  /// Meta values that belong to this device, not to the user's data: the
+  /// notification prompt and the diagnostic data-version transition.
+  static const Set<String> _backupDeviceOnlyMetaKeys = {
+    'notification_permission_asked',
+    'data_version_last_from',
+    'data_version_last_to',
+  };
+
+  static const String _seedEntryTouchedKeyPrefix = 'seed_entry_touched_';
+  static const String _catalogVersionKey = 'catalog_version';
+  static const String _dataVersionKey = 'data_version';
+
+  @override
+  Future<BackupSnapshot> exportSnapshot() async {
+    final mapStores = <String, _MockBackupStore>{
+      for (final store in _backupMapStores()) store.name: store,
+    };
+    final listStores = <String, _MockBackupListStore>{
+      for (final store in _backupListStores()) store.name: store,
+    };
+    final collections = <String, Map<String, Object?>>{
+      for (final name in _backupMapBoxes) name: mapStores[name]!.read(),
+    };
+    final lists = <String, Map<String, List<Object?>>>{
+      for (final name in _backupListBoxes) name: listStores[name]!.read(),
+    };
+    return BackupSnapshot(
+      collections: collections,
+      lists: lists,
+      meta: _exportMeta(),
+      dataVersion: await getDataVersion(),
+      catalogVersion: await getCatalogVersion(),
+    );
+  }
+
+  @override
+  Future<void> importSnapshot(BackupSnapshot snapshot) async {
+    final mapStores = <String, _MockBackupStore>{
+      for (final store in _backupMapStores()) store.name: store,
+    };
+    final listStores = <String, _MockBackupListStore>{
+      for (final store in _backupListStores()) store.name: store,
+    };
+
+    // Validate every name before writing anything, so an unknown collection
+    // leaves the store exactly as it was. `foods_catalog` and the legacy
+    // `nutrition_targets` box are classified the way the Hive runtime
+    // classifies them: refused, and accepted-and-ignored.
+    for (final name in snapshot.collections.keys) {
+      if (!_backupMapBoxes.contains(name)) {
+        throw ArgumentError('Unknown backup collection: $name');
+      }
+    }
+    for (final name in snapshot.lists.keys) {
+      if (!_backupListBoxes.contains(name)) {
+        throw ArgumentError('Unknown backup collection: $name');
+      }
+    }
+
+    // Replace each carried collection; a collection the snapshot omits keeps
+    // the Mock's rows, as a Hive box keeps its own.
+    for (final entry in snapshot.collections.entries) {
+      mapStores[entry.key]!.write(entry.value);
+    }
+    for (final entry in snapshot.lists.entries) {
+      listStores[entry.key]!.write(entry.value);
+    }
+
+    _importMeta(snapshot.meta);
+  }
+
+  List<_MockBackupStore> _backupMapStores() => [
+    _modelStore('exercises', _exercises, (e) => e.toMap(), Exercise.fromMap),
+    _modelStore(
+      'sessions',
+      _sessions,
+      (s) => s.toMap(),
+      TrainingSession.fromMap,
+    ),
+    _modelStore(
+      'user_profile',
+      _userProfiles,
+      (p) => p.toMap(),
+      UserProfile.fromMap,
+    ),
+    _modelStore(
+      'body_measurements',
+      _bodyMeasurements,
+      (m) => m.toMap(),
+      BodyMeasurementEntry.fromMap,
+    ),
+    _modelStore(
+      'segments',
+      _segments,
+      (s) => s.toMap(),
+      SessionSegment.fromMap,
+    ),
+    _modelStore('efforts', _efforts, (e) => e.toMap(), SegmentEffort.fromMap),
+    _modelStore(
+      'observations',
+      _observations,
+      (o) => o.toMap(),
+      EffortObservation.fromMap,
+    ),
+    _modelStore('units', _units, (u) => u.toMap(), UnitModel.fromMap),
+    _modelStore(
+      'metrics',
+      _metrics,
+      (m) => m.toMap(),
+      MetricDefinition.fromMap,
+    ),
+    _modelStore(
+      'muscle_groups',
+      _muscleGroups,
+      (g) => g.toMap(),
+      MuscleGroup.fromMap,
+    ),
+    _modelStore(
+      'disciplines',
+      _disciplines,
+      (d) => d.toMap(),
+      Discipline.fromMap,
+    ),
+    _modelStore(
+      'sport_categories',
+      _sportCategories,
+      (c) => c.toMap(),
+      SportCategory.fromMap,
+    ),
+    _modelStore('equipment', _equipment, (e) => e.toMap(), Equipment.fromMap),
+    _modelStore('tags', _tags, (t) => t.toMap(), Tag.fromMap),
+    _modelStore(
+      'templates',
+      _templates,
+      (t) => t.toMap(),
+      WorkoutTemplate.fromMap,
+    ),
+    _modelStore(
+      'template_segments',
+      _templateSegments,
+      (s) => s.toMap(),
+      TemplateSegment.fromMap,
+    ),
+    _modelStore(
+      'template_efforts',
+      _templateEfforts,
+      (e) => e.toMap(),
+      TemplateEffort.fromMap,
+    ),
+    _modelStore(
+      'template_targets',
+      _templateTargets,
+      (t) => t.toMap(),
+      TemplateTarget.fromMap,
+    ),
+    // The legacy by-id nutrition box: the Mock never wrote it, and nothing
+    // reads it once the day-key box carries the targets.
+    _MockBackupStore(
+      'nutrition_targets',
+      read: () => <String, Object?>{},
+      write: (rows) {},
+    ),
+    _MockBackupStore(
+      'nutrition_targets_by_date',
+      read: () => <String, Object?>{
+        for (final entry in _nutritionTargetsByDate.entries)
+          _dayKey(entry.key).toString(): _jsonSafeMap(entry.value.toMap()),
+      },
+      write: (rows) {
+        _nutritionTargetsByDate.clear();
+        for (final row in rows.values) {
+          final target = NutritionTarget.fromMap(_asRow(row));
+          final dateMs = target.dateMs;
+          if (dateMs != null) _nutritionTargetsByDate[dateMs] = target;
+        }
+      },
+    ),
+    _modelStore('food_groups', _foodGroups, (g) => g.toMap(), FoodGroup.fromMap),
+    // Only the user's library rows travel in `foods`; a bundled-catalog row
+    // lives in `foods_catalog`, which no snapshot carries (D-27810).
+    _MockBackupStore(
+      'foods',
+      read: () => _modelRows(<String, Food>{
+        for (final entry in _foods.entries)
+          if (!entry.value.isCatalog) entry.key: entry.value,
+      }, (f) => f.toMap()),
+      write: (rows) => _foods
+        ..clear()
+        ..addAll(_parsedRows(rows, Food.fromMap)),
+    ),
+    _modelStore(
+      'consumed_foods',
+      _consumedFoods,
+      (c) => c.toMap(),
+      ConsumedFood.fromMap,
+    ),
+    _MockBackupStore(
+      'water_log',
+      read: _waterRows,
+      write: _importWaterRows,
+    ),
+    _MockBackupStore(
+      'round_instances',
+      read: () => _effortRows(_roundInstances, (r) => r.toMap(), (r) => r.id),
+      write: (rows) => _replaceEffortRows(
+        _roundInstances,
+        rows,
+        RoundInstance.fromMap,
+        (r) => r.effortId,
+      ),
+    ),
+    _MockBackupStore(
+      'timed_instances',
+      read: () => _effortRows(_timedInstances, (t) => t.toMap(), (t) => t.id),
+      write: (rows) => _replaceEffortRows(
+        _timedInstances,
+        rows,
+        TimedInstance.fromMap,
+        (t) => t.effortId,
+      ),
+    ),
+    _MockBackupStore(
+      'entry_rests',
+      read: () => _effortRows(_entryRests, (r) => r.toMap(), (r) => r.id),
+      write: (rows) => _replaceEffortRows(
+        _entryRests,
+        rows,
+        EntryRest.fromMap,
+        (r) => r.effortId,
+      ),
+    ),
+    // The Mock keys a note by its exercise; Hive keys it by the note id, so
+    // the row travels under `note.id` and lands back under `note.exerciseId`.
+    _MockBackupStore(
+      'exercise_notes',
+      read: () =>
+          _modelRows(_exerciseNotes, (n) => n.toMap(), keyOf: (n) => n.id),
+      write: (rows) => _exerciseNotes
+        ..clear()
+        ..addAll(
+          _parsedRows(
+            rows,
+            ExerciseNote.fromMap,
+            keyOf: (n) => n.exerciseId,
+          ),
+        ),
+    ),
+    _modelStore(
+      'planned_sessions',
+      _plannedSessions,
+      (p) => p.toMap(),
+      PlannedSession.fromMap,
+    ),
+    _modelStore(
+      'training_periods',
+      _periods,
+      (p) => p.toMap(),
+      TrainingPeriod.fromMap,
+    ),
+    _modelStore(
+      'session_blocks',
+      _sessionBlocks,
+      (b) => b.toMap(),
+      SessionBlock.fromMap,
+    ),
+    _modelStore(
+      'watch_inbox',
+      _watchInbox,
+      (e) => e.toMap(),
+      WatchInboxEntry.fromMap,
+    ),
+    _modelStore(
+      'sensor_summaries',
+      _sensorSummaries,
+      (s) => s.toMap(),
+      SensorSummary.fromMap,
+    ),
+    _modelStore(
+      'session_energy',
+      _sessionEnergy,
+      (e) => e.toMap(),
+      SessionEnergy.fromMap,
+    ),
+  ];
+
+  List<_MockBackupListStore> _backupListStores() => [
+    _MockBackupListStore(
+      'exercise_muscle_groups',
+      read: () => <String, List<Object?>>{
+        for (final entry in _exerciseMuscleLinks.entries)
+          entry.key: _jsonSafeList([
+            for (final link in entry.value) link.toMap(),
+          ]),
+      },
+      write: (rows) => _exerciseMuscleLinks
+        ..clear()
+        ..addAll(<String, List<ExerciseMuscleLink>>{
+          for (final entry in rows.entries)
+            entry.key: <ExerciseMuscleLink>[
+              for (final row in entry.value)
+                ExerciseMuscleLink.fromMap(_asRow(row)),
+            ],
+        }),
+    ),
+    _stringListStore('exercise_equipment', _exerciseEquipment),
+    _stringListStore('exercise_tags', _exerciseTags),
+    _stringListStore('metric_effort_kinds', _metricEffortKinds),
+    _stringListStore('exercise_capabilities', _exerciseCapabilities),
+  ];
+
+  /// One map box backed by a store of models: the key is the store key (the
+  /// row's own id) and the value is the model's `toMap()`.
+  _MockBackupStore _modelStore<T>(
+    String name,
+    Map<String, T> store,
+    Map<String, dynamic> Function(T) toMap,
+    T Function(Map<String, dynamic>) fromMap,
+  ) => _MockBackupStore(
+    name,
+    read: () => _modelRows(store, toMap),
+    write: (rows) => store
+      ..clear()
+      ..addAll(_parsedRows(rows, fromMap)),
+  );
+
+  /// One list box backed by a store of string lists, keyed by the parent id.
+  _MockBackupListStore _stringListStore(
+    String name,
+    Map<String, List<String>> store,
+  ) => _MockBackupListStore(
+    name,
+    read: () => <String, List<Object?>>{
+      for (final entry in store.entries) entry.key: _jsonSafeList(entry.value),
+    },
+    write: (rows) => store
+      ..clear()
+      ..addAll(<String, List<String>>{
+        for (final entry in rows.entries)
+          entry.key: List<String>.from(entry.value),
+      }),
+  );
+
+  static Map<String, Object?> _modelRows<T>(
+    Map<String, T> store,
+    Map<String, dynamic> Function(T) toMap, {
+    String Function(T)? keyOf,
+  }) => <String, Object?>{
+    for (final entry in store.entries)
+      (keyOf == null ? entry.key : keyOf(entry.value)): _jsonSafeMap(
+        toMap(entry.value),
+      ),
+  };
+
+  static Map<String, T> _parsedRows<T>(
+    Map<String, Object?> rows,
+    T Function(Map<String, dynamic>) fromMap, {
+    String Function(T)? keyOf,
+  }) {
+    final parsed = <String, T>{};
+    for (final entry in rows.entries) {
+      final row = fromMap(_asRow(entry.value));
+      parsed[keyOf == null ? entry.key : keyOf(row)] = row;
+    }
+    return parsed;
+  }
+
+  /// Rows held in per-parent lists (`round_instances`, `timed_instances`,
+  /// `entry_rests`) flatten to one row per id, the key Hive writes them under.
+  static Map<String, Object?> _effortRows<T>(
+    Map<String, List<T>> store,
+    Map<String, dynamic> Function(T) toMap,
+    String Function(T) idOf,
+  ) {
+    final rows = <String, Object?>{};
+    for (final entries in store.values) {
+      for (final entry in entries) {
+        rows[idOf(entry)] = _jsonSafeMap(toMap(entry));
+      }
+    }
+    return rows;
+  }
+
+  static void _replaceEffortRows<T>(
+    Map<String, List<T>> store,
+    Map<String, Object?> rows,
+    T Function(Map<String, dynamic>) fromMap,
+    String Function(T) effortIdOf,
+  ) {
+    store.clear();
+    for (final entry in rows.entries) {
+      final row = fromMap(_asRow(entry.value));
+      (store[effortIdOf(row)] ??= <T>[]).add(row);
+    }
+  }
+
+  /// `water_log` keyed by the calendar day's UTC midnight (plan 235). The Mock
+  /// stores the volume and the applied-tap ledger, not row timestamps, so a
+  /// row carries the fields it can fill (D-27810).
+  Map<String, Object?> _waterRows() {
+    final dates = <int>{
+      ..._waterVolumesByDate.keys,
+      ..._waterTapIdsByDate.keys,
+    };
+    final rows = <String, Object?>{};
+    for (final dateMs in dates) {
+      final key = _dayKey(dateMs);
+      final ledger = _waterTapIdsByDate[dateMs];
+      rows[key.toString()] = <String, Object?>{
+        'id': WaterLogEntry.idForDate(key),
+        'date_ms': key,
+        'volume_ml': _waterVolumesByDate[dateMs] ?? 0,
+        if (ledger != null) 'applied_tap_ids': _jsonSafeList(ledger),
+      };
+    }
+    return rows;
+  }
+
+  void _importWaterRows(Map<String, Object?> rows) {
+    _waterVolumesByDate.clear();
+    _waterTapIdsByDate.clear();
+    for (final row in rows.values) {
+      final map = _asRow(row);
+      final dateMs = OmniDateUtils.localMidnightOfDayKeyMs(
+        map['date_ms'] as int,
+      );
+      final volume = map['volume_ml'];
+      _waterVolumesByDate[dateMs] = volume is int ? volume : 0;
+      final ledger = map['applied_tap_ids'];
+      if (ledger is List) {
+        _waterTapIdsByDate[dateMs] = List<String>.from(ledger);
+      }
+    }
+  }
+
+  /// Every meta value a Hive meta box holds, minus the device-only ones, in
+  /// the shape the Hive export produces: the prefs as they are, the
+  /// tombstones under their prefixed key, and the two version ints when the
+  /// Mock has them (an absent version is an absent key, as on the Hive side).
+  Map<String, Object?> _exportMeta() {
+    final meta = <String, Object?>{
+      for (final entry in _boolPrefs.entries)
+        if (!_backupDeviceOnlyMetaKeys.contains(entry.key))
+          entry.key: entry.value,
+      for (final entry in _stringPrefs.entries)
+        if (!_backupDeviceOnlyMetaKeys.contains(entry.key))
+          entry.key: entry.value,
+      for (final entry in _seedEntryTouched.entries)
+        '$_seedEntryTouchedKeyPrefix${entry.key}': entry.value,
+    };
+    final dataVersion = _dataVersion;
+    if (dataVersion != null) meta[_dataVersionKey] = dataVersion;
+    final catalogVersion = _catalogVersion;
+    if (catalogVersion != null) meta[_catalogVersionKey] = catalogVersion;
+    return meta;
+  }
+
+  /// Replaces the carried meta values and only those: a device-only key keeps
+  /// the device's value, and a key the snapshot leaves out is gone, so the
+  /// versions read the way a Hive store without those keys reads.
+  void _importMeta(Map<String, Object?> meta) {
+    for (final key in <String>[..._boolPrefs.keys, ..._stringPrefs.keys]) {
+      if (_backupDeviceOnlyMetaKeys.contains(key)) continue;
+      _boolPrefs.remove(key);
+      _stringPrefs.remove(key);
+    }
+    // Every tombstone is a carried meta key, so all of them are stale.
+    _seedEntryTouched.clear();
+
+    for (final entry in meta.entries) {
+      final key = entry.key;
+      if (_backupDeviceOnlyMetaKeys.contains(key)) continue;
+      final value = entry.value;
+      if (value is bool) {
+        if (key.startsWith(_seedEntryTouchedKeyPrefix)) {
+          _seedEntryTouched[key.substring(
+            _seedEntryTouchedKeyPrefix.length,
+          )] = value;
+        } else {
+          _boolPrefs[key] = value;
+        }
+      } else if (value is String) {
+        _stringPrefs[key] = value;
+      }
+    }
+
+    final dataVersion = meta[_dataVersionKey];
+    _dataVersion = dataVersion is int ? dataVersion : null;
+    final catalogVersion = meta[_catalogVersionKey];
+    _catalogVersion = catalogVersion is int ? catalogVersion : null;
+  }
+
+  /// The zone-independent day key of a local-midnight day instant: the
+  /// calendar date's UTC midnight (plan 235).
+  static int _dayKey(int dateMs) =>
+      OmniDateUtils.dayKeyMs(OmniDateUtils.fromMs(dateMs));
+
+  static Map<String, dynamic> _asRow(Object? value) =>
+      Map<String, dynamic>.from(value as Map);
+
+  /// A JSON-safe deep copy of a stored value (D-27803).
+  static Object? _jsonSafeValue(Object? value) {
+    if (value is Map) return _jsonSafeMap(value);
+    if (value is List) return _jsonSafeList(value);
+    return value;
+  }
+
+  static Map<String, Object?> _jsonSafeMap(Map<dynamic, dynamic> value) {
+    return <String, Object?>{
+      for (final entry in value.entries)
+        entry.key.toString(): _jsonSafeValue(entry.value),
+    };
+  }
+
+  static List<Object?> _jsonSafeList(List<dynamic> value) {
+    return <Object?>[for (final item in value) _jsonSafeValue(item)];
+  }
 
   /// D-131: a summary is deleted together with its target. Removes every
   /// summary of [scope] whose target is one of [targetIds].

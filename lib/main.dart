@@ -8,6 +8,8 @@ import 'app/startup_root.dart';
 import 'core/models/app_version_info.dart';
 import 'core/platform/screen_awake_channel.dart';
 import 'core/services/bundled_catalog_source.dart';
+import 'core/services/backup_file_gateway.dart';
+import 'core/services/backup_service.dart';
 import 'core/services/catalog_refresh_service.dart';
 import 'core/services/exercise_library_service.dart';
 import 'core/services/active_energy_service.dart';
@@ -466,6 +468,9 @@ Future<Widget> runStartup({
   // string lives in this catch block only, never reaches a widget.
   final appVersionInfo = await loadAppVersionInfo();
 
+  final backupService = BackupService(repository, appVersionInfo);
+  final backupFileGateway = PlatformBackupFileGateway();
+
   return MyApp(
     repository: repository,
     showOnboarding: showOnboarding,
@@ -486,6 +491,9 @@ Future<Widget> runStartup({
     timerAlertService: timerAlertService,
     restNotificationService: restNotificationService,
     appVersionInfo: appVersionInfo,
+    // Plan 278b D-27828: the Settings DATA section's export and import.
+    backupService: backupService,
+    backupFileGateway: backupFileGateway,
     // D-96: the phone asks the wrist for its session once per resume. Null
     // without a watch graph, so no observer is mounted at all.
     onWatchResume: watchSync?.sync,

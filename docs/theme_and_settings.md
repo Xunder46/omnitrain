@@ -95,7 +95,7 @@ enumerated here — the list is presentation, and prose enumeration of it drifts
 
 ### Sections
 
-The screen groups preferences, sound and alert behaviour, workout follow-up, appearance, the
+The screen groups preferences, sound and alert behaviour, data export and import, workout follow-up, appearance, the
 platform-health sync toggles, and the watch's link status. Two
 rules matter beyond the row list:
 
@@ -149,7 +149,7 @@ operation.
 
 ### Removed Surface
 
-The Settings screen does not include account-management rows such as sign-in, export-data, or account-removal actions.
+The Settings screen does not include account-management rows such as sign-in or account-removal actions; data export and import live in the DATA section.
 
 The platform-health toggles are the one settings area that can fail to take effect: an OS permission
 denial is persisted as its own toggle state (rather than silently reading as off) so the row can
@@ -175,6 +175,65 @@ a delete clears it first (plan 90). Switching Write workouts on asks Health for 
 A session the watch runs gets its workout from the watch, never also from the phone: the phone
 writes nothing when the wrist ends it, or when the phone ends a session the wrist is running with an
 exercise in it (plan 89c1; `S-89c1-*` in `test/health_platform_test.dart`).
+
+---
+
+## Data: export and import
+
+The Settings screen's DATA section — after HEALTH, before APPEARANCE — carries two rows,
+`Export data` and `Import data`, backed by `BackupService`
+([Service & Utility Classes](state_management/services_and_utils.md)) and the
+`BackupFileGateway` port (`lib/core/services/backup_file_gateway.dart`, the only file allowed to
+import `share_plus`/`file_picker`). The section renders only when both a service and a gateway
+reach the screen, and each row announces its full action label to screen readers. Verified by
+`test/settings_data_section_test.dart` (group `DATA section rows`:
+`S-27821 the DATA header and both rows render between HEALTH and APPEARANCE`; group
+`DATA section layout`: `S-27831 the DATA section scrolls at 390x844 with no overflow and labelled
+rows`, `S-27831b the rows announce their full action labels, not the plain text`).
+
+`Export data` hands one backup file to the share sheet under the file name the local date builds
+(`BackupService.fileName`); a failed export shows `Could not export. Try again.` as a message,
+never the share sheet, and a second tap while a share is pending shares nothing more. Verified by
+`test/settings_data_section_test.dart` (group `Export data flow`:
+`S-27822 tapping the export row shares one backup file with today's name`,
+`S-27834 a service whose export throws shows the error message and never shares`; group
+`Export re-entry guard`:
+`S-27822b a second tap while the first share is pending does not share twice`).
+
+`Import data` reads the picked file as text through the gateway and runs the service's checks
+before anything is shown: a file that is not a backup, cannot be read, or was made by a newer app
+answers with the service's refusal reason as an error and opens no dialog. A file that passes opens
+a `Replace all data?` confirmation whose body names the file's date and counts; Cancel, a barrier
+tap and a closed picker restore nothing; while a restore runs a non-dismissible progress is shown
+and a second import is refused. Verified by `test/settings_data_section_test.dart` (group
+`Import data flow`: `S-27823 the picker returning null does nothing`,
+`S-27824 a picked text that is not a backup shows the reason, opens no dialog and changes nothing`,
+`S-27835 a backup from a newer build shows the newer-app reason and restores nothing`,
+`S-27833 the confirmation body names the file's date and counts, plural and singular`,
+`S-27825 Cancel and a barrier tap restore nothing; Replace restores the file's data`,
+`S-27827 the restore holds the blocking progress and blocks re-entry until it resolves`,
+`S-27824b a picker that throws shows the open-failure message and no dialog`,
+`S-27827b the import handler ignores a second call while a restore runs`).
+
+Confirming the dialog replaces the whole store, and when the restore resolves the running app is
+swapped for the Restore-complete screen — `Restore complete`, then
+`Close OmniTrain and open it again to finish. Your data is restored.` — with no way back, so none
+of the old in-memory data stays usable. The swap is deliberate rather than an in-process restart:
+re-running startup inside the live process would run the diagnostics observer, the audio players,
+the repository listeners and the watch stream twice. Verified by
+`test/restore_complete_screen_test.dart` (`S-27828 — showRestartRequired replaces the fake running
+app, disposes it and renders the Restore-complete screen`,
+`S-27828 — the restore-complete screen offers no way out: no back button, no action button,
+system back does nothing`) and by `test/backup_restore_end_to_end_test.dart`
+(`S-27829 the whole chain: repo A exports, repo B restores through the Settings flow inside
+StartupRoot`,
+`S-27836 the next launch's flag read sees the restored onboarding_complete and data version`).
+With an Apple Watch connected, the next launch after a restore sends the phone's reference data
+to the wrist as at any launch; the restore itself touches nothing on the watch. This is an owner
+device check, unguarded by a test: export on one phone, restore on another (or after deleting a
+workout), reopen the app, and confirm the wrist shows the restored routines.
+The file itself, what it carries and what a restore refuses are
+[DB Integration](db_integration.md#backup-file)'s.
 
 ---
 

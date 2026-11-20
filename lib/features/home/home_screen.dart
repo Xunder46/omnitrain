@@ -5,6 +5,8 @@ import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/models/app_version_info.dart';
 import '../../core/services/diagnostics_log.dart';
+import '../../core/services/backup_file_gateway.dart';
+import '../../core/services/backup_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -22,6 +24,7 @@ import '../routine/my_routines_screen.dart';
 import '../calendar/calendar_screen.dart';
 import '../profile/profile_screen.dart';
 import '../settings/settings_screen.dart';
+import '../../app/startup_root.dart';
 import '../stats/stats_screen.dart';
 import '../exercise/exercise_library_screen.dart';
 import 'widgets/nutrition_summary_card.dart';
@@ -107,6 +110,11 @@ class HomeScreen extends StatefulWidget {
   /// Null without a log, and Settings then carries no Diagnostics row.
   final DiagnosticsLog? diagnostics;
 
+  /// Backup service and file gateway, handed on to Settings (plan 278b
+  /// D-27828). Null without either, and Settings then carries no DATA section.
+  final BackupService? backupService;
+  final BackupFileGateway? backupFileGateway;
+
   HomeScreen({
     super.key,
     required this.workoutState,
@@ -127,6 +135,8 @@ class HomeScreen extends StatefulWidget {
     this.appVersionInfo,
     this.watchLinkState,
     this.diagnostics,
+    this.backupService,
+    this.backupFileGateway,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -1139,7 +1149,7 @@ class _HomeScreenState extends State<HomeScreen>
         icon: Icons.tune,
         onTap: () => OmniNavigator.push(
           context,
-          (_) => SettingsScreen(
+          (ctx) => SettingsScreen(
             settingsState: widget.settingsState,
             timerAlertService: widget.timerAlertService,
             restNotificationService: widget.restNotificationService,
@@ -1149,6 +1159,9 @@ class _HomeScreenState extends State<HomeScreen>
                 const AppVersionInfo(version: '0.0.0', build: '0'),
             watchLinkState: widget.watchLinkState,
             diagnostics: widget.diagnostics,
+            backupService: widget.backupService,
+            backupFileGateway: widget.backupFileGateway,
+            onDataRestored: AppRestart.maybeOf(ctx)?.showRestartRequired,
           ),
         ),
       ),

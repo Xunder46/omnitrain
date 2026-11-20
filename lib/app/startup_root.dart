@@ -6,6 +6,7 @@ import '../core/constants/omni_theme.dart';
 import '../core/services/crash_reporting_service.dart';
 import '../core/services/startup_failure_diagnostic_writer.dart';
 import '../features/startup/startup_failure_screen.dart';
+import '../features/startup/restore_complete_screen.dart';
 import '../features/startup/startup_preparing_screen.dart';
 
 /// Signature for the routine that performs OmniTrain's startup work
@@ -41,7 +42,32 @@ final _startupFailureDiagnosticWriter = StartupFailureDiagnosticWriter.create();
 ///  - [succeeded] — the runner returned a widget. The widget MUST render
 ///    that returned widget. ONLY reachable from [preparing] — a
 ///    successful launch never passes through [failed].
-enum _StartupLifecycle { preparing, succeeded, failed }
+///  - [restoreComplete] — a backup was restored (plan 278b, D-27824): the
+///    running app was replaced by `RestoreCompleteScreen`, which asks the user
+///    to close and reopen the app. Only reachable from [succeeded], through
+///    [_StartupRootState.showRestartRequired]; there is no way back.
+enum _StartupLifecycle { preparing, succeeded, failed, restoreComplete }
+
+/// Lets a screen deep in the running app replace the whole app with the
+/// Restore-complete screen after a backup restore (plan 278b, D-27824): the
+/// restored data is only read at the next launch, so nothing of the old
+/// in-memory state may stay usable.
+class AppRestart extends InheritedWidget {
+  const AppRestart({
+    super.key,
+    required this.showRestartRequired,
+    required super.child,
+  });
+
+  final VoidCallback showRestartRequired;
+
+  /// The nearest [AppRestart], or null when there is none (tests, previews).
+  static AppRestart? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<AppRestart>();
+
+  @override
+  bool updateShouldNotify(AppRestart oldWidget) => false;
+}
 
 /// Top-level widget that owns the app's startup phase.
 ///
@@ -249,6 +275,17 @@ class _StartupRootState extends State<StartupRoot> {
     }
   }
 
+  /// Replaces the running app with the Restore-complete screen (plan 278b,
+  /// D-27824). The old tree unmounts and its States dispose; nothing of the
+  /// old in-memory data stays usable.
+  void showRestartRequired() {
+    if (!mounted) return;
+    setState(() {
+      _runningApp = null;
+      _lifecycle = _StartupLifecycle.restoreComplete;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     switch (_lifecycle) {
@@ -263,7 +300,7 @@ class _StartupRootState extends State<StartupRoot> {
         // If a future bug violates that contract, fall back to the
         // preparing surface rather than crash.
         if (app == null) return const StartupPreparingScreen();
-        return app;
+        return AppRestart(showRestartRequired: showRestartRequired, child: app);
       case _StartupLifecycle.failed:
         // Failure path: wrap the failure screen in a MaterialApp that
         // uses the default theme tokens. We can't hand it the user's
@@ -278,6 +315,13 @@ class _StartupRootState extends State<StartupRoot> {
             onRetry: _attempt,
             isRetrying: _attemptInFlight,
           ),
+        );
+      case _StartupLifecycle.restoreComplete:
+        return MaterialApp(
+          title: 'Omnitrain',
+          debugShowCheckedModeBanner: false,
+          theme: widget.failureTheme,
+          home: const RestoreCompleteScreen(),
         );
       case _StartupLifecycle.preparing:
         // Preparing path: render the neutral preparation surface.

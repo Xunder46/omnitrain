@@ -1,3 +1,4 @@
+import '../models/backup_snapshot.dart';
 import '../models/models.dart';
 
 /// Abstract interface for workout data operations
@@ -886,4 +887,32 @@ abstract class WorkoutRepository {
 
   /// The energy row stored for [sessionId], or `null` when none is stored.
   Future<SessionEnergy?> getSessionEnergy(String sessionId);
+
+  // ─── Backup ──────────────────────────────────────────────────────────────
+  //
+  // One snapshot holds everything the user owns: sessions, segments, efforts,
+  // observations, instances, rests, blocks, routines, planned sessions,
+  // periods, profile, measurements, nutrition, foods, water, wrist inbox rows
+  // and the reference sets beside them, plus the preference and bookkeeping
+  // meta values. The bundled food catalog and the device-only meta values do
+  // not travel (D-27801, D-27803).
+  //
+  // Stored maps are copied as they are, never re-derived: the export follows
+  // every future model change without code (D-27808).
+  //
+  // Hive ↔ Mock parity: `test/backup_snapshot_repository_test.dart`.
+
+  /// Every user-data collection of the store, its rows and the meta values
+  /// the backup carries, with the device's data and catalog versions.
+  ///
+  /// A collection with no rows is present as an empty map, so a restore of a
+  /// fresh store is well-formed (S-27814).
+  Future<BackupSnapshot> exportSnapshot();
+
+  /// REPLACES the rows of every collection [snapshot] carries with its rows,
+  /// and leaves every box it does not carry exactly as it was.
+  ///
+  /// Throws [ArgumentError] for a collection name the repository does not
+  /// know, before changing anything.
+  Future<void> importSnapshot(BackupSnapshot snapshot);
 }
