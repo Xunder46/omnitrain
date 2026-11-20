@@ -199,6 +199,8 @@ class WorkoutState extends ChangeNotifier {
       _sessionCore.computeSessionSummary();
   List<SessionTemplateExercise> buildTemplateDraftExercises() =>
       _sessionCore.buildTemplateDraftExercises();
+  List<SessionTemplateBlock> buildTemplateDraftBlocks() =>
+      _sessionCore.buildTemplateDraftBlocks();
   Future<List<TrainingSession>> getAllSessions() =>
       _sessionCore.getAllSessions();
   Future<List<TrainingSession>> getSessionsByDateRange(int fromMs, int toMs) =>

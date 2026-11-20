@@ -650,9 +650,7 @@ exercises by relevance.
   creating from the library lives on `ExerciseLibraryScreen`'s header `+`
 - Returns the selected `Exercise` on pop
 
-Pushed from `WorkoutSessionScreen`,
-`RoutineSetupScreen`, and the save-as-routine sheet on
-`SessionSummaryScreen`.
+Pushed from `WorkoutSessionScreen` and `RoutineSetupScreen`.
 
 ### `MetricChooserDialog`
 

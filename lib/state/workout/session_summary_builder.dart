@@ -213,109 +213,178 @@ class SessionSummaryBuilder {
 
   List<SessionTemplateExercise> buildTemplateDraftExercises() {
     final drafts = <SessionTemplateExercise>[];
-
     for (final segment in _segments) {
-      final segmentEfforts = _efforts[segment.id] ?? [];
+      for (final effort in _efforts[segment.id] ?? const <SegmentEffort>[]) {
+        drafts.add(_draftForEffort(effort));
+      }
+    }
+    return drafts;
+  }
 
-      for (final effort in segmentEfforts) {
-        final exerciseId = effort.exerciseId ?? 'unknown';
-        final exerciseName =
-            _exerciseCache[exerciseId]?.name ?? 'Unknown Exercise';
+  /// One draft exercise for [effort]: its name and the per-effort targets
+  /// (plan 279). The body is the per-effort loop of the old
+  /// `buildTemplateDraftExercises`, unchanged.
+  SessionTemplateExercise _draftForEffort(SegmentEffort effort) {
+    final exerciseId = effort.exerciseId ?? 'unknown';
+    final exerciseName = _exerciseCache[exerciseId]?.name ?? 'Unknown Exercise';
 
-        List<TemplateTargetDraft> targets;
-        if (effort.effortKind == 'round') {
-          final rounds = _timerManager.getRoundsForEffort(effort.id);
-          final plannedDuration = rounds.isNotEmpty
-              ? rounds.first.plannedDurationSecs
-              : WorkoutConstants.defaultRoundDurationSecs;
-          targets = [
-            TemplateTargetDraft(
-              metricId: MetricIds.rounds,
-              setIndex: 0,
-              unitId: MetricIds.unitRounds,
-              valueInt: rounds.isNotEmpty ? rounds.length : 1,
-              valueReal: null,
-              valueText: null,
-            ),
-            TemplateTargetDraft(
-              metricId: MetricIds.roundDuration,
-              setIndex: 0,
-              unitId: MetricIds.unitSeconds,
-              valueInt: plannedDuration,
-              valueReal: null,
-              valueText: null,
-            ),
-          ];
-        } else if (effort.effortKind == 'timed' ||
-            effort.effortKind == 'drill') {
-          final timedInstances = _timerManager.getTimedInstancesForEffort(
-            effort.id,
-          );
-          final targetDuration = timedInstances.isNotEmpty
-              ? timedInstances.first.targetDurationSecs
-              : 300;
-          targets = [
-            TemplateTargetDraft(
-              metricId: MetricIds.duration,
-              setIndex: 0,
-              unitId: MetricIds.unitSeconds,
-              valueInt: targetDuration,
-              valueReal: null,
-              valueText: null,
-            ),
-          ];
+    List<TemplateTargetDraft> targets;
+    if (effort.effortKind == 'round') {
+      final rounds = _timerManager.getRoundsForEffort(effort.id);
+      final plannedDuration = rounds.isNotEmpty
+          ? rounds.first.plannedDurationSecs
+          : WorkoutConstants.defaultRoundDurationSecs;
+      targets = [
+        TemplateTargetDraft(
+          metricId: MetricIds.rounds,
+          setIndex: 0,
+          unitId: MetricIds.unitRounds,
+          valueInt: rounds.isNotEmpty ? rounds.length : 1,
+          valueReal: null,
+          valueText: null,
+        ),
+        TemplateTargetDraft(
+          metricId: MetricIds.roundDuration,
+          setIndex: 0,
+          unitId: MetricIds.unitSeconds,
+          valueInt: plannedDuration,
+          valueReal: null,
+          valueText: null,
+        ),
+      ];
+    } else if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
+      final timedInstances = _timerManager.getTimedInstancesForEffort(effort.id);
+      final targetDuration = timedInstances.isNotEmpty
+          ? timedInstances.first.targetDurationSecs
+          : 300;
+      targets = [
+        TemplateTargetDraft(
+          metricId: MetricIds.duration,
+          setIndex: 0,
+          unitId: MetricIds.unitSeconds,
+          valueInt: targetDuration,
+          valueReal: null,
+          valueText: null,
+        ),
+      ];
 
-          if (effort.effortKind == 'drill') {
-            final extraWeight = _entryExtraWeight(effort.id, timedInstances);
-            targets.add(
-              TemplateTargetDraft(
-                metricId: MetricIds.extraWeight,
-                setIndex: 0,
-                unitId: MetricIds.unitKg,
-                valueReal: extraWeight,
-                valueInt: null,
-                valueText: null,
-              ),
-            );
-          }
-          if (effort.effortKind == 'timed') {
-            final rows = _observations[effort.id] ?? const <EffortObservation>[];
-            final hasExtraWeightRow = rows.any(
-              (o) => o.metricId == MetricIds.extraWeight,
-            );
-            if (hasExtraWeightRow) {
-              targets.add(
-                TemplateTargetDraft(
-                  metricId: MetricIds.extraWeight,
-                  setIndex: 0,
-                  unitId: MetricIds.unitKg,
-                  valueReal: _entryExtraWeight(effort.id, timedInstances),
-                  valueInt: null,
-                  valueText: null,
-                ),
-              );
-            }
-          }
-        } else {
-          final observations = _observations[effort.id] ?? [];
-          targets = _buildTemplateTargetsFromObservations(
-            observations,
-            effort.effortKind,
-          );
-        }
-
-        drafts.add(
-          SessionTemplateExercise(
-            exerciseId: exerciseId,
-            name: exerciseName,
-            effortKind: effort.effortKind,
-            targets: targets,
+      if (effort.effortKind == 'drill') {
+        final extraWeight = _entryExtraWeight(effort.id, timedInstances);
+        targets.add(
+          TemplateTargetDraft(
+            metricId: MetricIds.extraWeight,
+            setIndex: 0,
+            unitId: MetricIds.unitKg,
+            valueReal: extraWeight,
+            valueInt: null,
+            valueText: null,
           ),
         );
       }
+      if (effort.effortKind == 'timed') {
+        final rows = _observations[effort.id] ?? const <EffortObservation>[];
+        final hasExtraWeightRow = rows.any(
+          (o) => o.metricId == MetricIds.extraWeight,
+        );
+        if (hasExtraWeightRow) {
+          targets.add(
+            TemplateTargetDraft(
+              metricId: MetricIds.extraWeight,
+              setIndex: 0,
+              unitId: MetricIds.unitKg,
+              valueReal: _entryExtraWeight(effort.id, timedInstances),
+              valueInt: null,
+              valueText: null,
+            ),
+          );
+        }
+      }
+    } else {
+      final observations = _observations[effort.id] ?? [];
+      targets = _buildTemplateTargetsFromObservations(
+        observations,
+        effort.effortKind,
+      );
     }
 
-    return drafts;
+    return SessionTemplateExercise(
+      exerciseId: exerciseId,
+      name: exerciseName,
+      effortKind: effort.effortKind,
+      targets: targets,
+    );
+  }
+
+  /// The session's blocks and loose exercises in the order the session shows
+  /// them, as routine blocks (plan 279). A block keeps its own name and its
+  /// exercises in block order; each run of loose exercises between blocks
+  /// becomes a block named `Main Block`, `Main Block 2`, ... An empty block is
+  /// left out; an exercise whose block is unknown counts as loose (D-27909).
+  List<SessionTemplateBlock> buildTemplateDraftBlocks(
+    List<SessionBlock> sessionBlocks,
+  ) {
+    final all = <SegmentEffort>[
+      for (final segment in _segments)
+        ..._efforts[segment.id] ?? const <SegmentEffort>[],
+    ];
+    int topOf(SegmentEffort e) => e.topLevelOrderIndex ?? e.orderIndex;
+    int inBlockOf(SegmentEffort e) => e.blockOrderIndex ?? e.orderIndex;
+    final blockIds = <String>{for (final b in sessionBlocks) b.id};
+    bool isLoose(SegmentEffort e) =>
+        e.blockId == null || !blockIds.contains(e.blockId);
+
+    final items = <({String id, bool isBlock, int top})>[
+      for (final b in sessionBlocks)
+        (id: b.id, isBlock: true, top: b.topLevelOrderIndex ?? b.orderIndex),
+      for (final e in all.where(isLoose)) (id: e.id, isBlock: false, top: topOf(e)),
+    ]..sort((a, b) {
+        final byTop = a.top.compareTo(b.top);
+        if (byTop != 0) return byTop;
+        if (a.isBlock != b.isBlock) return a.isBlock ? 1 : -1;
+        return a.id.compareTo(b.id);
+      });
+
+    final result = <SessionTemplateBlock>[];
+    var run = <SessionTemplateExercise>[];
+    var runs = 0;
+    void flushRun() {
+      if (run.isEmpty) return;
+      runs++;
+      result.add(
+        SessionTemplateBlock(
+          name: runs == 1 ? 'Main Block' : 'Main Block $runs',
+          exercises: run,
+        ),
+      );
+      run = <SessionTemplateExercise>[];
+    }
+
+    for (final item in items) {
+      if (item.isBlock) {
+        flushRun();
+        final block = sessionBlocks.firstWhere((b) => b.id == item.id);
+        final members = all.where((e) => e.blockId == block.id).toList()
+          ..sort((a, b) {
+            final byBlock = inBlockOf(a).compareTo(inBlockOf(b));
+            if (byBlock != 0) return byBlock;
+            final byTop = topOf(a).compareTo(topOf(b));
+            return byTop != 0 ? byTop : a.id.compareTo(b.id);
+          });
+        if (members.isEmpty) continue;
+        result.add(
+          SessionTemplateBlock(
+            name: block.name,
+            exercises: <SessionTemplateExercise>[
+              for (final m in members) _draftForEffort(m),
+            ],
+          ),
+        );
+      } else {
+        run.add(_draftForEffort(all.firstWhere((e) => e.id == item.id)));
+      }
+    }
+    flushRun();
+    return result;
   }
 
   List<Map<String, dynamic>> buildExercisesWithEntries() {

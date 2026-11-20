@@ -238,6 +238,9 @@ class SessionCore {
   List<SessionTemplateExercise> buildTemplateDraftExercises() =>
       _summaryBuilder.buildTemplateDraftExercises();
 
+  List<SessionTemplateBlock> buildTemplateDraftBlocks() =>
+      _summaryBuilder.buildTemplateDraftBlocks(_blockManager.getSessionBlocks());
+
   List<Map<String, dynamic>> getExercisesWithEntries() =>
       _summaryBuilder.buildExercisesWithEntries();
 

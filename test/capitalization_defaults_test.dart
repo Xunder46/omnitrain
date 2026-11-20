@@ -264,31 +264,6 @@ void main() {
 
   group('Capitalization defaults — SessionSummaryScreen fields', () {
     testWidgets(
-      '"Save as Routine" bottom sheet routine name field is configured for word-case capitalization',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final repo = await _freshRepo();
-        final workoutState = WorkoutState(repo);
-        await workoutState.createNewSession();
-
-        await pumpSessionSummaryScreenWithoutFeelingModal(
-          tester,
-          repo: repo,
-          workoutState: workoutState,
-        );
-
-        // Open the overflow menu and tap "Save as Routine"
-        await tester.tap(find.byType(PopupMenuButton<String>));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Save as Routine'));
-        await tester.pumpAndSettle();
-
-        final tf = tester.widget<TextField>(_fieldByLabel('Routine name'));
-        expect(tf.textCapitalization, TextCapitalization.words);
-      },
-    );
-
-    testWidgets(
       'session note field is configured for sentence-case capitalization',
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));

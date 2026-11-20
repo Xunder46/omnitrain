@@ -290,16 +290,21 @@ void main() {
     ).readAsStringSync();
     // Comment-stripped, so a mention in a doc comment cannot satisfy the guard.
     final stripped = source.replaceAll(RegExp(r'//.*'), '');
+    // Whitespace- and trailing-comma-insensitive for the two listener
+    // statements, so a formatter re-wrap cannot turn the guard red.
+    final compact = stripped
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll(',)', ')');
 
     expect(
-      stripped,
+      compact,
       contains(
         'widget.workoutState.wristSummary.addListener(_reloadHeartRateOnWristSummary);',
       ),
       reason: 'S-10207 the screen listens',
     );
     expect(
-      stripped,
+      compact,
       contains(
         'widget.workoutState.wristSummary.removeListener(_reloadHeartRateOnWristSummary);',
       ),

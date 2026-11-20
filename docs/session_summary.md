@@ -415,15 +415,14 @@ Two entry points feed this screen:
 Summary data loaded on entry:
 
 1. computeSessionSummary from WorkoutState
-2. buildTemplateDraftExercises from WorkoutState
-3. compareGroupsToPreviousSession from SessionSummaryService
-4. computePRs from SessionSummaryService
-5. groupPrsByEffortKind from SessionSummaryService
-6. buildGroupMetrics from SessionSummaryService
-7. computeSessionRestTimeMs from SessionSummaryService — rests clip to the
+2. compareGroupsToPreviousSession from SessionSummaryService
+3. computePRs from SessionSummaryService
+4. groupPrsByEffortKind from SessionSummaryService
+5. buildGroupMetrics from SessionSummaryService
+6. computeSessionRestTimeMs from SessionSummaryService — rests clip to the
    session's window, and an end stored before the start contributes no rest
    (`test/session_summary_inverted_window_test.dart`, `S-153`)
-8. getPreferredWeightUnit from SessionSummaryService
+7. getPreferredWeightUnit from SessionSummaryService
 
 Effort rating sheet: see [Effort Rating Capture](#effort-rating-capture).
 
@@ -452,7 +451,6 @@ Key public methods:
   exercise on the e1RM axis never has a non-null `bestReps` and vice
   versa. See `docs/plans/stats-summary-fix-pack-plan.md`
   Item 2 (rep-based record parity).
-- saveRoutineFromDraft
 - computeSessionRestTimeMs — sums closed `EntryRest` intervals after clipping
   each to the session's window and merging overlaps once; a session whose stored
   end precedes its start has an empty window and the total is `0`
@@ -518,14 +516,39 @@ own start and end move; the moments recorded inside it keep their original times
 
 ## Save as Routine
 
-Available from the summary's overflow menu. The draft is editable — name, exercise order,
-additions and removals — before it is persisted through `saveRoutineFromDraft`. Each exercise line
-names how it is tracked in plain words (`Reps & Sets`, `Time`, `Hold Time`, `Rounds`), and Save
-keeps the summary open with a `Routine saved` message (plan 258,
-`test/save_as_routine_labels_test.dart`).
-The Save button is the shared primary bottom action (`OmniBottomCTA`), and the sheet's surface runs to
-the bottom edge of the screen with no gap under the button (`test/save_as_routine_labels_test.dart`,
-`Save is the shared primary button and the sheet has no gap under it`).
+Available from the summary's overflow menu. Save as Routine opens the routine editor
+(`RoutineSetupScreen`, pushed with `fromSessionDraft`) pre-filled with the session's name, focus
+modality, blocks and order; each run of exercises outside any block drafts a block named
+`Main Block` (`Main Block 2` for the next run), empty session blocks are left out, and a workout
+with no exercise shows `This workout has no exercises to save` instead of opening the editor.
+Verified by `test/save_as_routine_blocks_test.dart` (groups
+`Mock — save-as-routine draft blocks` and `Hive — save-as-routine draft blocks`:
+`S-27901 named session blocks become routine blocks in the session's order`,
+`S-27902 a session with only loose exercises drafts one Main Block`,
+`S-27903 loose runs between blocks become Main Block and Main Block 2`,
+`S-27905 an empty session block is left out; a block holding one exercise stays`) and by
+`test/save_as_routine_flow_test.dart`
+(`S-27910 save-as-routine opens the editor and Save returns to the summary with the routine stored`,
+`S-27913 a historical summary opens the editor with its blocks`,
+`S-27914 a session with no exercise shows a message and opens no editor`).
+
+The editor's Save persists the routine; until then nothing is written. Back
+(header, system back and Cancel) returns to the summary, and with edits the editor asks
+`Unsaved changes` — its body says the edits are discarded to `return to the summary`. Save pops back
+to the summary with the editor's `Routine saved successfully` message, and Done still ends the
+workout afterwards. Verified by `test/routine_setup_from_session_test.dart` (group
+`Plan 279 — the editor opened from a session draft`: `S-27908 back with no edits pops without a
+dialog and stores nothing`, `S-27909 back after an edit asks, Keep editing stays, Discard pops
+without storing`, `S-27911 system back pops a clean editor and asks after an edit`,
+`S-27910 saving stores the routine with its blocks and pops to the host`) and by
+`test/save_as_routine_flow_test.dart` (`S-27910c back without edits returns to the summary; with
+edits it asks first and Discard stores nothing`,
+`S-27910b Done still ends the workout after saving a routine`).
+
+The editor works on the draft — name, exercise order, additions and removals. Each exercise line
+names how it is tracked in plain words (`Reps & Sets`, `Time`, `Hold Time`, `Rounds`)
+(`test/save_as_routine_labels_test.dart`,
+`S-25802 effortKindLabel maps the four kinds and leaves others`).
 
 Each target's value comes from the entry's own row, read through `EntryRows` — never from the row a
 store happens to return first. A `timed` or `drill` template carries no distance target, and its

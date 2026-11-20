@@ -26,6 +26,8 @@ A **template system** that lets users design a workout once and replay it as man
 
 Tapping a routine card body opens `RoutineSetupScreen` without creating a session. The card's play control is the only path that builds the manifest and starts an active session. The card renders no overflow menu; the destructive delete action lives in the editor header.
 
+The editor can open pre-filled from a finished session: Save as Routine on the session summary pushes `RoutineSetupScreen` with `fromSessionDraft`, holding the session's name, focus modality, blocks and order. Verified by `test/save_as_routine_blocks_test.dart` (group `Mock — save-as-routine draft blocks` · `S-27901 named session blocks become routine blocks in the session's order`) and by `test/save_as_routine_flow_test.dart` (`S-27910 save-as-routine opens the editor and Save returns to the summary with the routine stored`).
+
 Header back, system back, and bottom Cancel all funnel through the same
 `_attemptExit` guard. The guard compares the working state against the
 `RoutineSnapshot` baseline captured at editor entry (or at the last

@@ -182,16 +182,38 @@ class GroupComparison {
   const GroupComparison({required this.deltas, this.basis});
 }
 
+/// One routine block of a draft: a session block's name and its exercises in
+/// order (plan 279).
+class SessionTemplateBlock {
+  final String name;
+  final List<SessionTemplateExercise> exercises;
+
+  const SessionTemplateBlock({required this.name, required this.exercises});
+}
+
 class SessionTemplateDraft {
   final String name;
   final String? focusModality;
-  final List<SessionTemplateExercise> exercises;
+  final List<SessionTemplateBlock> blocks;
 
+  /// Pass [blocks] (plan 279), or only [exercises] as a one-block shorthand
+  /// (a single `Main Block`), kept for existing callers.
   SessionTemplateDraft({
     required this.name,
     required this.focusModality,
-    required this.exercises,
-  });
+    List<SessionTemplateBlock>? blocks,
+    List<SessionTemplateExercise>? exercises,
+  }) : assert(blocks != null || exercises != null),
+       blocks =
+           blocks ??
+           <SessionTemplateBlock>[
+             SessionTemplateBlock(name: 'Main Block', exercises: exercises!),
+           ];
+
+  /// Every block's exercises in order: the flat view the old readers use.
+  List<SessionTemplateExercise> get exercises => <SessionTemplateExercise>[
+    for (final block in blocks) ...block.exercises,
+  ];
 }
 
 class SessionTemplateExercise {

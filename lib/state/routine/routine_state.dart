@@ -5,6 +5,7 @@ import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../core/constants/effort_defaults.dart';
 import '../../core/constants/workout_constants.dart';
+import '../../core/models/session_summary.dart';
 
 /// State management for routine (workout template) creation and management.
 ///
@@ -170,6 +171,107 @@ class RoutineState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _setError('Failed to create routine: $e');
+    }
+  }
+
+  /// Plan 279: seed the editor from a finished session's draft. Builds the
+  /// in-memory rows only — one segment per draft block, then each exercise
+  /// with its per-set targets; nothing is written (the editor disables
+  /// autosave and `saveRoutine()` writes on Save). The caller fills the
+  /// name and focus modality from the draft.
+  Future<void> createRoutineFromSessionDraft(SessionTemplateDraft draft) async {
+    _clearError();
+
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final templateId = _newId('template');
+
+      _currentTemplate = WorkoutTemplate(
+        id: templateId,
+        name: draft.name,
+        focusModality: draft.focusModality,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+
+      _currentSegments = [];
+      _segmentEfforts.clear();
+      _currentTargets = [];
+      _exerciseCache.clear();
+
+      if (draft.blocks.isEmpty) {
+        // Same shape as createNewRoutine: one empty Main Block.
+        final segmentId = _newId('tseg');
+        _currentSegments.add(
+          TemplateSegment(
+            id: segmentId,
+            templateId: templateId,
+            orderIndex: 0,
+            segmentType: 'main',
+            name: 'Main Block',
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+        _segmentEfforts[segmentId] = [];
+      }
+
+      for (var b = 0; b < draft.blocks.length; b++) {
+        final block = draft.blocks[b];
+        final segmentId = _newId('tseg');
+        _currentSegments.add(
+          TemplateSegment(
+            id: segmentId,
+            templateId: templateId,
+            orderIndex: b,
+            segmentType: 'main',
+            name: block.name,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+
+        final efforts = <TemplateEffort>[];
+        for (var i = 0; i < block.exercises.length; i++) {
+          final exercise = block.exercises[i];
+          final effortId = _newId('teff');
+          efforts.add(
+            TemplateEffort(
+              id: effortId,
+              templateSegmentId: segmentId,
+              orderIndex: i,
+              effortKind: exercise.effortKind,
+              modality: null,
+              exerciseId: exercise.exerciseId,
+              createdAtMs: now,
+            ),
+          );
+          for (final target in exercise.targets) {
+            _currentTargets.add(
+              TemplateTarget(
+                id: _newId('ttgt'),
+                templateEffortId: effortId,
+                metricId: target.metricId,
+                setIndex: target.setIndex,
+                unitId: target.unitId,
+                targetMin: target.valueReal,
+                targetMax: null,
+                targetInt: target.valueInt,
+                targetText: target.valueText,
+                createdAtMs: now,
+                updatedAtMs: now,
+              ),
+            );
+          }
+        }
+        _segmentEfforts[segmentId] = efforts;
+      }
+
+      _isNewRoutine = true;
+      captureBaseline();
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to create routine from session: $e');
     }
   }
 

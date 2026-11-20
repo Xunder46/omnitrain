@@ -195,7 +195,8 @@ Summary and Stats lives in [Distance Source & Pairing](../distance_source.md).
 |--------|--------|
 | `populateSessionFromManifest(manifest)` | Loads exercises from `RoutineSessionManifest` |
 | `computeSessionSummary()` | Returns `SessionSummary`; counts `RoundState.finished` rounds (both natural completion and early-end logged rounds; not-started/active/paused are excluded) |
-| `buildTemplateDraftExercises()` | Returns `List<SessionTemplateExercise>` for save-as-routine. Each target reads the entry's own row through `EntryRows`; a `timed`/`drill` template carries no distance target (`S-1311`–`S-1315` in `test/state_test.dart`) |
+| `buildTemplateDraftBlocks()` | The session's blocks as `List<SessionTemplateBlock>`, in displayed top-level order, for the Save as Routine editor: named session blocks keep their names and exercise order, each run of exercises outside any block drafts a block named `Main Block` (`Main Block 2` for the next run), an empty session block is left out, and an effort whose `blockId` names no session block counts as loose and joins the surrounding run. Verified by `test/save_as_routine_blocks_test.dart` (groups `Mock — save-as-routine draft blocks` and `Hive — save-as-routine draft blocks`: `S-27901 named session blocks become routine blocks in the session's order` to `S-27906`, `S-27915`–`S-27917`) |
+| `buildTemplateDraftExercises()` | Stays as the flat view: `List<SessionTemplateExercise>` with no block grouping. Each target reads the entry's own row through `EntryRows`; a `timed`/`drill` template carries no distance target (`S-1311`–`S-1315` in `test/state_test.dart`, group `routine draft reads the entry its row belongs to`) |
 
 ---
 

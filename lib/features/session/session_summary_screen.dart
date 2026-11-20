@@ -6,8 +6,6 @@ import '../../core/constants/modality_display.dart';
 import '../../core/constants/modality_colors.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/models/session_summary.dart';
-import '../../core/constants/modality_config.dart';
-import '../../core/constants/effort_defaults.dart';
 import '../../core/utils/session_feeling_utils.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../core/utils/summary_exercise_rows.dart';
@@ -24,12 +22,10 @@ import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/session/effort_rating_sheet.dart';
 import '../../widgets/session/metric_crown_widget.dart';
 import '../../widgets/session/session_distance_card.dart';
-import '../exercise/exercise_picker_screen.dart';
-import '../../widgets/pickers/metric_chooser_dialog.dart';
-import '../../data/models/models.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import 'workout_session_screen.dart';
+import '../routine/routine_setup_screen.dart';
 import '../../core/navigation/navigation.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../widgets/feedback/omni_message.dart';
@@ -108,8 +104,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// Discard should navigate back, not exit to the hub).
   bool get _isHistoricalView => widget.openedFromCalendar;
 
-  List<SessionTemplateExercise> _draftExercises = [];
-
   // ──── Modality grouping constants (presentation only) ────────────────────
 
   /// Fixed render order for modality groups on the summary screen.
@@ -142,7 +136,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _noteController = TextEditingController(
       text: widget.workoutState.currentSession?.note ?? '',
     );
-    _draftExercises = widget.workoutState.buildTemplateDraftExercises();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _showFeelingSheet(context);
     });
@@ -277,7 +270,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Future<void> _refreshSummary() async {
     setState(() {
       _summary = widget.workoutState.computeSessionSummary();
-      _draftExercises = widget.workoutState.buildTemplateDraftExercises();
     });
     await _loadAsyncData();
   }
@@ -541,207 +533,33 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     OmniMessage.show(context, 'Date and time changed');
   }
 
-  Future<void> _openSaveAsRoutineSheet() async {
+  /// Plan 279: Save as Routine opens the routine editor pre-filled from this
+  /// session, keeping its blocks and their order. Back and Save return here.
+  void _openRoutineEditorFromSession() {
     final session = widget.workoutState.currentSession;
     if (session == null) return;
-
+    final blocks = widget.workoutState.buildTemplateDraftBlocks();
+    if (blocks.isEmpty) {
+      OmniMessage.show(context, 'This workout has no exercises to save');
+      return;
+    }
     final date = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
-    final defaultName =
-        '${ModalityDisplay.getName(session.modality)} - ${_formatDate(date)}';
-    var routineName = defaultName;
-
-    final exercises = List<SessionTemplateExercise>.from(_draftExercises);
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            Future<void> addExercise() async {
-              final modality = session.modality;
-              final selectedExercise = await OmniNavigator.push<Exercise>(
-                context,
-                (_) => ExercisePickerScreen(
-                  workoutState: widget.workoutState,
-                  sessionModality: modality,
-                ),
-              );
-
-              if (selectedExercise == null) return;
-
-              String? chosenMetric;
-              if (modality == null) {
-                chosenMetric = await showDialog<String>(
-                  context: context,
-                  builder: (context) =>
-                      MetricChooserDialog(exercise: selectedExercise),
-                );
-
-                if (chosenMetric == null) return;
-              }
-
-              final effortKind = modality != null
-                  ? ModalityConfig.forModality(modality)?.effortKind ?? 'set'
-                  : (chosenMetric != null
-                        ? ModalityConfig.effortKindFromMetric(chosenMetric)
-                        : 'set');
-
-              final defaults = EffortDefaults.getDefaultTargets(effortKind);
-              final targets = defaults.entries
-                  .map(
-                    (entry) => TemplateTargetDraft(
-                      metricId: entry.key,
-                      setIndex: 0,
-                      unitId: null,
-                      valueReal: entry.value is double
-                          ? entry.value as double
-                          : null,
-                      valueInt: entry.value is int ? entry.value as int : null,
-                      valueText: entry.value is String
-                          ? entry.value as String
-                          : null,
-                    ),
-                  )
-                  .toList();
-
-              setSheetState(() {
-                exercises.add(
-                  SessionTemplateExercise(
-                    exerciseId: selectedExercise.id,
-                    name: selectedExercise.name,
-                    effortKind: effortKind,
-                    targets: targets,
-                  ),
-                );
-              });
-            }
-
-            // The surface runs to the bottom edge of the screen; the shared
-            // bottom CTA carries the home-indicator inset (no gap under it).
-            return Container(
-              padding: const EdgeInsets.only(top: 16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-                border: Border.all(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.06),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Save as Routine',
-                                style: Theme.of(context).textTheme.titleLarge,
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: addExercise,
-                              icon: const Icon(Icons.add),
-                              tooltip: 'Add exercise',
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          textCapitalization: TextCapitalization.words,
-                          initialValue: defaultName,
-                          onChanged: (value) => routineName = value,
-                          decoration: const InputDecoration(
-                            labelText: 'Routine name',
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 400,
-                          child: ReorderableListView.builder(
-                            itemCount: exercises.length,
-                            onReorder: (oldIndex, newIndex) {
-                              setSheetState(() {
-                                if (newIndex > oldIndex) newIndex -= 1;
-                                final item = exercises.removeAt(oldIndex);
-                                exercises.insert(newIndex, item);
-                              });
-                            },
-                            itemBuilder: (context, index) {
-                              final exercise = exercises[index];
-                              return ListTile(
-                                key: ValueKey('${exercise.exerciseId}-$index'),
-                                title: Text(exercise.name),
-                                subtitle: Text(
-                                  ModalityDisplay.effortKindLabel(
-                                    exercise.effortKind,
-                                  ),
-                                ),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.close),
-                                  tooltip: 'Remove exercise',
-                                  onPressed: () {
-                                    setSheetState(() {
-                                      exercises.removeAt(index);
-                                    });
-                                  },
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  OmniBottomCTA(
-                    label: 'Save',
-                    onPressed: exercises.isEmpty
-                        ? null
-                        : () async {
-                            final draft = SessionTemplateDraft(
-                              name: routineName.trim().isEmpty
-                                  ? defaultName
-                                  : routineName.trim(),
-                              focusModality: session.modality,
-                              exercises: exercises,
-                            );
-
-                            await widget.sessionSummaryService
-                                .saveRoutineFromDraft(
-                                  draft,
-                                  focusModality: session.modality,
-                                );
-
-                            await widget.routineState.loadRoutines();
-                            if (!mounted) return;
-                            Navigator.pop(context);
-                            // Plan 258: saving the routine keeps the summary
-                            // open; Done still finishes the workout.
-                            OmniMessage.show(
-                              this.context,
-                              'Routine saved',
-                              duration: const Duration(seconds: 2),
-                            );
-                          },
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+    final draft = SessionTemplateDraft(
+      name: '${ModalityDisplay.getName(session.modality)} - ${_formatDate(date)}',
+      focusModality: session.modality,
+      blocks: blocks,
+    );
+    OmniNavigator.push(
+      context,
+      (_) => RoutineSetupScreen(
+        routineState: widget.routineState,
+        workoutState: widget.workoutState,
+        settingsState: widget.settingsState,
+        fromSessionDraft: draft,
+      ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -766,7 +584,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   _changeDateAndTime();
                   break;
                 case 'save':
-                  _openSaveAsRoutineSheet();
+                  _openRoutineEditorFromSession();
                   break;
                 case 'discard':
                   _showDiscardDialog();

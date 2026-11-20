@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../exercise/exercise_picker_screen.dart';
 import '../../core/navigation/navigation.dart';
+import '../../core/models/session_summary.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
@@ -36,12 +37,18 @@ class RoutineSetupScreen extends StatefulWidget {
   final String? templateId; // null = create new, non-null = edit existing
   final SettingsState? settingsState;
 
+  /// Plan 279: a finished session's blocks and exercises to start the new
+  /// routine from; null for My Routines > New / Edit. Back and Save return
+  /// to the screen that pushed this one (the summary).
+  final SessionTemplateDraft? fromSessionDraft;
+
   const RoutineSetupScreen({
     super.key,
     required this.routineState,
     this.workoutState,
     this.templateId,
     this.settingsState,
+    this.fromSessionDraft,
   });
 
   @override
@@ -115,6 +122,13 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
           widget.routineState.currentTemplate?.description ?? '';
       _selectedFocusModality =
           widget.routineState.currentTemplate?.focusModality;
+    } else if (widget.fromSessionDraft != null) {
+      // Plan 279: start the new routine from a finished session's draft.
+      await widget.routineState
+          .createRoutineFromSessionDraft(widget.fromSessionDraft!);
+      _nameController.text = widget.fromSessionDraft!.name;
+      _descriptionController.text = '';
+      _selectedFocusModality = widget.fromSessionDraft!.focusModality;
     } else {
       // Create new routine
       await widget.routineState.createNewRoutine('New Routine');
@@ -1033,8 +1047,9 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     return ConfirmationDialog.showUnsavedChanges(
       context: context,
       title: 'Unsaved changes',
-      body:
-          'You have unsaved edits. Discard them to return to the routines list.',
+      body: widget.fromSessionDraft != null
+          ? 'You have unsaved edits. Discard them to return to the summary.'
+          : 'You have unsaved edits. Discard them to return to the routines list.',
       keepEditingKey: const Key('routine-edit-unsaved-keep'),
       discardKey: const Key('routine-edit-unsaved-discard'),
     );
