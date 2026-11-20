@@ -67,7 +67,6 @@ Post-workout analytics.
 |--------|---------|---------|
 | `compareGroupsToPreviousSession(session, summary)` | `GroupComparison` | Finds the last finished session of the same routine, or with no routine of the same type; computes per-group stats (strength volume, cardio/isometric duration, round counts); returns `GroupComparison`: `deltas` keyed by `'strength'`, `'cardio'`, `'rounds'`, `'isometric'` plus a `basis` naming the like session |
 | `computePRs(exerciseSummaries)` | `List<PRAchievement>` | Compares the session's per-exercise bests against the all-time best via `StatsProgressService.getAllTimeBestE1RM` (weight axis) and `StatsProgressService.getAllTimeBestReps` (reps axis). Collapses duplicate per-block entries to at most one record per exercise per session. Emits a weight-axis (`metricLabel: 'e1RM'`) PR for loaded exercises and a reps-axis (`metricLabel: 'reps'`) PR for bodyweight exercises — never both for the same exercise (`docs/plans/stats-summary-fix-pack-plan.md` PR 1 + Item 2). |
-| `saveRoutineFromDraft(draft, {focusModality})` | `String` (template ID) | Persists a session-to-routine template |
 | `getSessionEnergy(sessionId)` | `({int kcal, bool measured})?` | Reads the session's stored active energy: `kcal` is the active kilocalories rounded to whole numbers — the one rounding on the figure — and `measured` is true only for a row the watch measured (`estimated` rows answer `false`). Null when nothing is stored. Verified by `test/active_energy_service_test.dart` (groups `Mock — ActiveEnergyService.settle` and `Hive — ActiveEnergyService.settle`: `read-out: estimated 31.8355 reads (32, not measured)`, `read-out: a measured 250.4 row reads (250, measured)`, `read-out: no row reads null`). |
 
 ---
@@ -229,6 +228,34 @@ MissingPluginException is swallowed`; group `source scans`: `S-19518 the channel
 file is imported by lib/main.dart alone`, `S-19519 the iOS piece is inline in
 AppDelegate after the registrant`, `S-19519 the Android piece is in
 MainActivity.kt`).
+
+### `BackupService`
+
+**File**: `lib/core/services/backup_service.dart`
+**Depends on**: the `WorkoutRepository` interface and `AppVersionInfo` — never a concrete repository.
+
+Turns the repository's snapshot API into the backup file the share sheet carries: `exportToText`
+encodes `exportSnapshot`, `BackupService.fileName` builds the local-date file name, `describe`
+reads a text into the confirmation's date and counts without writing anything, and
+`restoreFromText` runs the format and data-version checks, refuses while a workout is running, and
+puts a rollback snapshot back when a write fails. A refusal is a plain-words reason on a
+`BackupRestoreResult`, never a throw, and a refused restore leaves the store untouched. The share
+sheet and file picker ride on `BackupFileGateway`
+([Theme & Settings](../theme_and_settings.md#data-export-and-import)).
+
+Verified by `test/backup_service_test.dart` (groups `Mock — BackupService` and
+`Hive — BackupService`: `S-27804 the exported text carries no excluded boxes or device keys`,
+`S-27805 malformed texts are refused and change nothing`,
+`S-27806 a newer dataVersion is refused; 1 and the current one restore`,
+`S-27807 a running workout blocks the restore`,
+`S-27808 a failed restore puts back the phone's OWN data, not the file's`,
+`S-27809 an older backup runs the pending data steps at the next start`,
+`S-27810 describe reads the file without writing anything`,
+`S-27810b describe counts what the file holds, whatever the numbers`,
+`S-27811 fileName is the local date, zero-padded`,
+`S-27817 the service takes the repository interface`,
+`S-27819 a store with 500 observations exports and restores in time`,
+`S-27820 after a refusal the repository still works`).
 
 ---
 
