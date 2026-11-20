@@ -100,10 +100,8 @@ unlocks four pieces of historical-aware behavior:
    exercise with the work logged in it (S-24514 in
    `test/summary_exercise_list_screen_test.dart`; see
    [Session Summary](session_summary.md)).
-2. The "Open Calendar" button acts like the system back button:
-   one `Navigator.pop()` returns to the day list (and a subsequent back
-   to the calendar), instead of stacking a fresh `CalendarScreen` on
-   top of the summary.
+2. The summary has no "Open Calendar" button; the system Back returns
+   to the day list (and a subsequent back to the calendar).
 3. The overflow-menu "Discard" action permanently deletes the
    historical session from the repository and pops back to the
    originating day list (calendar state is refreshed so the deleted

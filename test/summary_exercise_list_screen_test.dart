@@ -3,7 +3,7 @@
 // One row per exercise with logged work, between the group cards and
 // SESSION NOTE: the exercise name, then one short text per logged item
 // (`10×60 kg`, `01:00`). The month grid, the month label and the
-// `N workout days / M rest days` line are gone; `Open Calendar` stays.
+// `N workout days / M rest days` line are gone, and so is `Open Calendar`.
 //
 // Scenarios: S-24511..S-24516 of
 // `docs/plans/2026-11-18-245-summary-exercise-list-plan/2026-11-18-245-summary-exercise-list-plan.md`.
@@ -362,11 +362,11 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // S-24514 — the grid and the rest-day line are gone, Open Calendar stays
+  // S-24514 — the grid, the rest-day line and Open Calendar are gone
   // ══════════════════════════════════════════════════════════════════════════
 
-  testWidgets('S-24514 the month grid and the rest-day line are gone, Open '
-      'Calendar stays', (tester) async {
+  testWidgets('S-24514 the month grid, the rest-day line and Open '
+      'Calendar are gone', (tester) async {
     final repo = await _freshRepo();
     const daysAgo = 3;
     await _seedStrength(
@@ -394,12 +394,9 @@ void main() {
         '${OmniDateUtils.fullMonthName(seededDay.month)} ${seededDay.year}';
     expect(find.text(monthLabel), findsNothing);
 
-    // One Open Calendar button, under the SESSION NOTE card.
-    final calendarButton = find.text('Open Calendar');
-    expect(calendarButton, findsOneWidget);
-    final buttonY = tester.getTopLeft(calendarButton).dy;
-    final noteY = tester.getTopLeft(find.text('SESSION NOTE')).dy;
-    expect(buttonY, greaterThan(noteY));
+    // No Open Calendar button anywhere.
+    expect(find.text('Open Calendar'), findsNothing);
+    expect(find.text('SESSION NOTE'), findsOneWidget);
   });
 
   // ══════════════════════════════════════════════════════════════════════════

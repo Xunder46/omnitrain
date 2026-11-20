@@ -4,7 +4,6 @@ import 'package:omnitrain/core/constants/modality.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
-import 'package:omnitrain/features/calendar/calendar_screen.dart';
 import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -26,7 +25,7 @@ Future<MockWorkoutRepository> _freshRepo() async {
 
 /// Builds a `SettingsState` whose feeling-survey preference is disabled,
 /// so the post-workout feeling sheet never opens in tests. This keeps
-/// the calendar / Open Calendar / Discard buttons directly tappable.
+/// the calendar / Discard buttons directly tappable.
 Future<SettingsState> _settingsWithoutFeelingSheet(
   MockWorkoutRepository repo,
 ) async {
@@ -69,152 +68,9 @@ Future<String> _seedCompletedSession(
 
 void main() {
   // ════════════════════════════════════════════════════════════════════════════
-  // S-002: Open Calendar on historical summary pops back
+  // S-002 / S-003 (deleted): the summary no longer has an Open Calendar button.
+  // The screen shows none, whichever way it was reached.
   // ════════════════════════════════════════════════════════════════════════════
-
-  group('S-002 — Open Calendar pops back on historical summary', () {
-    testWidgets(
-      'tapping "Open Calendar" with openedFromCalendar=true pops one route '
-      'instead of pushing a new CalendarScreen',
-      (WidgetTester tester) async {
-        final today = DateTime.now();
-        final historical = DateTime(today.year - 3, 3, 15);
-
-        final repo = await _freshRepo();
-        final sessionId = await _seedCompletedSession(
-          repo,
-          startDate: historical,
-        );
-
-        final workoutState = WorkoutState(repo);
-        await workoutState.loadHistoricalSession(sessionId);
-
-        final routineState = RoutineState(repo);
-        final sessionSummaryService = SessionSummaryService(repo);
-        final settingsState = await _settingsWithoutFeelingSheet(repo);
-
-        await tester.binding.setSurfaceSize(const Size(400, 1100));
-
-        // Stack: parent Scaffold (root) → SessionSummaryScreen (pushed).
-        // The parent is a small Scaffold whose body holds a single
-        // marker text. We push the summary, then verify the tap on
-        // "Open Calendar" pops it back to the parent without stacking
-        // a fresh CalendarScreen on top.
-        final navKey = GlobalKey<NavigatorState>();
-        await tester.pumpWidget(
-          MaterialApp(
-            navigatorKey: navKey,
-            home: Builder(
-              builder: (ctx) {
-                return Scaffold(
-                  body: Center(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(ctx).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => SessionSummaryScreen(
-                              workoutState: workoutState,
-                              routineState: routineState,
-                              sessionSummaryService: sessionSummaryService,
-                              settingsState: settingsState,
-                              timerAlertService: FakeTimerAlertService(),
-                              openedFromCalendar: true,
-                            ),
-                          ),
-                        );
-                      },
-                      child: const Text('OPEN_SUMMARY'),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Push the summary by tapping the trigger. Pump repeatedly
-        // to let the route transition + the summary's background
-        // async work settle enough for the calendar card to be built
-        // and the Open Calendar button to be present in the tree.
-        await tester.tap(find.text('OPEN_SUMMARY'));
-        for (var i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 200));
-        }
-
-        expect(find.byType(SessionSummaryScreen), findsOneWidget);
-        expect(find.text('OPEN_SUMMARY'), findsNothing);
-
-        // Scroll until Open Calendar is visible, then tap it.
-        await tester.scrollUntilVisible(
-          find.text('Open Calendar'),
-          300,
-          scrollable: find.byType(Scrollable).first,
-        );
-        for (var i = 0; i < 3; i++) {
-          await tester.pump(const Duration(milliseconds: 200));
-        }
-
-        await tester.tap(find.text('Open Calendar'));
-        for (var i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 200));
-        }
-
-        // Summary should be gone; parent is on top.
-        // Critically: NO new CalendarScreen should have been pushed on top.
-        expect(find.byType(SessionSummaryScreen), findsNothing);
-        expect(find.byType(CalendarScreen), findsNothing);
-        expect(find.text('OPEN_SUMMARY'), findsOneWidget);
-      },
-    );
-
-    // ════════════════════════════════════════════════════════════════════════
-    // S-003: post-workout Open Calendar still pushes a fresh calendar
-    // ════════════════════════════════════════════════════════════════════════
-
-    testWidgets(
-      'tapping "Open Calendar" with openedFromCalendar=false (default) '
-      'pushes a new CalendarScreen on top',
-      (WidgetTester tester) async {
-        final repo = await _freshRepo();
-        final workoutState = WorkoutState(repo);
-        await workoutState.createNewSession(
-          modality: Modality.resistanceLifting,
-        );
-
-        final routineState = RoutineState(repo);
-        final sessionSummaryService = SessionSummaryService(repo);
-        final settingsState = await _settingsWithoutFeelingSheet(repo);
-
-        await tester.binding.setSurfaceSize(const Size(400, 1100));
-        await tester.pumpWidget(
-          MaterialApp(
-            home: SessionSummaryScreen(
-              workoutState: workoutState,
-              routineState: routineState,
-              sessionSummaryService: sessionSummaryService,
-              settingsState: settingsState,
-              timerAlertService: FakeTimerAlertService(),
-              // openedFromCalendar omitted → default false (post-workout)
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        await tester.scrollUntilVisible(
-          find.text('Open Calendar'),
-          300,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text('Open Calendar'));
-        await tester.pumpAndSettle();
-
-        expect(find.byType(CalendarScreen), findsOneWidget);
-      },
-    );
-  });
 
   // ════════════════════════════════════════════════════════════════════════════
   // S-004: Discard on historical summary returns to the originating screen

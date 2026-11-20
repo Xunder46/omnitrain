@@ -253,7 +253,7 @@ void main() {
     expect(rounds.first.state, RoundState.finished);
   });
 
-  testWidgets('Session summary shows Open Calendar button', (
+  testWidgets('Session summary has no Open Calendar button', (
     WidgetTester tester,
   ) async {
     final deps = await setupStates();
@@ -298,15 +298,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    // Scroll down to ensure the Open Calendar button is built.
-    await tester.scrollUntilVisible(
-      find.text('Open Calendar'),
-      500,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Open Calendar'), findsOneWidget);
+    expect(find.text('Open Calendar'), findsNothing);
   });
 
   test('finishing session closes the active open rest record', () async {

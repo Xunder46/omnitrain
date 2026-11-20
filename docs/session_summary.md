@@ -11,7 +11,6 @@ Current hierarchy:
 3. Context-aware modality group cards (Strength, Cardio, Sports, Isometric)
 4. Exercise list (the `EXERCISES` card), then the `DISTANCE` card when an entry holds a distance
 5. Session note
-6. Open Calendar button
 
 The screen keeps existing summary navigation actions (edit, save as routine, discard) and the bottom Done action.
 
@@ -63,7 +62,7 @@ The screen renders a CustomScrollView over OmniGradientBackground with this orde
 | Header | Session title only (the app bar shows no date or modality badge) |
 | Session info card | Duration and Rest Time, then the heart-rate row when the session has one ([Heart rate](#heart-rate)), then the EFFORT row with its Calories pill (rolling sessions: no Duration / Rest Time row — see [Effort Rating Capture](#effort-rating-capture)); the formatted start date/time and the modality chip sit in this card's header |
 | Group Cards | One card per group that has data in this session |
-| Exercise list | One row per exercise with logged work, then the Open Calendar button |
+| Exercise list | One row per exercise with logged work |
 | Session Note | Inline TextField with debounce save (a note still pending when Done or Back is pressed is written first) |
 
 What is not rendered in the active layout:
@@ -121,15 +120,13 @@ its logged work like any other (S-24515).
   logged work shows no EXERCISES card`).
 - **The month grid is gone from this screen.** The summary no longer renders
   a month grid, a month-label header or the `N workout days / M rest days`
-  totals line. The `Open Calendar` button stays, on its own row under the
-  SESSION NOTE card, and keeps its behaviour: a post-workout summary pushes a
-  fresh `CalendarScreen`, a summary opened from the calendar pops back.
+  totals line. There is no `Open Calendar` button either: the summary has no
+  link to the calendar, whichever way it was reached (use Back or Done).
   Verified by `test/summary_exercise_list_screen_test.dart` (`S-24514 the
-  month grid and the rest-day line are gone, Open Calendar stays`) and by
-  `test/calendar_summary_screen_bugs_test.dart` (group `S-002 — Open Calendar
-  pops back on historical summary`, and the test whose comment says S-003:
-  `tapping "Open Calendar" with openedFromCalendar=false (default) pushes a
-  new CalendarScreen on top`).
+  month grid, the rest-day line and Open Calendar are gone`) and by the
+  `Open Calendar` absence checks in `test/header_standardization_test.dart`
+  (`S-007`), `test/screen_widget_test.dart` and
+  `test/session_finish_timers_test.dart`.
 
 ### Heart rate
 
@@ -412,8 +409,8 @@ Two entry points feed this screen:
 
 | Entry | `openedFromCalendar` | Behaviour |
 |-------|----------------------|-----------|
-| `WorkoutSessionScreen` finish → `pushReplacement` (post-workout) | `false` (default) | "Open Calendar" pushes a fresh `CalendarScreen`; "Done" ends + clears + `popUntil(isFirst)`; "Discard" deletes + `popUntil(isFirst)`. |
-| `CalendarScreen` past-day tap with a single completed entry, or `DaySessionListScreen` completed-row tap (historical) | `true` | "Open Calendar" pops back like the system back button; "Done" just clears in-memory state and pops back; "Discard" permanently deletes the historical session and pops back to the originating calendar or day list (the originating `CalendarState.refresh()` is awaited so the deleted indicator disappears from the grid). |
+| `WorkoutSessionScreen` finish → `pushReplacement` (post-workout) | `false` (default) | "Done" ends + clears + `popUntil(isFirst)`; "Discard" deletes + `popUntil(isFirst)`. |
+| `CalendarScreen` past-day tap with a single completed entry, or `DaySessionListScreen` completed-row tap (historical) | `true` | "Done" just clears in-memory state and pops back; "Discard" permanently deletes the historical session and pops back to the originating calendar or day list (the originating `CalendarState.refresh()` is awaited so the deleted indicator disappears from the grid). |
 
 Summary data loaded on entry:
 
@@ -526,6 +523,9 @@ additions and removals — before it is persisted through `saveRoutineFromDraft`
 names how it is tracked in plain words (`Reps & Sets`, `Time`, `Hold Time`, `Rounds`), and Save
 keeps the summary open with a `Routine saved` message (plan 258,
 `test/save_as_routine_labels_test.dart`).
+The Save button is the shared primary bottom action (`OmniBottomCTA`), and the sheet's surface runs to
+the bottom edge of the screen with no gap under the button (`test/save_as_routine_labels_test.dart`,
+`Save is the shared primary button and the sheet has no gap under it`).
 
 Each target's value comes from the entry's own row, read through `EntryRows` — never from the row a
 store happens to return first. A `timed` or `drill` template carries no distance target, and its

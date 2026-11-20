@@ -5493,7 +5493,7 @@ void main() {
     });
 
     testWidgets(
-      'rolling session still shows group card, note, and the Open Calendar button',
+      'rolling session still shows group card and note, with no Open Calendar button',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final repo = await _freshRepo();
@@ -5529,7 +5529,7 @@ void main() {
         // the card; it is rendered in the canonical D-1 typography
         // (uppercase, letter-spacing 2.0).
         expect(find.text('SESSION NOTE'), findsOneWidget);
-        expect(find.text('Open Calendar'), findsOneWidget);
+        expect(find.text('Open Calendar'), findsNothing);
       },
     );
 
@@ -5761,7 +5761,7 @@ void main() {
       expect(find.text(exercises.first.name), findsOneWidget);
     });
 
-    testWidgets('session note appears before calendar section', (
+    testWidgets('session note is shown and there is no Open Calendar button', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -5785,12 +5785,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Phase 2.1: the note title is rendered by an OmniCardHeader
-      // above the card; the "Open Calendar" button sits on its own row
-      // under the note card (plan 245 removed the calendar card).
-      final noteTopLeft = tester.getTopLeft(find.text('SESSION NOTE'));
-      final calendarTopLeft = tester.getTopLeft(find.text('Open Calendar'));
-      expect(noteTopLeft.dy, lessThan(calendarTopLeft.dy));
+      expect(find.text('SESSION NOTE'), findsOneWidget);
+      expect(find.text('Open Calendar'), findsNothing);
     });
   });
 

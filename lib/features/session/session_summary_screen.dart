@@ -8,7 +8,6 @@ import '../../core/services/session_summary_service.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/effort_defaults.dart';
-import '../../core/services/routine_session_service.dart';
 import '../../core/utils/session_feeling_utils.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../core/utils/summary_exercise_rows.dart';
@@ -17,7 +16,6 @@ import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
-import '../../state/period/period_state.dart';
 import '../../widgets/buttons/omni_utility_button.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_back_header.dart';
@@ -31,7 +29,6 @@ import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
-import '../calendar/calendar_screen.dart';
 import 'workout_session_screen.dart';
 import '../../core/navigation/navigation.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
@@ -48,14 +45,12 @@ class SessionSummaryScreen extends StatefulWidget {
 
   /// True when this summary was reached from the calendar / day-list
   /// flow (i.e. viewing a historical session). Drives:
-  ///   • "Open Calendar" to pop back (one route) instead of pushing a
-  ///     fresh `CalendarScreen`.
   ///   • "Discard" to pop back to the originating calendar or day
   ///     list (after deleting the session) instead of `popUntil(isFirst)`.
   ///
   /// `false` (default) preserves the post-workout flow: the summary
   /// was reached via `pushReplacement` from `WorkoutSessionScreen`,
-  /// and Discard / Open Calendar behave as before.
+  /// and Discard behaves as before.
   final bool openedFromCalendar;
 
   /// The `CalendarState` that originated this summary. Required when
@@ -108,11 +103,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   ({int kcal, bool measured})? _energy;
   String _preferredWeightUnit = 'kg';
   late final CalendarState _calendarState;
-  late final PeriodState _periodState;
-  late final RoutineSessionService _routineSessionService;
 
   /// True when the summary was reached from the calendar flow (so
-  /// Discard / Open Calendar should navigate back, not exit to the hub).
+  /// Discard should navigate back, not exit to the hub).
   bool get _isHistoricalView => widget.openedFromCalendar;
 
   List<SessionTemplateExercise> _draftExercises = [];
@@ -145,8 +138,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     super.initState();
     final repository = widget.workoutState.repository;
     _calendarState = CalendarState(repository);
-    _periodState = PeriodState(repository);
-    _routineSessionService = RoutineSessionService(repository);
     _summary = widget.workoutState.computeSessionSummary();
     _noteController = TextEditingController(
       text: widget.workoutState.currentSession?.note ?? '',
@@ -156,14 +147,18 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _showFeelingSheet(context);
     });
     _notifySessionSaved();
-    widget.workoutState.wristSummary.addListener(_reloadHeartRateOnWristSummary);
+    widget.workoutState.wristSummary.addListener(
+      _reloadHeartRateOnWristSummary,
+    );
     _loadAsyncData();
   }
 
   @override
   void dispose() {
     widget.workoutState.removeListener(_closeAutoSheetOnOutsideRating);
-    widget.workoutState.wristSummary.removeListener(_reloadHeartRateOnWristSummary);
+    widget.workoutState.wristSummary.removeListener(
+      _reloadHeartRateOnWristSummary,
+    );
     final pending = _noteDebounce;
     if (pending != null && pending.isActive) {
       pending.cancel();
@@ -504,31 +499,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
   }
 
-  Future<void> _openCalendarScreen() async {
-    if (_isHistoricalView) {
-      // Reached via the calendar flow → behave like the system back
-      // button. Popping returns the user to the originating calendar
-      // or day list instead of stacking a fresh `CalendarScreen` on
-      // top of the summary.
-      Navigator.pop(context);
-      return;
-    }
-    await OmniNavigator.push(
-      context,
-      (_) => CalendarScreen(
-        calendarState: _calendarState,
-        periodState: _periodState,
-        workoutState: widget.workoutState,
-        routineState: widget.routineState,
-        routineSessionService: _routineSessionService,
-        sessionSummaryService: widget.sessionSummaryService,
-        settingsState: widget.settingsState,
-        timerAlertService: widget.timerAlertService,
-        restNotificationService: widget.restNotificationService,
-      ),
-    );
-  }
-
   /// Plan 267: pick a new date, then a new start time, for this workout. The
   /// workout keeps its length; a time in the future is refused.
   Future<void> _changeDateAndTime() async {
@@ -648,128 +618,123 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               });
             }
 
-            return SafeArea(
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(24),
-                  ),
-                  border: Border.all(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withValues(alpha: 0.06),
-                  ),
+            // The surface runs to the bottom edge of the screen; the shared
+            // bottom CTA carries the home-indicator inset (no gap under it).
+            return Container(
+              padding: const EdgeInsets.only(top: 16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
+                border: Border.all(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.06),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: Text(
-                            'Save as Routine',
-                            style: Theme.of(context).textTheme.titleLarge,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Save as Routine',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: addExercise,
+                              icon: const Icon(Icons.add),
+                              tooltip: 'Add exercise',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          textCapitalization: TextCapitalization.words,
+                          initialValue: defaultName,
+                          onChanged: (value) => routineName = value,
+                          decoration: const InputDecoration(
+                            labelText: 'Routine name',
                           ),
                         ),
-                        IconButton(
-                          onPressed: addExercise,
-                          icon: const Icon(Icons.add),
-                          tooltip: 'Add exercise',
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: 400,
+                          child: ReorderableListView.builder(
+                            itemCount: exercises.length,
+                            onReorder: (oldIndex, newIndex) {
+                              setSheetState(() {
+                                if (newIndex > oldIndex) newIndex -= 1;
+                                final item = exercises.removeAt(oldIndex);
+                                exercises.insert(newIndex, item);
+                              });
+                            },
+                            itemBuilder: (context, index) {
+                              final exercise = exercises[index];
+                              return ListTile(
+                                key: ValueKey('${exercise.exerciseId}-$index'),
+                                title: Text(exercise.name),
+                                subtitle: Text(
+                                  ModalityDisplay.effortKindLabel(
+                                    exercise.effortKind,
+                                  ),
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.close),
+                                  tooltip: 'Remove exercise',
+                                  onPressed: () {
+                                    setSheetState(() {
+                                      exercises.removeAt(index);
+                                    });
+                                  },
+                                ),
+                              );
+                            },
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      textCapitalization: TextCapitalization.words,
-                      initialValue: defaultName,
-                      onChanged: (value) => routineName = value,
-                      decoration: const InputDecoration(
-                        labelText: 'Routine name',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      height: 320,
-                      child: ReorderableListView.builder(
-                        itemCount: exercises.length,
-                        onReorder: (oldIndex, newIndex) {
-                          setSheetState(() {
-                            if (newIndex > oldIndex) newIndex -= 1;
-                            final item = exercises.removeAt(oldIndex);
-                            exercises.insert(newIndex, item);
-                          });
-                        },
-                        itemBuilder: (context, index) {
-                          final exercise = exercises[index];
-                          return ListTile(
-                            key: ValueKey('${exercise.exerciseId}-$index'),
-                            title: Text(exercise.name),
-                            subtitle: Text(
-                              ModalityDisplay.effortKindLabel(
-                                exercise.effortKind,
-                              ),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.close),
-                              tooltip: 'Remove exercise',
-                              onPressed: () {
-                                setSheetState(() {
-                                  exercises.removeAt(index);
-                                });
-                              },
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        style: ButtonStyle(
-                          shape: WidgetStateProperty.all(
-                            RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                OmniTheme.buttonBorderRadius,
-                              ),
-                            ),
-                          ),
-                        ),
-                        onPressed: exercises.isEmpty
-                            ? null
-                            : () async {
-                                final draft = SessionTemplateDraft(
-                                  name: routineName.trim().isEmpty
-                                      ? defaultName
-                                      : routineName.trim(),
+                  ),
+                  OmniBottomCTA(
+                    label: 'Save',
+                    onPressed: exercises.isEmpty
+                        ? null
+                        : () async {
+                            final draft = SessionTemplateDraft(
+                              name: routineName.trim().isEmpty
+                                  ? defaultName
+                                  : routineName.trim(),
+                              focusModality: session.modality,
+                              exercises: exercises,
+                            );
+
+                            await widget.sessionSummaryService
+                                .saveRoutineFromDraft(
+                                  draft,
                                   focusModality: session.modality,
-                                  exercises: exercises,
                                 );
 
-                                await widget.sessionSummaryService
-                                    .saveRoutineFromDraft(
-                                      draft,
-                                      focusModality: session.modality,
-                                    );
-
-                                await widget.routineState.loadRoutines();
-                                if (!mounted) return;
-                                Navigator.pop(context);
-                                // Plan 258: saving the routine keeps the summary
-                                // open; Done still finishes the workout.
-                                OmniMessage.show(
-                                  this.context,
-                                  'Routine saved',
-                                  duration: const Duration(seconds: 2),
-                                );
-                              },
-                        child: const Text('Save'),
-                      ),
-                    ),
-                  ],
-                ),
+                            await widget.routineState.loadRoutines();
+                            if (!mounted) return;
+                            Navigator.pop(context);
+                            // Plan 258: saving the routine keeps the summary
+                            // open; Done still finishes the workout.
+                            OmniMessage.show(
+                              this.context,
+                              'Routine saved',
+                              duration: const Duration(seconds: 2),
+                            );
+                          },
+                  ),
+                ],
               ),
             );
           },
@@ -849,8 +814,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                         const SizedBox(height: 16),
                         const OmniCardHeader(title: 'SESSION NOTE'),
                         _buildNoteCard(theme),
-                        const SizedBox(height: 16),
-                        Center(child: _buildOpenCalendarButton()),
                       ],
                       if (_isLoading && _hasLoadedOnce)
                         Padding(
@@ -1045,28 +1008,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           color: theme.colorScheme.primary,
         ),
       ),
-    );
-  }
-
-  /// Compact `Open Calendar` button on its own centred row directly
-  /// under the SESSION NOTE card, no longer inside a card header.
-  /// Extracted so the body composition site stays compact.
-  Widget _buildOpenCalendarButton() {
-    return FilledButton.tonalIcon(
-      onPressed: _openCalendarScreen,
-      style: ButtonStyle(
-        visualDensity: VisualDensity.compact,
-        padding: const WidgetStatePropertyAll(
-          EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        ),
-        shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
-          ),
-        ),
-      ),
-      icon: const Icon(Icons.open_in_new, size: 16),
-      label: const Text('Open Calendar'),
     );
   }
 
@@ -1568,11 +1509,7 @@ class _StatPill extends StatelessWidget {
           Wrap(
             crossAxisAlignment: WrapCrossAlignment.center,
             spacing: 8,
-            children: [
-              ?leading,
-              valueText,
-              ?trailing,
-            ],
+            children: [?leading, valueText, ?trailing],
           ),
         if (caption != null) ...[
           const SizedBox(height: 4),

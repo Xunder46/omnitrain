@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/modality_display.dart';
+import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -10,6 +11,7 @@ import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
@@ -123,6 +125,36 @@ void main() {
       for (final raw in ['set', 'drill', 'timed', 'round']) {
         expect(_inSheet(find.text(raw)), findsNothing, reason: raw);
       }
+    });
+
+    testWidgets('Save is the shared primary button and the sheet has no gap '
+        'under it', (tester) async {
+      final deps = await _buildDeps();
+      await _pumpSummary(tester, deps);
+      await _openSaveAsRoutine(tester);
+
+      // The shared primary bottom action, not a hand-built FilledButton.
+      expect(_inSheet(find.byType(OmniBottomCTA)), findsOneWidget);
+      expect(
+        tester.getSize(find.widgetWithText(FilledButton, 'Save').last).height,
+        OmniTheme.buttonPrimaryHeight,
+      );
+
+      // The sheet surface reaches the bottom edge of the screen.
+      final screenBottom = tester.getSize(find.byType(MaterialApp)).height;
+      final sheetBottom = tester.getBottomLeft(find.byType(BottomSheet)).dy;
+      expect(sheetBottom, closeTo(screenBottom, 0.5));
+      final surfaceBottom = tester
+          .getBottomLeft(
+            find
+                .descendant(
+                  of: find.byType(BottomSheet),
+                  matching: find.byType(Container),
+                )
+                .first,
+          )
+          .dy;
+      expect(surfaceBottom, closeTo(screenBottom, 0.5));
     });
 
     test('S-25802 effortKindLabel maps the four kinds and leaves others', () {

@@ -1322,61 +1322,12 @@ void main() {
     });
 
     testWidgets(
-      'S-007: Open Calendar sits alone under the note card (plan 245)',
+      'S-007: no Open Calendar button anywhere on the summary',
       (WidgetTester tester) async {
         await pumpSessionSummary(tester, isRolling: false);
 
         expect(find.byType(OmniSurface), findsNWidgets(2));
-        expect(find.text('Open Calendar'), findsOneWidget);
-
-        // Plan 245 removed the calendar card and its header: the
-        // "Open Calendar" button is a single centred button on its own
-        // row under the SESSION NOTE card — not inside any
-        // OmniCardHeader actions cluster, not inside any OmniSurface.
-        final actionsCluster = find.descendant(
-          of: find.byKey(const Key('omniCardHeader_actions')),
-          matching: find.text('Open Calendar'),
-        );
-        expect(
-          actionsCluster,
-          findsNothing,
-          reason:
-              '"Open Calendar" must NOT live inside an OmniCardHeader '
-              'actions cluster (plan 245 removed the calendar header).',
-        );
-
-        // The button sits below the SESSION NOTE header.
-        final noteHeaderTop = tester.getTopLeft(
-          find.text('SESSION NOTE'),
-        ).dy;
-        final openCalendarTop = tester.getTopLeft(
-          find.text('Open Calendar'),
-        ).dy;
-        expect(
-          openCalendarTop,
-          greaterThan(noteHeaderTop),
-          reason: '"Open Calendar" must sit below the SESSION NOTE header.',
-        );
-
-        // The button must NOT be a descendant of any OmniSurface.
-        for (final card in tester.widgetList<OmniSurface>(
-          find.byType(OmniSurface),
-        )) {
-          expect(
-            find.descendant(
-              of: find.byWidget(card),
-              matching: find.text('Open Calendar'),
-            ),
-            findsNothing,
-            reason: '"Open Calendar" must not live inside any card.',
-          );
-        }
-
-        // We deliberately do NOT tap the button. The pre-existing
-        // `SessionSummaryScreen._calendarState` is constructed in
-        // initState without awaiting `CalendarState.init()`; tapping
-        // would surface `LateInitializationError` on `_year` when
-        // CalendarScreen builds. See Assumption A5 in the plan.
+        expect(find.text('Open Calendar'), findsNothing);
       },
     );
 
@@ -1413,8 +1364,8 @@ void main() {
         // work, so no EXERCISES card)
         expect(find.byType(OmniSurface), findsNWidgets(2));
 
-        // The Open Calendar button row and the note header are intact.
-        expect(find.text('Open Calendar'), findsOneWidget);
+        // The note header is intact; there is no Open Calendar button.
+        expect(find.text('Open Calendar'), findsNothing);
         expect(find.text('SESSION NOTE'), findsOneWidget);
 
         // The date header (with the chip) is still rendered for
@@ -1514,15 +1465,6 @@ void main() {
         // The date header title is dynamic (date string). Verify two
         // `omniCardHeader_title` keys exist (one per header).
         expect(find.byKey(const Key('omniCardHeader_title')), findsNWidgets(2));
-
-        // The "Open Calendar" button is NOT in any header: plan 245
-        // removed the calendar header and the button now sits on its
-        // own row under the note card.
-        final openCalendarInHeaders = find.descendant(
-          of: find.byType(OmniCardHeader),
-          matching: find.text('Open Calendar'),
-        );
-        expect(openCalendarInHeaders, findsNothing);
 
         // The modality chip is in the date header's actions slot.
         final chipInHeaders = find.descendant(
