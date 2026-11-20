@@ -908,6 +908,61 @@ final class WatchTimerReadoptionTests: XCTestCase {
         )
     }
 
+    /// S-27606: the phone cannot send `{rest: null}` — iOS refuses a message
+    /// holding a null — so a clear travels as a stopped timer with no slot and
+    /// no pause fields, started and stopped at the frame's own instant, which is
+    /// later than the timer it ends (`wireSafeFrame`). It stops a running rest
+    /// and a running hold alike.
+    func testS27606APhoneClearSentAsAStoppedTimerStopsARunningRestAndHold() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-plank", capabilities: ["hold", "time"])]
+        )
+
+        harness.clock.advance(67)
+        let startedAt = harness.clock.now
+        _ = try await engine.applyMessage(
+            phoneFrame("timer_state", sessionId: harness.sessionId, messageId: "m-27606-a", payload: [
+                "timers": [
+                    WatchTimerKind.rest: phoneTimer(WatchTimerKind.rest, startedAt: utcIso(startedAt)),
+                    WatchTimerKind.hold: phoneTimer(
+                        WatchTimerKind.hold,
+                        startedAt: utcIso(startedAt),
+                        sessionExerciseId: "sx-plank"
+                    ),
+                ]
+            ])
+        )
+        XCTAssertNotEqual(engine.timerFor(WatchTimerKind.rest)?.state, WatchTimerState.stopped)
+        XCTAssertNotEqual(engine.timerFor(WatchTimerKind.hold)?.state, WatchTimerState.stopped)
+
+        let clearedAt = utcIso(startedAt.addingTimeInterval(30))
+        func clear(_ kind: String) -> [String: Any] {
+            ["kind": kind, "state": "stopped", "startedAt": clearedAt, "stoppedAt": clearedAt]
+        }
+        _ = try await engine.applyMessage(
+            phoneFrame("timer_state", sessionId: harness.sessionId, messageId: "m-27606-b", payload: [
+                "timers": [
+                    WatchTimerKind.rest: clear(WatchTimerKind.rest),
+                    WatchTimerKind.hold: clear(WatchTimerKind.hold),
+                ]
+            ])
+        )
+
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped,
+            "S-27606 the clear stops the running rest"
+        )
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.hold)?.state,
+            WatchTimerState.stopped,
+            "S-27606 the clear stops the running hold"
+        )
+    }
+
     /// S-20216: the wrist holds a hold running at T; a frame names the same
     /// hold at T paused (`pausedAt` set) — a running row the wrist holds never
     /// blocks a pause of the same interval, because the pause shape differs.

@@ -310,6 +310,64 @@ void main() {
       expect(log.shareText(), isNot(contains('97531')));
     });
 
+    test('S-27615 a timer frame is noted with what it carries, per timer, '
+        'and nothing but kinds and states', () async {
+      final log = DiagnosticsLog(
+        storage: InMemoryDiagnosticsStorage(),
+        clock: () => _start,
+      );
+      final link = _Link();
+      final transport = WatchConnectivityTransport(
+        channel: link.phone,
+        diagnostics: log,
+      );
+      addTearDown(transport.close);
+      addTearDown(link.close);
+      Map<String, Object?> timers(Map<String, Object?> kinds) => {
+        'type': 'timer_state',
+        'messageId': 'm-27615',
+        'sessionId': 's-1',
+        'payload': {'timers': kinds},
+      };
+
+      await transport.send(
+        timers({
+          'rest': null,
+          'hold': {
+            'kind': 'hold',
+            'state': 'running',
+            'startedAt': '2026-11-19T21:26:46Z',
+            'sessionExerciseId': 'sx-secret-id',
+          },
+        }),
+      );
+      await transport.send(
+        timers({
+          'hold': {'kind': 'hold', 'state': 'paused', 'startedAt': 'x'},
+          'rest': {'kind': 'rest', 'state': 'stopped', 'startedAt': 'x'},
+        }),
+      );
+      link.phone.sendFailure = StateError('radio');
+      await transport.send(timers({'rest': null}));
+      await transport.send(_timer('plain'));
+
+      expect(
+        [
+          for (final event in log.events())
+            if (event.kind == 'frame_sent') event.detail,
+        ],
+        [
+          'timer_state rest:clear hold:run delivered',
+          'timer_state hold:pause rest:clear delivered',
+          'timer_state rest:clear failed: StateError',
+          'timer_state failed: StateError',
+        ],
+        reason: 'S-27615 a clear is told from a start; a frame with no timers '
+            'keeps the old line',
+      );
+      expect(log.shareText(), isNot(contains('sx-secret-id')));
+    });
+
     test('S-14310 a failed energy_live send is never coalesced', () async {
       final log = DiagnosticsLog(
         storage: InMemoryDiagnosticsStorage(),

@@ -45,6 +45,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../../core/platform/watch_delivery.dart';
+import '../../core/services/diagnostics_log.dart';
 import '../../core/sync_protocol/wire_timestamps.dart';
 import '../../data/models/models.dart';
 import '../workout/workout_state.dart';
@@ -74,13 +75,18 @@ class WatchTimerPush {
     Duration sendTimeout = const Duration(seconds: 10),
     void Function(Object error, StackTrace stack)? onFailure,
     void Function()? onOwed,
+    DiagnosticsLog? diagnostics,
   }) : _mirror = mirror,
        _debounce = debounce,
        _sendTimeout = sendTimeout,
        _onFailure = onFailure,
-       _onOwed = onOwed;
+       _onOwed = onOwed,
+       _diagnostics = diagnostics;
 
   final LiveSessionMirrorState _mirror;
+
+  /// The phone's diagnostics log; null records nothing.
+  final DiagnosticsLog? _diagnostics;
 
   /// How long the state must be quiet before the composed timers are sent. A
   /// constructor knob so tests drive it.
@@ -334,6 +340,7 @@ class WatchTimerPush {
       }
 
       final wanted = _composeWanted(state);
+      _noteTransitions(session.id, wanted);
 
       // Plan 98 D-2: a start the phone no longer wants is not owed any more.
       _owed.removeWhere((kind, _) => !wanted.containsKey(kind));
@@ -463,6 +470,63 @@ class WatchTimerPush {
       // A push that cannot be made must not disturb the phone — but it is
       // reported rather than swallowed.
       _report(e, s);
+    }
+  }
+
+  /// The phone's own timers as the last pass saw them, per wire kind: the
+  /// state and the start, so a change is a start, a pause, a resume or a stop.
+  final Map<String, ({String state, String? startedAt})> _noted = {};
+  String? _notedSession;
+
+  /// Writes what the phone did to its own timers since the last pass to the
+  /// diagnostics log (`phone_timer`), so a log read later shows the order the
+  /// two devices were used in: the phone's actions were invisible before, only
+  /// the traffic they caused. Kinds, states and the exercise id; never text.
+  void _noteTransitions(String sessionId, Map<String, Map<String, Object?>> wanted) {
+    final diagnostics = _diagnostics;
+    if (diagnostics == null) return;
+    try {
+      if (_notedSession != sessionId) {
+        _noted.clear();
+        _notedSession = sessionId;
+      }
+      final kinds = <String>{..._noted.keys, ...wanted.keys};
+      for (final kind in kinds) {
+        final before = _noted[kind];
+        final timer = wanted[kind];
+        final now = timer == null
+            ? null
+            : (
+                state: timer['state'] as String? ?? 'running',
+                startedAt: timer['startedAt'] as String?,
+              );
+        String? what;
+        if (before == null && now != null) {
+          what = 'start';
+        } else if (before != null && now == null) {
+          what = 'stop';
+        } else if (before != null && now != null) {
+          if (before.startedAt != now.startedAt) {
+            what = 'restart';
+          } else if (before.state != now.state) {
+            what = now.state == 'paused' ? 'pause' : 'resume';
+          }
+        }
+        if (now == null) {
+          _noted.remove(kind);
+        } else {
+          _noted[kind] = now;
+        }
+        if (what == null) continue;
+        final slot = timer?['sessionExerciseId'];
+        diagnostics.note(
+          'phone_timer',
+          session: sessionId,
+          detail: slot is String ? '$kind $what slot=$slot' : '$kind $what',
+        );
+      }
+    } catch (_) {
+      // Observation only: never disturbs the push.
     }
   }
 

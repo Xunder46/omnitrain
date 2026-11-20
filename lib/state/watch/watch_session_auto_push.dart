@@ -57,6 +57,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../../core/platform/watch_delivery.dart';
+import '../../core/services/diagnostics_log.dart';
 import '../../data/models/models.dart' show TrainingSession;
 import '../../watch/session/watch_records.dart' show WatchLifecycleState;
 import '../workout/workout_state.dart';
@@ -72,13 +73,18 @@ class WatchSessionAutoPush {
     Duration sendTimeout = const Duration(seconds: 10),
     DateTime Function()? clock,
     void Function(Object error, StackTrace stack)? onFailure,
+    DiagnosticsLog? diagnostics,
   }) : _mirror = mirror,
        _getSession = getSession,
        _heldWristEntryIds = heldWristEntryIds ?? _noWristEntries,
        _debounce = debounce,
        _sendTimeout = sendTimeout,
        _clock = clock ?? DateTime.now,
-       _onFailure = onFailure;
+       _onFailure = onFailure,
+       _diagnostics = diagnostics;
+
+  /// The phone's diagnostics log; null records nothing.
+  final DiagnosticsLog? _diagnostics;
 
   /// No ids of the wrist's own: the default for a push built without the
   /// adoption bridge, where only the phone's own entries are known.
@@ -270,6 +276,7 @@ class WatchSessionAutoPush {
       await _pushRating();
 
       if (composed == null || composedId == null) return;
+      _noteState(composedId, composed);
 
       // D-176: the mirror still holds the wrist's own session W, so the phone
       // is not in the session the wrist is: W is ended by name first (a foreign
@@ -313,6 +320,41 @@ class WatchSessionAutoPush {
       // F4: a push that cannot be made must not disturb the phone — but it is
       // reported rather than swallowed (D-98, D-99).
       _report(e, s);
+    }
+  }
+
+  /// What the phone's own session looked like at the last pass: the exercise it
+  /// is on and how many efforts it has logged, as one line of text.
+  String? _notedState;
+  String? _notedStateSession;
+
+  /// Writes a `phone_state` line to the diagnostics log when the phone's
+  /// exercise or its count of logged efforts changes — the phone's half of the
+  /// order two devices were used in, which the traffic alone never showed.
+  /// Index and counts only; never names or values (D-14307).
+  void _noteState(String sessionId, Map<String, Object?> composed) {
+    final diagnostics = _diagnostics;
+    if (diagnostics == null) return;
+    try {
+      final index = composed['currentExerciseIndex'];
+      final entries = composed['entries'];
+      final exercises = composed['exercises'];
+      var slot = '';
+      if (index is int && exercises is List && index >= 0 && index < exercises.length) {
+        final current = exercises[index];
+        final id = current is Map ? current['sessionExerciseId'] : null;
+        if (id is String) slot = ' slot=$id';
+      }
+      final text =
+          'exercise=${index is int ? index : '?'}$slot '
+          'logged=${entries is List ? entries.length : 0}';
+      final first = _notedStateSession != sessionId;
+      if (!first && text == _notedState) return;
+      _notedStateSession = sessionId;
+      _notedState = text;
+      diagnostics.note('phone_state', session: sessionId, detail: text);
+    } catch (_) {
+      // Observation only: never disturbs the push.
     }
   }
 

@@ -502,13 +502,48 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
     if (diagnostics == null) return;
     final name = _logName(frame);
     final session = frame['sessionId'];
+    // What a timer frame carries, per timer (`rest:clear hold:run`): the log
+    // could not tell a start from a clear, and a clear is the frame that failed.
+    final what = _timerSummary(frame);
+    final label = what.isEmpty ? name : '$name $what';
+    // Only an ordinary delivery of a chatty frame is coalesced; every failure
+    // counts (D-14303), so the refusals stay one line each.
     final ordinary = outcome == 'delivered' && _chatty.contains(name);
     diagnostics.note(
       'frame_sent',
       session: session is String ? session : null,
-      detail: '$name $outcome',
+      detail: '$label $outcome',
       coalesce: ordinary ? 'frame_sent/$name' : null,
     );
+  }
+
+  /// `rest:clear hold:run` for a `timer_state` frame: per kind, `clear` for a
+  /// null (or a stopped timer, which is how a clear travels), else `run` or
+  /// `pause`. Empty for any other frame and for a timers map it cannot read.
+  /// Kinds and states only (D-14307): no ids, no times, no message text.
+  static String _timerSummary(Map<String, Object?> frame) {
+    if (frame['type'] != 'timer_state') return '';
+    final payload = frame['payload'];
+    final timers = payload is Map ? payload['timers'] : null;
+    if (timers is! Map || timers.isEmpty) return '';
+    final parts = <String>[];
+    for (final entry in timers.entries) {
+      final value = entry.value;
+      final String state;
+      if (value == null) {
+        state = 'clear';
+      } else if (value is Map) {
+        state = switch (value['state']) {
+          'paused' => 'pause',
+          'stopped' => 'clear',
+          _ => 'run',
+        };
+      } else {
+        continue;
+      }
+      parts.add('${entry.key}:$state');
+    }
+    return parts.join(' ');
   }
 
   void _noteReceived(Map<String, Object?> frame) {

@@ -659,6 +659,31 @@ in place, resending the structure as a snapshot and no new started lifecycle
   the phone has already logged is cleared by a live `timer_state` clear.
   Verified by `test/watch_logged_hold_stays_stopped_test.dart`
   (`S-12101`, `S-12103`, `S-12107`).
+- **A timer the phone clears reaches the wrist as a stopped timer, never as a
+  null.** iOS WatchConnectivity refuses a message dictionary holding a null, so
+  every `{rest: null}` / `{hold: null}` the phone sent failed at the radio (the
+  2026-11-19 diagnostics log: 451 failed `timer_state` sends against 3
+  delivered, a wrist rest left running while the phone started a hold). At the
+  one place frames leave for the radio (`WatchConnectivityChannel`, through
+  `wireSafeFrame` in `lib/core/platform/watch_frame_wire.dart`) each null in
+  `payload.timers` becomes `{kind, state: stopped, startedAt, stoppedAt}`, both
+  stamps the frame's own `sentAt`; the wrist stores a timer carrying `stoppedAt`
+  as a stopped row and the newest row of a kind decides what runs, so the clear
+  takes effect with no change to the watch app. A refused send now logs the
+  radio's code (`send_failed`, `not_reachable`) instead of the plugin's type.
+  Verified by `test/watch_timer_clear_wire_test.dart` (`S-27601`…`S-27605`) and,
+  on the watch, `testS27606…` in `WatchTimerReadoptionTests.swift`.
+- **The diagnostics log shows what the phone did, not only what it sent.** Three
+  additions to the phone's log, all observation only, kinds and ids and never
+  text (D-14307): a `timer_state` line names what it carries per timer
+  (`rest:clear hold:run`, `clear` meaning a null or a stopped timer, which is how
+  a clear travels), so a start and a clear are no longer the same line; a
+  `phone_timer` line is written when the phone's own timer starts, pauses,
+  resumes, stops or restarts, with the exercise id (written by `WatchTimerPush`);
+  and a `phone_state` line when the exercise the phone is on or its count of
+  logged efforts changes (written by `WatchSessionAutoPush`). Failed sends stay
+  one line each (D-14303). Verified by `test/diagnostics_watch_transport_test.dart`
+  (`S-27615`) and `test/watch_timer_push_test.dart` (`S-27611`…`S-27614`).
 - **The wrist's running energy is a live frame, never durable.** While a session
   runs, the wrist announces its cumulative active energy as an `energy_live`
   message (plan 135): never durable (a refused send is dropped), the newest

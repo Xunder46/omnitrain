@@ -102,6 +102,8 @@ import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_link_info.dart';
 import 'package:omnitrain/core/platform/watch_link_source.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
+import 'package:omnitrain/core/services/diagnostics_log.dart';
+import 'package:omnitrain/core/services/diagnostics_storage.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
@@ -319,12 +321,17 @@ void main() {
   late InMemoryWatchSessionStore wristStore;
   late List<Map<String, Object?>> wristFrames;
   late List<Object> failures;
+  late DiagnosticsLog diagnosticsLog;
 
   /// The phone graph a fresh app start builds, over [radio]. The app binds its
   /// own `WorkoutState` to the adoption and to the timer push in
   /// `lib/main.dart`; the scenarios bind the push themselves, once their
   /// fixture has settled.
   Future<WatchSyncGraph> startGraph() async {
+    diagnosticsLog = DiagnosticsLog(
+      storage: InMemoryDiagnosticsStorage(),
+      clock: () => _now,
+    );
     final created = (await createWatchSync(
       repository: repository,
       nutritionState: NutritionState(repository),
@@ -333,6 +340,7 @@ void main() {
       transport: radio,
       clock: () => _now,
       onFailure: (error, stack) => failures.add(error),
+      diagnostics: diagnosticsLog,
     ))!;
     created.adoption.bindWorkoutState(phoneState);
     return created;
@@ -515,6 +523,78 @@ void main() {
       sessionIdFactory: () => _sessionId,
       onEmit: wristFrames.add,
     );
+  });
+
+  // The phone's own actions reach the diagnostics log (2026-11-19: the log
+  // showed the traffic but not what was done on the phone, so the order two
+  // devices were used in could not be read back).
+  //   S-27611 an interval started and finished on the phone is a start and a
+  //           stop line, naming the exercise
+  //   S-27612 a rest opened on the phone is a rest start line
+  //   S-27613 nothing changed, nothing written
+  //   S-27614 the phone's state line names the exercise and the logged count
+  group('S-27611 the phone writes its own timer changes to the log', () {
+    List<String> lines(String kind) => [
+      for (final event in diagnosticsLog.events())
+        if (event.kind == kind) event.detail ?? '',
+    ];
+
+    test('S-27611 a started and a finished interval are a start and a stop '
+        'line, with the slot', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+      await startInterval();
+      await graph.timerPush.flush();
+      expect(lines('phone_timer'), ['elapsed start slot=$_slotId']);
+
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+
+      expect(lines('phone_timer'), [
+        'elapsed start slot=$_slotId',
+        'elapsed stop',
+      ]);
+    });
+
+    test('S-27612 a rest the phone opens is a rest start line', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      await openPhoneRest();
+      await graph.timerPush.flush();
+
+      expect(lines('phone_timer'), ['rest start']);
+    });
+
+    test('S-27613 a pass that changed nothing writes nothing', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+      await startInterval();
+      await graph.timerPush.flush();
+      final before = lines('phone_timer').length;
+
+      await graph.timerPush.flush();
+      await graph.timerPush.flush();
+
+      expect(lines('phone_timer'), hasLength(before));
+    });
+
+    test('S-27614 the state line names the exercise and the logged count, '
+        'once per change', () async {
+      await wristStartsTimedSession();
+      await graph.autoPush.flush();
+      final first = lines('phone_state');
+      expect(first, isNotEmpty, reason: 'S-27614 the first pass is written');
+      expect(first.first, startsWith('exercise=0 slot=$_slotId logged='));
+
+      await graph.autoPush.flush();
+
+      expect(
+        lines('phone_state'),
+        first,
+        reason: 'S-27614 an unchanged state is not written again',
+      );
+    });
   });
 
   group('S-6211 a started interval travels as one timer_state frame', () {

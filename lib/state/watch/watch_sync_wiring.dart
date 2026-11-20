@@ -377,6 +377,7 @@ Future<WatchSyncGraph?> createWatchSync({
     // it the way they pin every other stamp this graph makes.
     clock: clock,
     onFailure: onFailure,
+    diagnostics: diagnostics,
   );
   // The timers ride the same mirror and transport: a phone that starts, pauses
   // or ends an interval tells the wrist as soon as the window closes (43b3).
@@ -385,6 +386,7 @@ Future<WatchSyncGraph?> createWatchSync({
   final timerPush = WatchTimerPush(
     mirror: mirror,
     onFailure: onFailure,
+    diagnostics: diagnostics,
     onOwed: () => unawaited(
       push.flush().catchError((Object e, StackTrace s) {
         onFailure?.call(e, s);

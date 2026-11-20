@@ -8,8 +8,10 @@
 /// the OS still holds and cancelling them by id (`WatchQueueControl`).
 library;
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:omnitrain_watch_link/omnitrain_watch_link.dart';
 
+import 'watch_frame_wire.dart';
 import 'watch_link_info.dart';
 import 'watch_queue_control.dart';
 import 'watch_transport.dart';
@@ -55,14 +57,27 @@ class WatchConnectivityChannel
       .where((event) => event is WatchLinkReachability)
       .map((event) => (event as WatchLinkReachability).reachable);
 
+  /// The plugin's refusal is rethrown as the platform's own exception, so the
+  /// transport can log the radio's code (`send_failed`, `not_reachable`) and
+  /// never knows the plugin's type.
   @override
-  Future<void> send(Map<String, Object?> frame) => _link.sendMessage(frame);
+  Future<void> send(Map<String, Object?> frame) async {
+    try {
+      await _link.sendMessage(wireSafeFrame(frame));
+    } on WatchLinkException catch (error) {
+      throw PlatformException(code: error.code, message: error.message);
+    }
+  }
 
   /// The plugin answers `queued` or `already_queued`; both mean the OS holds
   /// the frame, which is the whole answer the transport needs.
   @override
   Future<void> queue(Map<String, Object?> frame) async {
-    await _link.transferUserInfo(frame);
+    try {
+      await _link.transferUserInfo(wireSafeFrame(frame));
+    } on WatchLinkException catch (error) {
+      throw PlatformException(code: error.code, message: error.message);
+    }
   }
 
   @override
