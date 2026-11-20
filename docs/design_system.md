@@ -385,7 +385,7 @@ The two-tier classification serves the UX goal of drawing the eye to potentially
 
 ### Dialog Buttons
 
-`TextButton` is acceptable inside `AlertDialog` for Cancel/Dismiss. It must still set `shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius))`. Do not use `OutlinedButton` inside dialogs. Both `ConfirmationDialog` shapes build their action buttons from one shared style helper in `confirmation_dialog.dart`; a new dialog shape must reuse that helper rather than hand-rolling its own `ButtonStyle`.
+`TextButton` is acceptable inside `AlertDialog` for Cancel/Dismiss. It must still set `shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius))`. Do not use `OutlinedButton` inside dialogs. Every `ConfirmationDialog` shape builds its action buttons from one shared style helper in `confirmation_dialog.dart`; a new dialog shape must reuse that helper rather than hand-rolling its own `ButtonStyle`.
 
 ### OmniTheme Tokens
 

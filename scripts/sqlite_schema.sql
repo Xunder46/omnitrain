@@ -941,7 +941,7 @@ CREATE TABLE app_planned_session (
   is_completed INTEGER NOT NULL DEFAULT 0, -- 0 = planned, 1 = completed
   linked_session_id TEXT,                 -- FK to app_training_session when executed
   routine_template_id TEXT,               -- FK to app_workout_template for routine-based plans
-  recurrence_rule TEXT,                   -- RESERVED: NULL until recurrence is built
+  recurrence_rule TEXT,                   -- Series rule as JSON text (RecurrenceRule.encode); NULL for a one-off plan
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   FOREIGN KEY(linked_session_id) REFERENCES app_training_session(id),

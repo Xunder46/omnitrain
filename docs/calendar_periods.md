@@ -10,8 +10,7 @@ It combines:
 3. **Training periods** (named date ranges) with overlap validation and calendar highlighting.
 
 This feature is intentionally scoped for MVP planning workflows:
-- No recurrence behavior yet (model extension point exists).
-- Simple CRUD for planned sessions and periods.
+- Simple CRUD for planned sessions and periods, plus repeating series of planned sessions.
 - Reuse of existing workout execution and summary screens.
 
 ---
@@ -114,6 +113,112 @@ unlocks four pieces of historical-aware behavior:
    session — add and change rating (opened from calendar)`, `S-5: day
    list → …`).
 
+### Repeating planned sessions
+
+A plan repeats as **one row per date**:
+`CalendarState.createRecurringPlannedSessions` writes one normal planned
+session per date the rule yields, and no date is created after one year from
+the planned day. Verified by `test/recurring_planned_sessions_state_test.dart`
+(group `Mock: recurring planned-session series state` ·
+`S-27711 createRecurringPlannedSessions writes 4 rows with the rule text and
+reloads the month once`) and `test/recurrence_rule_test.dart` (group
+`RecurrenceRule` · `S-27707 the one-year cap beats a large count`, where a
+daily rule from 2026-11-19 yields 366 dates ending 2027-11-19).
+
+The rule lives in `lib/core/utils/recurrence_rule.dart`
+(`RecurrenceRule`, `RecurrenceUnit`, `RecurrenceEnd`). `recurrenceRule` holds
+the JSON text, and it is the same on every row of a series, even a series of
+one (`test/recurrence_rule_test.dart` · `S-27710 encode/tryParse round trip is
+lossless and forgeries are null`;
+`test/recurring_planned_sessions_state_test.dart` ·
+`S-27712 a rule that yields one date creates one row that still carries the
+rule text`). Week intervals are Monday-based
+(`test/recurrence_rule_test.dart` · `S-27704 weekly every 2 Thu and Mon skips
+week 1 and the pre-first Monday`); a month step keeps the planned day clamped
+to the month's last day (`S-27705 monthly from the 31st clamps each step from
+the first date`); dates stay local midnights across clock-change days
+(`S-27709 dates keep local midnight across clock-change days`).
+
+The planned-session sheet (today or a future day) has a `Repeat` switch. With
+it on, the sheet reveals the `Every` interval and unit row (`Days`, `Weeks`,
+`Months`), weekday chips only for `Weeks` — the planned day's chip is ticked
+and cannot be un-ticked — and the `Ends` toggle between `After` a session
+count and `On date`, plus a one-line summary that follows the settings
+(`test/recurring_planned_sessions_sheet_test.dart`, groups
+`S-27717: sheet, Repeat off` ·
+`S-27717: Repeat off hides the settings and stores one plain row`;
+`S-27718: sheet, Repeat on` ·
+`S-27718: the settings rows appear, chips follow the unit, the Ends toggle is
+one-of`; `S-27719: the summary line follows the settings` ·
+`S-27719: the summary text changes with the interval, the count and the end
+mode`). The interval choices and the `After` session-count bounds live in the
+sheet's form state (`lib/features/calendar/day_session_list_screen.dart`).
+A fresh ON starts at `Every 1 Weeks` with `After` at its default count
+(`test/recurring_planned_sessions_sheet_test.dart` ·
+`S-27726: Every-3-days then off stores one plain row; ON again shows the
+defaults`, which reads the dropdowns and the count field of a fresh ON). The
+`On date` picker runs from the day after the planned day to one year after it,
+and `Add Session` is off while no end date is chosen
+(`S-27721: the picker runs from the planned day + 1 to one year on, and a
+picked day enables Add Session`). Turning Repeat off drops the settings: the
+sheet stores one plain row with no rule text, and turning it on again in the
+same sheet shows the clean defaults
+(`S-27726: Every-3-days then off stores one plain row; ON again shows the
+defaults`; `S-27726b: stale Every-3-Months/extra-weekday/On-date settings are
+dropped in the SAME sheet when the switch goes OFF then ON`). The sheet
+scrolls to `Add Session` above the keyboard inset on a 390x844 surface
+(`S-27720: no overflow with the keyboard up and a scroll reaches
+Add Session`).
+
+Editing or deleting a row of a series asks `Just this one` /
+`This and all after it` / `Cancel` through the shared three-choice dialog
+(`ConfirmationDialog.showThreeChoice`, keys `day-session-series-*`;
+`test/confirmation_dialog_three_choice_test.dart` ·
+`P3a: the three actions render in the order cancel, first, second`,
+`P3a: the cancel action returns ThreeChoice.cancel`,
+`P3a: the first action ("Just this one") returns ThreeChoice.first`,
+`P3a: the second action ("This and all after it") returns
+ThreeChoice.second`). `Just this one` touches only that row's day;
+`This and all after it` reaches every row from it on, including the first;
+`Cancel` writes nothing (`test/recurring_planned_sessions_day_list_test.dart`,
+groups `S-27722: delete on a series row; a non-series row` ·
+`S-27722: "Just this one" removes only the tapped day's row; three rows of
+the series remain`, `S-27723: edit then Save Changes on a series row; a
+non-series row` · `S-27723: Cancel writes nothing`;
+`test/recurring_planned_sessions_state_test.dart` ·
+`S-27729 the series scope includes the first row itself`). Completed rows and
+past days are never changed by a series edit or delete, except that the row
+you delete is removed even when it is a missed plan on a past day
+(`test/recurring_planned_sessions_state_test.dart` ·
+`S-27713 deleteSeriesFrom keeps the completed row, the earlier row and the
+past-day row`, `S-27714 updateSeriesFrom copies title and modality to rows
+2..4 only, untouched fields stay put`,
+`S-27730 deleting a missed plan from a series removes it and the later
+upcoming rows, not past rows after it`). A row outside any series is handled
+alone, and a non-series row saves with no dialog
+(`test/recurring_planned_sessions_state_test.dart` ·
+`S-27711b a row outside any series is handled alone`;
+`test/recurring_planned_sessions_day_list_test.dart` ·
+`S-27723: a non-series row saves with NO dialog`). Turning Repeat on for an
+existing plain row keeps that row as the first of the series and creates only
+the later dates (`test/recurring_planned_sessions_sheet_test.dart` ·
+`S-27724: the kept row is the first of the series and only the later dates
+are created`); a new plan with Repeat on creates one row per date sharing one
+series id (`S-27718b: daily After 3 titled Tmp creates three rows sharing one
+rule`). The edit sheet of a series row shows a read-only `Repeats …` line
+instead of the switch and its settings
+(`S-27725: a series row shows the read-only line and no switch`). One day can
+hold an ordinary plan and a series row side by side
+(`test/recurring_planned_sessions_day_list_test.dart`, group
+`S-27728: one day holding an ordinary plan and a series row` ·
+`S-27728: both rows render and the day counts two entries`). Completing one
+occurrence keeps its rule text and leaves the others planned, and deleting a
+routine still cascade-deletes every occurrence of its series
+(`test/recurring_planned_sessions_state_test.dart` ·
+`S-27715 completing one occurrence keeps its rule text and leaves the others
+planned`, `S-27716 the routine delete cascade removes every occurrence and
+leaves an unrelated row`).
+
 ### Periods
 
 The Training periods list opens from the Calendar header's Training periods
@@ -174,7 +279,7 @@ Key fields:
 - `routineTemplateId` (nullable)
 - `isCompleted`
 - `linkedSessionId` (nullable)
-- `recurrenceRule` (nullable placeholder)
+- `recurrenceRule` (nullable JSON text; the series rule)
 
 Notes:
 - Planned records are lightweight scheduling entities.
@@ -238,7 +343,7 @@ Responsibilities:
 - Resolves each planned routine's Focus Modality from its template (one `getTemplates()` read per load, none when no routine is planned)
 - Groups entries by day for month grid
 - Exposes period list for highlights
-- Handles planned session CRUD
+- Handles planned session CRUD and the recurring-series actions
 - Handles `completePlannedSession(plannedSessionId, linkedSessionId)`
 - Handles `completePlanFor(session)`: called by `WorkoutState` when Finish stores a session's end (`onSessionEnded`), it links the first-created unstarted plan for the session's routine on the day the session started, if any
 - Computes monthly stats and current streak from loaded data
@@ -315,8 +420,7 @@ Supporting flows:
 
 ## Invariants
 
-**`recurrenceRule` is a placeholder field that is never read.** It exists on `PlannedSession` as a
-model extension point; no code branches on it. Do not assume scheduling recurrence works.
+**A planned session repeats only through the `recurrenceRule` JSON text it carries.** Every row of a series stores the same rule text on `PlannedSession` (`lib/data/models/models.dart`), and only `RecurrenceRule` (`lib/core/utils/recurrence_rule.dart`) parses it — no other code branches on the field. Verified by `test/recurrence_rule_test.dart` (group `RecurrenceRule` · `S-27710 encode/tryParse round trip is lossless and forgeries are null`) and `test/recurring_planned_sessions_state_test.dart` (group `Mock: recurring planned-session series state` · `S-27711 createRecurringPlannedSessions writes 4 rows with the rule text and reloads the month once`).
 
 ---
 

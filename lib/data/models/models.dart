@@ -1463,10 +1463,10 @@ class TimedInstance {
 /// A routine plan stores a null `modality`; its colour is resolved from the
 /// routine's Focus Modality at display time (see `CalendarState`).
 ///
-/// Recurrence is NOT yet implemented.
-/// [recurrenceRule] is reserved for future use; always set it to null for now.
-/// Future implementation will likely use an iCalendar-style RRULE string
-/// (e.g. "FREQ=WEEKLY;BYDAY=MO,WE,FR") or a custom JSON rule object.
+/// [recurrenceRule] is null for a one-off plan. A plan that belongs to a
+/// repeating series carries the series rule as JSON text (see `RecurrenceRule`
+/// in `lib/core/utils/recurrence_rule.dart`); every row of a series carries the
+/// same text.
 ///
 /// Calendar indicator rendering:
 ///   isCompleted = false → outlined circle (planned, not done)
@@ -1502,7 +1502,7 @@ class PlannedSession {
   /// a custom routine. Null means a free-training planned session (modality only).
   final String? routineTemplateId;
 
-  /// Reserved for future recurrence support. Always null in this implementation.
+  /// The series rule text (`RecurrenceRule.encode`), or null for a one-off plan.
   final String? recurrenceRule;
 
   final int createdAtMs;

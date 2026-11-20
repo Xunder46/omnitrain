@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
+
 import '../../core/constants/omni_theme.dart';
 import '../../core/navigation/navigation.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/modality_color_utils.dart';
 import '../../core/utils/session_feeling_utils.dart';
+import '../../core/utils/recurrence_rule.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -22,6 +25,7 @@ import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../widgets/feedback/omni_message.dart';
 import '../../widgets/common/omni_empty_state.dart';
+import '../../widgets/inputs/numeric_field_with_done_bar.dart';
 
 /// Shows all sessions (planned + completed TrainingSessions) for a single day.
 ///
@@ -327,6 +331,9 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
     final result = await showModalBottomSheet<_PlannedSessionFormResult>(
       context: context,
       isScrollControlled: true,
+      // Plan 277: the Repeat section makes the sheet tall; keep it below the
+      // status bar instead of running under the clock and notch.
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _PlannedSessionForm(
         date: widget.date,
@@ -335,9 +342,22 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
       ),
     );
     if (result == null) return;
+    if (!context.mounted) return;
 
-    await widget.calendarState.createPlannedSession(
-      date: widget.date,
+    if (result.rule == null) {
+      await widget.calendarState.createPlannedSession(
+        date: widget.date,
+        modality: result.modality,
+        routineTemplateId: result.routineTemplateId,
+        title: result.title.isNotEmpty ? result.title : null,
+        note: result.note.isNotEmpty ? result.note : null,
+      );
+      return;
+    }
+
+    await widget.calendarState.createRecurringPlannedSessions(
+      first: widget.date,
+      rule: result.rule!,
       modality: result.modality,
       routineTemplateId: result.routineTemplateId,
       title: result.title.isNotEmpty ? result.title : null,
@@ -351,6 +371,9 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
     final result = await showModalBottomSheet<_PlannedSessionFormResult>(
       context: context,
       isScrollControlled: true,
+      // Plan 277: the Repeat section makes the sheet tall; keep it below the
+      // status bar instead of running under the clock and notch.
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _PlannedSessionForm(
         date: widget.date,
@@ -375,10 +398,102 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
       createdAtMs: ps.createdAtMs,
       updatedAtMs: now,
     );
+
+    final series = RecurrenceRule.tryParse(ps.recurrenceRule);
+    if (series != null) {
+      if (!context.mounted) return;
+      final choice = await ConfirmationDialog.showThreeChoice(
+        context: context,
+        title: 'Change this session?',
+        body: const Text('It is part of a repeating series.'),
+        firstLabel: 'Just this one',
+        secondLabel: 'This and all after it',
+        cancelLabel: 'Cancel',
+        cancelKey: const Key('day-session-series-edit-cancel'),
+        firstKey: const Key('day-session-series-edit-one'),
+        secondKey: const Key('day-session-series-edit-after'),
+        isDestructive: false,
+      );
+      if (!context.mounted) return;
+      switch (choice) {
+        case ThreeChoice.first:
+          await widget.calendarState.updatePlannedSession(updated);
+        case ThreeChoice.second:
+          await widget.calendarState.updateSeriesFrom(updated);
+        case ThreeChoice.cancel:
+          break;
+      }
+      return;
+    }
+
+    final repeat = result.rule;
+    if (repeat != null) {
+      // Repeat turned on for a plain plan (D-27711): this plan stays as the
+      // first of the new series; only the LATER dates are created.
+      await widget.calendarState.updatePlannedSession(
+        PlannedSession(
+          id: updated.id,
+          ownerUserId: updated.ownerUserId,
+          scheduledDateMs: updated.scheduledDateMs,
+          modality: updated.modality,
+          routineTemplateId: updated.routineTemplateId,
+          title: updated.title,
+          note: updated.note,
+          isCompleted: updated.isCompleted,
+          linkedSessionId: updated.linkedSessionId,
+          recurrenceRule: repeat.encode(),
+          createdAtMs: updated.createdAtMs,
+          updatedAtMs: updated.updatedAtMs,
+        ),
+      );
+      if (!context.mounted) return;
+      try {
+        await widget.calendarState.createRecurringPlannedSessions(
+          first: widget.date,
+          rule: repeat,
+          skipFirst: true,
+          modality: result.modality,
+          routineTemplateId: result.routineTemplateId,
+          title: result.title.isNotEmpty ? result.title : null,
+          note: result.note.isNotEmpty ? result.note : null,
+        );
+      } catch (_) {
+        if (context.mounted) {
+          OmniMessage.error(context, 'Could not save. Try again.');
+        }
+      }
+      return;
+    }
     await widget.calendarState.updatePlannedSession(updated);
   }
 
   Future<void> _deletePlanned(BuildContext context, PlannedSession ps) async {
+    final series = RecurrenceRule.tryParse(ps.recurrenceRule);
+    if (series != null) {
+      final choice = await ConfirmationDialog.showThreeChoice(
+        context: context,
+        title: 'Delete this session?',
+        body: const Text('It is part of a repeating series.'),
+        firstLabel: 'Just this one',
+        secondLabel: 'This and all after it',
+        cancelLabel: 'Cancel',
+        cancelKey: const Key('day-session-delete-cancel'),
+        firstKey: const Key('day-session-series-delete-one'),
+        secondKey: const Key('day-session-series-delete-after'),
+        isDestructive: true,
+      );
+      if (!context.mounted) return;
+      switch (choice) {
+        case ThreeChoice.first:
+          await widget.calendarState.deletePlannedSession(ps.id);
+        case ThreeChoice.second:
+          await widget.calendarState.deleteSeriesFrom(ps);
+        case ThreeChoice.cancel:
+          break;
+      }
+      return;
+    }
+
     final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
       title: ps.title != null
@@ -580,11 +695,16 @@ class _PlannedSessionFormResult {
   final String? routineTemplateId;
   final String title;
   final String note;
+
+  /// The Repeat rule the sheet produced (D-27708); null while the sheet has
+  /// no Repeat UI yet (P3a wiring only — P3b fills it from the settings).
+  final RecurrenceRule? rule;
   const _PlannedSessionFormResult({
     required this.modality,
     required this.routineTemplateId,
     required this.title,
     required this.note,
+    this.rule,
   });
 }
 
@@ -606,6 +726,27 @@ class _PlannedSessionForm extends StatefulWidget {
 class _PlannedSessionFormState extends State<_PlannedSessionForm> {
   late TextEditingController _titleCtrl;
   late TextEditingController _noteCtrl;
+
+  // Repeat settings (plan 277). A Repeat OFF resets them to these defaults,
+  // so a later ON starts clean (S-27726).
+  bool _repeatOn = false;
+  int _every = 1;
+  RecurrenceUnit _unit = RecurrenceUnit.week;
+  late final Set<int> _weekdays;
+  RecurrenceEnd _endMode = RecurrenceEnd.count;
+  int _count = 8;
+  DateTime? _until;
+  late final TextEditingController _countCtrl;
+
+  static const _weekdayLabels = <String>[
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
+  ];
 
   // Mode: 'free' or 'routine'
   String _mode = 'free';
@@ -629,6 +770,8 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
     super.initState();
     _titleCtrl = TextEditingController(text: widget.initial?.title ?? '');
     _noteCtrl = TextEditingController(text: widget.initial?.note ?? '');
+    _weekdays = <int>{widget.date.weekday};
+    _countCtrl = TextEditingController(text: '8');
 
     if (widget.initial?.routineTemplateId != null) {
       _mode = 'routine';
@@ -643,6 +786,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
   void dispose() {
     _titleCtrl.dispose();
     _noteCtrl.dispose();
+    _countCtrl.dispose();
     super.dispose();
   }
 
@@ -661,7 +805,8 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
           color: themeColors.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -811,6 +956,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
               maxLines: 2,
             ),
             const SizedBox(height: 20),
+            ..._repeatSection(theme, themeColors),
             SizedBox(
               height: OmniTheme.buttonPrimaryHeight,
               width: double.infinity,
@@ -826,7 +972,10 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                 ),
                 // A Routine plan needs a routine: without one the button is
                 // off, so it can never save as Free Training (plan 262).
-                onPressed: (_mode == 'routine' && _selectedTemplateId == null)
+                // A repeat with `On date` and no date chosen is not ready.
+                onPressed:
+                    ((_mode == 'routine' && _selectedTemplateId == null) ||
+                        !_repeatReady)
                     ? null
                     : _submit,
                 child: FittedBox(
@@ -839,9 +988,326 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
             ),
           ],
         ),
+        ), // SingleChildScrollView
       ),
     );
   }
+
+  List<Widget> _repeatSection(ThemeData theme, OmniThemeColors themeColors) {
+    // A row already in a series shows a read-only line only (D-27709): the
+    // pattern of a series cannot be changed from one row's edit sheet.
+    final series = widget.initial == null
+        ? null
+        : RecurrenceRule.tryParse(widget.initial!.recurrenceRule);
+    if (series != null) {
+      final d = series.describe(widget.date);
+      return [
+        Text(
+          'Repeats ${d[0].toLowerCase()}${d.substring(1)}',
+          key: const Key('repeat-series-summary'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: themeColors.textMuted,
+          ),
+        ),
+        const SizedBox(height: 20),
+      ];
+    }
+
+    final rows = <Widget>[
+      Row(
+        children: [
+          Text(
+            'Repeat',
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: themeColors.textMuted,
+            ),
+          ),
+          const Spacer(),
+          Switch(
+            key: const Key('repeat-switch'),
+            value: _repeatOn,
+            onChanged: (on) => setState(() {
+              _repeatOn = on;
+              if (!on) {
+                // Off drops every setting, so a later ON starts clean
+                // (S-27726).
+                _every = 1;
+                _unit = RecurrenceUnit.week;
+                _weekdays
+                  ..clear()
+                  ..add(widget.date.weekday);
+                _endMode = RecurrenceEnd.count;
+                _count = 8;
+                _countCtrl.text = '8';
+                _until = null;
+              }
+            }),
+          ),
+        ],
+      ),
+    ];
+    if (!_repeatOn) {
+      return [...rows, const SizedBox(height: 20)];
+    }
+
+    rows.add(const SizedBox(height: 12));
+    rows.add(
+      Row(
+        children: [
+          Expanded(
+            child: DropdownButtonFormField<int>(
+              key: const Key('repeat-every'),
+              initialValue: _every,
+              isExpanded: true,
+              decoration: _fieldDecoration('Every', theme),
+              items: List.generate(12, (index) => index + 1)
+                  .map(
+                    (n) => DropdownMenuItem<int>(value: n, child: Text('$n')),
+                  )
+                  .toList(),
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() => _every = v);
+              },
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: DropdownButtonFormField<RecurrenceUnit>(
+              key: const Key('repeat-unit'),
+              initialValue: _unit,
+              isExpanded: true,
+              decoration: _fieldDecoration('Unit', theme),
+              items: const <DropdownMenuItem<RecurrenceUnit>>[
+                DropdownMenuItem(
+                  value: RecurrenceUnit.day,
+                  child: Text('Days'),
+                ),
+                DropdownMenuItem(
+                  value: RecurrenceUnit.week,
+                  child: Text('Weeks'),
+                ),
+                DropdownMenuItem(
+                  value: RecurrenceUnit.month,
+                  child: Text('Months'),
+                ),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() => _unit = v);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (_unit == RecurrenceUnit.week) {
+      rows.add(const SizedBox(height: 12));
+      rows.add(
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var day = 1; day <= 7; day++)
+              FilterChip(
+                key: Key('repeat-weekday-$day'),
+                showCheckmark: false,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+                selected: _weekdays.contains(day),
+                onSelected: day == widget.date.weekday
+                    // The planned day is always the first session: its chip
+                    // can never be un-ticked.
+                    ? (_) {}
+                    : (ticked) => setState(() {
+                        if (ticked) {
+                          _weekdays.add(day);
+                        } else {
+                          _weekdays.remove(day);
+                        }
+                      }),
+                label: Text(_weekdayLabels[day - 1]),
+              ),
+          ],
+        ),
+      );
+    }
+
+    rows.add(const SizedBox(height: 12));
+    rows.add(
+      Text(
+        'Ends',
+        style: theme.textTheme.labelMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: themeColors.textMuted,
+        ),
+      ),
+    );
+    rows.add(const SizedBox(height: 8));
+    rows.add(
+      Row(
+        children: [
+          Expanded(
+            child: _endMode == RecurrenceEnd.count
+                ? FilledButton(
+                    key: const Key('repeat-end-count'),
+                    style: _selectedModeButtonStyle(theme).copyWith(
+                      shape: _modeButtonShape,
+                    ),
+                    onPressed: () =>
+                        setState(() => _endMode = RecurrenceEnd.count),
+                    child: const Text(
+                      'After',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                    ),
+                  )
+                : OutlinedButton(
+                    key: const Key('repeat-end-count'),
+                    style: _unselectedModeButtonStyle(theme).copyWith(
+                      shape: _modeButtonShape,
+                    ),
+                    onPressed: () =>
+                        setState(() => _endMode = RecurrenceEnd.count),
+                    child: const Text(
+                      'After',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _endMode == RecurrenceEnd.date
+                ? FilledButton(
+                    key: const Key('repeat-end-date'),
+                    style: _selectedModeButtonStyle(theme).copyWith(
+                      shape: _modeButtonShape,
+                    ),
+                    onPressed: () =>
+                        setState(() => _endMode = RecurrenceEnd.date),
+                    child: const Text(
+                      'On date',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                    ),
+                  )
+                : OutlinedButton(
+                    key: const Key('repeat-end-date'),
+                    style: _unselectedModeButtonStyle(theme).copyWith(
+                      shape: _modeButtonShape,
+                    ),
+                    onPressed: () =>
+                        setState(() => _endMode = RecurrenceEnd.date),
+                    child: const Text(
+                      'On date',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+
+    rows.add(const SizedBox(height: 12));
+    if (_endMode == RecurrenceEnd.count) {
+      rows.add(
+        NumericFieldWithDoneBar(
+          key: const Key('repeat-count'),
+          controller: _countCtrl,
+          decoration: _fieldDecoration('Sessions', theme),
+          onChanged: (text) => setState(() {
+            final parsed = int.tryParse(text) ?? 2;
+            _count = parsed < 2 ? 2 : (parsed > 366 ? 366 : parsed);
+          }),
+        ),
+      );
+    } else {
+      final firstDate = DateTime(
+        widget.date.year,
+        widget.date.month,
+        widget.date.day + 1,
+      );
+      final lastDate = DateTime(
+        widget.date.year + 1,
+        widget.date.month,
+        widget.date.day,
+      );
+      final firstPlus7 = DateTime(
+        widget.date.year,
+        widget.date.month,
+        widget.date.day + 7,
+      );
+      final initialCandidate = _until ?? firstPlus7;
+      final initial = initialCandidate.isBefore(firstDate)
+          ? firstDate
+          : (initialCandidate.isAfter(lastDate) ? lastDate : initialCandidate);
+      rows.add(
+        OutlinedButton(
+          key: const Key('repeat-until'),
+          style: _unselectedModeButtonStyle(theme).copyWith(
+            shape: _modeButtonShape,
+          ),
+          onPressed: () async {
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: initial,
+              firstDate: firstDate,
+              lastDate: lastDate,
+            );
+            if (picked == null) return;
+            // The picker already bounds the range; guard anyway.
+            if (picked.isBefore(firstDate) || picked.isAfter(lastDate)) return;
+            setState(() => _until = picked);
+          },
+          child: Text(
+            _until == null
+                ? 'Choose date'
+                : '${_until!.day} '
+                      '${OmniDateUtils.shortMonthName(_until!.month)} '
+                      '${_until!.year}',
+          ),
+        ),
+      );
+    }
+
+    rows.add(const SizedBox(height: 12));
+    final rule = _liveRule();
+    rows.add(
+      Text(
+        (_endMode == RecurrenceEnd.date && _until == null)
+            ? 'Choose an end date'
+            : rule.summary(widget.date, rule.dates(widget.date).length),
+        key: const Key('repeat-summary'),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: themeColors.textMuted,
+        ),
+      ),
+    );
+    rows.add(const SizedBox(height: 20));
+    return rows;
+  }
+
+  RecurrenceRule _liveRule() {
+    return RecurrenceRule(
+      series: 'preview',
+      unit: _unit,
+      every: _every,
+      weekdays: _weekdays.toList()..sort(),
+      end: _endMode,
+      count: _count,
+      until: _until,
+    );
+  }
+
+  bool get _repeatReady =>
+      !_repeatOn || _endMode == RecurrenceEnd.count || _until != null;
 
   static final WidgetStateProperty<OutlinedBorder?> _modeButtonShape =
       WidgetStateProperty.all(
@@ -915,6 +1381,17 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
         routineTemplateId: _mode == 'routine' ? _selectedTemplateId : null,
         title: _titleCtrl.text.trim(),
         note: _noteCtrl.text.trim(),
+        rule: _repeatOn
+            ? RecurrenceRule(
+                series: const Uuid().v4(),
+                unit: _unit,
+                every: _every,
+                weekdays: _weekdays.toList()..sort(),
+                end: _endMode,
+                count: _count,
+                until: _endMode == RecurrenceEnd.date ? _until : null,
+              )
+            : null,
       ),
     );
   }

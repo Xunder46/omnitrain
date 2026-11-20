@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/recurrence_rule.dart';
 
 const _uuid = Uuid();
 
@@ -270,6 +271,117 @@ class CalendarState extends ChangeNotifier {
   /// Deletes a planned session by ID and refreshes the month view.
   Future<void> deletePlannedSession(String id) async {
     await _repository.deletePlannedSession(id);
+    await _loadMonth();
+  }
+
+  /// Creates a repeating series of planned sessions (D-27704): one row per
+  /// [rule.dates] date, every row carrying the same `rule.encode()` text. The
+  /// caller owns `rule.series`; no series id is generated here. With
+  /// [skipFirst] the first date is left out (the Repeat-on edit path keeps the
+  /// row it already wrote, D-27711). One month reload after the loop.
+  Future<void> createRecurringPlannedSessions({
+    required DateTime first,
+    required RecurrenceRule rule,
+    String? modality,
+    String? routineTemplateId,
+    String? title,
+    String? note,
+    bool skipFirst = false,
+  }) async {
+    var dates = rule.dates(first);
+    if (skipFirst && dates.isNotEmpty) {
+      dates = dates.sublist(1);
+    }
+    final ruleText = rule.encode();
+    for (final date in dates) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final session = PlannedSession(
+        id: _uuid.v4(),
+        ownerUserId: 'user-1',
+        scheduledDateMs: OmniDateUtils.startOfDayMs(date),
+        modality: modality,
+        routineTemplateId: routineTemplateId,
+        title: title,
+        note: note,
+        isCompleted: false,
+        recurrenceRule: ruleText,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+      await _repository.createPlannedSession(session);
+    }
+    await _loadMonth();
+  }
+
+  /// Applies an occurrence edit to its series (D-27705): every stored row with
+  /// the same series id, from [edited]'s day on (inclusive), not completed,
+  /// not linked and not on a past day, takes [edited]'s modality, routine,
+  /// title and note; every other field (id, date, rule text, timestamps'
+  /// created side) stays the stored row's. A row outside any series degrades
+  /// to a single update. One month reload.
+  Future<void> updateSeriesFrom(PlannedSession edited) async {
+    final series = RecurrenceRule.tryParse(edited.recurrenceRule)?.series;
+    final all = await _repository.getPlannedSessions();
+    if (series == null) {
+      await _repository.updatePlannedSession(edited);
+      await _loadMonth();
+      return;
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final row in all) {
+      if (RecurrenceRule.tryParse(row.recurrenceRule)?.series != series) {
+        continue;
+      }
+      if (row.scheduledDateMs < edited.scheduledDateMs) continue;
+      if (row.isCompleted || row.linkedSessionId != null) continue;
+      if (OmniDateUtils.isPastDay(OmniDateUtils.fromMs(row.scheduledDateMs))) {
+        continue;
+      }
+      await _repository.updatePlannedSession(
+        PlannedSession(
+          id: row.id,
+          ownerUserId: row.ownerUserId,
+          scheduledDateMs: row.scheduledDateMs,
+          modality: edited.modality,
+          routineTemplateId: edited.routineTemplateId,
+          title: edited.title,
+          note: edited.note,
+          isCompleted: row.isCompleted,
+          linkedSessionId: row.linkedSessionId,
+          recurrenceRule: row.recurrenceRule,
+          createdAtMs: row.createdAtMs,
+          updatedAtMs: now,
+        ),
+      );
+    }
+    await _loadMonth();
+  }
+
+  /// Deletes the series from [from] on (D-27705): every stored row with the
+  /// same series id, from [from]'s day on (inclusive), not completed, not
+  /// linked and not on a past day. A row outside any series deletes just that
+  /// row. The row [from] itself is deleted even on a past day, a missed plan
+  /// the user pointed at; later rows on past days stay. One month reload.
+  Future<void> deleteSeriesFrom(PlannedSession from) async {
+    final series = RecurrenceRule.tryParse(from.recurrenceRule)?.series;
+    final all = await _repository.getPlannedSessions();
+    if (series == null) {
+      await _repository.deletePlannedSession(from.id);
+      await _loadMonth();
+      return;
+    }
+    for (final row in all) {
+      if (RecurrenceRule.tryParse(row.recurrenceRule)?.series != series) {
+        continue;
+      }
+      if (row.scheduledDateMs < from.scheduledDateMs) continue;
+      if (row.isCompleted || row.linkedSessionId != null) continue;
+      if (row.id != from.id &&
+          OmniDateUtils.isPastDay(OmniDateUtils.fromMs(row.scheduledDateMs))) {
+        continue;
+      }
+      await _repository.deletePlannedSession(row.id);
+    }
     await _loadMonth();
   }
 
