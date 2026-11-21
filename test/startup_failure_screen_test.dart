@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/app.dart';
 import 'package:omnitrain/app/startup_root.dart';
 import 'package:omnitrain/core/models/app_version_info.dart';
+import 'package:omnitrain/core/platform/no_watch_transport.dart';
 import 'package:omnitrain/core/services/preferences_service.dart';
 import 'package:omnitrain/core/services/startup_failure_diagnostic_writer.dart';
 import 'package:omnitrain/core/utils/rest_notification_service.dart';
@@ -387,6 +388,9 @@ void main() {
               loadAppVersionInfo: () async =>
                   const AppVersionInfo(version: '1.0.0', build: '1'),
               onNonFatalStartupIssue: (_, _) async {},
+              // Flutter's test platform is Android, which now builds a real
+              // wrist link whose listeners never let `pumpAndSettle` finish.
+              watchTransport: const NoWatchTransport(),
             ),
             onStartupFailurePersisted: _noopPersist,
           ),

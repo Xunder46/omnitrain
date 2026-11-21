@@ -7,6 +7,7 @@ import 'app.dart';
 import 'app/startup_root.dart';
 import 'core/models/app_version_info.dart';
 import 'core/platform/screen_awake_channel.dart';
+import 'core/platform/watch_transport.dart';
 import 'core/services/bundled_catalog_source.dart';
 import 'core/services/backup_file_gateway.dart';
 import 'core/services/backup_service.dart';
@@ -254,6 +255,10 @@ Future<Widget> runStartup({
   StartupAppVersionInfoLoader loadAppVersionInfo = _loadAppVersionInfo,
   StartupNonFatalIssueHandler onNonFatalStartupIssue =
       _reportNonFatalStartupIssue,
+
+  /// The wrist link. Null asks the platform (iOS and Android get the real
+  /// one); a test that does not want a wrist passes a `NoWatchTransport`.
+  WatchTransport? watchTransport,
 }) async {
   // Initialize services
   final preferencesService = createPreferencesService();
@@ -394,6 +399,7 @@ Future<Widget> runStartup({
     nutritionState: nutritionState,
     foodLibraryState: foodLibraryState,
     settingsState: settingsState,
+    transport: watchTransport,
     // A wrist session that lands in history shows in the calendar's month.
     onHistoryChanged: calendarState.refresh,
     // The plan a wrist started is marked started on the calendar (plan 129,
