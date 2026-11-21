@@ -20,6 +20,7 @@ import 'app/wear_watch_transport.dart';
 import 'nutrition/watch_nutrition_state.dart';
 import 'session/hive_watch_session_store.dart';
 import 'session/watch_session_engine.dart';
+import 'start/watch_phone_preferences.dart';
 import 'start/watch_session_start_paths.dart';
 import 'start/watch_sync_orchestrator.dart';
 
@@ -41,11 +42,13 @@ Future<void> main() async {
   final engine = WatchSessionEngine(store, onEmit: transport.send);
   final paths = WatchSessionStartPaths(engine: engine, store: store);
   final nutrition = WatchNutritionState(engine: engine, store: store);
+  final preferences = WatchPhonePreferences(store: store);
   final orchestrator = WatchSyncOrchestrator(
     transport: transport,
     paths: paths,
     engine: engine,
     nutrition: nutrition,
+    preferences: preferences,
   );
 
   runApp(
@@ -55,6 +58,7 @@ Future<void> main() async {
       nutrition: nutrition,
       orchestrator: orchestrator,
       transport: transport,
+      preferences: preferences,
     ),
   );
 }

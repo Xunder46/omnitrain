@@ -210,6 +210,7 @@ sealed class WatchRecord {
         json,
       ),
       WatchFoodCatalogRecord.type => WatchFoodCatalogRecord.fromJson(json),
+      WatchPreferencesRecord.type => WatchPreferencesRecord.fromJson(json),
       _ => throw FormatException('unknown watch record type: $type'),
     };
   }
@@ -821,6 +822,93 @@ final class WatchFoodCatalogRecord extends WatchRecord {
             .toList(growable: false),
         sequence: (json['sequence'] as int?) ?? 0,
       );
+}
+
+/// One copy of the phone's settings, as a `preferences_down` carried it (plan
+/// 283a, D-28301).
+///
+/// Reference data like the catalogs: it belongs to no session (`sessionId` is
+/// empty), a newer copy is a newer row, and the copy with the latest
+/// [generatedAt] applies. Mirrors the Apple client's `WatchPreferencesRecord`.
+final class WatchPreferencesRecord extends WatchRecord {
+  const WatchPreferencesRecord({
+    required super.recordId,
+    required super.recordedAt,
+    required this.generatedAt,
+    required this.effortRatingPrompt,
+    required this.restPingSeconds,
+    this.accentColorHex,
+    this.weightUnit,
+    this.distanceUnit,
+    super.sequence,
+  }) : super(sessionId: '');
+
+  static const String type = 'preferences';
+
+  /// When the phone generated this copy. An older copy that arrives late is
+  /// not a newer truth.
+  final DateTime generatedAt;
+
+  /// Whether a session the wrist ends asks for the session effort rating.
+  final bool effortRatingPrompt;
+
+  /// How often a rest pings, in whole seconds; 0 is Off.
+  final int restPingSeconds;
+
+  /// The phone's theme accent as `#RRGGBB`, or null when the copy carried none.
+  final String? accentColorHex;
+
+  /// `kg` or `lbs`, or null when the copy carried none.
+  final String? weightUnit;
+
+  /// `km` or `miles`, or null when the copy carried none.
+  final String? distanceUnit;
+
+  @override
+  String get recordType => type;
+
+  @override
+  WatchPreferencesRecord withSequence(int sequence) => WatchPreferencesRecord(
+    recordId: recordId,
+    recordedAt: recordedAt,
+    generatedAt: generatedAt,
+    effortRatingPrompt: effortRatingPrompt,
+    restPingSeconds: restPingSeconds,
+    accentColorHex: accentColorHex,
+    weightUnit: weightUnit,
+    distanceUnit: distanceUnit,
+    sequence: sequence,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    'recordType': type,
+    'recordId': recordId,
+    'sessionId': sessionId,
+    'recordedAt': utcIso(recordedAt),
+    'sequence': sequence,
+    'generatedAt': utcIso(generatedAt),
+    'effortRatingPrompt': effortRatingPrompt,
+    'restPingSeconds': restPingSeconds,
+    // An absent key stays absent, so a later read keeps the default look and
+    // units rather than an earlier copy's.
+    'accentColorHex': ?accentColorHex,
+    'weightUnit': ?weightUnit,
+    'distanceUnit': ?distanceUnit,
+  };
+
+  static WatchPreferencesRecord fromJson(Map<String, Object?> json) =>
+  WatchPreferencesRecord(
+    recordId: json['recordId']! as String,
+    recordedAt: parseUtcIso(json['recordedAt']),
+    generatedAt: parseUtcIso(json['generatedAt']),
+    effortRatingPrompt: (json['effortRatingPrompt'] as bool?) ?? false,
+    restPingSeconds: (json['restPingSeconds'] as int?) ?? 0,
+    accentColorHex: json['accentColorHex'] as String?,
+    weightUnit: json['weightUnit'] as String?,
+    distanceUnit: json['distanceUnit'] as String?,
+    sequence: (json['sequence'] as int?) ?? 0,
+  );
 }
 
 /// Narrows a decoded JSON value to a string-keyed map.

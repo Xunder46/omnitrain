@@ -17,6 +17,7 @@ library;
 
 import '../nutrition/watch_nutrition_state.dart';
 import '../session/watch_session_engine.dart';
+import 'watch_phone_preferences.dart';
 import 'watch_session_start_paths.dart';
 
 /// What the orchestrator needs from whatever carries messages between the two
@@ -45,10 +46,12 @@ class WatchSyncOrchestrator {
     required WatchSessionStartPaths paths,
     required WatchSessionEngine engine,
     WatchNutritionState? nutrition,
+    WatchPhonePreferences? preferences,
   }) : _transport = transport,
        _paths = paths,
        _engine = engine,
-       _nutrition = nutrition;
+       _nutrition = nutrition,
+       _preferences = preferences;
 
   final WatchSyncTransport _transport;
   final WatchSessionStartPaths _paths;
@@ -57,6 +60,10 @@ class WatchSyncOrchestrator {
   /// The quick-log surface's synced food list, when the app hosts one. A watch
   /// without the surface has nothing to do with a `foods_down`.
   final WatchNutritionState? _nutrition;
+
+  /// The phone's synced settings, when the app hosts them. A watch without
+  /// them has nothing to do with a `preferences_down`.
+  final WatchPhonePreferences? _preferences;
 
   /// Whether a catch-up is already running: a trigger that arrives while one
   /// does is dropped, never queued (D-183).
@@ -141,6 +148,10 @@ class WatchSyncOrchestrator {
       case 'routines_down':
         final result = await _paths.applyRoutinesDown(envelope);
         return result.applied;
+      case 'preferences_down':
+        final preferences = _preferences;
+        if (preferences == null) return false;
+        return preferences.applyPreferencesDown(envelope);
       case 'foods_down':
         final nutrition = _nutrition;
         if (nutrition == null) return false;

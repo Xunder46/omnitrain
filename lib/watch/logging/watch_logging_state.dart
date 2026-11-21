@@ -122,11 +122,14 @@ class WatchLoggingState {
     required WatchSessionEngine engine,
     DateTime Function()? clock,
     String Function()? idFactory,
-    this.units = const WatchUnitPreferences(),
+    WatchUnitPreferences units = const WatchUnitPreferences(),
+    WatchUnitPreferences Function()? unitsProvider,
     WatchSensorRecorder? sensors,
   }) : _engine = engine,
        _clock = clock ?? _utcNow,
        _newId = idFactory ?? _uuid,
+       _fixedUnits = units,
+       _unitsProvider = unitsProvider,
        _sensors = sensors;
 
   static const Uuid _uuidV4 = Uuid();
@@ -165,8 +168,14 @@ class WatchLoggingState {
   /// with none behaves exactly as before: every value is the user's to dial.
   final WatchSensorRecorder? _sensors;
 
-  /// The saved unit preferences the wrist reads in.
-  final WatchUnitPreferences units;
+  final WatchUnitPreferences _fixedUnits;
+  final WatchUnitPreferences Function()? _unitsProvider;
+
+  /// The saved unit preferences the wrist reads in. When the surface is wired
+  /// to the phone's settings the provider is asked on every read, so a unit the
+  /// phone changed shows on the next repaint (plan 283a, D-28304); without one
+  /// the units are the fixed ones the state was built with.
+  WatchUnitPreferences get units => _unitsProvider?.call() ?? _fixedUnits;
 
   // ---------------------------------------------------------------------------
   // What the screen is showing

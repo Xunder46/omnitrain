@@ -33,6 +33,7 @@ import '../nutrition/watch_nutrition_state.dart';
 import '../session/watch_session_engine.dart';
 import '../session/watch_records.dart';
 import '../start/watch_session_start_paths.dart';
+import '../start/watch_phone_preferences.dart';
 import '../start/watch_start_screen.dart';
 import '../start/watch_sync_orchestrator.dart';
 import '../widgets/watch_controls.dart';
@@ -48,6 +49,7 @@ class WearApp extends StatefulWidget {
     required this.transport,
     this.navigatorKey,
     this.units = const WatchUnitPreferences(),
+    this.preferences,
   });
 
   final WatchSessionEngine engine;
@@ -63,6 +65,11 @@ class WearApp extends StatefulWidget {
 
   /// The saved unit preferences the wrist reads in, as the phone wrote them.
   final WatchUnitPreferences units;
+
+  /// The phone's synced settings. When given, the logging surface reads its
+  /// units and the rest ping from them (plan 283a); left null it reads
+  /// [units] as before.
+  final WatchPhonePreferences? preferences;
 
   /// The copy the wrist shows while it restores what it holds.
   static const String loadingLabel = 'OmniTrain';
@@ -81,6 +88,9 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   late final WatchLoggingState _logging = WatchLoggingState(
     engine: widget.engine,
     units: widget.units,
+    unitsProvider: widget.preferences == null
+        ? null
+        : () => widget.preferences!.units,
   );
 
   late final WatchMenuState _menu = WatchMenuState(
@@ -137,6 +147,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
       await widget.engine.restore();
       await widget.paths.restore();
       await widget.nutrition.restore();
+      await widget.preferences?.restore();
     } on Object catch (error, stack) {
       debugPrint('OmniTrain wrist restore failed: $error\n$stack');
     } finally {

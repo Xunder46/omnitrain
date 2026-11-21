@@ -240,6 +240,62 @@ and flow, not the round bezel or the watch's pixel density
 `S-28132 the Wear menu harness`,
 `is a QA entry point no production file imports`).
 
+## The phone's settings
+
+The phone sends its settings to the wrist in a `preferences_down` message,
+which the shell hands to `WatchSyncOrchestrator` and the orchestrator routes to
+the wrist's `WatchPhonePreferences` (`test/wear_phone_settings_test.dart`
+`S-28310 the orchestrator routes preferences_down to the settings owner`).
+A watch that has never heard from the phone keeps the old behaviour:
+until the phone has sent its settings the wrist reads kilograms and kilometres,
+with the rest ping off and no effort rating asked
+(`test/watch_phone_preferences_test.dart`
+group `S-28301 a fresh owner over an empty store`, test
+`every getter reads its default and current is null`).
+
+A copy the wrist accepts honours the weight and the distance unit on the
+logging surface — the value, the step and the label — while the dialled and
+logged values stay in kilograms underneath, so a unit change never converts a
+stored value twice (`test/wear_phone_settings_test.dart`
+`S-28311 the logging state reads the phone's unit on every access`), and the
+Rest Ping interval in seconds (0 = Off) on the rest surface
+(`S-28313 the rest ping interval follows the phone`). The copy's
+effort-rating flag and accent colour are stored but nothing shows them yet —
+the rating prompt and the accent theming stay on the Apple-only list above
+(`test/watch_phone_preferences_test.dart`
+group `S-28302 one preferences_down copy applies`, test
+`the getters show the copy and one row is stored`).
+
+The wrist stores every copy it accepts and applies the newest by the phone's
+own stamp: a late copy with an older stamp is dropped and not stored
+(`test/watch_phone_preferences_test.dart`
+group `S-28304 a late older copy is dropped`, test
+`it returns false, the newer copy stands and no row is added`), a tie in the
+stamp goes to the copy received later (group
+`S-28305 a tie in generatedAt`, test `the later-received copy applies`), a
+newer copy that carries no unit puts the wrist back to kilograms or
+kilometres rather than keeping the earlier copy's unit (group
+`S-28306 an absent key reads as the default`, test
+`a newer copy without unit or accent resets them`), a copy the wrist cannot
+read is refused whole with nothing stored (group
+`S-28308 an unreadable copy is refused whole`, tests `(a)`–`(g)` and the
+`(f)` other-type and `(g)` validator-refusal variants), and the same message
+delivered twice is stored once (group
+`S-28309 the same envelope applied twice`, test
+`is one row, the getters unchanged, and the replay returns true`).
+The settings survive a restart: the shell restores them before the first
+screen (`test/wear_phone_settings_test.dart`
+`S-28312 the shell restores the stored settings at launch`), the same
+round-trip over the in-memory store and the Hive store (group
+`S-28307 a relaunch restores the copy` in
+`test/watch_phone_preferences_test.dart`, tests
+`Mock: a new owner over the same store reads the copy back` and
+`Hive: a new owner over the same boxes reads the copy back`). A unit the
+phone changes while a session runs reaches the wrist at its next sync and
+shows on the next once-a-second repaint
+(`test/wear_phone_settings_test.dart`
+`S-28312b a copy that arrives while the session runs shows on the next repaint`).
+
 ## What the wrist shows
 
 The start surface (synced routines, free training, the quick-log entry, a manual
@@ -249,7 +305,8 @@ The Menu button under the logging surface
 and the rest surface opens the exercise menu, the Apple wrist's menu without a remove control (D-28102).
 
 The Apple wrist hosts more: the swipe pager between exercises,
-the effort-rating prompt, the personal-record banner, the water bar, the
+the effort-rating prompt,
+the personal-record banner, the water bar, the
 workout summary, the diagnostics view, spoken timer cues and the accent
 theming. None of those is on the Wear wrist; the plan that built this shell
 records each one, and the sizes they are (the Apple client is roughly twice the
@@ -308,6 +365,10 @@ checks, run on real hardware:
    `Log` 40, `Menu` 32, the step buttons 36), and the corners of
    `Log` near the round bezel, which clips the corners of a
    full-width button
+6. (owner) with a paired phone set to pounds and miles, sync the watch:
+   weights show in lb and distances in miles on the logging surface; set the
+   phone's Rest Ping to 30 seconds, sync, and a rest on the watch taps every
+   30 seconds
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with
