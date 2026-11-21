@@ -1,5 +1,5 @@
 name: omnitrain_watch_link
-description: OmniTrain's phone-side link to the Apple Watch over WatchConnectivity (iOS only). Replaces the watch_connectivity package with a link that queues, buffers, acknowledges and reports reachability.
+description: OmniTrain's link to the wrist over both platforms' own APIs — WatchConnectivity on iOS, the Wear OS data layer on Android. Replaces the watch_connectivity package with a link that queues, buffers, acknowledges and reports reachability.
 version: 0.1.0
 publish_to: none
 
@@ -15,4 +15,7 @@ flutter:
   plugin:
     platforms:
       ios:
+        pluginClass: OmniTrainWatchLinkPlugin
+      android:
+        package: dev.sasha.omnitrain.watch_link
         pluginClass: OmniTrainWatchLinkPlugin

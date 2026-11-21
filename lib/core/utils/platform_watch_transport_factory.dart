@@ -1,14 +1,14 @@
 /// Where the app asks for the thing that carries watch messages.
 ///
 /// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
-/// Phase 1 (D-2), scenario S-006.
+/// Phase 1 (D-2), scenario S-006. Plan 280 brings Android in (D-28004).
 ///
 /// One place decides, and it decides on the platform rather than on what is
-/// installed: iOS gets the real transport, and every other platform gets
-/// nothing — a null that production DI reads as "this build has no wrist".
-/// Android is deliberately in that group until the Wear OS client is built; the
-/// transport interfaces carry no iOS type, so the Wear implementation slots in
-/// here without reopening the contract.
+/// installed: iOS and Android get the real transport, and every other platform
+/// gets nothing — a null that production DI reads as "this build has no wrist".
+/// The two platforms' links come from one package (`omnitrain_watch_link`):
+/// `WCSession` on iOS, the Wear OS data layer on Android, behind the same
+/// `WatchLink` API, so nothing above this file knows which wrist it has.
 ///
 /// The check is `defaultTargetPlatform`, not `dart:io`'s `Platform`: this file
 /// is compiled for web too, where `dart:io` does not exist.
@@ -37,7 +37,10 @@ Future<WatchTransport?> createPlatformWatchTransport({
   DiagnosticsLog? diagnostics,
 }) async {
   final target = platform ?? defaultTargetPlatform;
-  if (kIsWeb || target != TargetPlatform.iOS) return null;
+  if (kIsWeb) return null;
+  if (target != TargetPlatform.iOS && target != TargetPlatform.android) {
+    return null;
+  }
 
   try {
     final transport = WatchConnectivityTransport(

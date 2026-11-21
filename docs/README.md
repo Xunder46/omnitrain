@@ -94,6 +94,7 @@ non-overlapping training periods).
 | [Rest Tracking](rest_tracking.md) | Wall-clock rest tracking architecture, EntryRest model, Hive-backed rest records between sets, and the rest-is-a-count-up rule on both devices |
 | [Watch Session Capture](watch_session_capture.md) | How a session run on the watch becomes phone history — what the wrist sends (session end, effort rating, heart-rate and step summaries, the preferences it asks by), the watch session inbox, the import, rating precedence, the phone-ended rating question, tombstones, receipts, history liveness |
 | [Watch Session Sync](watch_session_sync.md) | The one-session model across the two devices — which session becomes the phone's, both directions of ending, the conflict rule, and what does not sync |
+| [The Wear OS App](wear_os_app.md) | The Android wrist app — its flavor and entry point, the shell that hosts the wrist surfaces, the radio over the Wear data layer, and what is verified without a watch |
 | [Navigation Contract](navigation_contract.md) | The single source of truth for screen-level navigation. Enforced by `test/navigation_contract_enforcement_test.dart`; raw `MaterialPageRoute` / `PageRouteBuilder` outside `lib/core/navigation/` is a build break. The historical migration audit lives under [history/route-migration-audit.md](history/route-migration-audit.md). |
 
 ---

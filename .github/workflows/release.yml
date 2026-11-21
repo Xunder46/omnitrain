@@ -176,7 +176,7 @@ jobs:
           # As on iOS, deliberately NOT using `--split-debug-info` /
           # `--obfuscate`: keeping Dart symbols in the binary means Dart
           # stack traces stay readable even if symbol upload fails.
-          flutter build appbundle --release \
+          flutter build appbundle --release --flavor phone \
             --dart-define=SENTRY_DSN=$SENTRY_DSN
 
       # As on iOS, symbol upload is its own step — `sentry_dart_plugin`
@@ -193,4 +193,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: aab
-          path: build/app/outputs/bundle/release/app-release.aab
+          path: build/app/outputs/bundle/phoneRelease/app-phone-release.aab

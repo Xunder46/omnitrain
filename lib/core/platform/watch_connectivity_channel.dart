@@ -1,11 +1,13 @@
 /// The one file that imports the watch link package.
 ///
 /// Plan: `docs/plans/2026-10-21-47a-watch-link-plugin-plan/2026-10-21-47a-watch-link-plugin-plan.md`
-/// (D-4, D-5). `omnitrain_watch_link` wraps `WCSession` on iOS and is this
-/// repository's own plugin; keeping it here means a swap — a different package,
-/// or the Wear APIs on Android — is a change to this file and nothing else (see
-/// `WatchMessageChannel`). It also exposes the OS queue: listing the transfers
-/// the OS still holds and cancelling them by id (`WatchQueueControl`).
+/// (D-4, D-5), extended to Android by plan 280 (D-28004). `omnitrain_watch_link`
+/// is this repository's own plugin: `WCSession` on iOS, the Wear OS data layer
+/// on Android, one `WatchLink` API over both. Keeping it here means a swap — a
+/// different package, or another platform's watch APIs — is a change to this
+/// file and nothing else (see `WatchMessageChannel`). It also exposes the OS
+/// queue: listing the transfers the OS still holds and cancelling them by id
+/// (`WatchQueueControl`).
 library;
 
 import 'package:flutter/services.dart' show PlatformException;

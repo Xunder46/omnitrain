@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the wrist app declares to the Wear data layer (plan 280, D-28003), so the
+  phone can find it before it has ever launched a sync. The phone declares
+  `omnitrain_phone` in `src/phone/res/values/wear.xml`; each side looks for the
+  other's. The names are repeated in
+  `packages/omnitrain_watch_link/android/.../OmniTrainWatchLinkPlugin.kt`.
+-->
+<resources>
+    <string-array name="android_wear_capabilities">
+        <item>omnitrain_wear</item>
+    </string-array>
+</resources>

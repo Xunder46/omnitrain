@@ -13,23 +13,23 @@ the keyboard, not for an agent.
 
 The wrist logic is finished and tested. The wrist *app* now exists and hosts it.
 
-Verified 2026-10-04:
+Verified 2026-11-20 (plan 280 built the Wear OS shell):
 
 | | Apple Watch | Wear OS |
 |---|---|---|
 | Client logic | `watch/watchos/Sources/WatchSessionEngine/` (Swift) | `lib/watch/` (Dart) |
-| Tests | `swift test` on a Mac, also run by the pre-release gate; 0 failures required | covered in the Dart suite |
-| App shell | `ios/OmniTrain Watch App/` — the start surface, the logging surface, and a radio (§3.6) | **none** — no production `main()` |
-| Build target | **exists**; the target links the `WatchSessionEngine` package — building the watch scheme (§5) is the proof | **none** — Gradle has only `:app` |
-| Transport | implemented (`lib/core/platform/`) | **none** |
-| Wrist store | **append-only file store** — survives a relaunch | — |
+| Tests | `swift test` on a Mac, also run by the pre-release gate; 0 failures required | the Dart suite, including `test/wear_app_test.dart`, `test/wear_watch_transport_test.dart` and `test/wear_os_config_test.dart` |
+| App shell | `ios/OmniTrain Watch App/` — the start surface, the logging surface, and a radio (§3.6) | `lib/watch/wear_main.dart` and `lib/watch/app/` — the start, logging, rest and nutrition surfaces, and the radio |
+| Build target | **exists**; the target links the `WatchSessionEngine` package — building the watch scheme (§5) is the proof | **exists**; the `wear` flavor of the Android app builds `app-wear-debug.apk` with the watch feature in its manifest |
+| Transport | implemented (`lib/core/platform/`) | implemented; `packages/omnitrain_watch_link` carries the Wear data layer behind the same Dart API (§4) |
+| Wrist store | **append-only file store** — survives a relaunch | `HiveWatchSessionStore`, in the wrist's own Hive directory |
 
-The Apple shell is the only thing that hosts a wrist client. The four
-`*_debug_main.dart` files are QA harnesses, not the app, and the Wear OS client
-still has no host at all.
+The Apple shell is no longer the only thing that hosts a wrist client. The four
+`*_debug_main.dart` files remain QA harnesses; `lib/watch/wear_main.dart` is the
+production Wear OS app.
 
-**Scope**: Apple Watch first. Wear OS is deferred to a separate cloning job
-once the Apple path is proven on hardware — see §4.
+**Scope**: both wrists. The Wear app hosts fewer surfaces than the Apple one —
+§4 lists which — and [The Wear OS App](wear_os_app.md) is the reference for it.
 
 The phone half is wired: `lib/main.dart` builds the watch graph through
 `createWatchSync` — null on a platform with no watch. No phone screen consumes
@@ -229,29 +229,41 @@ history, so the Session Summary counts it
 
 ---
 
-## 4. Wear OS — deliberately deferred
+## 4. Wear OS — the shell and the radio
 
-**Not in scope for this pass.** Apple Watch ships first; Wear OS follows as a
-separate cloning job once the Apple path is built, tested and proven on
-hardware. Doing them together would mean debugging two unproven transports
-against two unproven shells at the same time.
+Built by plan 280. The pieces that used to be listed as missing are now in the
+repository, and this section records where they are so the next reader does not
+rediscover them:
 
-Recorded here so the follow-on job does not have to rediscover it:
+- `android/app/build.gradle.kts` declares a `phone` and a `wear` flavor; the
+  wear flavor raises the floor to Wear OS 3 and its own manifest
+  (`android/app/src/wear/AndroidManifest.xml`) carries
+  `android.hardware.type.watch`.
+- Each flavor declares its data-layer capability in
+  `res/values/wear.xml` — `omnitrain_phone` on the phone, `omnitrain_wear` on the
+  wrist — and the link plugin looks for the other one.
+- `lib/watch/wear_main.dart` is the production wrist entry point: the real Hive
+  store, the engine, the start paths, the nutrition state, the orchestrator and
+  the radio, wired the way the Apple shell wires them.
+- `packages/omnitrain_watch_link/android/` is the Wear data layer behind the same
+  Dart API the iOS half exposes, so everything above `WatchConnectivityChannel`
+  is platform-blind.
 
-- `android/settings.gradle.kts` includes only `:app` — no Wear module.
-- No `android.hardware.type.watch` in the manifest.
-- No production Dart wrist entry point — only the four debug harnesses.
-- `lib/watch/` is already the complete Wear client, and it is contract-tested
-  against the Swift client through `watch/contract/*.json`. **The cloning job is
-  shell plus transport, not logic** — the hard part is already done and already
-  proven to agree with the Apple client.
-- The sensor half is Health Connect rather than HealthKit; the modality→activity
-  mapping for both already exists in `watch/contract/watch_sensor_contract.json`
-  (`WatchActivityType.wear`, the `EXERCISE_TYPE_*` vocabulary).
+`lib/watch/` stays the client both wrists share, contract-tested against the
+Swift client through `watch/contract/*.json`, so the port is shell plus
+transport rather than logic.
 
-One thing to preserve while building the Apple path: keep the Dart transport
-interfaces platform-neutral, so the Wear implementation slots in later without
-reopening the protocol contract.
+**What the Wear app does without**: the swipe pager, the exercise menu (a
+stopgap End control finishes the workout), the effort-rating prompt, the
+personal-record banner, the water bar, the workout summary, the diagnostics
+view, the accent theming, and live sensors. The Apple client is roughly twice
+the Dart client in lines for that reason. Every one of those is named in the
+plan's Open items with what it needs, and the sensor half additionally needs the
+health-services exercise client rather than the `health` package, because Health
+Connect does not push live heart rate.
+
+One thing to preserve while the two shells differ: the Dart transport interfaces
+stay platform-neutral, so a later port reopens no protocol contract.
 
 ---
 

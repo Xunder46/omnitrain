@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the phone app declares to the Wear data layer (plan 280, D-28003), so the
+  wrist can find it. The wrist declares `omnitrain_wear` in
+  `src/wear/res/values/wear.xml`.
+-->
+<resources>
+    <string-array name="android_wear_capabilities">
+        <item>omnitrain_phone</item>
+    </string-array>
+</resources>

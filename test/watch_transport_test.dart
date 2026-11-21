@@ -895,16 +895,22 @@ void main() {
   });
 
   group('S-006 the transport is chosen by platform', () {
-    test('S-006 iOS gets the real transport and other platforms get none',
+    test('S-006 iOS and Android get the real transport and other platforms none',
         () async {
-      final ios = await createPlatformWatchTransport(
-        platform: TargetPlatform.iOS,
-        channelFactory: () => link.phone,
-      );
-      expect(ios, isA<WatchConnectivityTransport>());
+      for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+        final transport = await createPlatformWatchTransport(
+          platform: platform,
+          channelFactory: () => link.phone,
+        );
+        expect(
+          transport,
+          isA<WatchConnectivityTransport>(),
+          reason: '$platform carries watch frames',
+        );
+        addTearDown((transport! as WatchConnectivityTransport).close);
+      }
 
       for (final platform in [
-        TargetPlatform.android,
         TargetPlatform.macOS,
         TargetPlatform.windows,
         TargetPlatform.linux,
@@ -915,6 +921,16 @@ void main() {
         );
         expect(none, isNull, reason: '$platform has no watch transport');
       }
+    });
+
+    test('S-28001 a watchless web build gets none', () async {
+      expect(
+        await createPlatformWatchTransport(
+          platform: TargetPlatform.android,
+          channelFactory: () => link.phone,
+        ),
+        isNotNull,
+      );
     });
 
     test('S-006 a transport that cannot be built answers null', () async {

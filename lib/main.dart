@@ -386,10 +386,9 @@ Future<Widget> runStartup({
   final sessionSummaryService = SessionSummaryService(repository);
   final exerciseLibraryService = ExerciseLibraryService(repository);
 
-  // The watch graph, when this platform has a watch to talk to. Null on web,
-  // desktop, and Android (the Wear OS client is a later plan), and null when the
-  // transport cannot be set up — a wrist that is not there is not a reason to
-  // refuse to start.
+  // The watch graph, when this platform has a watch to talk to. Null on web and
+  // desktop, and null on Android and iOS when the transport cannot be set up —
+  // a wrist that is not there is not a reason to refuse to start.
   final watchSync = await createWatchSync(
     repository: repository,
     nutritionState: nutritionState,

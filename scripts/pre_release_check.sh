@@ -793,14 +793,17 @@ else
   if ! command -v flutter >/dev/null 2>&1; then
     log_err "flutter not found on PATH — the release build (§11s) cannot run. Install Flutter or invoke the gate from a machine with the toolchain."
   else
-    echo "    Running flutter build appbundle --release (this can take several minutes)..."
+    echo "    Running flutter build appbundle --release --flavor phone (this can take several minutes)..."
+    # Plan 280: the app has a `phone` and a `wear` flavor, so every Flutter
+    # build has to name one. The release is the phone app; the wrist APK is
+    # built separately (`flutter build apk --flavor wear -t lib/watch/wear_main.dart`).
     # Capture stderr separately so the underlying diagnostic is
     # surfaced verbatim when the build fails.
-    if BUILD_ERR_LOG=$(flutter build appbundle --release \
+    if BUILD_ERR_LOG=$(flutter build appbundle --release --flavor phone \
           --dart-define=SENTRY_DSN=development 2>&1); then
-      log_ok "release build (flutter build appbundle --release) completed"
+      log_ok "release build (flutter build appbundle --release --flavor phone) completed"
     else
-      log_err "release build could not be produced (flutter build appbundle --release exited non-zero). The build configuration has an error that the previous gate could not detect because it read files rather than exercising them. Underlying build output (verbatim — do not mask): $(echo "$BUILD_ERR_LOG" | tail -40 | tr '\n' ' ')"
+      log_err "release build could not be produced (flutter build appbundle --release --flavor phone exited non-zero). The build configuration has an error that the previous gate could not detect because it read files rather than exercising them. Underlying build output (verbatim — do not mask): $(echo "$BUILD_ERR_LOG" | tail -40 | tr '\n' ' ')"
     fi
   fi
 fi
@@ -808,15 +811,27 @@ fi
 # Locate the produced artifact. §11r uses whichever exists.
 # Either path is acceptable; AAB is the canonical release format
 # for Play Store uploads. APK is the local-test fallback.
-if [[ -f "build/app/outputs/bundle/release/app-release.aab" ]]; then
+# The flavored paths come first (plan 280); the unflavored ones stay so an
+# artifact left by an older build is still inspected rather than skipped.
+if [[ -f "build/app/outputs/bundle/phoneRelease/app-phone-release.aab" ]]; then
+  BUILD_ARTIFACT_KIND="aab"
+  BUILD_ARTIFACT_PATH="build/app/outputs/bundle/phoneRelease/app-phone-release.aab"
+elif [[ -f "build/app/outputs/bundle/release/app-release.aab" ]]; then
   BUILD_ARTIFACT_KIND="aab"
   BUILD_ARTIFACT_PATH="build/app/outputs/bundle/release/app-release.aab"
+elif [[ -f "build/app/outputs/flutter-apk/app-phone-release.apk" ]]; then
+  BUILD_ARTIFACT_KIND="apk"
+  BUILD_ARTIFACT_PATH="build/app/outputs/flutter-apk/app-phone-release.apk"
 elif [[ -f "build/app/outputs/flutter-apk/app-release.apk" ]]; then
   BUILD_ARTIFACT_KIND="apk"
   BUILD_ARTIFACT_PATH="build/app/outputs/flutter-apk/app-release.apk"
 fi
 
-SEEDS_PATH="android/app/build/outputs/mapping/release/seeds.txt"
+if [[ -f "android/app/build/outputs/mapping/phoneRelease/seeds.txt" ]]; then
+  SEEDS_PATH="android/app/build/outputs/mapping/phoneRelease/seeds.txt"
+else
+  SEEDS_PATH="android/app/build/outputs/mapping/release/seeds.txt"
+fi
 
 # §11r (a) — code protection. R8 writes `seeds.txt` recording every
 # class matched by a `-keep` rule. If the kept notification classes

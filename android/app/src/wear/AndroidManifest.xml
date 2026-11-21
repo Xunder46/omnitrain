@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      The wear flavor's manifest (plan 280, D-28008).
+
+      `android.hardware.type.watch` is the whole difference between the two
+      APKs: it tells Play this one belongs on a watch, and it is what makes the
+      Wear OS launcher show the app. Everything else — the activity, the theme,
+      the Flutter embedding — is merged in from `src/main` and is the same code.
+    -->
+    <uses-feature
+        android:name="android.hardware.type.watch"
+        android:required="true" />
+</manifest>

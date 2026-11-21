@@ -62,6 +62,28 @@ android {
         versionName = flutter.versionName
     }
 
+    // Two devices, one project (plan 280). `phone` is the app as it has always
+    // shipped; `wear` is the wrist app, which runs `lib/watch/wear_main.dart`
+    // instead of `lib/main.dart` and adds the watch feature in its own manifest.
+    //
+    // They share the application id on purpose: one Play listing is meant to
+    // carry both, and the `android.hardware.type.watch` feature in the wear
+    // flavor is what makes Play offer that APK to a watch. Distributing the
+    // wrist APK through Play is a follow-up — today it is built and installed
+    // directly (`flutter build apk --flavor wear -t lib/watch/wear_main.dart`).
+    flavorDimensions += "device"
+
+    productFlavors {
+        create("phone") {
+            dimension = "device"
+        }
+        create("wear") {
+            dimension = "device"
+            // Wear OS 3 and later.
+            minSdk = 30
+        }
+    }
+
     buildTypes {
         release {
             // ProGuard is required so the Sentry Android plugin can
