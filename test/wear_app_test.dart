@@ -4,9 +4,10 @@
 // Plan: `docs/plans/2026-11-20-280-wear-os-shell-plan/2026-11-20-280-wear-os-shell-plan.md`
 // (D-28007). Scenario mapping:
 //   S-28020 an idle wrist shows the start surface
-//   S-28021 a running session shows the logging surface, with the stopgap End
-//   S-28022 a running rest shows the rest surface
+//   S-28120 (was S-28021) a running session shows the logging surface and its Menu button
+//   S-28121 (was S-28022) a running rest shows the rest surface with Next and Menu
 //   S-28023 a snapshot request from the phone is answered with the wrist's state
+//   S-28137 the Log food button opens the nutrition screen through the shell's navigator
 //
 // Everything here is Mock-first: an in-memory store, a fake link and never a
 // real `Future.delayed` inside `testWidgets` (FakeAsync would hang on it).
@@ -18,6 +19,7 @@ import 'package:omnitrain_watch_link/omnitrain_watch_link.dart';
 
 import 'package:omnitrain/watch/app/wear_app.dart';
 import 'package:omnitrain/watch/app/wear_watch_transport.dart';
+import 'package:omnitrain/watch/nutrition/watch_nutrition_screen.dart';
 import 'package:omnitrain/watch/nutrition/watch_nutrition_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
@@ -116,7 +118,7 @@ void main() {
     expect(find.text(WatchStartScreen.syncLabel), findsOneWidget);
   });
 
-  testWidgets('S-28021 a running session shows logging and the stopgap End',
+  testWidgets('S-28120 an active session shows the logging surface with the Menu button',
       (tester) async {
     final harness = _Harness();
     await harness.engine.createSession(
@@ -135,10 +137,12 @@ void main() {
 
     expect(find.byType(WatchStartScreen), findsNothing);
     expect(find.text('Log'), findsOneWidget);
-    expect(find.text(WearApp.endLabel), findsOneWidget);
+    expect(find.text('Menu'), findsOneWidget);
+    expect(find.text('End'), findsNothing);
   });
 
-  testWidgets('S-28022 a running rest shows the rest surface', (tester) async {
+  testWidgets('S-28121 a running rest shows the rest surface with Next and Menu',
+      (tester) async {
     final harness = _Harness();
     await harness.engine.createSession(
       modality: 'resistance_lifting',
@@ -156,7 +160,7 @@ void main() {
     await _open(tester, harness);
 
     expect(find.text('Next'), findsOneWidget);
-    expect(find.text(WearApp.endLabel), findsNothing);
+    expect(find.text('Menu'), findsOneWidget);
   });
 
   testWidgets('S-28023 a snapshot request is answered with the wrist state',
@@ -213,4 +217,21 @@ void main() {
     );
     expect(find.byType(WearApp), findsOneWidget);
   });
+
+  testWidgets(
+    'S-28137 the Log food button opens the nutrition screen through the shell navigator',
+    (tester) async {
+      final harness = _Harness();
+      await _open(tester, harness);
+
+      await tester.tap(find.text(WatchStartScreen.logFoodLabel));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // `Navigator.of(context)` from the shell's own context has no navigator
+      // above it and throws; the shell reaches its navigator through its key.
+      expect(tester.takeException(), isNull);
+      expect(find.byType(WatchNutritionScreen), findsOneWidget);
+    },
+  );
 }

@@ -97,7 +97,7 @@ in `flutter test`.
 Later PRs, in the order they matter on a wrist. Sizes are the Apple counterpart's
 source, so each is a real piece rather than a tweak.
 
-1. **The exercise menu** (`WatchMenu.swift` and `WatchMenuView.swift`) — the stopgap End control is replaced by it; it also owns the add-exercise and remove-exercise actions.
+1. **The exercise menu** (`WatchMenu.swift` and `WatchMenuView.swift`) — the stopgap End control is replaced by it; it also owns jump-to-exercise, Add Exercise and Discard Session. (Corrected 2026-11-21 by plan 281: the Apple menu has no wrist-side remove; removal only arrives from the phone.)
 2. **The swipe pager** (`WatchLoggingPagerView.swift`, `WatchPagerModel.swift`) — one exercise per page.
 3. **The effort-rating prompt** (`WatchEffortRating.swift`, `WatchEffortRatingView.swift`).
 4. **Personal records** (`WatchPersonalBests.swift`, `WatchPersonalRecordBanner.swift`) and the bests frame it reads.

@@ -364,6 +364,22 @@ class WatchSessionEngine {
     );
   }
 
+  /// Moves the position to the exercise [slotId] names and announces it exactly
+  /// as [advanceExercise] does (plan 281 D-28104: the Wear menu's jump). A slot
+  /// the ladder does not hold returns null and changes nothing, so a stale menu
+  /// row cannot move the session.
+  Future<WatchSessionRecord?> selectExercise(String slotId) async {
+    final session = _requireSession();
+    final index = session.exercises.indexWhere(
+      (row) => row['sessionExerciseId'] == slotId,
+    );
+    if (index < 0) return null;
+    return _transitionTo(
+      currentExerciseIndex: index,
+      lifecycle: WatchLifecycleState.exerciseAdvanced,
+    );
+  }
+
   /// Closes the session as done.
   Future<WatchSessionRecord> finishSession() => _transitionTo(
     status: WatchSessionStatus.completed,

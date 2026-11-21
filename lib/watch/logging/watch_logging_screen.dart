@@ -137,29 +137,32 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final compact = WatchLayout.isCompact(context);
 
     return Scaffold(
       backgroundColor: scheme.surface,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(
+          padding: EdgeInsets.symmetric(
             horizontal: WatchLoggingScreen.surfaceInset,
-            vertical: WatchLoggingScreen.surfaceInsetCompact,
+            vertical: compact ? 2 : WatchLoggingScreen.surfaceInsetCompact,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _header(context),
+              _header(context, compact: compact),
               Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    for (final field in widget.state.fields)
-                      _row(context, field),
-                  ],
-                ),
+                child: compact
+                    ? _compactRows(context)
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          for (final field in widget.state.fields)
+                            _row(context, field, compact: false),
+                        ],
+                      ),
               ),
-              _logButton(context),
+              _logButton(context, compact: compact),
             ],
           ),
         ),
@@ -167,31 +170,70 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
     );
   }
 
-  Widget _header(BuildContext context) {
+  /// The compact value rows (D-28202): never taller than the space they are
+  /// given. If the rows are still too tall for it, they scale down; a scroll
+  /// view would fight the rows' own drag and the crown.
+  Widget _compactRows(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) => FittedBox(
+        fit: BoxFit.scaleDown,
+        child: SizedBox(
+          width: box.maxWidth,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final field in widget.state.fields)
+                _row(context, field, compact: true),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _header(BuildContext context, {required bool compact}) {
     final styles = Theme.of(context).textTheme;
     final slot = widget.state.exerciseName;
+
+    // Compact (D-28204): the countdown and the sensor line share one line.
+    final countdown = _countdown();
+    final sensors = _sensorLine();
+    final merged = [
+      if (countdown != null) '${OmniDateUtils.formatClock(countdown)} left',
+      ?sensors,
+    ].join('  ·  ');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           slot ?? 'No exercise',
-          style: styles.labelLarge,
+          style: compact ? styles.labelMedium : styles.labelLarge,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        if (_countdown() case final countdown?)
-          Text(
-            '${OmniDateUtils.formatClock(countdown)} left',
-            style: styles.bodySmall,
-          ),
-        if (_sensorLine() case final sensors?)
-          Text(
-            sensors,
-            style: styles.bodySmall,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+        if (compact) ...[
+          if (merged.isNotEmpty)
+            Text(
+              merged,
+              style: styles.bodySmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+        ] else ...[
+          if (countdown != null)
+            Text(
+              '${OmniDateUtils.formatClock(countdown)} left',
+              style: styles.bodySmall,
+            ),
+          if (sensors != null)
+            Text(
+              sensors,
+              style: styles.bodySmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+        ],
       ],
     );
   }
@@ -233,7 +275,11 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
   /// A row a sensor is keeping has neither: its controls are inert and its
   /// rotary handler is not attached, so a turn aimed at the row does nothing
   /// rather than replacing a measurement with a guess.
-  Widget _row(BuildContext context, WatchMetricField field) {
+  Widget _row(
+    BuildContext context,
+    WatchMetricField field, {
+    required bool compact,
+  }) {
     final styles = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     final dialable = !field.isMeasured;
@@ -255,6 +301,7 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
           children: [
             WatchStepButton(
               icon: Icons.remove,
+              compact: compact,
               label: 'Less ${field.label}',
               onPressed: dialable
                   ? () {
@@ -268,25 +315,29 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    field.label,
+                    compact && field.unitLabel.isNotEmpty
+                        ? '${field.label} · ${field.unitLabel}'
+                        : field.label,
                     style: styles.labelSmall,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
                     field.displayValue,
-                    style: styles.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface,
-                    ),
+                    style: (compact ? styles.titleLarge : styles.headlineMedium)
+                        ?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurface,
+                        ),
                   ),
-                  if (field.unitLabel.isNotEmpty)
+                  if (!compact && field.unitLabel.isNotEmpty)
                     Text(field.unitLabel, style: styles.labelSmall),
                 ],
               ),
             ),
             WatchStepButton(
               icon: Icons.add,
+              compact: compact,
               label: 'More ${field.label}',
               onPressed: dialable
                   ? () {
@@ -305,7 +356,7 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
   /// one glance and one confirm. The height comes from the token as a minimum
   /// rather than from a wrapping `SizedBox`, because the button already fills a
   /// stretching column and an extra wrapper would change nothing but the depth.
-  Widget _logButton(BuildContext context) {
+  Widget _logButton(BuildContext context, {required bool compact}) {
     return FilledButton(
       style: ButtonStyle(
         shape: WidgetStateProperty.all(
@@ -314,8 +365,13 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
           ),
         ),
         minimumSize: WidgetStateProperty.all(
-          const Size.fromHeight(OmniTheme.buttonPrimaryHeight),
+          Size.fromHeight(
+            compact
+                ? WatchLayout.compactButtonHeight
+                : OmniTheme.buttonPrimaryHeight,
+          ),
         ),
+        tapTargetSize: compact ? MaterialTapTargetSize.shrinkWrap : null,
       ),
       onPressed: widget.state.canLog ? _log : null,
       child: const Text('Log'),

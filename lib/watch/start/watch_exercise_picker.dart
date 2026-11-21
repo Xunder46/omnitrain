@@ -17,11 +17,12 @@ import 'watch_routine_catalog.dart';
 import 'watch_session_start_paths.dart';
 import 'watch_start_screen.dart';
 
-class WatchExercisePickerScreen extends StatelessWidget {
+class WatchExercisePickerScreen extends StatefulWidget {
   const WatchExercisePickerScreen({
     super.key,
     required this.paths,
     this.onExerciseAdded,
+    this.keepPosition = false,
   });
 
   final WatchSessionStartPaths paths;
@@ -30,9 +31,25 @@ class WatchExercisePickerScreen extends StatelessWidget {
   /// the exercise is still added.
   final void Function(WatchSessionRecord session)? onExerciseAdded;
 
+  /// Plan 281 D-28108: when true a pick is appended at the END of the session
+  /// and the user stays on the exercise they were on (the Wear menu's Add
+  /// Exercise). The default keeps the start screen's behaviour: the session
+  /// follows the pick.
+  final bool keepPosition;
+
+  @override
+  State<WatchExercisePickerScreen> createState() =>
+      _WatchExercisePickerScreenState();
+}
+
+class _WatchExercisePickerScreenState extends State<WatchExercisePickerScreen> {
+  /// A second tap inside the same frame must not add a second exercise
+  /// (plan 281 S-28134): the list is on its way out once a pick lands.
+  bool _adding = false;
+
   @override
   Widget build(BuildContext context) {
-    final exercises = paths.fallbackExercises;
+    final exercises = widget.paths.fallbackExercises;
 
     return Scaffold(
       body: SafeArea(
@@ -49,7 +66,7 @@ class WatchExercisePickerScreen extends StatelessWidget {
                     ? _nothingToOffer(context)
                     : _exerciseList(context, exercises),
               ),
-              if (paths.phoneReachable) ...[
+              if (widget.paths.phoneReachable) ...[
                 const SizedBox(height: WatchStartScreen.rowGap),
                 const SearchOnPhoneHint(),
               ],
@@ -94,9 +111,19 @@ class WatchExercisePickerScreen extends StatelessWidget {
   /// later is the same flow again — the wrist never makes a pick feel like a
   /// half-finished form.
   Future<void> _add(BuildContext context, WatchCatalogExercise exercise) async {
-    final session = await paths.addExerciseToSession(exercise);
+    if (_adding) return;
+    _adding = true;
+    final WatchSessionRecord session;
+    try {
+      session = widget.keepPosition
+          ? await widget.paths.addExerciseToEnd(exercise)
+          : await widget.paths.addExerciseToSession(exercise);
+    } on Object {
+      _adding = false;
+      rethrow;
+    }
     if (!context.mounted) return;
     Navigator.of(context).pop();
-    onExerciseAdded?.call(session);
+    widget.onExerciseAdded?.call(session);
   }
 }

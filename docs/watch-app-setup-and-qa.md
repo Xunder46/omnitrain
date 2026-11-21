@@ -253,8 +253,8 @@ rediscover them:
 Swift client through `watch/contract/*.json`, so the port is shell plus
 transport rather than logic.
 
-**What the Wear app does without**: the swipe pager, the exercise menu (a
-stopgap End control finishes the workout), the effort-rating prompt, the
+**What the Wear app does without**: the swipe pager;
+the exercise menu is on the Wear wrist; it does without the effort-rating prompt, the
 personal-record banner, the water bar, the workout summary, the diagnostics
 view, the accent theming, and live sensors. The Apple client is roughly twice
 the Dart client in lines for that reason. Every one of those is named in the

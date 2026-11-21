@@ -225,6 +225,17 @@ class WatchSessionStartPaths {
     moveTo: true,
   );
 
+  /// Adds [exercise] at the END of the live session and leaves the user on the
+  /// exercise they were on (plan 281 D-28104: the Wear menu's Add Exercise, the
+  /// Apple `addExerciseToEnd`). An empty session lands on the new slot, which
+  /// is the engine's rule. Unlike [addExerciseToSession] the pick does not move
+  /// the session.
+  Future<WatchSessionRecord> addExerciseToEnd(WatchCatalogExercise exercise) =>
+      _engine.insertExercise(
+        exercise.toSlot(sessionExerciseId: _availableSlotId(exercise)),
+        moveTo: false,
+      );
+
   // ---------------------------------------------------------------------------
   // Derived state
   // ---------------------------------------------------------------------------

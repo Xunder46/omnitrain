@@ -150,4 +150,29 @@ void main() {
       expect(gate, contains('mapping/release/seeds.txt'));
     });
   });
+
+  group('S-28132 the Wear menu harness', () {
+    test('is a QA entry point no production file imports', () {
+      const harness = 'lib/watch/debug/wear_menu_debug_main.dart';
+      expect(
+        File(harness).readAsStringSync().toLowerCase(),
+        contains('debug entry point'),
+        reason: '$harness should stay a harness',
+      );
+
+      final imported = <String>[];
+      for (final entity in Directory('lib').listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) continue;
+        if (entity.path.contains('lib/watch/debug/')) continue;
+        if (entity.readAsStringSync().contains('wear_menu_debug_main')) {
+          imported.add(entity.path);
+        }
+      }
+      expect(
+        imported,
+        isEmpty,
+        reason: 'no file outside lib/watch/debug may import the harness',
+      );
+    });
+  });
 }

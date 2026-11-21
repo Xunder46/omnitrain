@@ -10,10 +10,10 @@
 /// store and a fake link instead of reaching for Hive and a paired watch.
 ///
 /// What this shell does **not** host yet is recorded in the plan's Open items:
-/// the swipe pager, the exercise menu, the effort-rating prompt, the personal
-/// record banner, the water bar, the workout summary, the diagnostics view and
-/// the accent theming that the Apple wrist has. Its `End` control is the
-/// stopgap for the menu's End until that port lands.
+/// the swipe pager, the effort-rating prompt, the personal record banner, the
+/// water bar, the workout summary, the diagnostics view and the accent theming
+/// that the Apple wrist has. Its `Menu` button opens the exercise menu
+/// (plan 281).
 library;
 
 import 'dart:async';
@@ -24,6 +24,8 @@ import '../../core/constants/omni_theme.dart';
 import '../../core/platform/watch_request_frames.dart';
 import '../logging/watch_logging_screen.dart';
 import '../logging/watch_logging_state.dart';
+import '../logging/watch_menu_screen.dart';
+import '../logging/watch_menu_state.dart';
 import '../logging/watch_metric_stepping.dart';
 import '../logging/watch_rest_screen.dart';
 import '../nutrition/watch_nutrition_screen.dart';
@@ -33,6 +35,7 @@ import '../session/watch_records.dart';
 import '../start/watch_session_start_paths.dart';
 import '../start/watch_start_screen.dart';
 import '../start/watch_sync_orchestrator.dart';
+import '../widgets/watch_controls.dart';
 import 'wear_watch_transport.dart';
 
 class WearApp extends StatefulWidget {
@@ -43,6 +46,7 @@ class WearApp extends StatefulWidget {
     required this.nutrition,
     required this.orchestrator,
     required this.transport,
+    this.navigatorKey,
     this.units = const WatchUnitPreferences(),
   });
 
@@ -52,14 +56,19 @@ class WearApp extends StatefulWidget {
   final WatchSyncOrchestrator orchestrator;
   final WearWatchTransport transport;
 
+  /// The shell's navigator. Left null the shell makes its own; the desktop QA
+  /// harness passes one so it can offer a Back button and Esc where a watch has
+  /// the system swipe-back (plan 281).
+  final GlobalKey<NavigatorState>? navigatorKey;
+
   /// The saved unit preferences the wrist reads in, as the phone wrote them.
   final WatchUnitPreferences units;
 
   /// The copy the wrist shows while it restores what it holds.
   static const String loadingLabel = 'OmniTrain';
 
-  /// The stopgap end control the menu will replace.
-  static const String endLabel = 'End';
+  /// The bottom button that opens the exercise menu (plan 281, D-28101).
+  static const String menuLabel = WatchMenuCopy.menuLabel;
 
   @override
   State<WearApp> createState() => WearAppState();
@@ -74,8 +83,23 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     units: widget.units,
   );
 
+  late final WatchMenuState _menu = WatchMenuState(
+    engine: widget.engine,
+    paths: widget.paths,
+  );
+
+  /// The shell's own navigator: the shell is above the `MaterialApp` it builds,
+  /// so its `context` has no navigator (the nutrition push needed this too).
+  late final GlobalKey<NavigatorState> _navigator =
+      widget.navigatorKey ?? GlobalKey<NavigatorState>();
+
   Timer? _ticker;
   bool _ready = false;
+
+  /// Whether the shell's once-a-second rebuild is running: true while a session
+  /// is active, false on an idle start surface (plan 281: a test reads it).
+  @visibleForTesting
+  bool get isTicking => _ticker != null;
 
   @override
   void initState() {
@@ -116,7 +140,14 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     } on Object catch (error, stack) {
       debugPrint('OmniTrain wrist restore failed: $error\n$stack');
     } finally {
-      if (mounted) setState(() => _ready = true);
+      if (mounted) {
+        setState(() {
+          _ready = true;
+          // The restored session may already be active: bring the shell's
+          // once-a-second rebuild up with it.
+          _syncTicker();
+        });
+      }
     }
     await widget.transport.start();
     if (!mounted) return;
@@ -163,11 +194,19 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     setState(_syncTicker);
   }
 
-  /// The stopgap until the exercise menu lands: finish the workout from here.
-  Future<void> _finish() async {
-    await widget.engine.finishSession();
-    if (!mounted) return;
-    setState(_syncTicker);
+  /// What the menu did that the surfaces must follow: a jump, an add, an End or
+  /// a Discard (the session may now be over, so the ticker re-reads it).
+  void _menuChanged() {
+    if (mounted) setState(_syncTicker);
+  }
+
+  void _openMenu() {
+    _navigator.currentState?.push(
+      MaterialPageRoute<void>(
+        builder: (context) =>
+            WatchMenuScreen(state: _menu, onChanged: _menuChanged),
+      ),
+    );
   }
 
   Future<void> _requestSync() async {
@@ -176,7 +215,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   }
 
   void _openNutrition() {
-    Navigator.of(context).push(
+    _navigator.currentState?.push(
       MaterialPageRoute<void>(
         builder: (context) => Scaffold(
           body: SafeArea(child: WatchNutritionScreen(state: widget.nutrition)),
@@ -192,26 +231,30 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigator,
       title: WearApp.loadingLabel,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(useMaterial3: true, brightness: Brightness.dark),
-      home: Scaffold(body: SafeArea(child: _surface())),
+      home: Builder(
+        builder: (context) =>
+            Scaffold(body: SafeArea(child: _surface(context))),
+      ),
     );
   }
 
-  Widget _surface() {
+  Widget _surface(BuildContext context) {
     if (!_ready) {
       return const Center(child: CircularProgressIndicator());
     }
 
     final session = widget.engine.session;
     if (session != null && session.status == WatchSessionStatus.active) {
-      if (_logging.isResting) {
-        return WatchRestScreen(state: _logging, onNext: _endRest);
-      }
+      final surface = _logging.isResting
+          ? WatchRestScreen(state: _logging, onNext: _endRest)
+          : WatchLoggingScreen(state: _logging);
       return Column(
         children: [
-          Expanded(child: WatchLoggingScreen(state: _logging)),
+          Expanded(child: surface),
           TextButton(
             style: ButtonStyle(
               shape: WidgetStateProperty.all(
@@ -221,9 +264,20 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
                   ),
                 ),
               ),
+              minimumSize: WatchLayout.isCompact(context)
+                  ? WidgetStateProperty.all(
+                      const Size.fromHeight(WatchLayout.compactMenuHeight),
+                    )
+                  : null,
+              padding: WatchLayout.isCompact(context)
+                  ? WidgetStateProperty.all(EdgeInsets.zero)
+                  : null,
+              tapTargetSize: WatchLayout.isCompact(context)
+                  ? MaterialTapTargetSize.shrinkWrap
+                  : null,
             ),
-            onPressed: _finish,
-            child: const Text(WearApp.endLabel),
+            onPressed: _openMenu,
+            child: const Text(WearApp.menuLabel),
           ),
         ],
       );
