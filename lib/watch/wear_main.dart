@@ -41,9 +41,7 @@ Future<void> main() async {
 
   // The wrist's diagnostics log (plan 293): one for the life of the app, opened
   // first so the launch line names what the previous run recorded last.
-  final diagnostics = DiagnosticsLog(
-    storage: await openDefaultDiagnosticsStorage(),
-  );
+  final diagnostics = DiagnosticsLog(storage: await openDefaultDiagnosticsStorage());
   diagnostics.noteLaunch();
 
   final store = HiveWatchSessionStore(name: wearBoxPrefix);
