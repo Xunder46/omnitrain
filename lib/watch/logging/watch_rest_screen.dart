@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../session/watch_records.dart';
+import '../widgets/watch_personal_record_banner.dart';
 import 'watch_logging_screen.dart';
 import 'watch_logging_state.dart';
 import 'watch_rest_ping.dart';
@@ -97,34 +98,47 @@ class _WatchRestScreenState extends State<WatchRestScreen> {
     return Scaffold(
       backgroundColor: scheme.surface,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: WatchRestScreen.surfaceInset,
-            vertical: WatchRestScreen.surfaceInsetCompact,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                widget.state.exerciseName ?? 'No exercise',
-                style: styles.labelLarge,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: WatchRestScreen.surfaceInset,
+                vertical: WatchRestScreen.surfaceInsetCompact,
               ),
-              Expanded(
-                child: Center(
-                  child: Text(
-                    _elapsed(),
-                    style: styles.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    widget.state.exerciseName ?? 'No exercise',
+                    style: styles.labelLarge,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        _elapsed(),
+                        style: styles.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurface,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  _nextButton(context),
+                ],
               ),
-              _nextButton(context),
-            ],
-          ),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: WatchPersonalRecordBanner(state: widget.state),
+              ),
+            ),
+          ],
         ),
       ),
     );

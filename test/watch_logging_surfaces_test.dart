@@ -97,6 +97,14 @@ class _RecordingHaptics implements WatchHaptics {
   void playRestPing() {
     restPings++;
   }
+
+  /// How many times a log asked for the record's own tap (plan 289, D-28905).
+  int personalRecords = 0;
+
+  @override
+  void playPersonalRecord() {
+    personalRecords++;
+  }
 }
 
 /// The stepping, terminology and effort-kind values both watch clients are held

@@ -27,6 +27,7 @@ import '../session/watch_records.dart';
 import '../session/watch_session_engine.dart';
 import '../session/watch_timer_math.dart';
 import 'watch_metric_stepping.dart';
+import 'watch_personal_bests.dart';
 
 /// The effort kinds a value screen can be, in the protocol's vocabulary. A hold
 /// is a `drill` to the data layer and a `hold` on the wire, which is why both
@@ -125,12 +126,14 @@ class WatchLoggingState {
     WatchUnitPreferences units = const WatchUnitPreferences(),
     WatchUnitPreferences Function()? unitsProvider,
     WatchSensorRecorder? sensors,
+    WatchPersonalBests? bests,
   }) : _engine = engine,
        _clock = clock ?? _utcNow,
        _newId = idFactory ?? _uuid,
        _fixedUnits = units,
        _unitsProvider = unitsProvider,
-       _sensors = sensors;
+       _sensors = sensors,
+       _bests = bests;
 
   static const Uuid _uuidV4 = Uuid();
 
@@ -167,6 +170,32 @@ class WatchLoggingState {
   /// The session's live sensors, when the surface is wired to them. A surface
   /// with none behaves exactly as before: every value is the user's to dial.
   final WatchSensorRecorder? _sensors;
+
+  /// The phone's standing bests, when the shell holds them (plan 288). With none
+  /// no log is ever a record.
+  final WatchPersonalBests? _bests;
+
+  /// How long the "New PR" banner stays up (plan 289, D-28901); the banner's
+  /// copy class reads the same number.
+  static const Duration personalRecordWindow = Duration(seconds: 4);
+
+  bool _lastLogWasPersonalRecord = false;
+  DateTime? _personalRecordBannerUntil;
+
+  /// Whether the last log beat the standing best: what the record's tap reads.
+  bool get lastLogWasPersonalRecord => _lastLogWasPersonalRecord;
+
+  /// When the banner's window ends, or null before the first record. A second
+  /// record restarts it.
+  DateTime? get personalRecordBannerUntil => _personalRecordBannerUntil;
+
+  /// Whether the "New PR" banner is still up at [instant]: strictly before the
+  /// expiry, so it is visible just short of the window and gone exactly at its
+  /// end. The screens read it on their own once-a-second tick.
+  bool isPersonalRecordBannerVisible(DateTime instant) {
+    final until = _personalRecordBannerUntil;
+    return until != null && instant.isBefore(until);
+  }
 
   final WatchUnitPreferences _fixedUnits;
   final WatchUnitPreferences Function()? _unitsProvider;
@@ -653,6 +682,22 @@ class WatchLoggingState {
 
 
     final stored = await _engine.appendObservation(event);
+    // The verdict is a synchronous in-memory comparison against the frame and
+    // the wrist's own bests: it cannot throw, await or change the event, and it
+    // runs only on this path, so a set the phone mirrored in never reaches it. A
+    // watch with no holder stays silent (plan 289, D-28901).
+    final record =
+        _bests?.noteLogged(
+          kind: event['kind'] as String? ?? '',
+          exerciseId: event['exerciseId'] as String? ?? '',
+          reps: event['reps'] as int? ?? 0,
+          loadKg: (event['loadKg'] as num?)?.toDouble(),
+        ) ??
+        false;
+    _lastLogWasPersonalRecord = record;
+    if (record) {
+      _personalRecordBannerUntil = _clock().add(personalRecordWindow);
+    }
     _dialled.remove(loggedKey);
     await _startFollowOnTimer();
     return stored;

@@ -23,6 +23,7 @@ import '../../core/utils/unit_formatter.dart';
 import '../session/watch_records.dart';
 import '../session/watch_timer_math.dart';
 import '../widgets/watch_controls.dart';
+import '../widgets/watch_personal_record_banner.dart';
 import 'watch_logging_state.dart';
 import 'watch_timer_haptics.dart';
 
@@ -35,6 +36,10 @@ abstract interface class WatchHaptics {
   /// The rest's ping: a repeating nudge at each multiple of the phone's Rest
   /// Ping interval while a rest is open. A tap, and never a sound.
   void playRestPing();
+
+  /// The tap a set that beat the standing best is owed (plan 289, D-28905): one
+  /// tap of its own, distinct from a countdown's and from the rest ping.
+  void playPersonalRecord();
 }
 
 /// The platform haptic channel, which Flutter already exposes on Wear OS: no
@@ -50,6 +55,11 @@ class SystemWatchHaptics implements WatchHaptics {
   @override
   void playRestPing() {
     HapticFeedback.mediumImpact();
+  }
+
+  @override
+  void playPersonalRecord() {
+    HapticFeedback.vibrate();
   }
 }
 
@@ -136,6 +146,9 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
 
   Future<void> _log() async {
     await widget.state.log();
+    if (widget.state.lastLogWasPersonalRecord) {
+      widget.haptics.playPersonalRecord();
+    }
     _refresh();
   }
 
@@ -147,29 +160,42 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
     return Scaffold(
       backgroundColor: scheme.surface,
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: WatchLoggingScreen.surfaceInset,
-            vertical: compact ? 2 : WatchLoggingScreen.surfaceInsetCompact,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _header(context, compact: compact),
-              Expanded(
-                child: compact
-                    ? _compactRows(context)
-                    : Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          for (final field in widget.state.fields)
-                            _row(context, field, compact: false),
-                        ],
-                      ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: WatchLoggingScreen.surfaceInset,
+                vertical: compact ? 2 : WatchLoggingScreen.surfaceInsetCompact,
               ),
-              _logButton(context, compact: compact),
-            ],
-          ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _header(context, compact: compact),
+                  Expanded(
+                    child: compact
+                        ? _compactRows(context)
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              for (final field in widget.state.fields)
+                                _row(context, field, compact: false),
+                            ],
+                          ),
+                  ),
+                  _logButton(context, compact: compact),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: WatchPersonalRecordBanner(state: widget.state),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -513,7 +513,7 @@ The rule is the Apple wrist's, described in [The Watch Surface: the Wrist's Exer
 
 The phone sends each exercise's standing best in a `bests_down` message: the best estimated one-rep max in kilograms and the most reps at zero load, one entry per exercise the user has completed a set for. The Wear wrist keeps the newest frame (`WatchPersonalBests` in `lib/watch/logging/watch_personal_bests.dart`; a frame is stored as a `WatchBestsRecord`) and nothing else: a frame stamped earlier than the held one is dropped, a frame with the same numbers writes nothing, a frame the wrist cannot read is refused whole, frames are applied one at a time, and the store keeps only the newest frame (`pruneBests`, the third prune on the store contract). Given a set, the wrist can say whether it beats the standing best: the larger of the frame's best and the best of the sets the wrist itself holds, strictly greater, on the weight axis (the estimated one-rep max, at most 12 reps counted) for a loaded set and on the reps axis otherwise. A wrist that never received a frame says nothing; with a frame held, an exercise the phone has no history for makes its first set a record.
 
-The rule is the Apple wrist's (`WatchPersonalBests.swift`; the owner's decisions are in [series 87](plans/2026-10-26-87-wrist-new-pr-banner-index.md)) and the plan is [plan 288](plans/2026-11-22-288-wear-personal-bests-plan/2026-11-22-288-wear-personal-bests-plan.md). Nothing on the screen uses the verdict yet: the banner and the tap on a logged set come next.
+The rule is the Apple wrist's (`WatchPersonalBests.swift`; the owner's decisions are in [series 87](plans/2026-10-26-87-wrist-new-pr-banner-index.md)) and the plan is [plan 288](plans/2026-11-22-288-wear-personal-bests-plan/2026-11-22-288-wear-personal-bests-plan.md). A set that beats the standing best shows a small `New PR` banner (plan 289, `lib/watch/widgets/watch_personal_record_banner.dart`): a trophy and the words in the phone's accent colour over the top of the screen for 4 seconds, with one distinct vibration (the platform's plain vibration; the pager's click, the lock's heavy tap and the rest ping's medium tap are taken). The verdict is read on one path only, when the wrist logs the set, so a set the phone logged never fires it and a wrist that holds no frame says nothing. Logging a set starts a rest at once and the rest screen replaces the logging screen, so both screens overlay the same banner and a record is not torn down with the screen that logged it; a second record inside the window restarts the 4 seconds. The banner takes no touch, so `Log`, `Next` and `Menu` work under it, and a screen reader announces `New personal record`. One difference from the Apple wrist: a record still inside its window when the user taps `Next` is announced again by the logging screen's banner.
 
 ## What the wrist shows
 
@@ -525,7 +525,7 @@ and the rest surface opens the exercise menu, the Apple wrist's menu without a r
 A swipe on the logging surface moves between the exercises (the pager, below).
 
 The Apple wrist hosts more: the
-personal-record banner, the water bar, the workout summary, the diagnostics
+water bar, the workout summary, the diagnostics
 view, and spoken timer cues. None of those is on the Wear wrist; the plan that
 built this shell
 records each one, and the sizes they are (the Apple client is roughly twice the
@@ -565,6 +565,13 @@ without heart rate and distance exactly as it would on a device with no sensor.
   an unreadable frame, a relaunch, two frames at once, and the schema validator.
 - `test/wear_personal_bests_wiring_test.dart` — the orchestrator's route, the
   shell's restore, and the entry point's wiring.
+- `test/wear_personal_record_state_test.dart` — the verdict on a log: the window,
+  its restart, the flag, an absent owner or frame, a timed effort, a failed
+  write, a set the engine takes without a log, and the two axes through a real log.
+- `test/wear_personal_record_banner_test.dart` — the banner and tap as widgets:
+  shown once and gone after 4 seconds, nothing on a non-record, the fit at 192
+  and 227 dp, no touch taken, the rest screen's banner in the accent and
+  announced, and the platform vibration.
 - `test/wear_os_config_test.dart` — the flavors, the watch feature, the two
   capabilities, the plugin's Android registration and its five calls, the
   production entry point, and the two release invocations.
@@ -621,6 +628,14 @@ checks, run on real hardware:
    change); a swipe while a clock runs vibrates and shows `An effort is
    running`; `Log` right after a swipe writes to the exercise on screen; the
    counter fits beside a long exercise name at the watch's size
+10. (owner) on a Wear watch with a paired phone whose bests are synced: log a
+   set that beats your best for that exercise; a small `New PR` capsule in the
+   theme colour appears over the top of the screen, stays through the rest
+   screen and goes after about 4 seconds, with one vibration unlike the pager's
+   click; a set that does not beat it shows nothing and does not vibrate; a
+   watch that has never synced shows nothing; `Log`, `Next` and `Menu` work
+   under the capsule; tapping `Next` inside the window shows it again on the
+   logging screen
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

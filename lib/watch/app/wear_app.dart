@@ -10,10 +10,11 @@
 /// store and a fake link instead of reaching for Hive and a paired watch.
 ///
 /// What this shell does **not** host yet is recorded in the plan's Open items:
-/// the personal record banner, the water bar, the workout summary and the
-/// diagnostics view that the Apple wrist has. Its `Menu` button opens the
-/// exercise menu (plan 281). The shell wears the phone's accent colour
-/// (plan 286) and swipes between exercises on the logging surface (plan 287).
+/// the water bar, the workout summary and the diagnostics view that the Apple
+/// wrist has. Its `Menu` button opens the exercise menu (plan 281). The shell
+/// wears the phone's accent colour
+/// (plan 286) and swipes between exercises on the logging surface (plan 287);
+/// a set that beats the phone's best shows a `New PR` banner (plan 289).
 library;
 
 import 'dart:async';
@@ -107,6 +108,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     unitsProvider: widget.preferences == null
         ? null
         : () => widget.preferences!.units,
+    bests: widget.bests,
   );
 
   late final WatchMenuState _menu = WatchMenuState(
