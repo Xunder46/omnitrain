@@ -19,11 +19,18 @@ import '../../core/constants/omni_theme.dart';
 import '../widgets/watch_controls.dart';
 import 'watch_food_catalog.dart';
 import 'watch_nutrition_state.dart';
+import 'watch_water_bar.dart';
+import 'watch_water_state.dart';
 
 class WatchNutritionScreen extends StatefulWidget {
-  const WatchNutritionScreen({super.key, required this.state});
+  const WatchNutritionScreen({super.key, required this.state, this.water});
 
   final WatchNutritionState state;
+
+  /// The day's water (plan 291). When given, a water bar sits at the bottom of
+  /// the screen, under the foods list or the "no foods yet" message; left null
+  /// the screen is exactly as it was.
+  final WatchWaterState? water;
 
   /// The primary action, and the two touch controls beside the portion. Rotary
   /// input needs no key: it lands wherever the user is looking.
@@ -74,7 +81,15 @@ class _WatchNutritionScreenState extends State<WatchNutritionScreen> {
             horizontal: WatchNutritionScreen.surfaceInset,
             vertical: WatchNutritionScreen.surfaceInsetCompact,
           ),
-          child: foods.isEmpty ? _nothingSynced() : _quickLog(foods),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: foods.isEmpty ? _nothingSynced() : _quickLog(foods),
+              ),
+              if (widget.water != null) WatchWaterBar(state: widget.water!),
+            ],
+          ),
         ),
       ),
     );

@@ -519,7 +519,7 @@ The rule is the Apple wrist's (`WatchPersonalBests.swift`; the owner's decisions
 
 The phone owns the day's water. The Wear wrist asks for it on every sync (its routines request carries `wantsWater`, and `holdsBests` when it already holds the phone's bests, so the phone sends a bests frame only when one changed; both are set in `lib/watch/wear_main.dart` on the Wear transport) and keeps the newest `water_down` frame (`WatchWaterState` in `lib/watch/nutrition/watch_water_state.dart`, stored as a `WatchWaterRecord`): an older frame is dropped, a frame with the same numbers writes nothing, an unreadable one is refused whole, frames are applied one at a time, and the store keeps only the newest (`pruneWater`, the fourth prune on the store contract).
 
-The wrist can log one tap of the water bar (`logWaterGlass` on the engine): a glass added or removed, stored first and sent as a `water_glass` event until the phone receipts it. A tap is never part of a workout: its session id is always the day's nutrition log, even while a workout runs. The count the bar will show is never stored; it is computed on every read: the phone's count when its frame is for the wrist's local today, else 0, plus the wrist's own taps of local today that the frame does not list (confirmed or not: only the frame's list takes a tap out), in time order, an add +1 and a remove -1 but never below 0. The plus stops at 500 taps a day (the phone's own cap), the minus also at 0. The rule is the Apple wrist's (series 94-96); the plan is [plan 290](plans/2026-11-22-290-wear-water-count-plan/2026-11-22-290-wear-water-count-plan.md). Nothing on the screen uses it yet: the bar is the next change. The launch prune of old confirmed taps (plan 96) is not built: taps grow by at most 500 a day and every read skips the days it does not need unread.
+The wrist can log one tap of the water bar (`logWaterGlass` on the engine): a glass added or removed, stored first and sent as a `water_glass` event until the phone receipts it. A tap is never part of a workout: its session id is always the day's nutrition log, even while a workout runs. The count the bar will show is never stored; it is computed on every read: the phone's count when its frame is for the wrist's local today, else 0, plus the wrist's own taps of local today that the frame does not list (confirmed or not: only the frame's list takes a tap out), in time order, an add +1 and a remove -1 but never below 0. The plus stops at 500 taps a day (the phone's own cap), the minus also at 0. The rule is the Apple wrist's (series 94-96); the plan is [plan 290](plans/2026-11-22-290-wear-water-count-plan/2026-11-22-290-wear-water-count-plan.md). The water bar sits at the bottom of the Log food screen (plan 291, `lib/watch/nutrition/watch_water_bar.dart`), under the foods list or the "No foods yet" message and nowhere else, so no water is logged from inside a workout: a minus, a drop with the count and a plus, each press one glass added or removed and shown at once, before the phone answers, with one click when a tap was stored. The minus is greyed at 0 and both buttons at the day's 500 taps. A frame that arrives while the screen is open changes the count, and local midnight with the screen open shows the new day's count within a minute (the bar re-reads once a minute). A screen reader says `Remove one glass`, `Add one glass`, and for the middle `Water` with `3 glasses` (`1 glass`). The launch prune of old confirmed taps (plan 96) is not built: taps grow by at most 500 a day and every read skips the days it does not need unread.
 
 ## What the wrist shows
 
@@ -531,7 +531,7 @@ and the rest surface opens the exercise menu, the Apple wrist's menu without a r
 A swipe on the logging surface moves between the exercises (the pager, below).
 
 The Apple wrist hosts more: the
-water bar, the workout summary, the diagnostics
+workout summary, the diagnostics
 view, and spoken timer cues. None of those is on the Wear wrist; the plan that
 built this shell
 records each one, and the sizes they are (the Apple client is roughly twice the
@@ -587,6 +587,10 @@ without heart rate and distance exactly as it would on a device with no sensor.
   cap, malformed taps, the frame rules, a restart, and two at once.
 - `test/wear_water_wiring_test.dart` — the orchestrator's route, the two request
   flags on the Wear transport, the shell's restore and the entry point.
+- `test/wear_water_bar_test.dart` — the bar: its place under the list, a press
+  at once with one click, the inert buttons at 0 and at the cap, the names a
+  screen reader says, a frame and midnight while open, the fit at 192 and
+  227 dp, the listener's clean-up, the shell's wiring and a failed write.
 - `test/wear_os_config_test.dart` — the flavors, the watch feature, the two
   capabilities, the plugin's Android registration and its five calls, the
   production entry point, and the two release invocations.
@@ -651,6 +655,11 @@ checks, run on real hardware:
    watch that has never synced shows nothing; `Log`, `Next` and `Menu` work
    under the capsule; tapping `Next` inside the window shows it again on the
    logging screen
+11. (owner) on a Wear watch with a paired phone that has water logged today: open
+   Log food; the bar sits at the bottom, also before any food has synced, and
+   shows the phone's count after a sync; `+` and `-` change it at once with a
+   click, the minus is greyed at 0; a glass tapped on the phone shows after the
+   next sync; the bar fits above the bezel with a food selected
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with
