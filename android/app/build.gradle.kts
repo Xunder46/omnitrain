@@ -108,4 +108,8 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // The wrist's heart rate (plan 298): the phone flavor does not carry it.
+    "wearImplementation"("androidx.health:health-services-client:1.0.0")
+    // Its futures are Guava's `ListenableFuture`, which the client library does not export.
+    "wearImplementation"("com.google.guava:guava:33.0.0-android")
 }

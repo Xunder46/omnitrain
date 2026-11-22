@@ -10,4 +10,11 @@
     <uses-feature
         android:name="android.hardware.type.watch"
         android:required="true" />
+
+    <!--
+      Heart rate (plan 298): Wear OS 5 and earlier ask for BODY_SENSORS; Wear OS 6
+      moved heart rate to the health permission group.
+    -->
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
 </manifest>
