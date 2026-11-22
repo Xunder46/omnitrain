@@ -23,6 +23,9 @@ import 'logging/watch_effort_rating_state.dart';
 import 'logging/watch_personal_bests.dart';
 import 'nutrition/watch_nutrition_state.dart';
 import 'nutrition/watch_water_state.dart';
+import 'sensors/watch_platform_workout.dart';
+import 'sensors/watch_sensor_recording.dart';
+import 'sensors/wear_sensor_source.dart';
 import 'session/hive_watch_session_store.dart';
 import 'session/watch_session_engine.dart';
 import 'start/watch_phone_preferences.dart';
@@ -38,7 +41,9 @@ Future<void> main() async {
 
   // The wrist's diagnostics log (plan 293): one for the life of the app, opened
   // first so the launch line names what the previous run recorded last.
-  final diagnostics = DiagnosticsLog(storage: await openDefaultDiagnosticsStorage());
+  final diagnostics = DiagnosticsLog(
+    storage: await openDefaultDiagnosticsStorage(),
+  );
   diagnostics.noteLaunch();
 
   final store = HiveWatchSessionStore(name: wearBoxPrefix);
@@ -56,6 +61,12 @@ Future<void> main() async {
   final preferences = WatchPhonePreferences(store: store);
   final bests = WatchPersonalBests(store: store);
   final water = WatchWaterState(engine: engine, store: store);
+  // The session's sensors (plan 297): the platform source is the native half's
+  // channels, which answer "unavailable" until plans 298 to 300 land.
+  final sensors = WatchSessionSensors(
+    platform: WatchPlatformWorkout(store: const WearPlatformWorkoutStore()),
+    recorder: WatchSensorRecorder(engine: engine, source: WearSensorSource()),
+  );
   // The wrist's routines request says what it holds and what it wants (series
   // 87c, plan 94): the bests flag is read on every request.
   transport.holdsBests = () => bests.hasFrame;
@@ -87,6 +98,7 @@ Future<void> main() async {
       bests: bests,
       water: water,
       diagnostics: diagnostics,
+      sensors: sensors,
     ),
   );
 }

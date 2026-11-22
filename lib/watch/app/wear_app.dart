@@ -42,6 +42,7 @@ import '../logging/watch_workout_summary_screen.dart';
 import '../nutrition/watch_nutrition_screen.dart';
 import '../nutrition/watch_nutrition_state.dart';
 import '../nutrition/watch_water_state.dart';
+import '../sensors/watch_sensor_recording.dart';
 import '../session/watch_session_engine.dart';
 import '../session/watch_records.dart';
 import '../start/watch_session_start_paths.dart';
@@ -67,6 +68,7 @@ class WearApp extends StatefulWidget {
     this.bests,
     this.water,
     this.diagnostics,
+    this.sensors,
   });
 
   final WatchSessionEngine engine;
@@ -109,6 +111,11 @@ class WearApp extends StatefulWidget {
   /// the shell records nothing.
   final DiagnosticsLog? diagnostics;
 
+  /// The session's sensors and platform workout (plan 297). When given, the
+  /// shell starts them when a session becomes active and stops them when none
+  /// is; left null the wrist has no sensors, as before.
+  final WatchSessionSensors? sensors;
+
   /// The copy the wrist shows while it restores what it holds.
   static const String loadingLabel = 'OmniTrain';
 
@@ -123,6 +130,11 @@ class WearApp extends StatefulWidget {
 class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   static const Duration _tick = Duration(seconds: 1);
 
+  /// How long one sensor start or stop may take before the lane moves on: a
+  /// native call that never answers must not keep every later session's sensors
+  /// from starting (plan 297 D-29704).
+  static const Duration _sensorStepTimeout = Duration(seconds: 5);
+
   late final WatchLoggingState _logging = WatchLoggingState(
     engine: widget.engine,
     units: widget.units,
@@ -130,6 +142,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
         ? null
         : () => widget.preferences!.units,
     bests: widget.bests,
+    sensors: widget.sensors?.recorder,
   );
 
   late final WatchMenuState _menu = WatchMenuState(
@@ -152,6 +165,15 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   Timer? _ticker;
   bool _ready = false;
 
+  /// The id of the session the sensors were started for, or null when they are
+  /// stopped (plan 297 D-29704): a session is started once, whatever number of
+  /// times the shell asks.
+  String? _sensedSession;
+
+  /// The end of the last sensor start or stop: the next one runs after it, so a
+  /// stop never overtakes the start it follows.
+  Future<void> _sensorLane = Future<void>.value();
+
   /// The last reachability the shell wrote to the log, so a change is one line
   /// and a steady answer is none.
   bool? _lastReachable;
@@ -173,6 +195,11 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     _ticker?.cancel();
+    final sensors = widget.sensors;
+    if (sensors != null && _sensedSession != null) {
+      _sensedSession = null;
+      _inSensorLane(sensors.stop);
+    }
     WidgetsBinding.instance.removeObserver(this);
     unawaited(widget.transport.close());
     widget.rating?.removeListener(_ratingChanged);
@@ -204,6 +231,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   /// The launch sequence: restore, then take whatever the phone already sent.
   Future<void> _boot() async {
     try {
+      await widget.sensors?.recoverInProgress();
       await widget.engine.restore();
       await widget.paths.restore();
       await widget.nutrition.restore();
@@ -246,6 +274,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   /// session runs, one rebuild a second keeps the countdown and the rest screen
   /// honest. With nothing running there is nothing to tick.
   void _syncTicker() {
+    _syncSensors();
     final active = widget.engine.session?.status == WatchSessionStatus.active;
     if (active && _ticker == null) {
       _ticker = Timer.periodic(_tick, (_) => _refresh());
@@ -253,6 +282,33 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
       _ticker!.cancel();
       _ticker = null;
     }
+  }
+
+  /// Starts the sensors for a session that just became active and stops them
+  /// when none is (plan 297 D-29704). Every path that changes the active session
+  /// passes through [_syncTicker], so this is the one place it is decided.
+  void _syncSensors() {
+    final sensors = widget.sensors;
+    if (sensors == null) return;
+    final session = widget.engine.session;
+    if (session != null && session.status == WatchSessionStatus.active) {
+      if (_sensedSession == session.sessionId) return;
+      _sensedSession = session.sessionId;
+      _inSensorLane(() => sensors.start(session));
+    } else if (_sensedSession != null) {
+      _sensedSession = null;
+      _inSensorLane(sensors.stop);
+    }
+  }
+
+  /// One start or stop at a time, in order. A failure is reported and never
+  /// thrown: logging never depends on a sensor.
+  void _inSensorLane(Future<void> Function() step) {
+    _sensorLane = _sensorLane
+        .then((_) => step().timeout(_sensorStepTimeout))
+        .catchError((Object error, StackTrace stack) {
+          debugPrint('OmniTrain wrist sensors: $error');
+        });
   }
 
   void _refresh() {
@@ -354,10 +410,9 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     final cached = _theme;
     if (cached != null && _themeHex == hex) return cached;
     final accent = WatchAccent.worn(hex);
-    final scheme = ThemeData(brightness: Brightness.dark).colorScheme.copyWith(
-      primary: accent.color,
-      onPrimary: accent.labelColor,
-    );
+    final scheme = ThemeData(
+      brightness: Brightness.dark,
+    ).colorScheme.copyWith(primary: accent.color, onPrimary: accent.labelColor);
     final built = ThemeData(useMaterial3: true, colorScheme: scheme);
     _themeHex = hex;
     _theme = built;
