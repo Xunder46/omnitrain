@@ -296,6 +296,74 @@ shows on the next once-a-second repaint
 (`test/wear_phone_settings_test.dart`
 `S-28312b a copy that arrives while the session runs shows on the next repaint`).
 
+## The effort rating, underneath
+
+The rating is an engine fact today, underneath a screen that does not exist
+yet. The wrist records a session's effort rating once:
+`recordEffortRating` appends one `effort_rating` observation whose id is
+`rating-<sessionId>`, sends it to the phone in exactly one `observations_up`
+frame, and a second call for the same session returns null and changes
+nothing (`test/watch_effort_rating_engine_test.dart`, group
+`S-28401 recordEffortRating`, test
+`S-28401 record -> row fields and exactly ONE observations_up frame`;
+`S-28402 a second recordEffortRating returns null and changes nothing`).
+The engine knows a session already has a rating — when it holds the row
+(`S-28403 hasEffortRating is false before, true after, false for another
+session`), when the phone's own snapshot carried one
+(`S-28406 the phone's session_snapshot closes the question`), and when the
+phone acknowledged the wrist's rating and the row was pruned since, so a
+relaunch still knows the answer (group
+`S-28405 a confirmed and pruned rating is still known after relaunch`, test
+`S-28405 Mock: pruneConfirmed forgets the row, not the answer`) — and a
+rating outside 1 to 5 is refused with nothing stored
+(`S-28404 a rating of 0 and of 6 is refused and stores nothing`). The kind
+is its own observation kind, not one of the effort kinds a slot counts
+(`S-28408 the constants`).
+
+nothing on the Wear screen asks for it yet: the wrist's End can owe a
+rating, and it stores that debt as a note. When the phone's setting asks
+for one, the session still holds at least one effort entry after the
+phone's deletions, and it has no rating yet, `end()` finishes the session
+and stores one `rating_prompt` row, so that a kill before the answer still
+asks at the next launch (`test/watch_effort_rating_state_test.dart`,
+`S-28410 End with the setting asking stores one owed prompt`; group
+`S-28414 the owed note survives a relaunch`, test
+`S-28414 Mock: a fresh state over the same store still owes`). No prompt is
+owed when any of the four conditions fails — the setting off, only a rest
+and no effort entry, a session that already holds a rating, a wrist that
+never heard from the phone (group
+`S-28411 nothing is owed when one of the four conditions fails`, tests
+`S-28411a the setting is off` through
+`S-28411d the wrist never heard from the phone`), when the phone deleted
+the only effort entry before End
+(`S-28412 the phone's deletions are seen before End`), or when there is no
+active session (`S-28413 no session: null, nothing stored`). With two
+sessions owed the most recent is asked first, and answering it surfaces the
+next (`S-28415 two owed sessions: the newest asked first, the answer clears
+it`). The note row itself round-trips through both stores, and appending
+the same record id twice stays one row (group
+`S-28407 a WatchRatingPromptRecord round-trips through each store`, test
+`S-28407 Hive: one row per session, appended twice stays one`).
+
+The question's words and scale are the phone's own, held to
+`watch/contract/watch_effort_rating_contract.json`: "How hard was this
+session?" on a 1 to 5 scale, "Very easy" to "Max effort", nothing
+preselected (group `S-28409 the copy holds to the contract file`, test
+`S-28409 title, scale and labels match the contract`). A pick comes by tap
+or by rotary detents: the first step up picks 1, further steps move one
+number each and stop at the ends, a step down never returns to nothing, and
+a pick outside 1 to 5 is ignored (group `S-28416 the pick rules`, tests
+`S-28416 step(1) from nothing picks the lowest`,
+`S-28416 step(-1) from nothing picks nothing`,
+`S-28416 select(4) then step(-10) stops at the bottom` and
+`S-28416 select(0) and select(6) change nothing`). Confirm works only with
+a number picked
+(`S-28417 Confirm needs a pick, records once, and clears the question`);
+Skip closes the question without recording anything, so the phone's own
+question and the first real answer are untouched — a relaunch asks again,
+and a phone-side rating arriving later still closes it
+(`S-28418 Skip records nothing; a later answer still closes the question`).
+
 ## What the wrist shows
 
 The start surface (synced routines, free training, the quick-log entry, a manual

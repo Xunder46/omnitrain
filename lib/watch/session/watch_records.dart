@@ -79,6 +79,10 @@ abstract final class WatchObservationKind {
   /// phone reads it; this twin emits no taps, so it is not in [all] (D-14).
   static const String waterGlass = 'water_glass';
 
+  /// The session's effort rating: one per session, `rating-<sessionId>`, never
+  /// a slot's work (it is not in [efforts]) and never edited (D-28401).
+  static const String effortRating = 'effort_rating';
+
   static const List<String> all = [
     set,
     timed,
@@ -87,6 +91,7 @@ abstract final class WatchObservationKind {
     nutritionQuickLog,
     sessionEnd,
     rest,
+    effortRating,
   ];
 
   /// The kinds that record work done in a slot — what "an effort entry" means
@@ -106,6 +111,10 @@ abstract final class WatchSessionCapture {
   /// The entryId and eventId the end of [sessionId] carries, as on Swift
   /// (`WatchRecords.swift`).
   static String sessionEndId(String sessionId) => '$endPrefix$sessionId';
+
+  /// The entryId and eventId the effort rating of [sessionId] carries, as on
+  /// Swift (`WatchRecords.swift`).
+  static String effortRatingId(String sessionId) => 'rating-$sessionId';
 }
 
 /// The session id a nutrition quick-log carries when the wrist has no session
@@ -211,6 +220,7 @@ sealed class WatchRecord {
       ),
       WatchFoodCatalogRecord.type => WatchFoodCatalogRecord.fromJson(json),
       WatchPreferencesRecord.type => WatchPreferencesRecord.fromJson(json),
+      WatchRatingPromptRecord.type => WatchRatingPromptRecord.fromJson(json),
       _ => throw FormatException('unknown watch record type: $type'),
     };
   }
@@ -909,6 +919,53 @@ final class WatchPreferencesRecord extends WatchRecord {
     distanceUnit: json['distanceUnit'] as String?,
     sequence: (json['sequence'] as int?) ?? 0,
   );
+}
+
+/// The wrist's own note that its End owed a session an effort rating (plan 284,
+/// D-28402). Written when the End happens, so a kill before the answer still
+/// asks at the next launch. It is answered by the session's `effort_rating`
+/// observation, never by a second row.
+final class WatchRatingPromptRecord extends WatchRecord {
+  const WatchRatingPromptRecord({
+    required super.recordId,
+    required super.sessionId,
+    required super.recordedAt,
+    super.sequence,
+  });
+
+  static const String type = 'rating_prompt';
+
+  /// The one id a session's prompt is stored under, so noting it twice is a
+  /// store no-op.
+  static String recordIdFor(String sessionId) => 'prompt-$sessionId';
+
+  @override
+  String get recordType => type;
+
+  @override
+  WatchRatingPromptRecord withSequence(int sequence) => WatchRatingPromptRecord(
+    recordId: recordId,
+    sessionId: sessionId,
+    recordedAt: recordedAt,
+    sequence: sequence,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    'recordType': type,
+    'recordId': recordId,
+    'sessionId': sessionId,
+    'recordedAt': utcIso(recordedAt),
+    'sequence': sequence,
+  };
+
+  static WatchRatingPromptRecord fromJson(Map<String, Object?> json) =>
+      WatchRatingPromptRecord(
+        recordId: json['recordId']! as String,
+        sessionId: json['sessionId']! as String,
+        recordedAt: parseUtcIso(json['recordedAt']),
+        sequence: (json['sequence'] as int?) ?? 0,
+      );
 }
 
 /// Narrows a decoded JSON value to a string-keyed map.

@@ -26,6 +26,7 @@ class WatchStoreContents {
     this.routineCatalogs = const [],
     this.foodCatalogs = const [],
     this.preferences = const [],
+    this.ratingPrompts = const [],
   });
 
   final List<WatchSessionRecord> sessions;
@@ -55,6 +56,9 @@ class WatchStoreContents {
   /// copy with the latest [WatchPreferencesRecord.generatedAt] applies.
   final List<WatchPreferencesRecord> preferences;
 
+  /// The wrist's own owed-rating notes, oldest first (plan 284).
+  final List<WatchRatingPromptRecord> ratingPrompts;
+
   bool get isEmpty =>
       sessions.isEmpty &&
       observations.isEmpty &&
@@ -63,7 +67,8 @@ class WatchStoreContents {
       confirmations.isEmpty &&
       routineCatalogs.isEmpty &&
       foodCatalogs.isEmpty &&
-      preferences.isEmpty;
+      preferences.isEmpty &&
+      ratingPrompts.isEmpty;
 }
 
 abstract class WatchSessionStore {

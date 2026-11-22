@@ -1916,6 +1916,8 @@ void main() {
           // Plan 160: the wrist's own end of its own session.
           WatchObservationKind.sessionEnd,
           WatchObservationKind.rest,
+          // Plan 284: the session's own effort rating.
+          WatchObservationKind.effortRating,
         ]),
         reason:
             'what the phone can be sent is a list, not whatever a client '

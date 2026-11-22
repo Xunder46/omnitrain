@@ -39,6 +39,7 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
     final routineCatalogs = <WatchRoutineCatalogRecord>[];
     final foodCatalogs = <WatchFoodCatalogRecord>[];
     final preferences = <WatchPreferencesRecord>[];
+    final ratingPrompts = <WatchRatingPromptRecord>[];
 
     for (final row in _rows) {
       switch (row) {
@@ -58,6 +59,8 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
           foodCatalogs.add(catalog);
         case final WatchPreferencesRecord copy:
           preferences.add(copy);
+        case final WatchRatingPromptRecord prompt:
+          ratingPrompts.add(prompt);
       }
     }
 
@@ -72,6 +75,7 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
       routineCatalogs: List.unmodifiable(routineCatalogs),
       foodCatalogs: List.unmodifiable(foodCatalogs),
       preferences: List.unmodifiable(preferences),
+      ratingPrompts: List.unmodifiable(ratingPrompts),
     );
   }
 

@@ -51,6 +51,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
     final routineCatalogs = <WatchRoutineCatalogRecord>[];
     final foodCatalogs = <WatchFoodCatalogRecord>[];
     final preferences = <WatchPreferencesRecord>[];
+    final ratingPrompts = <WatchRatingPromptRecord>[];
 
     for (final row in rows) {
       switch (row) {
@@ -70,6 +71,8 @@ class HiveWatchSessionStore implements WatchSessionStore {
           foodCatalogs.add(catalog);
         case final WatchPreferencesRecord copy:
           preferences.add(copy);
+        case final WatchRatingPromptRecord prompt:
+          ratingPrompts.add(prompt);
       }
     }
 
@@ -82,6 +85,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
       routineCatalogs: routineCatalogs,
       foodCatalogs: foodCatalogs,
       preferences: preferences,
+      ratingPrompts: ratingPrompts,
     );
   }
 
@@ -131,6 +135,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
       WatchRoutineCatalogRecord.type,
       WatchFoodCatalogRecord.type,
       WatchPreferencesRecord.type,
+      WatchRatingPromptRecord.type,
     ]) {
       final box = await _boxFor(type);
       for (final encoded in box.values) {

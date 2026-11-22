@@ -104,6 +104,13 @@ class WatchSessionEngine {
   /// (PROTOCOL.md, authority rule 6).
   final Set<String> _appliedChangeIds = {};
 
+  /// The ids of the observations the phone has acknowledged, whether their rows
+  /// are still stored or pruned since. Rebuilt from the stored receipts by
+  /// [restore], extended by [confirmObservations] and never touched by
+  /// [pruneConfirmed]: it is what lets a pruned effort rating stay known, so the
+  /// question is not asked again (plan 284, D-28403).
+  final Set<String> _acknowledgedIds = {};
+
   /// The phone's corrections to entries the watch holds, keyed by `entryId`,
   /// and the ones it deleted. The stored row is never rewritten — these are
   /// what [entries] folds in.
@@ -146,6 +153,12 @@ class WatchSessionEngine {
     _sensorSamples
       ..clear()
       ..addAll(contents.sensorSamples);
+
+    _acknowledgedIds
+      ..clear()
+      ..addAll([
+        for (final receipt in contents.confirmations) ...receipt.observationIds,
+      ]);
 
     _session = contents.sessions.isEmpty
         ? null
@@ -1645,6 +1658,36 @@ class WatchSessionEngine {
     return _appendObservation(event, sessionId: session.sessionId);
   }
 
+  // ---------------------------------------------------------------------------
+  // Effort rating
+  // ---------------------------------------------------------------------------
+
+  /// Whether the wrist holds an effort rating for [sessionId]: still stored,
+  /// acknowledged by the phone and pruned since, or carried by the phone's own
+  /// snapshot (plan 284, D-28404).
+  bool hasEffortRating(String sessionId) {
+    final id = WatchSessionCapture.effortRatingId(sessionId);
+    return _acknowledgedIds.contains(id) || _heldRecord(id) != null;
+  }
+
+  /// Appends [sessionId]'s effort rating and emits it, stamped with the wrist's
+  /// clock; or does nothing and returns null when the session already has one.
+  /// Nothing on the wrist edits a rating or adds a second.
+  Future<WatchObservationRecord?> recordEffortRating(
+    int rating, {
+    required String sessionId,
+  }) async {
+    if (hasEffortRating(sessionId)) return null;
+    final id = WatchSessionCapture.effortRatingId(sessionId);
+    return _appendObservation({
+      'entryId': id,
+      'eventId': id,
+      'kind': WatchObservationKind.effortRating,
+      'loggedAt': utcIso(_clock()),
+      'rating': rating,
+    }, sessionId: sessionId);
+  }
+
   /// Persists a food the user quick-logged, and emits it for the phone.
   ///
   /// The one entry point on the wrist that does not need a session: eating is
@@ -2053,6 +2096,9 @@ class WatchSessionEngine {
         ],
       ),
     );
+    _acknowledgedIds.addAll([
+      for (final observation in acknowledged) observation.recordId,
+    ]);
 
     final acknowledgedIds = {
       for (final observation in acknowledged) observation.recordId,
