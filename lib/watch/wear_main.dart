@@ -20,6 +20,7 @@ import 'app/wear_watch_transport.dart';
 import 'logging/watch_effort_rating_state.dart';
 import 'logging/watch_personal_bests.dart';
 import 'nutrition/watch_nutrition_state.dart';
+import 'nutrition/watch_water_state.dart';
 import 'session/hive_watch_session_store.dart';
 import 'session/watch_session_engine.dart';
 import 'start/watch_phone_preferences.dart';
@@ -46,6 +47,11 @@ Future<void> main() async {
   final nutrition = WatchNutritionState(engine: engine, store: store);
   final preferences = WatchPhonePreferences(store: store);
   final bests = WatchPersonalBests(store: store);
+  final water = WatchWaterState(engine: engine, store: store);
+  // The wrist's routines request says what it holds and what it wants (series
+  // 87c, plan 94): the bests flag is read on every request.
+  transport.holdsBests = () => bests.hasFrame;
+  transport.wantsWater = true;
   final rating = WatchEffortRatingState(
     engine: engine,
     store: store,
@@ -58,6 +64,7 @@ Future<void> main() async {
     nutrition: nutrition,
     preferences: preferences,
     bests: bests,
+    water: water,
   );
 
   runApp(
@@ -70,6 +77,7 @@ Future<void> main() async {
       preferences: preferences,
       rating: rating,
       bests: bests,
+      water: water,
     ),
   );
 }

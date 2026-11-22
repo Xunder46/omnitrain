@@ -139,9 +139,10 @@ LiveSessionMirrorState _idleMirror() => LiveSessionMirrorState(
 );
 
 void main() {
-  test('D-14 the twin names water_glass and does not emit it', () {
+  test('D-14 the twin names water_glass; plan 290 lets the Wear wrist emit it', () {
     expect(WatchObservationKind.waterGlass, 'water_glass');
-    expect(WatchObservationKind.all, isNot(contains('water_glass')));
+    expect(WatchObservationKind.all, contains('water_glass'));
+    expect(WatchObservationKind.efforts, isNot(contains('water_glass')));
   });
 
   group('NutritionState.applyWatchWaterTap', () {

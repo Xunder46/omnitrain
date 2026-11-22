@@ -2,13 +2,14 @@
 ///
 /// Append-only by construction (PROTOCOL.md, authority rule 1): a store offers
 /// no update, no delete and no remove. [WatchSessionStore.append] is the only
-/// way anything enters the store, and there are exactly three ways anything
+/// way anything enters the store, and there are exactly four ways anything
 /// leaves it — all of them prunes, each of them gated on having nothing left
 /// to lose: [WatchSessionStore.pruneConfirmed] drops observations the phone has
 /// acknowledged, and [WatchSessionStore.pruneSensorSamples] drops the raw
 /// sensor log of a session the phone has recorded in full.
 /// [WatchSessionStore.pruneBests] drops every bests frame but the newest the
-/// wrist applied.
+/// wrist applied. [WatchSessionStore.pruneWater] does the same for the day's
+/// water frames.
 ///
 /// `test/watch_session_engine_test.dart` (S-004) fails the build if a mutating
 /// method is added to this contract or if the engine reaches for a store method
@@ -30,6 +31,7 @@ class WatchStoreContents {
     this.preferences = const [],
     this.ratingPrompts = const [],
     this.bests = const [],
+    this.water = const [],
   });
 
   final List<WatchSessionRecord> sessions;
@@ -67,6 +69,11 @@ class WatchStoreContents {
   /// [WatchBestsRecord.generatedAt] applies (plan 288).
   final List<WatchBestsRecord> bests;
 
+  /// The phone's day-of-water frames, oldest first. Only the newest is ever
+  /// kept after a frame applies (`pruneWater`); the frame with the latest
+  /// [WatchWaterRecord.generatedAt] applies (plan 290).
+  final List<WatchWaterRecord> water;
+
   bool get isEmpty =>
       sessions.isEmpty &&
       observations.isEmpty &&
@@ -77,7 +84,8 @@ class WatchStoreContents {
       foodCatalogs.isEmpty &&
       preferences.isEmpty &&
       ratingPrompts.isEmpty &&
-      bests.isEmpty;
+      bests.isEmpty &&
+      water.isEmpty;
 }
 
 abstract class WatchSessionStore {
@@ -109,6 +117,11 @@ abstract class WatchSessionStore {
   /// [keepingRecordId] is not stored nothing is dropped, so a stale call can
   /// never empty the frame the wrist decides by.
   Future<List<String>> pruneBests({required String keepingRecordId});
+
+  /// Drops every water frame except [keepingRecordId], returning the record ids
+  /// that were dropped (plan 290, D-29001): `pruneBests`' rule for the day's
+  /// water. When [keepingRecordId] is not stored nothing is dropped.
+  Future<List<String>> pruneWater({required String keepingRecordId});
 }
 
 /// Folds [confirmations] into [observations] as their `confirmedAt` receipt.

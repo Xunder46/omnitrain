@@ -1918,6 +1918,8 @@ void main() {
           WatchObservationKind.rest,
           // Plan 284: the session's own effort rating.
           WatchObservationKind.effortRating,
+          // Plan 290: a tap of the Wear water bar.
+          WatchObservationKind.waterGlass,
         ]),
         reason:
             'what the phone can be sent is a list, not whatever a client '

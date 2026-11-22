@@ -41,6 +41,7 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
     final preferences = <WatchPreferencesRecord>[];
     final ratingPrompts = <WatchRatingPromptRecord>[];
     final bests = <WatchBestsRecord>[];
+    final water = <WatchWaterRecord>[];
 
     for (final row in _rows) {
       switch (row) {
@@ -64,6 +65,8 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
           ratingPrompts.add(prompt);
         case final WatchBestsRecord frame:
           bests.add(frame);
+        case final WatchWaterRecord frame:
+          water.add(frame);
       }
     }
 
@@ -80,6 +83,7 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
       preferences: List.unmodifiable(preferences),
       ratingPrompts: List.unmodifiable(ratingPrompts),
       bests: List.unmodifiable(bests),
+      water: List.unmodifiable(water),
     );
   }
 
@@ -125,6 +129,23 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
     ];
     _rows.removeWhere(
       (row) => row is WatchBestsRecord && row.recordId != keepingRecordId,
+    );
+    return dropped;
+  }
+
+  @override
+  Future<List<String>> pruneWater({required String keepingRecordId}) async {
+    final held = _rows.any(
+      (row) => row is WatchWaterRecord && row.recordId == keepingRecordId,
+    );
+    if (!held) return const [];
+    final dropped = [
+      for (final row in _rows)
+        if (row is WatchWaterRecord && row.recordId != keepingRecordId)
+          row.recordId,
+    ];
+    _rows.removeWhere(
+      (row) => row is WatchWaterRecord && row.recordId != keepingRecordId,
     );
     return dropped;
   }

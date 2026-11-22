@@ -76,7 +76,8 @@ abstract final class WatchObservationKind {
   static const String sessionEnd = 'session_end';
 
   /// One glass added to or removed from the day's water (plan 94 D-2). The
-  /// phone reads it; this twin emits no taps, so it is not in [all] (D-14).
+  /// Wear wrist emits taps (plan 290), so it is in [all]; it is never an
+  /// effort, and it names the day's nutrition log as its session.
   static const String waterGlass = 'water_glass';
 
   /// The session's effort rating: one per session, `rating-<sessionId>`, never
@@ -92,12 +93,22 @@ abstract final class WatchObservationKind {
     sessionEnd,
     rest,
     effortRating,
+    waterGlass,
   ];
 
   /// The kinds that record work done in a slot — what "an effort entry" means
   /// to a set block's span and to whether an effort rating is owed. The set a
   /// rest may hang on is one of these, and nothing else.
   static const List<String> efforts = [set, timed, round, hold];
+}
+
+/// What one tap of the water bar does: the `glassChange` of a `water_glass`
+/// event (plan 94 D-2), the wire's two values.
+abstract final class WatchGlassChange {
+  static const String add = 'add';
+  static const String remove = 'remove';
+
+  static const List<String> all = [add, remove];
 }
 
 /// The ids the engine's own records carry.
@@ -221,6 +232,7 @@ sealed class WatchRecord {
       WatchFoodCatalogRecord.type => WatchFoodCatalogRecord.fromJson(json),
       WatchPreferencesRecord.type => WatchPreferencesRecord.fromJson(json),
       WatchBestsRecord.type => WatchBestsRecord.fromJson(json),
+      WatchWaterRecord.type => WatchWaterRecord.fromJson(json),
       WatchRatingPromptRecord.type => WatchRatingPromptRecord.fromJson(json),
       _ => throw FormatException('unknown watch record type: $type'),
     };
@@ -980,6 +992,83 @@ final class WatchBestsRecord extends WatchRecord {
         entries: ((json['entries'] as List?) ?? const [])
             .map(asJsonObject)
             .toList(growable: false),
+        sequence: (json['sequence'] as int?) ?? 0,
+      );
+}
+
+/// One frame of the phone's day of water, as a `water_down` carried it (plan
+/// 290, D-29001).
+///
+/// Reference data like the bests: it belongs to no session (`sessionId` is
+/// empty), the frame with the latest [generatedAt] applies, and the store keeps
+/// only that one (`WatchSessionStore.pruneWater`). The wrist never stores a
+/// count of its own: the number it shows is computed from this frame and its
+/// own taps on every read. Mirrors the Apple client's `WatchWaterRecord`.
+final class WatchWaterRecord extends WatchRecord {
+  const WatchWaterRecord({
+    required super.recordId,
+    required super.recordedAt,
+    required this.generatedAt,
+    required this.day,
+    required this.glasses,
+    this.appliedTapIds = const [],
+    super.sequence,
+  }) : super(sessionId: '');
+
+  static const String type = 'water';
+
+  /// When the phone generated this frame. An older frame that arrives late is
+  /// not a newer truth.
+  final DateTime generatedAt;
+
+  /// The phone's local calendar day the count is for, `YYYY-MM-DD`.
+  final String day;
+
+  /// The phone's whole-glass count for [day].
+  final int glasses;
+
+  /// The ids of the wrist's glass taps that [glasses] already includes, in the
+  /// order the phone listed them.
+  final List<String> appliedTapIds;
+
+  @override
+  String get recordType => type;
+
+  @override
+  WatchWaterRecord withSequence(int sequence) => WatchWaterRecord(
+    recordId: recordId,
+    recordedAt: recordedAt,
+    generatedAt: generatedAt,
+    day: day,
+    glasses: glasses,
+    appliedTapIds: appliedTapIds,
+    sequence: sequence,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    'recordType': type,
+    'recordId': recordId,
+    'sessionId': sessionId,
+    'recordedAt': utcIso(recordedAt),
+    'sequence': sequence,
+    'generatedAt': utcIso(generatedAt),
+    'day': day,
+    'glasses': glasses,
+    'appliedTapIds': appliedTapIds,
+  };
+
+  static WatchWaterRecord fromJson(Map<String, Object?> json) =>
+      WatchWaterRecord(
+        recordId: json['recordId']! as String,
+        recordedAt: parseUtcIso(json['recordedAt']),
+        generatedAt: parseUtcIso(json['generatedAt']),
+        day: json['day']! as String,
+        glasses: json['glasses']! as int,
+        appliedTapIds: [
+          for (final id in (json['appliedTapIds'] as List?) ?? const [])
+            id as String,
+        ],
         sequence: (json['sequence'] as int?) ?? 0,
       );
 }

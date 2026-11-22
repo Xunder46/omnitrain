@@ -515,6 +515,12 @@ The phone sends each exercise's standing best in a `bests_down` message: the bes
 
 The rule is the Apple wrist's (`WatchPersonalBests.swift`; the owner's decisions are in [series 87](plans/2026-10-26-87-wrist-new-pr-banner-index.md)) and the plan is [plan 288](plans/2026-11-22-288-wear-personal-bests-plan/2026-11-22-288-wear-personal-bests-plan.md). A set that beats the standing best shows a small `New PR` banner (plan 289, `lib/watch/widgets/watch_personal_record_banner.dart`): a trophy and the words in the phone's accent colour over the top of the screen for 4 seconds, with one distinct vibration (the platform's plain vibration; the pager's click, the lock's heavy tap and the rest ping's medium tap are taken). The verdict is read on one path only, when the wrist logs the set, so a set the phone logged never fires it and a wrist that holds no frame says nothing. Logging a set starts a rest at once and the rest screen replaces the logging screen, so both screens overlay the same banner and a record is not torn down with the screen that logged it; a second record inside the window restarts the 4 seconds. The banner takes no touch, so `Log`, `Next` and `Menu` work under it, and a screen reader announces `New personal record`. One difference from the Apple wrist: a record still inside its window when the user taps `Next` is announced again by the logging screen's banner.
 
+## The water count
+
+The phone owns the day's water. The Wear wrist asks for it on every sync (its routines request carries `wantsWater`, and `holdsBests` when it already holds the phone's bests, so the phone sends a bests frame only when one changed; both are set in `lib/watch/wear_main.dart` on the Wear transport) and keeps the newest `water_down` frame (`WatchWaterState` in `lib/watch/nutrition/watch_water_state.dart`, stored as a `WatchWaterRecord`): an older frame is dropped, a frame with the same numbers writes nothing, an unreadable one is refused whole, frames are applied one at a time, and the store keeps only the newest (`pruneWater`, the fourth prune on the store contract).
+
+The wrist can log one tap of the water bar (`logWaterGlass` on the engine): a glass added or removed, stored first and sent as a `water_glass` event until the phone receipts it. A tap is never part of a workout: its session id is always the day's nutrition log, even while a workout runs. The count the bar will show is never stored; it is computed on every read: the phone's count when its frame is for the wrist's local today, else 0, plus the wrist's own taps of local today that the frame does not list (confirmed or not: only the frame's list takes a tap out), in time order, an add +1 and a remove -1 but never below 0. The plus stops at 500 taps a day (the phone's own cap), the minus also at 0. The rule is the Apple wrist's (series 94-96); the plan is [plan 290](plans/2026-11-22-290-wear-water-count-plan/2026-11-22-290-wear-water-count-plan.md). Nothing on the screen uses it yet: the bar is the next change. The launch prune of old confirmed taps (plan 96) is not built: taps grow by at most 500 a day and every read skips the days it does not need unread.
+
 ## What the wrist shows
 
 The start surface (synced routines, free training, the quick-log entry, a manual
@@ -572,6 +578,15 @@ without heart rate and distance exactly as it would on a device with no sensor.
   shown once and gone after 4 seconds, nothing on a non-record, the fit at 192
   and 227 dp, no touch taken, the rest screen's banner in the accent and
   announced, and the platform vibration.
+- `test/watch_water_store_test.dart` — the stored water frame, the prune that keeps
+  the newest, and a reopen, under the in-memory store and Hive.
+- `test/watch_water_engine_test.dart` — the tap: the nutrition session id, never a
+  workout, an unknown change refused, confirmed taps kept, a relaunch, the schema.
+- `test/watch_water_state_test.dart` — the count: the phone's base, the wrist's
+  unlisted taps, the time order and the floor, another day, midnight, the 500
+  cap, malformed taps, the frame rules, a restart, and two at once.
+- `test/wear_water_wiring_test.dart` — the orchestrator's route, the two request
+  flags on the Wear transport, the shell's restore and the entry point.
 - `test/wear_os_config_test.dart` — the flavors, the watch feature, the two
   capabilities, the plugin's Android registration and its five calls, the
   production entry point, and the two release invocations.

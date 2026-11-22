@@ -101,7 +101,7 @@ source, so each is a real piece rather than a tweak.
 2. **The swipe pager** (`WatchLoggingPagerView.swift`, `WatchPagerModel.swift`) — one exercise per page. (Built by plan 287.)
 3. **The effort-rating prompt** (`WatchEffortRating.swift`, `WatchEffortRatingView.swift`). (Built by plans 283a-c: the settings 283a, the state 284, the prompt 285.)
 4. **Personal records** (`WatchPersonalBests.swift`, `WatchPersonalRecordBanner.swift`) and the bests frame it reads. (Part 1, the frame and the judge, built by plan 288; part 2, the banner and the tap, by plan 289. `holdsBests` is still open.)
-5. **Water** (`WatchWater.swift`) and the routines request's `wantsWater` flag, which the Dart orchestrator's signature does not carry yet.
+5. **Water** (`WatchWater.swift`) and the routines request's `wantsWater` flag, which the Dart orchestrator's signature does not carry yet. (Part 1, the count, the tap and the `wantsWater`/`holdsBests` flags, built by plan 290; the bar is part 2.)
 6. **The workout summary** (`WatchWorkoutSummary.swift`, `WatchWorkoutSummaryView.swift`).
 7. **Diagnostics** (`WatchDiagnosticsLog.swift`, `WatchDiagnosticsView.swift`, the send path).
 8. **Accent theming** (`WatchAccent.swift`, `WatchAccentStyle.swift`) and the preferences frame that carries the colour. Built by plan 286 (Wear wrist wears the accent).

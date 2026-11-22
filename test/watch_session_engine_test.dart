@@ -713,19 +713,20 @@ void main() {
 
   group('S-004 append-only enforcement at the storage API', () {
     test('the store contract is append-only, and the engine keeps to it', () async {
-      // Exactly five names are deliberate. `pruneConfirmed`, `pruneSensorSamples`
-      // and `pruneBests` are the three ways anything leaves the store, and
-      // each is gated on having nothing left to lose: confirmed observations
-      // for the first, for the second a session that is over whose numbers
-      // the phone has already recorded in full, and for the third every bests
-      // frame but the newest one the wrist applied (plan 288). A fourth prune,
-      // or a wider gate, has to be added here on purpose.
+      // Exactly six names are deliberate. `pruneConfirmed`, `pruneSensorSamples`,
+      // `pruneBests` and `pruneWater` are the four ways anything leaves the
+      // store, and each is gated on having nothing left to lose: confirmed
+      // observations for the first, for the second a session that is over whose
+      // numbers the phone has already recorded in full, and for the last two
+      // every frame but the newest one the wrist applied (plans 288 and 290).
+      // A fifth prune, or a wider gate, has to be added here on purpose.
       const allowed = {
         'append',
         'readAll',
         'pruneConfirmed',
         'pruneSensorSamples',
         'pruneBests',
+        'pruneWater',
       };
 
       final sessionLayer =

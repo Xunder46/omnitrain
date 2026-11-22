@@ -17,6 +17,7 @@ library;
 
 import '../logging/watch_personal_bests.dart';
 import '../nutrition/watch_nutrition_state.dart';
+import '../nutrition/watch_water_state.dart';
 import '../session/watch_session_engine.dart';
 import 'watch_phone_preferences.dart';
 import 'watch_session_start_paths.dart';
@@ -49,12 +50,14 @@ class WatchSyncOrchestrator {
     WatchNutritionState? nutrition,
     WatchPhonePreferences? preferences,
     WatchPersonalBests? bests,
+    WatchWaterState? water,
   }) : _transport = transport,
        _paths = paths,
        _engine = engine,
        _nutrition = nutrition,
        _preferences = preferences,
-       _bests = bests;
+       _bests = bests,
+       _water = water;
 
   final WatchSyncTransport _transport;
   final WatchSessionStartPaths _paths;
@@ -71,6 +74,10 @@ class WatchSyncOrchestrator {
   /// The phone's synced standing bests, when the app hosts them. A watch
   /// without them has nothing to do with a `bests_down` (plan 288).
   final WatchPersonalBests? _bests;
+
+  /// The day's water, when the app hosts the bar. A watch without it has
+  /// nothing to do with a `water_down` (plan 290).
+  final WatchWaterState? _water;
 
   /// Whether a catch-up is already running: a trigger that arrives while one
   /// does is dropped, never queued (D-183).
@@ -163,6 +170,10 @@ class WatchSyncOrchestrator {
         final bests = _bests;
         if (bests == null) return false;
         return bests.applyBestsDown(envelope);
+      case 'water_down':
+        final water = _water;
+        if (water == null) return false;
+        return water.applyWaterDown(envelope);
       case 'foods_down':
         final nutrition = _nutrition;
         if (nutrition == null) return false;

@@ -1732,6 +1732,43 @@ class WatchSessionEngine {
         observation,
   ]);
 
+  /// Stores one tap of the water bar and emits it for the phone (plan 290,
+  /// D-29002): a glass added to or removed from the day's water.
+  ///
+  /// Like a food quick-log it needs no session, but unlike one it NEVER rides a
+  /// running workout: its session id is always the day's nutrition log
+  /// ([WatchNutritionSession.idFor] of [loggedAt]), so a workout's observations,
+  /// entries and snapshot never carry a tap. Every press is its own event: never
+  /// coalesced, never edited, re-sent by every sync until the phone receipts it.
+  ///
+  /// [change] is one of [WatchGlassChange.all]; anything else throws
+  /// [ArgumentError] before anything is stored or emitted.
+  Future<WatchObservationRecord> logWaterGlass(
+    String change, {
+    DateTime? loggedAt,
+  }) {
+    if (!WatchGlassChange.all.contains(change)) {
+      throw ArgumentError.value(change, 'change', 'not a glass change');
+    }
+    final now = loggedAt ?? _clock();
+    final entryId = _newId();
+    return _appendObservation({
+      'entryId': entryId,
+      'eventId': entryId,
+      'kind': WatchObservationKind.waterGlass,
+      'loggedAt': utcIso(now),
+      'glassChange': change,
+    }, sessionId: WatchNutritionSession.idFor(now));
+  }
+
+  /// The water taps the wrist has stored, oldest first: confirmed or not, every
+  /// session id's, because the bar is reachable with no workout. The count the
+  /// bar shows folds these on every read.
+  List<WatchObservationRecord> get waterLog => List.unmodifiable([
+    for (final observation in _observations)
+      if (observation.kind == WatchObservationKind.waterGlass) observation,
+  ]);
+
   /// Storage first, emission second — the order every log on the watch follows.
   Future<WatchObservationRecord> _appendObservation(
     Map<String, Object?> event, {

@@ -34,6 +34,7 @@ import '../logging/watch_personal_bests.dart';
 import '../logging/watch_rest_screen.dart';
 import '../nutrition/watch_nutrition_screen.dart';
 import '../nutrition/watch_nutrition_state.dart';
+import '../nutrition/watch_water_state.dart';
 import '../session/watch_session_engine.dart';
 import '../session/watch_records.dart';
 import '../start/watch_session_start_paths.dart';
@@ -57,6 +58,7 @@ class WearApp extends StatefulWidget {
     this.preferences,
     this.rating,
     this.bests,
+    this.water,
   });
 
   final WatchSessionEngine engine;
@@ -87,6 +89,11 @@ class WearApp extends StatefulWidget {
   /// at launch so a `bests_down` frame and the sets the wrist holds are known
   /// before the first set is logged; left null the shell holds none.
   final WatchPersonalBests? bests;
+
+  /// The day's water (plan 290). When given, the shell restores it at launch so
+  /// the phone's count and the wrist's own taps are known before the bar exists;
+  /// left null the shell holds none.
+  final WatchWaterState? water;
 
   /// The copy the wrist shows while it restores what it holds.
   static const String loadingLabel = 'OmniTrain';
@@ -171,6 +178,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
       await widget.preferences?.restore();
       await widget.rating?.restore();
       await widget.bests?.restore();
+      await widget.water?.restore();
     } on Object catch (error, stack) {
       debugPrint('OmniTrain wrist restore failed: $error\n$stack');
     } finally {

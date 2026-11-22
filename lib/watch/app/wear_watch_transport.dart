@@ -78,6 +78,16 @@ class WearWatchTransport implements WatchSyncTransport {
   @override
   bool get isPhoneReachable => _reachable;
 
+  /// Whether the wrist holds a bests frame, read on every routines request so
+  /// the phone can skip a frame that has not changed (series 87c). Null means
+  /// "no": the key is then left off, as it is for a wrist that holds nothing.
+  bool Function()? holdsBests;
+
+  /// Whether the wrist hosts the water bar and so asks for the day's water on
+  /// every routines request (plan 94 D-9, plan 290). False leaves the key off:
+  /// a wrist without a bar sends the same frame it always sent.
+  bool wantsWater = false;
+
   /// Hands every arriving frame to [handler]. Frames that arrive before this is
   /// called wait in the platform's buffer and are flushed to it.
   void onIncoming(WearInboundHandler handler) => _inbound = handler;
@@ -145,8 +155,13 @@ class WearWatchTransport implements WatchSyncTransport {
   }
 
   @override
-  Future<void> requestRoutines({DateTime? since}) =>
-      send(WatchTransportRequest.routinesFrame(since: since));
+  Future<void> requestRoutines({DateTime? since}) => send(
+    WatchTransportRequest.routinesFrame(
+      since: since,
+      holdsBests: holdsBests?.call() ?? false,
+      wantsWater: wantsWater,
+    ),
+  );
 
   @override
   Future<void> requestSnapshot() =>
