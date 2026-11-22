@@ -203,6 +203,13 @@ class WatchSessionEngine {
   /// The exercise the session is currently on, when the session has any.
   Map<String, Object?>? get currentExercise => _session?.currentExercise;
 
+  /// Whether [session] is a row a message from the phone wrote (the lifecycle
+  /// the phone sent: an end the phone made), not one the wrist wrote itself
+  /// (plan 292, D-29203). The wrist's end-of-workout summary reads it so an end
+  /// the phone made closes the workout without one.
+  bool endedByPhone(WatchSessionRecord session) =>
+      session.recordId.startsWith(_lifecyclePrefix);
+
   /// The current session's observations, in the order they were logged.
   List<WatchObservationRecord> get observations => List.unmodifiable([
     for (final observation in _observations)

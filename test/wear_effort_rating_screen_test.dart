@@ -57,6 +57,7 @@ import 'package:omnitrain/watch/logging/watch_effort_rating_screen.dart';
 import 'package:omnitrain/watch/logging/watch_effort_rating_state.dart';
 import 'package:omnitrain/watch/logging/watch_menu_screen.dart';
 import 'package:omnitrain/watch/logging/watch_menu_state.dart';
+import 'package:omnitrain/watch/logging/watch_workout_summary_screen.dart';
 import 'package:omnitrain/watch/nutrition/watch_nutrition_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
@@ -431,6 +432,15 @@ void _expectInsideView(Iterable<Rect> rects, double size) {
   }
 }
 
+/// A workout the wrist ended shows its summary before the start surface (plan
+/// 292): the tests that expect the start surface after an End dismiss it first.
+Future<void> _doneSummary(WidgetTester tester) async {
+  expect(find.text('Workout done'), findsOneWidget);
+  await tester.tap(find.byKey(WatchWorkoutSummaryScreen.doneKey));
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
+}
+
 void main() {
   setUp(() {
     _calls.clear();
@@ -506,6 +516,7 @@ void main() {
     await _endFromMenu(tester);
 
     expect(find.text('How hard was this session?'), findsNothing);
+    await _doneSummary(tester);
     expect(find.byType(WatchStartScreen), findsOneWidget);
     expect(harness.engine.session!.status, WatchSessionStatus.completed);
     expect(harness.rating!.isPromptOwed, isFalse);
@@ -564,7 +575,8 @@ void main() {
     expect(events, hasLength(1));
     expect((events.single as Map)['kind'], WatchObservationKind.effortRating);
     expect((events.single as Map)['rating'], 4);
-    // The shell is past the question.
+    // The shell is past the question; the summary of the workout follows it.
+    await _doneSummary(tester);
     expect(find.byType(WatchStartScreen), findsOneWidget);
     expect(find.text('How hard was this session?'), findsNothing);
 
@@ -584,6 +596,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
+    await _doneSummary(tester);
     expect(find.byType(WatchStartScreen), findsOneWidget);
     expect(harness.engine.hasEffortRating(sessionId), isFalse);
     expect(_effortRatingFramesUp(), isEmpty);
@@ -954,6 +967,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('How hard was this session?'), findsNothing);
+    await _doneSummary(tester);
     expect(find.byType(WatchStartScreen), findsOneWidget);
     expect(harness.rating!.isPromptOwed, isFalse);
 
@@ -968,6 +982,7 @@ void main() {
     await _endFromMenu(tester);
 
     expect(find.text('How hard was this session?'), findsNothing);
+    await _doneSummary(tester);
     expect(find.byType(WatchStartScreen), findsOneWidget);
     expect(harness.engine.session!.status, WatchSessionStatus.completed);
 

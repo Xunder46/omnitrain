@@ -61,6 +61,7 @@ import 'package:omnitrain/watch/app/wear_app.dart';
 import 'package:omnitrain/watch/app/wear_watch_transport.dart';
 import 'package:omnitrain/watch/logging/watch_menu_screen.dart';
 import 'package:omnitrain/watch/logging/watch_menu_state.dart';
+import 'package:omnitrain/watch/logging/watch_workout_summary_screen.dart';
 import 'package:omnitrain/watch/nutrition/watch_nutrition_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
@@ -288,6 +289,15 @@ OutlinedButton rowButton(WidgetTester tester, String label) =>
       find.ancestor(of: find.text(label), matching: find.byType(OutlinedButton)),
     );
 
+/// A workout the wrist ended shows its summary before the start surface (plan
+/// 292): the tests that expect the start surface after an End dismiss it first.
+Future<void> _doneSummary(WidgetTester tester) async {
+  expect(find.text('Workout done'), findsOneWidget);
+  await tester.tap(find.byKey(WatchWorkoutSummaryScreen.doneKey));
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
+}
+
 void main() {
   setUp(() {
     _calls.clear();
@@ -365,6 +375,7 @@ void main() {
     await _answerDialog(tester, WatchMenuCopy.confirmFinish);
 
     expect(harness.engine.session!.status, WatchSessionStatus.completed);
+    await _doneSummary(tester);
     expect(find.byType(WatchStartScreen), findsOneWidget);
     expect(find.byType(WatchMenuScreen), findsNothing);
   });
@@ -926,6 +937,7 @@ void main() {
     expect(find.text(WatchMenuCopy.confirmTitle), findsOneWidget);
     await _answerDialog(tester, WatchMenuCopy.confirmFinish);
 
+    await _doneSummary(tester);
     expect(find.byType(WatchStartScreen), findsOneWidget);
 
     // The shell's once-a-second rebuild must stop once the session is over: a

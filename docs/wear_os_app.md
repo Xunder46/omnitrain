@@ -521,6 +521,10 @@ The phone owns the day's water. The Wear wrist asks for it on every sync (its ro
 
 The wrist can log one tap of the water bar (`logWaterGlass` on the engine): a glass added or removed, stored first and sent as a `water_glass` event until the phone receipts it. A tap is never part of a workout: its session id is always the day's nutrition log, even while a workout runs. The count the bar will show is never stored; it is computed on every read: the phone's count when its frame is for the wrist's local today, else 0, plus the wrist's own taps of local today that the frame does not list (confirmed or not: only the frame's list takes a tap out), in time order, an add +1 and a remove -1 but never below 0. The plus stops at 500 taps a day (the phone's own cap), the minus also at 0. The rule is the Apple wrist's (series 94-96); the plan is [plan 290](plans/2026-11-22-290-wear-water-count-plan/2026-11-22-290-wear-water-count-plan.md). The water bar sits at the bottom of the Log food screen (plan 291, `lib/watch/nutrition/watch_water_bar.dart`), under the foods list or the "No foods yet" message and nowhere else, so no water is logged from inside a workout: a minus, a drop with the count and a plus, each press one glass added or removed and shown at once, before the phone answers, with one click when a tap was stored. The minus is greyed at 0 and both buttons at the day's 500 taps. A frame that arrives while the screen is open changes the count, and local midnight with the screen open shows the new day's count within a minute (the bar re-reads once a minute). A screen reader says `Remove one glass`, `Add one glass`, and for the middle `Water` with `3 glasses` (`1 glass`). The launch prune of old confirmed taps (plan 96) is not built: taps grow by at most 500 a day and every read skips the days it does not need unread.
 
+## The workout summary
+
+When the wrist ends a workout that holds at least one logged effort, and the app saw that workout running, a screen titled `Workout done` follows the effort question (when the phone asks for one; Skip leads to it too): `Time 12:34` (`h:mm:ss` from an hour), `Sets 12` (`Efforts 2` when the workout holds a timed effort, a round or a hold), `Avg HR 128 bpm` only when the wrist holds heart-rate readings stamped inside the workout, and a `Done` button that returns to the start screen (`lib/watch/logging/watch_workout_summary.dart`, plan 292; the rule is the Apple wrist's, plan 66a). A workout ended with nothing logged, an abandoned or discarded one, one the phone ended, and one that ended while the app was closed show nothing; a workout that starts while the summary is up replaces it. The wrist has no heart-rate source yet (the live feed is plan 280 item 9), so the heart-rate row waits for it. The Apple wrist's note that explains a missing heart rate (Health access off) is not built: Wear has no such state. The summary is local: nothing is sent or stored, and it does not survive a relaunch.
+
 ## What the wrist shows
 
 The start surface (synced routines, free training, the quick-log entry, a manual
@@ -531,7 +535,7 @@ and the rest surface opens the exercise menu, the Apple wrist's menu without a r
 A swipe on the logging surface moves between the exercises (the pager, below).
 
 The Apple wrist hosts more: the
-workout summary, the diagnostics
+diagnostics
 view, and spoken timer cues. None of those is on the Wear wrist; the plan that
 built this shell
 records each one, and the sizes they are (the Apple client is roughly twice the
@@ -591,6 +595,13 @@ without heart rate and distance exactly as it would on a device with no sensor.
   at once with one click, the inert buttons at 0 and at the cap, the names a
   screen reader says, a frame and midnight while open, the fit at 192 and
   227 dp, the listener's clean-up, the shell's wiring and a failed write.
+- `test/wear_workout_summary_state_test.dart` — the summary's rule: the duration
+  text, the rows and labels, the efforts it counts, the heart-rate window and
+  rounding, every gate, the phone's end, a new workout and Done.
+- `test/wear_workout_summary_screen_test.dart` — the screen and the shell: title,
+  rows and Done, Finish then summary then start screen, the effort question
+  first, the fit at 192 and 227 dp, an empty or phone-ended workout, and a new
+  workout over a summary.
 - `test/wear_os_config_test.dart` — the flavors, the watch feature, the two
   capabilities, the plugin's Android registration and its five calls, the
   production entry point, and the two release invocations.
@@ -660,6 +671,12 @@ checks, run on real hardware:
    shows the phone's count after a sync; `+` and `-` change it at once with a
    click, the minus is greyed at 0; a glass tapped on the phone shows after the
    next sync; the bar fits above the bezel with a food selected
+12. (owner) on a Wear watch: start a Free workout, log a set, End Session and
+   Finish; after the effort question when the phone asks for one the
+   `Workout done` screen shows the time and the set count, and `Done` returns
+   to the start screen; a workout ended with nothing logged shows none; ending
+   the workout from the phone shows none; the screen fits the round face and
+   scrolls on a small one
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

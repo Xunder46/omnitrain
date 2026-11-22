@@ -10,12 +10,13 @@
 /// store and a fake link instead of reaching for Hive and a paired watch.
 ///
 /// What this shell does **not** host yet is recorded in the plan's Open items:
-/// the workout summary and the diagnostics view that the Apple wrist has. Its
+/// the diagnostics view that the Apple wrist has. Its
 /// `Menu` button opens the exercise menu (plan 281). The shell
 /// wears the phone's accent colour
 /// (plan 286) and swipes between exercises on the logging surface (plan 287);
 /// a set that beats the phone's best shows a `New PR` banner (plan 289), and
-/// the Log food screen shows the day's water bar (plan 291).
+/// the Log food screen shows the day's water bar (plan 291); a workout the
+/// wrist ends shows a short summary (plan 292).
 library;
 
 import 'dart:async';
@@ -33,6 +34,8 @@ import '../logging/watch_menu_state.dart';
 import '../logging/watch_metric_stepping.dart';
 import '../logging/watch_personal_bests.dart';
 import '../logging/watch_rest_screen.dart';
+import '../logging/watch_workout_summary.dart';
+import '../logging/watch_workout_summary_screen.dart';
 import '../nutrition/watch_nutrition_screen.dart';
 import '../nutrition/watch_nutrition_state.dart';
 import '../nutrition/watch_water_state.dart';
@@ -123,6 +126,12 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     engine: widget.engine,
     paths: widget.paths,
     rating: widget.rating,
+  );
+
+  /// The summary a workout the wrist ended owes (plan 292): noted on every
+  /// surface build, shown after the effort question.
+  late final WatchWorkoutSummaryState _summary = WatchWorkoutSummaryState(
+    engine: widget.engine,
   );
 
   /// The shell's own navigator: the shell is above the `MaterialApp` it builds,
@@ -237,6 +246,11 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     setState(_syncTicker);
   }
 
+  /// Done on the summary: it is taken away and the shell redraws.
+  void _dismissSummary() {
+    if (mounted) setState(_summary.dismissPending);
+  }
+
   /// What the menu did that the surfaces must follow: a jump, an add, an End or
   /// a Discard (the session may now be over, so the ticker re-reads it).
   void _menuChanged() {
@@ -321,9 +335,21 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
       return const Center(child: CircularProgressIndicator());
     }
 
+    // The summary reads the engine's session on every build (plan 292): a
+    // workout this process saw active and the wrist then ended owes one.
+    _summary.note(widget.engine.session);
+
     final rating = widget.rating;
     if (rating != null && rating.isPromptOwed) {
       return WatchEffortRatingScreen(state: rating);
+    }
+
+    final summary = _summary.pending;
+    if (summary != null) {
+      return WatchWorkoutSummaryScreen(
+        summary: summary,
+        onDone: _dismissSummary,
+      );
     }
 
     final session = widget.engine.session;
