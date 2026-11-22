@@ -269,8 +269,10 @@ effort-rating flag and accent colour are stored
 group `S-28302 one preferences_down copy applies`, test
 `the getters show the copy and one row is stored`); the effort-rating flag
 asks the question after End and at launch (the section
-`## The effort-rating prompt` below), and the accent colour still shows
-nothing — the accent theming stays on the Apple-only list above.
+`## The effort-rating prompt` below), and
+the accent colour tints the buttons (`test/wear_accent_theme_test.dart`
+`S-28611 a delivered accent becomes the shell's`).
+The accent theming is described in `## The accent colour` below.
 
 The wrist stores every copy it accepts and applies the newest by the phone's
 own stamp: a late copy with an older stamp is dropped and not stored
@@ -430,6 +432,77 @@ scales down rather than overflowing on a crowded one
 (`flutter run -d macos -t lib/watch/debug/wear_menu_debug_main.dart`) the
 setting is switched on, so End shows the prompt there.
 
+## The accent colour
+
+The wrist wears the colour of the phone's theme. Once a sync has carried a
+`preferences_down` copy with an accent, the theme's primary colour — which
+the buttons, the selected number in the rating question and the selected
+food's border on the nutrition screen all take — is that colour, with
+labels that read on it (`test/wear_accent_theme_test.dart`
+`S-28611 a delivered accent becomes the shell's`). Before the first sync,
+when the copy carries no accent, and when the colour is too dark to read on
+the black screen — its contrast against black under the floor
+`WatchAccent.minContrastAgainstBlack` — the wrist wears the phone's default
+theme colour, cyan `#2DE2E6` (`test/wear_accent_theme_test.dart`
+`S-28610 the fresh shell wears the phone's default accent`;
+`test/watch_accent_test.dart`
+`S-28605 worn falls back or wears the accent`).
+The label on a coloured button is black or white by which reads better on
+that colour; all six phone themes in the contract take black
+(`test/watch_accent_test.dart`
+`S-28604 the label rule compares the two contrasts`,
+`S-28601 the contract's six accents parse and read the table's contrast
+figures`).
+
+A colour that arrives while the watch is open shows on the repaint the
+arriving frame itself triggers, with the short fade `MaterialApp` gives a
+theme (`test/wear_accent_theme_test.dart`
+`S-28611 a delivered accent becomes the shell's`). A newer copy replaces
+the colour, an older one does not, and a later copy that carries no accent
+sends the wrist back to cyan rather than keeping the old colour
+(`test/wear_accent_theme_test.dart`
+`S-28612 a newer copy replaces it, a copy without accent restores the
+default`,
+`S-28614 an older copy does not replace the newer one`). The colour
+survives a restart: the restored copy dresses the first settled frame
+(`S-28616 a store that holds a copy dresses the new shell`). A shell built
+without a preferences owner stays on the default
+(`S-28615 a shell without preferences stays on the default`).
+
+How it works: `WatchAccent` (`lib/watch/widgets/watch_accent.dart`) is the
+Dart twin of the Apple client's `WatchAccent.swift`. It accepts exactly
+`#RRGGBB` and nothing else
+(`test/watch_accent_test.dart`
+`S-28602 the parser accepts #RRGGBB and nothing else`), computes the WCAG
+relative luminance and the two contrast ratios from the hex, refuses an
+accent whose contrast against black is under the floor
+(`S-28603 the wearability floor is 3.0`), decides the label by which
+contrast wins (`S-28604 the label rule compares the two contrasts`), keeps
+the channels in the order the hex names them
+(`S-28606 the channels are not mixed`), and its `worn` falls back to the
+default cyan whenever the string is absent, unreadable or too dark
+(`S-28605 worn falls back or wears the accent`).
+`WearAppState._themeFor` (`lib/watch/app/wear_app.dart`) copies the dark
+Material scheme changing only `primary` and `onPrimary`, so the destructive
+and tonal buttons keep their colours, and caches the `ThemeData` by the hex
+it was built from, so the shell's once-a-second rebuild does not re-theme
+the tree (`test/wear_accent_theme_test.dart`
+`S-28617 the theme is cached across the 1 s ticks and rebuilt on a new
+accent`).
+
+The six accents are the contract table
+`watch/contract/watch_accent_contract.json`, which the tests walk rather
+than restate (`test/watch_accent_test.dart`, group
+`S-28601 the contract's six accents parse and read the table's contrast
+figures`). The unit half is `test/watch_accent_test.dart`, scenarios
+`S-28601` to `S-28606`, one clause each; the shell half is
+`test/wear_accent_theme_test.dart`, scenarios `S-28610` to `S-28617`, one
+clause each. Nothing about the accent stays Apple-only; what remains
+different is that the desktop QA harness delivers a copy with no accent, so
+it wears the default cyan and offers no accent picker
+(`S-28612 a newer copy replaces it, a copy without accent restores the
+default`).
+
 ## What the wrist shows
 
 The start surface (synced routines, free training, the quick-log entry, a manual
@@ -438,10 +511,10 @@ sync), the logging surface (one effort, its values, one Log), the rest surface
 The Menu button under the logging surface
 and the rest surface opens the exercise menu, the Apple wrist's menu without a remove control (D-28102).
 
-The Apple wrist hosts more: the swipe pager between exercises,
-the personal-record banner, the water bar, the
-workout summary, the diagnostics view, spoken timer cues and the accent
-theming. None of those is on the Wear wrist; the plan that built this shell
+The Apple wrist hosts more: the swipe pager between exercises, the
+personal-record banner, the water bar, the workout summary, the diagnostics
+view, and spoken timer cues. None of those is on the Wear wrist; the plan that
+built this shell
 records each one, and the sizes they are (the Apple client is roughly twice the
 Dart client), in
 [the plan](plans/2026-11-20-280-wear-os-shell-plan/2026-11-20-280-wear-os-shell-plan.md).
@@ -508,6 +581,11 @@ checks, run on real hardware:
    rating); on another workout Skip shows the start screen; closing the app
    on the question and reopening asks again; the question fits the round
    screen
+8. (owner) with a paired phone set to a colour theme: sync the watch and
+   the buttons and the selected rating number wear the phone's theme colour
+   with readable labels; switch the phone to another theme and sync again,
+   the colour changes; before any sync the watch's buttons are cyan, not
+   purple
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

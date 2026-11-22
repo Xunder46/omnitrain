@@ -104,7 +104,7 @@ source, so each is a real piece rather than a tweak.
 5. **Water** (`WatchWater.swift`) and the routines request's `wantsWater` flag, which the Dart orchestrator's signature does not carry yet.
 6. **The workout summary** (`WatchWorkoutSummary.swift`, `WatchWorkoutSummaryView.swift`).
 7. **Diagnostics** (`WatchDiagnosticsLog.swift`, `WatchDiagnosticsView.swift`, the send path).
-8. **Accent theming** (`WatchAccent.swift`, `WatchAccentStyle.swift`) and the preferences frame that carries the colour.
+8. **Accent theming** (`WatchAccent.swift`, `WatchAccentStyle.swift`) and the preferences frame that carries the colour. Built by plan 286 (Wear wrist wears the accent).
 9. **Live sensors** — a native health-services exercise client for heart rate and a fused-location feed, wired through `WatchSensorSource` (D-28010).
 10. **The newest-copy queue replacement** from the Swift bridge (plan 69 D-3..D-8), so only the newest waiting copy of a snapshot or lifecycle is kept.
 11. **Distribution** — one Play listing with both APKs, and a background data-layer listener so a frame reaches a wrist whose app is not running.

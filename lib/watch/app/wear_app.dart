@@ -11,8 +11,9 @@
 ///
 /// What this shell does **not** host yet is recorded in the plan's Open items:
 /// the swipe pager, the personal record banner, the water bar, the workout
-/// summary, the diagnostics view and the accent theming that the Apple wrist
-/// has. Its `Menu` button opens the exercise menu (plan 281).
+/// summary and the diagnostics view that the Apple wrist has. Its `Menu`
+/// button opens the exercise menu (plan 281). The shell wears the phone's
+/// accent colour (plan 286).
 library;
 
 import 'dart:async';
@@ -37,6 +38,7 @@ import '../start/watch_session_start_paths.dart';
 import '../start/watch_phone_preferences.dart';
 import '../start/watch_start_screen.dart';
 import '../start/watch_sync_orchestrator.dart';
+import '../widgets/watch_accent.dart';
 import '../widgets/watch_controls.dart';
 import 'wear_watch_transport.dart';
 
@@ -256,13 +258,33 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     setState(_syncTicker);
   }
 
+  /// The theme the shell wears, cached by the accent string it was built from:
+  /// the shell rebuilds every second while a session runs, and a new theme per
+  /// tick would re-theme the whole tree each second (plan 286, D-28602).
+  String? _themeHex;
+  ThemeData? _theme;
+
+  ThemeData _themeFor(String? hex) {
+    final cached = _theme;
+    if (cached != null && _themeHex == hex) return cached;
+    final accent = WatchAccent.worn(hex);
+    final scheme = ThemeData(brightness: Brightness.dark).colorScheme.copyWith(
+      primary: accent.color,
+      onPrimary: accent.labelColor,
+    );
+    final built = ThemeData(useMaterial3: true, colorScheme: scheme);
+    _themeHex = hex;
+    _theme = built;
+    return built;
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: _navigator,
       title: WearApp.loadingLabel,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true, brightness: Brightness.dark),
+      theme: _themeFor(widget.preferences?.accentColorHex),
       home: Builder(
         builder: (context) =>
             Scaffold(body: SafeArea(child: _surface(context))),
