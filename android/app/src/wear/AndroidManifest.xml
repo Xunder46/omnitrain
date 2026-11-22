@@ -21,4 +21,15 @@
     <!-- Distance (plan 299): the fused location provider, fine and coarse together. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- The platform workout (plan 300): a health foreground service keeps the process. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+
+    <application>
+        <service
+            android:name="dev.sasha.omnitrain.WorkoutService"
+            android:exported="false"
+            android:foregroundServiceType="health" />
+    </application>
 </manifest>

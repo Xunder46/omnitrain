@@ -80,19 +80,62 @@ class WearSensorSource implements WatchSensorSource {
       .map((event) => (event as num).toDouble());
 }
 
-/// The Wear wrist's platform workout store: opens nothing and closes nothing.
-/// The Health Services exercise session is plan 300 (D-29703); until then the
-/// wrist registers no workout with the platform and there is nothing stranded to
-/// recover.
+/// The Wear wrist's platform workout (plan 300, D-30001): a Health Services
+/// exercise, over `MethodChannel('omnitrain/wear_workout/methods')` with
+/// `begin(<Health Connect type name>)`, `end()` and `inProgress()` (a list of
+/// names). The Kotlin half is `WearWorkout`.
+///
+/// Logging never depends on a platform workout: `begin` does nothing unless the
+/// heart-rate permission is held (the exercise needs the body-sensor permission,
+/// and the shell starts the workout before the recorder asks), and every
+/// platform failure reads as "nothing happened".
 class WearPlatformWorkoutStore implements WatchPlatformWorkoutStore {
-  const WearPlatformWorkoutStore();
+  WearPlatformWorkoutStore({
+    required WatchSensorSource source,
+    MethodChannel? methods,
+  }) : _source = source,
+       _methods = methods ?? const MethodChannel(methodsName);
+
+  static const String methodsName = 'omnitrain/wear_workout/methods';
+
+  final WatchSensorSource _source;
+  final MethodChannel _methods;
 
   @override
-  Future<void> begin(String activityType) async {}
+  Future<void> begin(String activityType) async {
+    try {
+      if (await _source.heartRatePermission() !=
+          WatchSensorPermission.granted) {
+        return;
+      }
+      await _methods.invokeMethod<void>(
+        'begin',
+        WatchActivityTypes.wearFor(activityType),
+      );
+    } on Object {
+      return;
+    }
+  }
 
   @override
-  Future<void> end() async {}
+  Future<void> end() async {
+    try {
+      await _methods.invokeMethod<void>('end');
+    } on Object {
+      return;
+    }
+  }
 
   @override
-  Future<List<String>> inProgressActivityTypes() async => const [];
+  Future<List<String>> inProgressActivityTypes() async {
+    try {
+      final answer = await _methods.invokeListMethod<Object?>('inProgress');
+      return [
+        for (final name in answer ?? const <Object?>[])
+          if (name is String) name,
+      ];
+    } on Object {
+      return const [];
+    }
+  }
 }

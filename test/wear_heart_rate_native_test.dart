@@ -170,10 +170,7 @@ void main() {
     final wear = _read(
       'android/app/src/wear/kotlin/dev/sasha/omnitrain/SensorsRegistrar.kt',
     );
-    expect(
-      wear,
-      contains('WearSensors(activity, engine.dartExecutor.binaryMessenger)'),
-    );
+    expect(wear, contains('val sensors = WearSensors(activity, messenger)'));
 
     expect(
       _wearSensors,

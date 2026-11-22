@@ -4,7 +4,7 @@
 //   S-29702 every failure reads as unavailable
 //   S-29703 the heart-rate stream yields numbers only and survives an error
 //   S-29704 the location stream yields cumulative metres
-//   S-29705 the no-op workout store opens and closes nothing
+//   (S-29705, the no-op workout store, was replaced by plan 300's real store)
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -173,14 +173,5 @@ void main() {
     await subscription.cancel();
 
     expect(fixes, [10.0, 25.5]);
-  });
-
-  test('S-29705 the no-op workout store opens and closes nothing', () async {
-    const store = WearPlatformWorkoutStore();
-
-    await store.begin('exercise_type_running');
-    await store.end();
-
-    expect(await store.inProgressActivityTypes(), isEmpty);
   });
 }

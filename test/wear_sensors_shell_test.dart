@@ -8,6 +8,7 @@
 //   S-29711 a source that throws leaves the shell standing and logging working
 //   S-29712 two sessions in a row start twice, one at a time
 //   S-29713 the entry point and the shell are wired (source scan)
+//   S-30008 a workout begins and ends once with the session; launch asks first (plan 300)
 //   S-29714 a stop that never answers does not block the next session's start
 //   S-29715 leaving the app stops the sensors
 //
@@ -97,8 +98,22 @@ class _CountingSensors extends WatchSessionSensors {
   }
 }
 
+/// A platform workout that opens nothing, so the shell tests stay off channels.
+class _NoWorkout implements WatchPlatformWorkoutStore {
+  const _NoWorkout();
+
+  @override
+  Future<void> begin(String activityType) async {}
+
+  @override
+  Future<void> end() async {}
+
+  @override
+  Future<List<String>> inProgressActivityTypes() async => const [];
+}
+
 class _Harness {
-  _Harness(this.source)
+  _Harness(this.source, {WatchPlatformWorkoutStore? workout})
     : store = InMemoryWatchSessionStore(),
       transport = WearWatchTransport(link: WatchLink()) {
     engine = WatchSessionEngine(store, onEmit: transport.send);
@@ -111,7 +126,7 @@ class _Harness {
       nutrition: nutrition,
     );
     sensors = _CountingSensors(
-      platform: WatchPlatformWorkout(store: const WearPlatformWorkoutStore()),
+      platform: WatchPlatformWorkout(store: workout ?? const _NoWorkout()),
       recorder: WatchSensorRecorder(engine: engine, source: source),
     );
   }
@@ -377,12 +392,54 @@ void main() {
     expect(harness.source.listening, isFalse);
   });
 
+  testWidgets('S-30008 a workout begins and ends once with the session', (
+    tester,
+  ) async {
+    const workoutChannel = MethodChannel(WearPlatformWorkoutStore.methodsName);
+    final calls = <MethodCall>[];
+    _messenger.setMockMethodCallHandler(workoutChannel, (call) async {
+      calls.add(call);
+      return null;
+    });
+    addTearDown(
+      () => _messenger.setMockMethodCallHandler(workoutChannel, null),
+    );
+    final source = _FakeSensors();
+    final harness = _Harness(
+      source,
+      workout: WearPlatformWorkoutStore(source: source),
+    );
+    await _open(tester, harness);
+
+    await harness.startSession();
+    await harness.poke(tester);
+    await harness.poke(tester);
+
+    expect(calls.map((call) => call.method), ['inProgress', 'begin']);
+    expect(calls.last.arguments, 'exercise_type_strength_training');
+
+    await harness.engine.finishSession();
+    await harness.poke(tester);
+    await harness.poke(tester);
+
+    expect(calls.map((call) => call.method), ['inProgress', 'begin', 'end']);
+  });
+
   test('S-29713 the entry point and the shell are wired', () {
     final main = File('lib/watch/wear_main.dart').readAsStringSync();
     final app = File('lib/watch/app/wear_app.dart').readAsStringSync();
 
     expect('WearSensorSource()'.allMatches(main), hasLength(1));
-    expect('const WearPlatformWorkoutStore()'.allMatches(main), hasLength(1));
+    expect(
+      'WearPlatformWorkoutStore(source: sensorSource)'.allMatches(main),
+      hasLength(1),
+    );
+    expect(
+      'WatchSensorRecorder(engine: engine, source: sensorSource)'.allMatches(
+        main,
+      ),
+      hasLength(1),
+    );
     expect('sensors: sensors,'.allMatches(main), hasLength(1));
     expect(app, contains('sensors: widget.sensors?.recorder,'));
     final ticker = app.indexOf('void _syncTicker() {');

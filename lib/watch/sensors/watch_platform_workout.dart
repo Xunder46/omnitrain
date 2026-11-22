@@ -101,6 +101,16 @@ abstract final class WatchActivityTypes {
   static WatchActivityType forModality(String? modality) =>
       byModality[modality] ?? generic;
 
+  /// The Health Connect name a platform that speaks [watchOs] registers (the
+  /// Wear client's translation, plan 300 D-30002): the first type in the tables
+  /// whose watchOS name matches, else the generic workout's.
+  static String wearFor(String watchOs) {
+    for (final type in [...byModality.values, ..._kindTypes.values]) {
+      if (type.watchOs == watchOs) return type.wear;
+    }
+    return generic.wear;
+  }
+
   /// The modality key when it is one the wrist knows (a non-empty [String] that is a key of
   /// [byModality]), else null. Never throws: any other value is null.
   static String? knownModality(Object? value) {
@@ -118,8 +128,9 @@ abstract final class WatchActivityTypes {
 
   /// The majority type of [exercises]; a tie goes to the earliest. Null for an
   /// empty list: the type is not known yet.
-  static WatchActivityType? forExercises(List<Map<String, Object?>> exercises) =>
-      _forExercises(exercises);
+  static WatchActivityType? forExercises(
+    List<Map<String, Object?>> exercises,
+  ) => _forExercises(exercises);
 
   /// What [session] registers as (D-16803, superseding plan 75 D-2's precedence
   /// half; widened to every discipline's kind by plan 170 D-17003): the
@@ -220,7 +231,10 @@ const Map<String, WatchActivityType> _kindTypes = {
     watchOs: 'lacrosse',
     wear: 'exercise_type_other_workout',
   ),
-  'soccer': WatchActivityType(watchOs: 'soccer', wear: 'exercise_type_football'),
+  'soccer': WatchActivityType(
+    watchOs: 'soccer',
+    wear: 'exercise_type_football',
+  ),
   'basketball': WatchActivityType(
     watchOs: 'basketball',
     wear: 'exercise_type_basketball',

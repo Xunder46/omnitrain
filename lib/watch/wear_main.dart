@@ -59,11 +59,15 @@ Future<void> main() async {
   final preferences = WatchPhonePreferences(store: store);
   final bests = WatchPersonalBests(store: store);
   final water = WatchWaterState(engine: engine, store: store);
-  // The session's sensors (plan 297): the platform source is the native half's
-  // channels, which answer "unavailable" until plans 298 to 300 land.
+  // The session's sensors (plans 297 to 300): the native half's channels for
+  // heart rate and distance, and a Health Services exercise as the platform
+  // workout. One source serves both, so the permission is asked once.
+  final sensorSource = WearSensorSource();
   final sensors = WatchSessionSensors(
-    platform: WatchPlatformWorkout(store: const WearPlatformWorkoutStore()),
-    recorder: WatchSensorRecorder(engine: engine, source: WearSensorSource()),
+    platform: WatchPlatformWorkout(
+      store: WearPlatformWorkoutStore(source: sensorSource),
+    ),
+    recorder: WatchSensorRecorder(engine: engine, source: sensorSource),
   );
   // The wrist's routines request says what it holds and what it wants (series
   // 87c, plan 94): the bests flag is read on every request.

@@ -75,7 +75,7 @@ class WearSensors(
             android.Manifest.permission.BODY_SENSORS
         }
 
-    private fun heartRateGranted(): Boolean =
+    fun heartRateGranted(): Boolean =
         activity.checkSelfPermission(heartRatePermissionName()) ==
             PackageManager.PERMISSION_GRANTED
 
