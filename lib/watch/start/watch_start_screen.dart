@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
 import '../session/watch_records.dart';
+import '../widgets/watch_controls.dart';
 import 'watch_exercise_picker.dart';
 import 'watch_session_start_paths.dart';
 
@@ -53,6 +54,10 @@ class WatchStartScreen extends StatelessWidget {
   static const double surfaceInsetCompact = 4;
   static const double rowGap = 4;
 
+  /// Room above the first and below the last item of the compact list, for the
+  /// round bezel (plan 296).
+  static const double compactEdgeInset = 16;
+
   /// The home surface's way into the quick-log, which is reachable with no
   /// workout running.
   static const String logFoodLabel = 'Log food';
@@ -64,6 +69,10 @@ class WatchStartScreen extends StatelessWidget {
   /// The debugging tool's way in (plan 177's rule: debug and profile builds).
   static const String diagnosticsLabel = 'Diagnostics';
 
+  /// The empty state, shared by both layouts.
+  static const String nothingSyncedLabel =
+      'No routines yet. Sync with your phone to get them.';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -73,46 +82,99 @@ class WatchStartScreen extends StatelessWidget {
             horizontal: surfaceInset,
             vertical: surfaceInsetCompact,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: paths.routines.isEmpty
-                    ? _nothingSynced(context)
-                    : _routineList(context),
-              ),
-              const SizedBox(height: rowGap),
-              if (onRequestSync != null) ...[
-                const SizedBox(height: rowGap),
-                WatchUtilityButton(
-                  label: syncLabel,
-                  onPressed: onRequestSync!,
-                ),
-              ],
-              const SizedBox(height: rowGap),
-              _freeWorkoutButton(context),
-              if (onOpenNutrition != null) ...[
-                const SizedBox(height: rowGap),
-                WatchUtilityButton(
-                  label: logFoodLabel,
-                  onPressed: onOpenNutrition!,
-                ),
-              ],
-              if (onOpenDiagnostics != null) ...[
-                const SizedBox(height: rowGap),
-                WatchUtilityButton(
-                  label: diagnosticsLabel,
-                  onPressed: onOpenDiagnostics!,
-                ),
-              ],
-              if (paths.phoneReachable) ...[
-                const SizedBox(height: rowGap),
-                const SearchOnPhoneHint(),
-              ],
-            ],
-          ),
+          child: WatchLayout.isCompact(context)
+              ? _compactBody(context)
+              : _body(context),
         ),
       ),
+    );
+  }
+
+  /// The roomy layout: the buttons pinned under a scrolling routine list.
+  Widget _body(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: paths.routines.isEmpty
+              ? _nothingSynced(context)
+              : _routineList(context),
+        ),
+        const SizedBox(height: rowGap),
+        if (onRequestSync != null) ...[
+          const SizedBox(height: rowGap),
+          WatchUtilityButton(label: syncLabel, onPressed: onRequestSync!),
+        ],
+        const SizedBox(height: rowGap),
+        _freeWorkoutButton(context),
+        if (onOpenNutrition != null) ...[
+          const SizedBox(height: rowGap),
+          WatchUtilityButton(label: logFoodLabel, onPressed: onOpenNutrition!),
+        ],
+        if (onOpenDiagnostics != null) ...[
+          const SizedBox(height: rowGap),
+          WatchUtilityButton(
+            label: diagnosticsLabel,
+            onPressed: onOpenDiagnostics!,
+          ),
+        ],
+        if (paths.phoneReachable) ...[
+          const SizedBox(height: rowGap),
+          const SearchOnPhoneHint(),
+        ],
+      ],
+    );
+  }
+
+  /// Under [WatchLayout.compactBelow] the pinned buttons left the routine list
+  /// no room at all (plan 296): everything scrolls as one list, the routines
+  /// first and the buttons after, at the compact height.
+  Widget _compactBody(BuildContext context) {
+    final items = <Widget>[
+      if (paths.routines.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: surfaceInset),
+          child: Text(
+            nothingSyncedLabel,
+            style: Theme.of(context).textTheme.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+        )
+      else
+        for (final routine in paths.routines)
+          WatchPrimaryButton(
+            label: routine.name,
+            compact: true,
+            onPressed: () => _startFromRoutine(routine.routineId),
+          ),
+      if (onRequestSync != null)
+        WatchUtilityButton(
+          label: syncLabel,
+          compact: true,
+          onPressed: onRequestSync!,
+        ),
+      _freeWorkoutButton(context, compact: true),
+      if (onOpenNutrition != null)
+        WatchUtilityButton(
+          label: logFoodLabel,
+          compact: true,
+          onPressed: onOpenNutrition!,
+        ),
+      if (onOpenDiagnostics != null)
+        WatchUtilityButton(
+          label: diagnosticsLabel,
+          compact: true,
+          onPressed: onOpenDiagnostics!,
+        ),
+      if (paths.phoneReachable) const SearchOnPhoneHint(),
+    ];
+    return ListView.separated(
+      // The round bezel clips the corners of whatever sits at the very top or
+      // bottom: leave room so the first and last items start inside the circle.
+      padding: const EdgeInsets.symmetric(vertical: compactEdgeInset),
+      itemCount: items.length,
+      separatorBuilder: (context, index) => const SizedBox(height: rowGap),
+      itemBuilder: (context, index) => items[index],
     );
   }
 
@@ -122,7 +184,7 @@ class WatchStartScreen extends StatelessWidget {
     final styles = Theme.of(context).textTheme;
     return Center(
       child: Text(
-        'No routines yet. Sync with your phone to get them.',
+        nothingSyncedLabel,
         style: styles.bodySmall,
         textAlign: TextAlign.center,
       ),
@@ -143,10 +205,12 @@ class WatchStartScreen extends StatelessWidget {
     );
   }
 
-  Widget _freeWorkoutButton(BuildContext context) => WatchUtilityButton(
-    label: 'Free workout',
-    onPressed: () => _startFreeWorkout(context),
-  );
+  Widget _freeWorkoutButton(BuildContext context, {bool compact = false}) =>
+      WatchUtilityButton(
+        label: 'Free workout',
+        compact: compact,
+        onPressed: () => _startFreeWorkout(context),
+      );
 
   /// Path 1: the routine's template becomes the session, and the first exercise
   /// is what the logging surface shows.
@@ -177,10 +241,14 @@ class WatchPrimaryButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onPressed,
+    this.compact = false,
   });
 
   final String label;
   final VoidCallback onPressed;
+
+  /// Compact height for a small screen (plan 296 D-29602).
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -192,8 +260,13 @@ class WatchPrimaryButton extends StatelessWidget {
           ),
         ),
         minimumSize: WidgetStateProperty.all(
-          const Size.fromHeight(OmniTheme.buttonPrimaryHeight),
+          Size.fromHeight(
+            compact
+                ? WatchLayout.compactButtonHeight
+                : OmniTheme.buttonPrimaryHeight,
+          ),
         ),
+        tapTargetSize: compact ? MaterialTapTargetSize.shrinkWrap : null,
       ),
       onPressed: onPressed,
       child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -208,10 +281,14 @@ class WatchUtilityButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onPressed,
+    this.compact = false,
   });
 
   final String label;
   final VoidCallback onPressed;
+
+  /// Compact height for a small screen (plan 296 D-29602).
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -223,8 +300,13 @@ class WatchUtilityButton extends StatelessWidget {
           ),
         ),
         minimumSize: WidgetStateProperty.all(
-          const Size.fromHeight(OmniTheme.buttonPrimaryHeight),
+          Size.fromHeight(
+            compact
+                ? WatchLayout.compactButtonHeight
+                : OmniTheme.buttonPrimaryHeight,
+          ),
         ),
+        tapTargetSize: compact ? MaterialTapTargetSize.shrinkWrap : null,
       ),
       onPressed: onPressed,
       child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
