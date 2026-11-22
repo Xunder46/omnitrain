@@ -15,6 +15,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../core/services/diagnostics_log.dart';
+import '../core/services/diagnostics_storage_default.dart';
 import 'app/wear_app.dart';
 import 'app/wear_watch_transport.dart';
 import 'logging/watch_effort_rating_state.dart';
@@ -34,6 +36,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter(wearBoxPrefix);
 
+  // The wrist's diagnostics log (plan 293): one for the life of the app, opened
+  // first so the launch line names what the previous run recorded last.
+  final diagnostics = DiagnosticsLog(storage: await openDefaultDiagnosticsStorage());
+  diagnostics.noteLaunch();
+
   final store = HiveWatchSessionStore(name: wearBoxPrefix);
   final transport = WearWatchTransport(
     onFailure: (error, stack) {
@@ -41,6 +48,7 @@ Future<void> main() async {
       // next sync re-sends what is owed.
       debugPrint('OmniTrain wrist radio: $error');
     },
+    diagnostics: diagnostics,
   );
   final engine = WatchSessionEngine(store, onEmit: transport.send);
   final paths = WatchSessionStartPaths(engine: engine, store: store);
@@ -78,6 +86,7 @@ Future<void> main() async {
       rating: rating,
       bests: bests,
       water: water,
+      diagnostics: diagnostics,
     ),
   );
 }

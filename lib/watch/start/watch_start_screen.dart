@@ -23,6 +23,7 @@ class WatchStartScreen extends StatelessWidget {
     this.onSessionStarted,
     this.onOpenNutrition,
     this.onRequestSync,
+    this.onOpenDiagnostics,
   });
 
   final WatchSessionStartPaths paths;
@@ -41,6 +42,10 @@ class WatchStartScreen extends StatelessWidget {
   /// owns the transport, not this widget.
   final VoidCallback? onRequestSync;
 
+  /// Opens the Diagnostics screen (plan 293, D-29306). Left null, the button is
+  /// not offered: the shell passes it only in debug and profile builds.
+  final VoidCallback? onOpenDiagnostics;
+
   /// Wrist-scale layout: the phone's spacing tokens are sized for a full-width
   /// screen, so the watch carries its own two values rather than scaling a
   /// phone token down.
@@ -55,6 +60,9 @@ class WatchStartScreen extends StatelessWidget {
   /// The user's explicit action — recovering a device that was out of reach
   /// and refreshing the routine list.
   static const String syncLabel = 'Sync';
+
+  /// The debugging tool's way in (plan 177's rule: debug and profile builds).
+  static const String diagnosticsLabel = 'Diagnostics';
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +96,13 @@ class WatchStartScreen extends StatelessWidget {
                 WatchUtilityButton(
                   label: logFoodLabel,
                   onPressed: onOpenNutrition!,
+                ),
+              ],
+              if (onOpenDiagnostics != null) ...[
+                const SizedBox(height: rowGap),
+                WatchUtilityButton(
+                  label: diagnosticsLabel,
+                  onPressed: onOpenDiagnostics!,
                 ),
               ],
               if (paths.phoneReachable) ...[

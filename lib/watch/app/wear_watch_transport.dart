@@ -27,6 +27,7 @@ import 'package:omnitrain_watch_link/omnitrain_watch_link.dart';
 
 import '../../core/platform/watch_frame_wire.dart';
 import '../../core/platform/watch_request_frames.dart';
+import '../../core/services/diagnostics_log.dart';
 import '../start/watch_sync_orchestrator.dart';
 
 /// What the wrist app hands arriving frames to.
@@ -37,11 +38,18 @@ class WearWatchTransport implements WatchSyncTransport {
     WatchLink? link,
     void Function(Object error, StackTrace stack)? onFailure,
     Duration sendTimeout = const Duration(seconds: 5),
+    DiagnosticsLog? diagnostics,
   }) : _link = link ?? WatchLink(),
        _onFailure = onFailure,
-       _sendTimeout = sendTimeout;
+       _sendTimeout = sendTimeout,
+       _diagnostics = diagnostics;
 
   final WatchLink _link;
+
+  /// The wrist's diagnostics log, when the app keeps one (plan 293): every frame
+  /// sent or received leaves one line. Never a payload value: the frame's name,
+  /// the session it names, an outcome word and an error's type.
+  final DiagnosticsLog? _diagnostics;
   final void Function(Object error, StackTrace stack)? _onFailure;
 
   /// How long a live send may wait for the platform. The protocol recovers what
@@ -148,8 +156,18 @@ class WearWatchTransport implements WatchSyncTransport {
     final handler = _inbound;
     if (handler == null) return;
     try {
+      _diagnostics?.note(
+        'frame_received',
+        session: _sessionOf(frame),
+        detail: _nameOf(frame),
+      );
       await handler(frame);
     } on Object catch (error, stack) {
+      _diagnostics?.note(
+        'frame_handler_failed',
+        session: _sessionOf(frame),
+        detail: '${_nameOf(frame)} ${error.runtimeType}',
+      );
       _report(error, stack);
     }
   }
@@ -178,19 +196,50 @@ class WearWatchTransport implements WatchSyncTransport {
     final frame = wireSafeFrame(envelope);
     try {
       await _link.sendMessage(frame, timeout: _sendTimeout);
+      _noteSent(frame, 'live');
       return;
     } on WatchLinkException catch (error) {
       if (!isDurable(frame)) {
+        _noteNotSent(frame, error);
         _report(error, StackTrace.current);
         return;
       }
       try {
         await _link.transferUserInfo(frame);
+        _noteSent(frame, 'queued');
       } on WatchLinkException catch (queueError) {
+        _noteNotSent(frame, queueError);
         _report(queueError, StackTrace.current);
       }
     }
   }
+
+  /// The name a frame goes by in the log: its `type`, else its request name,
+  /// else `unknown`.
+  static String _nameOf(Map<String, Object?> frame) {
+    final type = frame['type'];
+    if (type is String && type.isNotEmpty) return type;
+    return WatchTransportRequest.nameOf(frame) ?? 'unknown';
+  }
+
+  static String? _sessionOf(Map<String, Object?> frame) {
+    final session = frame['sessionId'];
+    return session is String && session.isNotEmpty ? session : null;
+  }
+
+  void _noteSent(Map<String, Object?> frame, String outcome) =>
+      _diagnostics?.note(
+        'frame_sent',
+        session: _sessionOf(frame),
+        detail: '${_nameOf(frame)} $outcome',
+      );
+
+  void _noteNotSent(Map<String, Object?> frame, Object error) =>
+      _diagnostics?.note(
+        'frame_not_sent',
+        session: _sessionOf(frame),
+        detail: '${_nameOf(frame)} ${error.runtimeType}',
+      );
 
   void _report(Object error, StackTrace stack) => _onFailure?.call(error, stack);
 }

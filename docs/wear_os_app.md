@@ -525,6 +525,10 @@ The wrist can log one tap of the water bar (`logWaterGlass` on the engine): a gl
 
 When the wrist ends a workout that holds at least one logged effort, and the app saw that workout running, a screen titled `Workout done` follows the effort question (when the phone asks for one; Skip leads to it too): `Time 12:34` (`h:mm:ss` from an hour), `Sets 12` (`Efforts 2` when the workout holds a timed effort, a round or a hold), `Avg HR 128 bpm` only when the wrist holds heart-rate readings stamped inside the workout, and a `Done` button that returns to the start screen (`lib/watch/logging/watch_workout_summary.dart`, plan 292; the rule is the Apple wrist's, plan 66a). A workout ended with nothing logged, an abandoned or discarded one, one the phone ended, and one that ended while the app was closed show nothing; a workout that starts while the summary is up replaces it. The wrist has no heart-rate source yet (the live feed is plan 280 item 9), so the heart-rate row waits for it. The Apple wrist's note that explains a missing heart rate (Health access off) is not built: Wear has no such state. The summary is local: nothing is sent or stored, and it does not survive a relaunch.
 
+## The diagnostics log
+
+The wrist keeps a diagnostics log, the same one the phone keeps (`DiagnosticsLog` in `lib/core/services/diagnostics_log.dart`: one line per event, the newest 3000 kept, the same cut and coalescing, so the two logs read together): a `launch` line naming the last thing the previous run recorded, a `scene` line for each app lifecycle change (`active`, `inactive`, `background`), a `reachability` line each time the phone's reachability changes (never one per tick), a `frame_sent` line for each frame the wrist sends (`live` or `queued`), `frame_not_sent` when the radio refused it (with the error's type), `frame_received` for each arrival and `frame_handler_failed` when its handler threw. A line names the frame's type, the session it names, an outcome word and an error's type, never a payload value. It records in every build. In debug and profile builds (and in release while the phone's `kHideDiagnosticsInRelease` is false) the Start screen shows a `Diagnostics` button that opens a screen with the plain sentences (`Started 09:12`, `Before that: last seen on screen at 09:10` or `First run recorded.`) and the newest 40 lines, newest first. The rule is the Apple wrist's (plans 142 and 177) and the plan is [plan 293](plans/2026-11-22-293-wear-diagnostics-plan/2026-11-22-293-wear-diagnostics-plan.md). Not built: sending the log to the phone (the Apple wrist hands the phone a file; the Wear platform plugin has no file transfer), and the workout, sensor and recovery lines (the Wear wrist has no platform workout yet).
+
 ## What the wrist shows
 
 The start surface (synced routines, free training, the quick-log entry, a manual
@@ -534,9 +538,8 @@ The Menu button under the logging surface
 and the rest surface opens the exercise menu, the Apple wrist's menu without a remove control (D-28102).
 A swipe on the logging surface moves between the exercises (the pager, below).
 
-The Apple wrist hosts more: the
-diagnostics
-view, and spoken timer cues. None of those is on the Wear wrist; the plan that
+The Apple wrist hosts more: spoken
+timer cues, which are not on the Wear wrist; the plan that
 built this shell
 records each one, and the sizes they are (the Apple client is roughly twice the
 Dart client), in
@@ -602,6 +605,15 @@ without heart rate and distance exactly as it would on a device with no sensor.
   rows and Done, Finish then summary then start screen, the effort question
   first, the fit at 192 and 227 dp, an empty or phone-ended workout, and a new
   workout over a summary.
+- `test/wear_diagnostics_summary_test.dart` — the screen's sentences and lines:
+  the first run, what was last seen, the phrases, a restart, the newest 40 and
+  the line format.
+- `test/wear_diagnostics_transport_test.dart` — what the transport records: a
+  live, a queued and a refused send, the name rule, an arrival before its
+  handler, a failing handler, no payload value, and a transport with no log.
+- `test/wear_diagnostics_shell_test.dart` — the shell: the lifecycle lines, the
+  reachability lines once per change, the Start screen's button, the screen, its
+  fit at 192 and 227 dp and the entry point's wiring.
 - `test/wear_os_config_test.dart` — the flavors, the watch feature, the two
   capabilities, the plugin's Android registration and its five calls, the
   production entry point, and the two release invocations.
@@ -677,6 +689,11 @@ checks, run on real hardware:
    to the start screen; a workout ended with nothing logged shows none; ending
    the workout from the phone shows none; the screen fits the round face and
    scrolls on a small one
+13. (owner) on a Wear watch in a debug or profile build: the Start screen shows
+   `Diagnostics`; it opens a screen that says when the app started and what it
+   saw last before that, with the newest log lines under it (a launch, a scene
+   change, a reachability change, a frame sent or received); the lines name
+   frame types and never a weight, a name or a number you logged
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

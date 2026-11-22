@@ -9,22 +9,25 @@
 /// Everything is injected, so a desktop test builds this app with an in-memory
 /// store and a fake link instead of reaching for Hive and a paired watch.
 ///
-/// What this shell does **not** host yet is recorded in the plan's Open items:
-/// the diagnostics view that the Apple wrist has. Its
+/// What this shell does **not** host yet is recorded in the plan's Open items. Its
 /// `Menu` button opens the exercise menu (plan 281). The shell
 /// wears the phone's accent colour
 /// (plan 286) and swipes between exercises on the logging surface (plan 287);
 /// a set that beats the phone's best shows a `New PR` banner (plan 289), and
 /// the Log food screen shows the day's water bar (plan 291); a workout the
-/// wrist ends shows a short summary (plan 292).
+/// wrist ends shows a short summary (plan 292); the Start screen offers a
+/// Diagnostics screen in debug and profile builds (plan 293).
 library;
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/constants/diagnostics_entry.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/platform/watch_request_frames.dart';
+import '../../core/services/diagnostics_log.dart';
+import '../diagnostics/watch_diagnostics_screen.dart';
 import '../logging/watch_effort_rating_screen.dart';
 import '../logging/watch_effort_rating_state.dart';
 import '../logging/watch_logging_pager.dart';
@@ -63,6 +66,7 @@ class WearApp extends StatefulWidget {
     this.rating,
     this.bests,
     this.water,
+    this.diagnostics,
   });
 
   final WatchSessionEngine engine;
@@ -98,6 +102,12 @@ class WearApp extends StatefulWidget {
   /// the phone's count and the wrist's own taps are known before the bar exists;
   /// left null the shell holds none.
   final WatchWaterState? water;
+
+  /// The wrist's diagnostics log (plan 293). When given, the shell records the
+  /// app's lifecycle and the phone's reachability in it, and (in debug and
+  /// profile builds) the Start screen offers the Diagnostics screen; left null
+  /// the shell records nothing.
+  final DiagnosticsLog? diagnostics;
 
   /// The copy the wrist shows while it restores what it holds.
   static const String loadingLabel = 'OmniTrain';
@@ -142,6 +152,10 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   Timer? _ticker;
   bool _ready = false;
 
+  /// The last reachability the shell wrote to the log, so a change is one line
+  /// and a steady answer is none.
+  bool? _lastReachable;
+
   /// Whether the shell's once-a-second rebuild is running: true while a session
   /// is active, false on an idle start surface (plan 281: a test reads it).
   @visibleForTesting
@@ -169,6 +183,14 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   /// maps from its own scene phase.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    widget.diagnostics?.note(
+      'scene',
+      detail: switch (state) {
+        AppLifecycleState.resumed => 'active',
+        AppLifecycleState.inactive => 'inactive',
+        _ => 'background',
+      },
+    );
     if (state == AppLifecycleState.resumed) {
       widget.paths.phoneReachable = widget.transport.isPhoneReachable;
       unawaited(
@@ -203,6 +225,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     }
     await widget.transport.start();
     if (!mounted) return;
+    _trackReachability();
     widget.paths.phoneReachable = widget.transport.isPhoneReachable;
     setState(() {});
     await widget.orchestrator.catchUp(
@@ -233,6 +256,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   }
 
   void _refresh() {
+    _trackReachability();
     final reachable = widget.transport.isPhoneReachable;
     if (widget.paths.phoneReachable != reachable) {
       widget.paths.phoneReachable = reachable;
@@ -289,6 +313,30 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
           ),
         ),
       ),
+    );
+  }
+
+  /// The debugging screen, offered only in debug and profile builds (plan 177's
+  /// rule): the log itself records in every build.
+  void _openDiagnostics() {
+    final log = widget.diagnostics;
+    if (log == null) return;
+    _navigator.currentState?.push(
+      MaterialPageRoute<void>(
+        builder: (context) => WatchDiagnosticsScreen(log: log),
+      ),
+    );
+  }
+
+  /// Writes the phone's reachability to the log when it differs from the last
+  /// answer written.
+  void _trackReachability() {
+    final reachable = widget.transport.isPhoneReachable;
+    if (_lastReachable == reachable) return;
+    _lastReachable = reachable;
+    widget.diagnostics?.note(
+      'reachability',
+      detail: reachable ? 'reachable' : 'unreachable',
     );
   }
 
@@ -397,6 +445,9 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
       onSessionStarted: _started,
       onOpenNutrition: _openNutrition,
       onRequestSync: _requestSync,
+      onOpenDiagnostics: widget.diagnostics != null && kDiagnosticsEntryVisible
+          ? _openDiagnostics
+          : null,
     );
   }
 }
