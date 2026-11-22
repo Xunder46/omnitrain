@@ -293,6 +293,10 @@ The wrist can log one tap of the water bar (`logWaterGlass` on the engine): a gl
 
 When the wrist ends a workout that holds at least one logged effort, and the app saw that workout running, a screen titled `Workout done` follows the effort question (when the phone asks for one; Skip leads to it too): `Time 12:34` (`h:mm:ss` from an hour), `Sets 12` (`Efforts 2` when the workout holds a timed effort, a round or a hold), `Avg HR 128 bpm` only when the wrist holds heart-rate readings stamped inside the workout, and a `Done` button that returns to the start screen (`lib/watch/logging/watch_workout_summary.dart`, plan 292; the rule is the Apple wrist's, plan 66a). A workout ended with nothing logged, an abandoned or discarded one, one the phone ended, and one that ended while the app was closed show nothing; a workout that starts while the summary is up replaces it. The wrist reads the heart rate from Health Services (plan 298), so the heart-rate row shows once a reading has been stored. The Apple wrist's note that explains a missing heart rate (Health access off) is not built: Wear has no such state. The summary is local: nothing is sent or stored, and it does not survive a relaunch.
 
+## The logging screen on a round watch
+
+On a screen shorter than 260 dp the logging screen's header is centred and starts 22 dp from the top: the name row (the exercise name and the `n/N` counter) is at most 112 dp wide, so a long name ellipsizes, and the merged countdown and sensor line is at most 144 dp wide, so both lines have all four corners inside the visible circle of a 192 or 227 dp round face (`WatchLoggingScreen`, plan 301). Before this the header was left-aligned at the top-left, outside the circle, and the first words of the name and the heart-rate number were cut off (seen on the emulator). The value rows, which already scale down to the room they are given, take the 20 dp the header gained; on a taller screen the layout is unchanged (`test/wear_logging_bezel_test.dart`).
+
 ## The sensors
 
 The wrist wires the session's sensors in the shell (plan 297, the Dart half of plan 280 item 9), and the heart-rate half of the platform side is built (plan 298); distance and the platform workout are not. `WearApp` takes the session's `WatchSessionSensors`; the shell starts them once when a session becomes active and stops them when none is, on every path that starts or ends a session, because each of those paths already passes through the shell's once-per-change `_syncTicker`: a session started from the Start screen or a routine, one the phone started, one restored at launch, an End or a Discard from the menu, and a session the phone ended. Starting and stopping run one at a time on one lane and each step gives up after 5 seconds, so a native call that never answers cannot keep a later session's sensors from starting. The heart-rate readings go through the recorder that already existed, into the session's own store, and the logging surface's sensor line shows the newest one (`91 bpm`). Logging never depends on a sensor: a refused, absent or failing source changes nothing the user sees (`test/wear_sensors_shell_test.dart`).
@@ -351,6 +355,10 @@ without heart rate and distance exactly as it would on a device with no sensor.
 - `test/wear_sensors_shell_test.dart` — the shell's sensor wiring: start, stop, a
   restored session, an abandoned one, denial, a throwing source, two sessions in
   a row, a stop that never answers, and the entry point.
+- `test/wear_logging_bezel_test.dart` — the logging header at 192, 227 and 300 dp:
+  every corner of the name and of the sensor line inside the circle, a long name
+  and the counter, no overflow on every effort kind with `Log` where it was, and
+  the roomy layout unchanged.
 - `test/wear_app_test.dart` — the shell's choice of surface and the two ways it
   handles an arriving frame, over an in-memory store.
 - `test/watch_session_menu_engine_test.dart` — the jump, the append-at-end add
@@ -509,6 +517,9 @@ checks, run on real hardware:
    it and the logging screen shows a heart rate that follows your pulse; end the
    workout and the `Workout done` screen shows `Avg HR`; deny it and logging works
    with no heart rate
+18. (owner) on a real small round watch: the logging screen's exercise name and
+   heart-rate line are whole and centred at the top, the `n/N` counter shows with
+   a long name, and `Log` and `Menu` are where they were
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

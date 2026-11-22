@@ -87,6 +87,12 @@ class WatchLoggingScreen extends StatefulWidget {
   static const double surfaceInset = 8;
   static const double surfaceInsetCompact = 4;
 
+  /// The compact header's room above it, and the widest its two lines may be,
+  /// so both start inside the visible circle of a round watch (plan 301).
+  static const double compactTopInset = 22;
+  static const double compactNameMaxWidth = 112;
+  static const double compactSensorMaxWidth = 144;
+
   @override
   State<WatchLoggingScreen> createState() => _WatchLoggingScreenState();
 }
@@ -164,9 +170,13 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
           fit: StackFit.expand,
           children: [
             Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: WatchLoggingScreen.surfaceInset,
-                vertical: compact ? 2 : WatchLoggingScreen.surfaceInsetCompact,
+              padding: EdgeInsets.fromLTRB(
+                WatchLoggingScreen.surfaceInset,
+                compact
+                    ? WatchLoggingScreen.compactTopInset
+                    : WatchLoggingScreen.surfaceInsetCompact,
+                WatchLoggingScreen.surfaceInset,
+                compact ? 2 : WatchLoggingScreen.surfaceInsetCompact,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -234,32 +244,53 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
       ?sensors,
     ].join('  ·  ');
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final nameRow = Row(
+      mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
       children: [
-        Row(
-          children: [
-            Flexible(
+        Flexible(
+          child: Text(
+            slot ?? 'No exercise',
+            style: compact ? styles.labelMedium : styles.labelLarge,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (widget.pageLabel case final label?) ...[
+          const SizedBox(width: WatchLoggingScreen.surfaceInsetCompact),
+          Text(label, style: styles.labelSmall),
+        ],
+      ],
+    );
+
+    return Column(
+      // On a round face the header is centred and kept narrow (plan 301): a
+      // left-aligned line at the top sits outside the visible circle.
+      crossAxisAlignment: compact
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
+      children: [
+        if (compact)
+          ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: WatchLoggingScreen.compactNameMaxWidth,
+            ),
+            child: nameRow,
+          )
+        else
+          nameRow,
+        if (compact) ...[
+          if (merged.isNotEmpty)
+            ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: WatchLoggingScreen.compactSensorMaxWidth,
+              ),
               child: Text(
-                slot ?? 'No exercise',
-                style: compact ? styles.labelMedium : styles.labelLarge,
+                merged,
+                style: styles.bodySmall,
+                textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-            ),
-            if (widget.pageLabel case final label?) ...[
-              const SizedBox(width: WatchLoggingScreen.surfaceInsetCompact),
-              Text(label, style: styles.labelSmall),
-            ],
-          ],
-        ),
-        if (compact) ...[
-          if (merged.isNotEmpty)
-            Text(
-              merged,
-              style: styles.bodySmall,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
         ] else ...[
           if (countdown != null)
