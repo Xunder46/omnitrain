@@ -90,6 +90,8 @@ class OmniTrainWatchLinkPlugin :
         private const val KEY_TYPE = "type"
         private const val KEY_SESSION_ID = "sessionId"
         private const val KEY_CHANGE_ID = "changeId"
+        private const val KEY_STATE = "state"
+        private const val KEY_SENT_AT = "sentAt"
     }
 
     private var context: Context? = null
@@ -379,6 +381,16 @@ class OmniTrainWatchLinkPlugin :
                     )
                     map.getString(KEY_SESSION_ID)?.let { entry[KEY_SESSION_ID] = it }
                     map.getString(KEY_CHANGE_ID)?.let { entry[KEY_CHANGE_ID] = it }
+                    // The rule that keeps only the newest copy waiting reads the
+                    // frame's lifecycle state and its stamp; they come from the
+                    // stored frame itself, so a copy queued by an older build is
+                    // read the same way.
+                    map.getByteArray(KEY_FRAME)?.let { stored ->
+                        val frame = decodeFrame(stored)
+                        (frame?.get(KEY_SENT_AT) as? String)?.let { entry[KEY_SENT_AT] = it }
+                        val payload = frame?.get("payload") as? Map<*, *>
+                        (payload?.get(KEY_STATE) as? String)?.let { entry[KEY_STATE] = it }
+                    }
                     entries.add(entry)
                 }
             }

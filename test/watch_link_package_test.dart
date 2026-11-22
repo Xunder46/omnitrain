@@ -265,6 +265,72 @@ void main() {
     });
   });
 
+  group('S-29414 outstandingTransfers carries state and sentAt', () {
+    test('reads them when they are strings, else null', () async {
+      _answer(
+        (_) async => <Object?>[
+          <String, Object?>{
+            'messageId': 'a',
+            'type': 'session_lifecycle',
+            'sessionId': 's',
+            'state': 'completed',
+            'sentAt': '2026-11-22T10:00:00Z',
+          },
+          <String, Object?>{'messageId': 'b', 'type': 'observations_up'},
+          <String, Object?>{'messageId': 'c', 'state': 7, 'sentAt': 8},
+        ],
+      );
+
+      final transfers = await WatchLink().outstandingTransfers();
+
+      expect(transfers[0].state, 'completed');
+      expect(transfers[0].sentAt, '2026-11-22T10:00:00Z');
+      expect(transfers[1].state, isNull);
+      expect(transfers[1].sentAt, isNull);
+      expect(transfers[2].state, isNull);
+      expect(transfers[2].sentAt, isNull);
+    });
+
+    test('equality tells a different state or sentAt apart', () {
+      const base = WatchLinkTransfer(
+        messageId: 'a',
+        type: 'session_lifecycle',
+        state: 'started',
+        sentAt: 't1',
+      );
+
+      expect(
+        base,
+        const WatchLinkTransfer(
+          messageId: 'a',
+          type: 'session_lifecycle',
+          state: 'started',
+          sentAt: 't1',
+        ),
+      );
+      expect(
+        base ==
+            const WatchLinkTransfer(
+              messageId: 'a',
+              type: 'session_lifecycle',
+              state: 'completed',
+              sentAt: 't1',
+            ),
+        isFalse,
+      );
+      expect(
+        base ==
+            const WatchLinkTransfer(
+              messageId: 'a',
+              type: 'session_lifecycle',
+              state: 'started',
+              sentAt: 't2',
+            ),
+        isFalse,
+      );
+    });
+  });
+
   group('S-9702 cancelTransfers', () {
     test('sends the ids and answers the native count', () async {
       _answer((_) async => 1);

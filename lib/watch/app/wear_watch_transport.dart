@@ -16,9 +16,13 @@
 ///    that would arrive wrong, so they are reported and dropped, and the next
 ///    sync re-sends what is owed from storage.
 ///
-/// The newest-copy replacement the Apple bridge adds on top (plan 69 D-3…D-8) is
-/// not here yet; the plan records it as a follow-up, because the Wear link can
-/// list and cancel queued frames and the rule belongs with it.
+/// 4. **Only the newest copy of a workout waits** (plan 294, the Apple bridge's
+///    plan 69 D-3…D-8): a snapshot replaces the session's queued snapshots, a
+///    lifecycle replaces its queued non-terminal lifecycles, and a terminal
+///    lifecycle (`completed`, `abandoned`) replaces both and is never stale. A
+///    queued copy stamped later than the frame wins and the frame is not queued.
+///    A logged observation is never withdrawn. Listing, withdrawing and queuing
+///    run one at a time.
 library;
 
 import 'dart:async';
@@ -63,6 +67,10 @@ class WearWatchTransport implements WatchSyncTransport {
   Future<void> _lane = Future<void>.value();
 
   bool _reachable = false;
+
+  /// The end of the last list-withdraw-queue step: the next step starts after
+  /// it, so two hand-overs at once cannot both keep a copy (plan 294 D-29404).
+  Future<void> _queueTail = Future<void>.value();
   WearInboundHandler? _inbound;
 
   /// The frames the wrist may hand the OS to deliver later (the Swift
@@ -182,36 +190,164 @@ class WearWatchTransport implements WatchSyncTransport {
   );
 
   @override
-  Future<void> requestSnapshot() =>
-      send(WatchTransportRequest.snapshotFrame());
+  Future<void> requestSnapshot() => send(WatchTransportRequest.snapshotFrame());
 
   /// Hands the phone one frame the wrist owes it.
   ///
   /// The frame is made radio-safe first (the 2026-11-19 null-in-timers fix), so
   /// both platforms send the same shape. A refusal on a durable frame goes to the
-  /// OS queue; anything else is reported, and the next sync re-sends what the
-  /// protocol still owes.
+  /// OS queue, after the copies it replaces are withdrawn; anything else is
+  /// reported, and the next sync re-sends what the protocol still owes. A
+  /// snapshot or lifecycle that went out live withdraws the older copies still
+  /// waiting (plan 294 D-29404).
   @override
   Future<void> send(Map<String, Object?> envelope) async {
     final frame = wireSafeFrame(envelope);
     try {
       await _link.sendMessage(frame, timeout: _sendTimeout);
       _noteSent(frame, 'live');
-      return;
     } on WatchLinkException catch (error) {
       if (!isDurable(frame)) {
         _noteNotSent(frame, error);
         _report(error, StackTrace.current);
         return;
       }
-      try {
-        await _link.transferUserInfo(frame);
-        _noteSent(frame, 'queued');
-      } on WatchLinkException catch (queueError) {
-        _noteNotSent(frame, queueError);
-        _report(queueError, StackTrace.current);
+      await _inQueueLane(() => _queueNewest(frame));
+      return;
+    }
+    if (isDurable(frame)) {
+      await _inQueueLane(() => _withdrawSuperseded(frame));
+    }
+  }
+
+  /// Runs [step] after the previous list-withdraw-queue step finished, whether
+  /// that one succeeded or threw.
+  Future<T> _inQueueLane<T>(Future<T> Function() step) {
+    final turn = _queueTail.then((_) => step());
+    _queueTail = turn.then<void>((_) {}, onError: (Object _) {});
+    return turn;
+  }
+
+  /// Queues a frame the radio refused, after withdrawing the waiting copies it
+  /// replaces. A waiting copy with a LATER stamp is newer than the frame: the
+  /// frame is then not queued and nothing is withdrawn (not a failure). A
+  /// non-snapshot that already waits under its own `messageId` is not queued
+  /// again; a snapshot's id does not change with its content, so it is
+  /// replaced like any other.
+  Future<void> _queueNewest(Map<String, Object?> frame) async {
+    final held = await _heldTransfers();
+    final own = frame['messageId'];
+    if (frame['type'] != 'session_snapshot' &&
+        own is String &&
+        held.any((transfer) => transfer.messageId == own)) {
+      _noteSent(frame, 'queued');
+      return;
+    }
+    final found = _superseded(frame, held);
+    if (found.newerExists) {
+      _noteSent(frame, 'superseded');
+      return;
+    }
+    if (found.olderIds.isNotEmpty) await _cancelTransfers(found.olderIds);
+    try {
+      await _link.transferUserInfo(frame);
+      _noteSent(frame, 'queued');
+    } on WatchLinkException catch (queueError) {
+      _noteNotSent(frame, queueError);
+      _report(queueError, StackTrace.current);
+    }
+  }
+
+  /// After a frame went out live: cancels the waiting copies it replaces, never
+  /// a newer one.
+  Future<void> _withdrawSuperseded(Map<String, Object?> frame) async {
+    final type = frame['type'];
+    if (type != 'session_snapshot' && type != 'session_lifecycle') return;
+    final found = _superseded(frame, await _heldTransfers());
+    if (found.olderIds.isNotEmpty) await _cancelTransfers(found.olderIds);
+  }
+
+  /// The transfers this device's queue still holds. A list that fails is
+  /// reported and read as empty: the queue call still runs (plan 294 D-29405).
+  Future<List<WatchLinkTransfer>> _heldTransfers() async {
+    try {
+      return await _link.outstandingTransfers();
+    } on Object catch (error, stack) {
+      _report(error, stack);
+      return const <WatchLinkTransfer>[];
+    }
+  }
+
+  /// Cancels the waiting copies [ids]; a failure is reported, never thrown.
+  Future<void> _cancelTransfers(List<String> ids) async {
+    try {
+      await _link.cancelTransfers(ids);
+    } on Object catch (error, stack) {
+      _report(error, stack);
+    }
+  }
+
+  static const Set<String> _terminalStates = {'completed', 'abandoned'};
+
+  /// An unreadable stamp counts as oldest on a waiting copy and as newest on
+  /// the frame (plan 294 D-29402).
+  static final DateTime _oldest = DateTime.fromMillisecondsSinceEpoch(
+    0,
+    isUtc: true,
+  );
+  static final DateTime _newest = DateTime.utc(9999);
+
+  static DateTime? _stamp(Object? value) =>
+      value is String ? DateTime.tryParse(value) : null;
+
+  static bool _isTerminalState(Object? state) =>
+      state is String && _terminalStates.contains(state);
+
+  /// The waiting copies [frame] replaces (older or equal stamp), and whether a
+  /// copy it would replace is newer than the frame (then the frame is stale).
+  /// A snapshot replaces the snapshots of its session; a non-terminal lifecycle
+  /// the non-terminal lifecycles of its session; a terminal lifecycle both of
+  /// those, and is never stale. A logged observation, a terminal lifecycle and
+  /// another session's frame are never replaced; a copy with no type is never
+  /// touched.
+  ({List<String> olderIds, bool newerExists}) _superseded(
+    Map<String, Object?> frame,
+    List<WatchLinkTransfer> held,
+  ) {
+    final olderIds = <String>[];
+    var newerExists = false;
+    final type = frame['type'];
+    final sessionId = frame['sessionId'];
+    if ((type != 'session_snapshot' && type != 'session_lifecycle') ||
+        sessionId is! String) {
+      return (olderIds: olderIds, newerExists: false);
+    }
+    final payload = frame['payload'];
+    final terminal =
+        type == 'session_lifecycle' &&
+        _isTerminalState(payload is Map ? payload['state'] : null);
+    final own = frame['messageId'];
+    final sent = _stamp(frame['sentAt']) ?? _newest;
+    for (final copy in held) {
+      if (copy.sessionId != sessionId || copy.type.isEmpty) continue;
+      final bool replaced;
+      if (type == 'session_snapshot') {
+        replaced = copy.type == 'session_snapshot';
+      } else if (copy.type == 'session_snapshot') {
+        replaced = terminal;
+      } else {
+        replaced =
+            copy.type == 'session_lifecycle' && !_isTerminalState(copy.state);
+      }
+      if (!replaced) continue;
+      if (copy.messageId == own && type != 'session_snapshot') continue;
+      if (!terminal && (_stamp(copy.sentAt) ?? _oldest).isAfter(sent)) {
+        newerExists = true;
+      } else {
+        olderIds.add(copy.messageId);
       }
     }
+    return (olderIds: olderIds, newerExists: newerExists);
   }
 
   /// The name a frame goes by in the log: its `type`, else its request name,
@@ -241,5 +377,6 @@ class WearWatchTransport implements WatchSyncTransport {
         detail: '${_nameOf(frame)} ${error.runtimeType}',
       );
 
-  void _report(Object error, StackTrace stack) => _onFailure?.call(error, stack);
+  void _report(Object error, StackTrace stack) =>
+      _onFailure?.call(error, stack);
 }

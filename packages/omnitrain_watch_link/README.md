@@ -32,8 +32,10 @@ Two channels:
     under its own `messageId`, which the data layer carries when the devices next
     meet.
   - `outstandingTransfers` returns a list of
-    `{messageId, type, sessionId?, changeId?}` read from each outstanding
-    transfer's frame → `WatchLink.outstandingTransfers`.
+    `{messageId, type, sessionId?, changeId?, state?, sentAt?}` read from each
+    outstanding transfer's frame → `WatchLink.outstandingTransfers`. On
+    Android, state is the frame's payload.state and sentAt its top-level
+    stamp; the iOS half does not send them.
   - `cancelTransfers({messageIds})` cancels those transfers and answers how
     many → `WatchLink.cancelTransfers`.
 - `EventChannel('omnitrain/watch_link/events')`, one broadcast stream whose

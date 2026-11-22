@@ -68,6 +68,11 @@ transport's queue tests: a data item is deleted by whichever side takes it, so
 the sender's list of outstanding frames shrinks when the peer receives one, not
 only when the sender withdraws it.
 
+A queued frame is read back with its lifecycle state and its sentAt: the plugin
+decodes each item's stored frame, so the transport can tell a terminal lifecycle
+from a live one and a newer copy from an older one
+(`test/watch_link_package_test.dart`, group `S-29414`).
+
 A frame is serialized as JSON on Android rather than carried as a property list,
 with explicit nulls preserved, because the protocol uses a null to clear a
 timer.
@@ -108,8 +113,14 @@ radio over the link package. Reachability is the platform's answer, re-read
 rather than cached; a durable frame — a logged observation, a lifecycle message,
 a session start, or the snapshot of a workout still running — is handed to the
 OS queue when the radio refuses it, and anything else is reported and dropped
-for the next sync to re-send. Its durability table is the same one the Swift
-`WatchConnectivityBridge` uses.
+for the next sync to re-send. Only the newest copy of a workout waits: a
+snapshot replaces the session's queued snapshots, a lifecycle its non-terminal
+lifecycles, and a terminal lifecycle (`completed`, `abandoned`) replaces both and
+is never stale; a copy stamped later than the frame wins and the frame is not
+queued; a logged observation is never withdrawn; a snapshot or lifecycle that
+goes out live withdraws the older copies still waiting
+(`test/wear_queue_newest_test.dart`). Its durability table and its
+newest-copy rule are the same ones the Swift `WatchConnectivityBridge` uses.
 
 The wrist stores everything in its own Hive directory (`omnitrain_watch`), so a
 watch never shares a box with anything else on the device.
@@ -555,6 +566,10 @@ without heart rate and distance exactly as it would on a device with no sensor.
 - `test/wear_watch_transport_test.dart` — reachability, the request frames, the
   durable queue, the non-durable drop, the radio-safe rewrite, arrival order,
   and the durability table.
+- `test/wear_queue_newest_test.dart` — the newest-copy rule over a mock data
+  layer that keeps a queue: each replacement arm, the stale and equal-stamp
+  edges, the unreadable stamp, the live withdraw, the failures, the lane, and a
+  source guard on the plugin's read of `state` and `sentAt`.
 - `test/wear_app_test.dart` — the shell's choice of surface and the two ways it
   handles an arriving frame, over an in-memory store.
 - `test/watch_session_menu_engine_test.dart` — the jump, the append-at-end add
@@ -694,6 +709,11 @@ checks, run on real hardware:
    saw last before that, with the newest log lines under it (a launch, a scene
    change, a reachability change, a frame sent or received); the lines name
    frame types and never a weight, a name or a number you logged
+14. (owner) on a Wear watch with the phone out of reach (its Bluetooth off): do a
+   workout, adding three exercises and logging sets, and end it; turn Bluetooth
+   back on; the phone shows the workout once, complete, with every logged set,
+   not one copy per change (the watch's Diagnostics lines show one queued
+   snapshot per change, the phone's history one workout)
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

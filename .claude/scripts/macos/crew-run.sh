@@ -520,7 +520,7 @@ print_health() {
   hung="$(hung_children "$dir")"
   if [[ -n $hung ]]; then echo "$hung" | sed 's/^/  HUNG_CHILD: /'; fi
   local load cores
-  load="$(uptime 2>/dev/null | sed -E 's/.*load averages?: *//; s/[ ,].*//')"
+  load="$({ uptime 2>/dev/null || true; } | sed -E 's/.*load averages?: *//; s/[ ,].*//')"
   cores="$(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
   if awk -v l="${load:-0}" -v c="$cores" 'BEGIN { exit !(l + 0 > c * 2) }'; then
     echo "  HIGH_LOAD: load average $load on $cores cores; timings are unreliable (look for stray processes with ps)"

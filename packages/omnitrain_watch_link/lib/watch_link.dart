@@ -23,6 +23,8 @@ class WatchLinkTransfer {
     required this.type,
     this.sessionId,
     this.changeId,
+    this.state,
+    this.sentAt,
   });
 
   /// The frame's `messageId`.
@@ -37,6 +39,13 @@ class WatchLinkTransfer {
   /// The `changeId` inside the frame's `payload`, when it carries one.
   final String? changeId;
 
+  /// The `state` inside the frame's `payload` (a lifecycle's `started`,
+  /// `completed`, ...), when it carries one.
+  final String? state;
+
+  /// The frame's top-level `sentAt` (a UTC ISO string), when it carries one.
+  final String? sentAt;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -44,14 +53,18 @@ class WatchLinkTransfer {
           other.messageId == messageId &&
           other.type == type &&
           other.sessionId == sessionId &&
-          other.changeId == changeId;
+          other.changeId == changeId &&
+          other.state == state &&
+          other.sentAt == sentAt;
 
   @override
-  int get hashCode => Object.hash(messageId, type, sessionId, changeId);
+  int get hashCode =>
+      Object.hash(messageId, type, sessionId, changeId, state, sentAt);
 
   @override
   String toString() => 'WatchLinkTransfer(messageId: $messageId, type: $type, '
-      'sessionId: $sessionId, changeId: $changeId)';
+      'sessionId: $sessionId, changeId: $changeId, state: $state, '
+      'sentAt: $sentAt)';
 }
 
 /// The phone's link to the watch.
@@ -101,7 +114,8 @@ class WatchLink {
   }
 
   /// The transfers the OS still holds, in native order, read from each one's
-  /// `userInfo` frame. An entry without a string `messageId` is skipped.
+  /// `userInfo` frame. An entry without a string `messageId` is skipped. Each
+  /// entry may also carry the frame's lifecycle `state` and its `sentAt`.
   Future<List<WatchLinkTransfer>> outstandingTransfers() async {
     try {
       final raw = await _methods.invokeListMethod<Object?>(
@@ -121,6 +135,10 @@ class WatchLink {
                 : null,
             changeId: entry['changeId'] is String
                 ? entry['changeId'] as String
+                : null,
+            state: entry['state'] is String ? entry['state'] as String : null,
+            sentAt: entry['sentAt'] is String
+                ? entry['sentAt'] as String
                 : null,
           ),
         );
