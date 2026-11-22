@@ -263,6 +263,9 @@ worker_alive() {
 
 descendants() {
   local p
+  # Git Bash on Windows has no pgrep: with no way to walk the tree there are
+  # no descendants to report, and `wait`/`status` must not die with exit 127.
+  command -v pgrep >/dev/null 2>&1 || return 0
   for p in $(pgrep -P "$1" || true); do
     echo "$p"
     descendants "$p"

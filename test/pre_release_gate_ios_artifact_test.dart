@@ -56,9 +56,41 @@ import 'package:flutter_test/flutter_test.dart';
 const String _repoRoot = '.';
 
 class _TempRepo {
-  _TempRepo._(this.path);
+  _TempRepo._(this.path, this._parentPath);
 
   final String path;
+  final String _parentPath;
+
+  /// Directory names skipped at any depth (mirrors the rsync excludes).
+  static const Set<String> _skipNames = <String>{
+    '.git',
+    '.dart_tool',
+    'build',
+    '.build',
+    '.venv',
+    '.work',
+    '.claude',
+    '.idea',
+    'Pods',
+    '.symlinks',
+    'ephemeral',
+    'Flutter.framework',
+  };
+
+  /// Recursive copy of [from] into [to] that skips generated directories
+  /// and does not follow links.
+  static void _copyTree(Directory from, Directory to) {
+    to.createSync(recursive: true);
+    for (final entity in from.listSync(followLinks: false)) {
+      final name = entity.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
+      if (entity is Directory) {
+        if (_skipNames.contains(name)) continue;
+        _copyTree(entity, Directory('${to.path}/$name'));
+      } else if (entity is File) {
+        entity.copySync('${to.path}/$name');
+      }
+    }
+  }
 
   /// Recursive copy of [src] into a fresh temp directory. The copy
   /// is followed by a best-effort `git init && git add -A && git
@@ -82,6 +114,20 @@ class _TempRepo {
   /// `ios/Pods/`.
   static Future<_TempRepo> create(String src) async {
     final parent = Directory.systemTemp.createTempSync('omnitrain_gate_ios_');
+    try {
+      return await _createIn(src, parent);
+    } catch (_) {
+      // setUp failed, so tearDown will not own this copy: remove it here.
+      try {
+        parent.deleteSync(recursive: true);
+      } on FileSystemException {
+        // Best effort.
+      }
+      rethrow;
+    }
+  }
+
+  static Future<_TempRepo> _createIn(String src, Directory parent) async {
     final dst = '${parent.path}/repo';
     final hasRsync = await Process.run('which', <String>[
       'rsync',
@@ -124,13 +170,20 @@ class _TempRepo {
         dst,
       ]);
     } else {
-      // Fallback to cp -R; tests will be slow but correct.
-      result = await Process.run('cp', ['-R', '$src/.', dst]);
+      // No rsync (Windows): copy in Dart with the same exclusions. A plain
+      // `cp -R` here copied .git, .dart_tool and build (about 1.3 GB per
+      // test), overran the test timeout, and leaked the copy in Temp.
+      try {
+        _copyTree(Directory(src), Directory(dst));
+        result = ProcessResult(0, 0, '', '');
+      } on FileSystemException catch (e) {
+        result = ProcessResult(0, 1, '', e.toString());
+      }
     }
     if (result.exitCode != 0) {
       throw StateError('cp/rsync failed: ${result.stderr}');
     }
-    final repo = _TempRepo._(dst);
+    final repo = _TempRepo._(dst, parent.path);
     // Use a per-repo identity so the synthetic commit has an author.
     await Process.run('git', <String>['init', '-q', dst]);
     await Process.run('git', <String>[
@@ -313,7 +366,12 @@ com.google.gson.reflect.TypeToken: pi:com.google.gson.reflect.TypeToken
   }
 
   Future<void> dispose() async {
-    await Directory(path).delete(recursive: true);
+    // Remove the whole temp parent, not just its `repo` child, so no empty
+    // `omnitrain_gate_ios_*` shell is left behind in the system temp dir.
+    final dir = Directory(_parentPath);
+    if (dir.existsSync()) {
+      await dir.delete(recursive: true);
+    }
   }
 }
 
@@ -354,14 +412,19 @@ class _ZipEntry {
 /// and the test scaffolding uses `zip`). Failure here is reported
 /// clearly because the gate test itself is the missing-test
 /// environment, not a flaky test.
-Future<bool> _hasZipCli() async {
-  final r = await Process.run('which', <String>['zip']);
-  return r.exitCode == 0;
-}
+Future<bool> _hasZipCli() => _canRun('zip', <String>['-v']);
 
-Future<bool> _hasUnzipCli() async {
-  final r = await Process.run('which', <String>['unzip']);
-  return r.exitCode == 0;
+Future<bool> _hasUnzipCli() => _canRun('unzip', <String>['-v']);
+
+/// True when [exe] can actually be started. `which` is not enough on
+/// Windows: it can find a shell shim that Dart cannot launch.
+Future<bool> _canRun(String exe, List<String> args) async {
+  try {
+    await Process.run(exe, args);
+    return true;
+  } on ProcessException {
+    return false;
+  }
 }
 
 void main() {
@@ -384,10 +447,12 @@ void main() {
     late _TempRepo repo;
 
     setUp(() async {
+      if (!canRun) return;
       repo = await _TempRepo.create(_repoRoot);
     });
 
     tearDown(() async {
+      if (!canRun) return;
       await repo.dispose();
     });
 
@@ -536,10 +601,12 @@ void main() {
     late _TempRepo repo;
 
     setUp(() async {
+      if (!canRun) return;
       repo = await _TempRepo.create(_repoRoot);
     });
 
     tearDown(() async {
+      if (!canRun) return;
       await repo.dispose();
     });
 
@@ -641,10 +708,12 @@ void main() {
     late _TempRepo repo;
 
     setUp(() async {
+      if (!canRun) return;
       repo = await _TempRepo.create(_repoRoot);
     });
 
     tearDown(() async {
+      if (!canRun) return;
       await repo.dispose();
     });
 
@@ -858,10 +927,12 @@ void main() {
     late _TempRepo repo;
 
     setUp(() async {
+      if (!canRun) return;
       repo = await _TempRepo.create(_repoRoot);
     });
 
     tearDown(() async {
+      if (!canRun) return;
       await repo.dispose();
     });
 
