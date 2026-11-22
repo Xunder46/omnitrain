@@ -33,6 +33,7 @@ import com.google.android.gms.wearable.CapabilityInfo
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
+import com.google.android.gms.wearable.DataItem
 import com.google.android.gms.wearable.DataMap
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
@@ -147,6 +148,7 @@ class OmniTrainWatchLinkPlugin :
         capabilityClient = Wearable.getCapabilityClient(appContext)
 
         attachListeners()
+        drainWaiting()
         resolvePeer()
     }
 
@@ -454,21 +456,50 @@ class OmniTrainWatchLinkPlugin :
         try {
             for (event in buffer) {
                 if (event.type != DataEvent.TYPE_CHANGED) continue
-                val item = event.dataItem
-                val path = item.uri.path ?: continue
-                if (!path.startsWith(QUEUE_PREFIX)) continue
-                val itemBytes = item.data ?: continue
-                val map = runCatching { DataMap.fromByteArray(itemBytes) }.getOrNull() ?: continue
-                if (map.getString(KEY_ROLE) == ownRole()) continue
-                val frameBytes = map.getByteArray(KEY_FRAME) ?: continue
-                val frame = decodeFrame(frameBytes) ?: continue
-                val uri = item.uri
-                emit(mapOf("kind" to "userInfo", "frame" to frame))
-                dataClient?.deleteDataItems(uri)
+                takeQueuedItem(event.dataItem)
             }
         } finally {
             buffer.release()
         }
+    }
+
+    /**
+     * Reads the frames the peer queued while this app was not running. A data
+     * item raises a change event only to a listener that is attached when it
+     * arrives, so a frame that came in while the app was closed would sit unread
+     * for ever; this reads what is waiting each time the plugin attaches. A frame
+     * that arrives at this very moment may be taken twice (here and by the change
+     * event): the protocol is idempotent, so that costs a redelivery, not data.
+     */
+    private fun drainWaiting() {
+        val client = dataClient ?: return
+        client.dataItems.addOnCompleteListener { task ->
+            if (!task.isSuccessful) return@addOnCompleteListener
+            val items = task.result
+            try {
+                for (item in items) takeQueuedItem(item)
+            } finally {
+                items.release()
+            }
+        }
+    }
+
+    /**
+     * One queued frame the peer left for this device: emitted first and deleted
+     * after. An item this device queued itself, and anything that is not a
+     * frame, is left alone.
+     */
+    private fun takeQueuedItem(item: DataItem) {
+        val path = item.uri.path ?: return
+        if (!path.startsWith(QUEUE_PREFIX)) return
+        val itemBytes = item.data ?: return
+        val map = runCatching { DataMap.fromByteArray(itemBytes) }.getOrNull() ?: return
+        if (map.getString(KEY_ROLE) == ownRole()) return
+        val frameBytes = map.getByteArray(KEY_FRAME) ?: return
+        val frame = decodeFrame(frameBytes) ?: return
+        val uri = item.uri
+        emit(mapOf("kind" to "userInfo", "frame" to frame))
+        dataClient?.deleteDataItems(uri)
     }
 
     // MARK: - Events

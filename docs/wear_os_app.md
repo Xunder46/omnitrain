@@ -73,6 +73,14 @@ decodes each item's stored frame, so the transport can tell a terminal lifecycle
 from a live one and a newer copy from an older one
 (`test/watch_link_package_test.dart`, group `S-29414`).
 
+A frame queued while the app was closed is read when the app starts. The data
+layer raises a change event only to a listener that is attached when the item
+arrives, so each time the plugin attaches it also lists the items waiting and
+takes each one the way a change event does: emitted to Dart, then deleted. This
+holds on the watch and on the Android phone. The plugin's source guards are in
+`test/watch_link_start_up_read_test.dart`; no background service is built, so a
+watch whose app is closed updates at its next open, not before.
+
 A frame is serialized as JSON on Android rather than carried as a property list,
 with explicit nulls preserved, because the protocol uses a null to clear a
 timer.
@@ -570,6 +578,9 @@ without heart rate and distance exactly as it would on a device with no sensor.
   layer that keeps a queue: each replacement arm, the stale and equal-stamp
   edges, the unreadable stamp, the live withdraw, the failures, the lane, and a
   source guard on the plugin's read of `state` and `sentAt`.
+- `test/watch_link_start_up_read_test.dart` — source guards on the plugin's
+  start-up read: its place in the attach, a failed listing, the buffer release,
+  and the one rule shared with the change event.
 - `test/wear_app_test.dart` — the shell's choice of surface and the two ways it
   handles an arriving frame, over an in-memory store.
 - `test/watch_session_menu_engine_test.dart` — the jump, the append-at-end add
@@ -714,6 +725,11 @@ checks, run on real hardware:
    back on; the phone shows the workout once, complete, with every logged set,
    not one copy per change (the watch's Diagnostics lines show one queued
    snapshot per change, the phone's history one workout)
+15. (owner) on a paired watch and phone: close the watch app (swipe it away),
+   start a workout on the phone and add an exercise, then open the watch app; it
+   shows the workout without pressing `Sync`. Then close the phone app, finish a
+   workout on the watch with the phone out of reach, bring the phone back and
+   open its app; the workout is in its history
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

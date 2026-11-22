@@ -50,5 +50,10 @@ differs: a queued data item is deleted by whichever side takes it, so
 `outstandingTransfers` shrinks as the peer receives frames rather than only when
 the sender withdraws them.
 
+A frame the peer queued while this app was closed is read when the plugin
+attaches: the data layer raises a change event only to a listener that is
+attached when the item arrives, so each attach also reads the items waiting and
+takes them the same way (emitted as `userInfo`, then deleted).
+
 Every `PlatformException` surfaces as `WatchLinkException` carrying the native
 code.
