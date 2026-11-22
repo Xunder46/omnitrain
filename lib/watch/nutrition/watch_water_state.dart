@@ -26,6 +26,14 @@ abstract final class WatchWaterLimits {
   /// `kWatchWaterTapsPerDay`: the phone lists at most that many taps for a day,
   /// so a wrist that never taps past it has every receipted tap listed.
   static const int tapsPerDay = 500;
+
+  /// How long a tap the phone confirmed is kept; a launch drops the older ones
+  /// (plan 302 D-30203, the Apple wrist's plan 96 D-43). The count reads only
+  /// taps of local today, and a local day in any zone lasts at most 25 hours,
+  /// so a tap older than that is unreadable by every count; the retention adds
+  /// more than a day of margin (it must be at least 49 hours) so a launch clock
+  /// that runs fast cannot drop a tap a count can read.
+  static const Duration confirmedTapRetention = Duration(hours: 72);
 }
 
 /// What a screen reader says about the water bar, worded after the phone's own
@@ -116,8 +124,12 @@ class WatchWaterState {
   /// Reads the held frame back out of storage: the row with the greatest
   /// (`generatedAt`, `sequence`). Call on launch, after the engine's own restore
   /// (the count folds the engine's stored taps).
+  /// It first drops the confirmed taps older than [WatchWaterLimits.confirmedTapRetention] (plan 302); that prune runs here only, once per launch.
   Future<void> restore() async {
     await _exclusive(() async {
+      await _engine.pruneWaterTaps(
+        loggedBefore: _clock().subtract(WatchWaterLimits.confirmedTapRetention),
+      );
       final contents = await _store.readAll();
       WatchWaterRecord? newest;
       for (final row in contents.water) {

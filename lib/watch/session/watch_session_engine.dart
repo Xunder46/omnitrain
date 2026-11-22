@@ -2176,6 +2176,24 @@ class WatchSessionEngine {
     return pruned;
   }
 
+  /// Drops the water taps the phone confirmed that were logged before
+  /// [loggedBefore]; unconfirmed taps and every other kind of row stay (plan 302
+  /// D-30202). Its one caller is `WatchWaterState.restore`, at launch.
+  Future<List<String>> pruneWaterTaps({required DateTime loggedBefore}) async {
+    final pruned = await _store.pruneWaterTaps(loggedBefore: loggedBefore);
+    final dropped = pruned.toSet();
+    _observations.removeWhere(
+      (observation) => dropped.contains(observation.recordId),
+    );
+    // D-52, as `pruneConfirmed`: a pruned row takes its projection lens with it.
+    for (final recordId in dropped) {
+      _entryCorrections.remove(recordId);
+      _replacedEntryIds.remove(recordId);
+      _deletedEntryIds.remove(recordId);
+    }
+    return pruned;
+  }
+
   /// Drops the raw sensor log of every session that is over and whose entries
   /// the phone has recorded in full.
   ///

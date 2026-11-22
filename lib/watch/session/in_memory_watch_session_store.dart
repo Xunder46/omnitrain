@@ -102,6 +102,21 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
   }
 
   @override
+  Future<List<String>> pruneWaterTaps({required DateTime loggedBefore}) async {
+    final contents = await readAll();
+    final dropped = confirmedWaterTapIds(
+      contents.observations,
+      loggedBefore: loggedBefore,
+    );
+    if (dropped.isEmpty) return const [];
+    final ids = dropped.toSet();
+    _rows.removeWhere(
+      (row) => row is WatchObservationRecord && ids.contains(row.recordId),
+    );
+    return dropped;
+  }
+
+  @override
   Future<List<String>> pruneSensorSamples(Iterable<String> sessionIds) async {
     final sessions = sessionIds.toSet();
     final dropped = [

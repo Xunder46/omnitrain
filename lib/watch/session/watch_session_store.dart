@@ -122,6 +122,18 @@ abstract class WatchSessionStore {
   /// that were dropped (plan 290, D-29001): `pruneBests`' rule for the day's
   /// water. When [keepingRecordId] is not stored nothing is dropped.
   Future<List<String>> pruneWater({required String keepingRecordId});
+
+  /// Drops every `water_glass` observation a receipt names whose `loggedAt` is
+  /// strictly earlier than [loggedBefore], returning the record ids that were
+  /// dropped, in store order (plan 302 D-30201; the Apple store's
+  /// `pruneWaterTaps(loggedBefore:)`).
+  ///
+  /// The gate is the receipt plus the age: the phone holds the tap, and the
+  /// caller's cutoff lies before the start of any local today, so no count can
+  /// still read it. An unconfirmed tap, a tap whose `loggedAt` cannot be read,
+  /// every other kind of row and the confirmation rows themselves stay. A prune
+  /// that drops nothing writes nothing.
+  Future<List<String>> pruneWaterTaps({required DateTime loggedBefore});
 }
 
 /// Folds [confirmations] into [observations] as their `confirmedAt` receipt.
@@ -151,4 +163,24 @@ List<WatchObservationRecord> applyConfirmations(
         final confirmedAt => observation.withConfirmation(confirmedAt),
       },
   ];
+}
+
+/// The record ids [WatchSessionStore.pruneWaterTaps] drops from [observations]
+/// (confirmations already folded in), in order: water taps with a receipt and a
+/// readable `loggedAt` strictly earlier than [loggedBefore]. One rule for both
+/// stores, so they cannot drift apart.
+List<String> confirmedWaterTapIds(
+  Iterable<WatchObservationRecord> observations, {
+  required DateTime loggedBefore,
+}) {
+  final dropped = <String>[];
+  for (final observation in observations) {
+    if (observation.kind != WatchObservationKind.waterGlass) continue;
+    if (observation.confirmedAt == null) continue;
+    final raw = observation.payload['loggedAt'];
+    final loggedAt = raw is String ? DateTime.tryParse(raw) : null;
+    if (loggedAt == null || !loggedAt.isBefore(loggedBefore)) continue;
+    dropped.add(observation.recordId);
+  }
+  return dropped;
 }

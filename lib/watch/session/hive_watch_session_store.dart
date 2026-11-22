@@ -113,6 +113,19 @@ class HiveWatchSessionStore implements WatchSessionStore {
   }
 
   @override
+  Future<List<String>> pruneWaterTaps({required DateTime loggedBefore}) async {
+    final contents = await readAll();
+    final dropped = confirmedWaterTapIds(
+      contents.observations,
+      loggedBefore: loggedBefore,
+    );
+    if (dropped.isEmpty) return const [];
+    final box = await _boxFor(WatchObservationRecord.type);
+    await box.deleteAll(dropped);
+    return dropped;
+  }
+
+  @override
   Future<List<String>> pruneSensorSamples(Iterable<String> sessionIds) async {
     final sessions = sessionIds.toSet();
     if (sessions.isEmpty) return const [];
