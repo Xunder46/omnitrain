@@ -112,4 +112,6 @@ dependencies {
     "wearImplementation"("androidx.health:health-services-client:1.0.0")
     // Its futures are Guava's `ListenableFuture`, which the client library does not export.
     "wearImplementation"("com.google.guava:guava:33.0.0-android")
+    // The wrist's distance (plan 299): fused location.
+    "wearImplementation"("com.google.android.gms:play-services-location:21.3.0")
 }

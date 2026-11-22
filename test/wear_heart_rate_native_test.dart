@@ -72,20 +72,22 @@ void main() {
     expect(methods, contains('"heartRatePermission" -> heartRatePermission'));
     expect(
       methods,
-      contains('"locationPermission" -> result.success("unavailable")'),
+      contains('"locationPermission" -> locationPermission(result)'),
     );
   });
 
   test('S-29802 the prompt answer reaches every waiting caller', () {
-    final answer = _body(
+    final dispatch = _body(
       _wearSensors,
       'override fun onRequestPermissionsResult(',
     );
-
     expect(
-      answer,
-      contains('if (requestCode != REQUEST_HEART_RATE) return false'),
+      dispatch,
+      contains('REQUEST_HEART_RATE -> answerHeartRate(grantResults)'),
     );
+    expect(dispatch, contains('else -> false'));
+
+    final answer = _body(_wearSensors, 'private fun answerHeartRate(');
     expect(answer, contains('grantResults.isNotEmpty()'));
     expect(
       answer,

@@ -8,17 +8,24 @@
 
 package dev.sasha.omnitrain
 
+import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.health.services.client.HealthServices
 import androidx.health.services.client.MeasureCallback
 import androidx.health.services.client.data.Availability
 import androidx.health.services.client.data.DataPointContainer
 import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.DeltaDataType
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
@@ -32,8 +39,17 @@ class WearSensors(
     companion object {
         const val METHODS = "omnitrain/wear_sensors/methods"
         const val HEART_RATE = "omnitrain/wear_sensors/heart_rate"
+        const val LOCATION = "omnitrain/wear_sensors/location"
 
         private const val REQUEST_HEART_RATE = 29801
+        private const val REQUEST_LOCATION = 29802
+
+        /** How often high-accuracy fixes are asked for, and the smallest step worth one (plan 299). */
+        private const val LOCATION_INTERVAL_MS = 2000L
+        private const val LOCATION_MIN_STEP_M = 3f
+
+        /** A fix older than this is a cached one from earlier, not where the user is (plan 299). */
+        private const val MAX_FIX_AGE_NANOS = 10_000_000_000L
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -43,11 +59,11 @@ class WearSensors(
 
     /** Permission questions in flight: they all wait on one system prompt. */
     private val waiting = mutableListOf<MethodChannel.Result>()
+    private val waitingLocation = mutableListOf<MethodChannel.Result>()
 
-    init {
-        MethodChannel(messenger, METHODS).setMethodCallHandler(this)
-        EventChannel(messenger, HEART_RATE).setStreamHandler(this)
-    }
+    private val tracker = DistanceTracker()
+    private var locationSink: EventChannel.EventSink? = null
+    private var locationUpdates: LocationCallback? = null
 
     private fun measureClient() = HealthServices.getClient(activity).measureClient
 
@@ -68,8 +84,7 @@ class WearSensors(
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "heartRatePermission" -> heartRatePermission(result)
-            // Distance is plan 299.
-            "locationPermission" -> result.success("unavailable")
+            "locationPermission" -> locationPermission(result)
             else -> result.notImplemented()
         }
     }
@@ -109,13 +124,57 @@ class WearSensors(
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray,
-    ): Boolean {
-        if (requestCode != REQUEST_HEART_RATE) return false
+    ): Boolean = when (requestCode) {
+        REQUEST_HEART_RATE -> answerHeartRate(grantResults)
+        REQUEST_LOCATION -> answerLocation(permissions, grantResults)
+        else -> false
+    }
+
+    private fun answerHeartRate(grantResults: IntArray): Boolean {
         val granted = grantResults.isNotEmpty() &&
             grantResults[0] == PackageManager.PERMISSION_GRANTED
         val answer = if (granted) "granted" else "denied"
         val pending = waiting.toList()
         waiting.clear()
+        for (result in pending) result.success(answer)
+        return true
+    }
+
+    // MARK: - Location permission
+
+    private fun locationGranted(): Boolean =
+        activity.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun locationPermission(result: MethodChannel.Result) {
+        when {
+            !activity.packageManager.hasSystemFeature(PackageManager.FEATURE_LOCATION_GPS) ->
+                result.success("unavailable")
+            locationGranted() -> result.success("granted")
+            else -> askLocation(result)
+        }
+    }
+
+    /** Android 12 and later want fine and coarse in one request. */
+    private fun askLocation(result: MethodChannel.Result) {
+        waitingLocation.add(result)
+        if (waitingLocation.size == 1) {
+            activity.requestPermissions(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+                REQUEST_LOCATION,
+            )
+        }
+    }
+
+    private fun answerLocation(permissions: Array<out String>, grantResults: IntArray): Boolean {
+        val fine = permissions.indexOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        val granted = fine >= 0 && grantResults.getOrNull(fine) == PackageManager.PERMISSION_GRANTED
+        val answer = if (granted) "granted" else "denied"
+        val pending = waitingLocation.toList()
+        waitingLocation.clear()
         for (result in pending) result.success(answer)
         return true
     }
@@ -164,5 +223,65 @@ class WearSensors(
         } catch (error: Exception) {
             // The platform already dropped it (the permission was revoked).
         }
+    }
+
+    // MARK: - Distance
+
+    private fun fused() = LocationServices.getFusedLocationProviderClient(activity)
+
+    private val locationStream = object : EventChannel.StreamHandler {
+        override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+            locationSink = events
+            if (!locationGranted()) {
+                events?.endOfStream()
+                return
+            }
+            stopLocation()
+            tracker.reset()
+            val updates = object : LocationCallback() {
+                override fun onLocationResult(result: LocationResult) {
+                    for (fix in result.locations) {
+                        if (SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos > MAX_FIX_AGE_NANOS) continue
+                        val accuracy = if (fix.hasAccuracy()) fix.accuracy else null
+                        val total = tracker.accept(
+                            fix.latitude,
+                            fix.longitude,
+                            accuracy,
+                            fix.elapsedRealtimeNanos,
+                        ) ?: continue
+                        main.post { locationSink?.success(total) }
+                    }
+                }
+            }
+            locationUpdates = updates
+            val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, LOCATION_INTERVAL_MS)
+                .setMinUpdateDistanceMeters(LOCATION_MIN_STEP_M)
+                .build()
+            try {
+                fused().requestLocationUpdates(request, updates, Looper.getMainLooper())
+            } catch (error: SecurityException) {
+                locationUpdates = null
+                events?.endOfStream()
+            }
+        }
+
+        override fun onCancel(arguments: Any?) {
+            stopLocation()
+            locationSink = null
+            tracker.reset()
+        }
+    }
+
+    private fun stopLocation() {
+        val updates = locationUpdates ?: return
+        locationUpdates = null
+        fused().removeLocationUpdates(updates)
+    }
+
+    // The channels attach last: `locationStream` must exist before they are set up.
+    init {
+        MethodChannel(messenger, METHODS).setMethodCallHandler(this)
+        EventChannel(messenger, HEART_RATE).setStreamHandler(this)
+        EventChannel(messenger, LOCATION).setStreamHandler(locationStream)
     }
 }

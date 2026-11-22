@@ -303,7 +303,7 @@ The wrist wires the session's sensors in the shell (plan 297, the Dart half of p
 
 `WearSensorSource` (`lib/watch/sensors/wear_sensor_source.dart`) is the contract the native half will answer: a method channel `omnitrain/wear_sensors/methods` with `heartRatePermission` and `locationPermission`, each answering `granted`, `denied` or `unavailable` (a call asks the user first when the state is undetermined), and two event channels, `omnitrain/wear_sensors/heart_rate` (beats per minute) and `omnitrain/wear_sensors/location` (cumulative metres). Any failure, including no native half at all, reads as `unavailable` (`test/wear_sensor_source_test.dart`).
 
-The heart rate comes from Health Services' `MeasureClient` (`WearSensors` in `android/app/src/wear/kotlin/`, plan 298): a watch with no heart-rate sensor answers `unavailable`; otherwise the first question asks the system for the body-sensor permission (`BODY_SENSORS`, or `READ_HEART_RATE` from Wear OS 6) unless it is already held, and answers `granted` or `denied`; with it, each reading is sent to Dart and the platform subscription ends with the workout. The phone build carries none of this. The Kotlin side has no test harness, so its guards are source checks (`test/wear_heart_rate_native_test.dart`), and on the emulator the prompt, the grant, the denial and live synthetic readings were seen. Not built: distance (plan 299, the location question still answers `unavailable`) and the platform workout (plan 300): the wrist registers no workout with the platform, so a workout that the user leaves does not keep the sensor alive and the Health app shows nothing for it.
+The heart rate comes from Health Services' `MeasureClient` (`WearSensors` in `android/app/src/wear/kotlin/`, plan 298): a watch with no heart-rate sensor answers `unavailable`; otherwise the first question asks the system for the body-sensor permission (`BODY_SENSORS`, or `READ_HEART_RATE` from Wear OS 6) unless it is already held, and answers `granted` or `denied`; with it, each reading is sent to Dart and the platform subscription ends with the workout. The phone build carries none of this. The Kotlin side has no test harness, so its guards are source checks (`test/wear_heart_rate_native_test.dart`), and on the emulator the prompt, the grant, the denial and live synthetic readings were seen. The distance comes from the fused location provider (`WearSensors` and `DistanceTracker` in `android/app/src/wear/kotlin/`, plan 299): a watch with no GPS answers `unavailable`; otherwise the first question asks the system for the location permission (fine and coarse together) unless it is held; with it, the stream asks for high-accuracy fixes every 2 seconds with a 3 metre minimum step and sends the running total in metres, which the existing sensor line shows in kilometres or miles. A fix with no accuracy or worse than 50 metres is ignored, so is one more than 10 seconds old (a cached fix from earlier), and a step that would need more than 15 metres a second is a new starting point rather than distance (the emulator's first fix once made the probe read 222 km). The Dart side subscribes only for an exercise with the `distance` capability, so a lift never wakes the radio. On the emulator the prompt, the grant, and a simulated walk (about 5.5 metres every 2 seconds adding up to the metres walked) were seen; the guards are source checks (`test/wear_distance_native_test.dart`). Not built: the platform workout (plan 300): the wrist registers no workout with the platform, so a workout that the user leaves does not keep the sensors alive and the Health app shows nothing for it.
 
 ## The diagnostics log
 
@@ -352,6 +352,9 @@ without heart rate and distance exactly as it would on a device with no sensor.
   client: the permission question, the prompt's answer reaching every waiting
   caller, the stream's gate and cleanup, the activity wiring and channel names,
   and the manifests and dependency.
+- `test/wear_distance_native_test.dart` — source guards on the Kotlin distance
+  client: the location question, the prompt's answer, the stream's gate,
+  filters and cleanup, the tracker's rules, and the manifests and dependency.
 - `test/wear_sensors_shell_test.dart` — the shell's sensor wiring: start, stop, a
   restored session, an abandoned one, denial, a throwing source, two sessions in
   a row, a stop that never answers, and the entry point.
@@ -517,6 +520,11 @@ checks, run on real hardware:
    it and the logging screen shows a heart rate that follows your pulse; end the
    workout and the `Workout done` screen shows `Avg HR`; deny it and logging works
    with no heart rate
+19. (owner) on a real Wear watch with GPS: start a run (an exercise with a
+   distance); the system asks to allow location; allow it and walk or run in the
+   open; the logging screen's sensor line shows a distance that grows with you in
+   the phone's unit, and the `Workout done` screen's figures agree; deny it and
+   logging works with no distance; an exercise without a distance never asks
 18. (owner) on a real small round watch: the logging screen's exercise name and
    heart-rate line are whole and centred at the top, the `n/N` counter shows with
    a long name, and `Log` and `Menu` are where they were
