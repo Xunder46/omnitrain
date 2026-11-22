@@ -52,6 +52,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
     final foodCatalogs = <WatchFoodCatalogRecord>[];
     final preferences = <WatchPreferencesRecord>[];
     final ratingPrompts = <WatchRatingPromptRecord>[];
+    final bests = <WatchBestsRecord>[];
 
     for (final row in rows) {
       switch (row) {
@@ -73,6 +74,8 @@ class HiveWatchSessionStore implements WatchSessionStore {
           preferences.add(copy);
         case final WatchRatingPromptRecord prompt:
           ratingPrompts.add(prompt);
+        case final WatchBestsRecord frame:
+          bests.add(frame);
       }
     }
 
@@ -86,6 +89,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
       foodCatalogs: foodCatalogs,
       preferences: preferences,
       ratingPrompts: ratingPrompts,
+      bests: bests,
     );
   }
 
@@ -122,6 +126,18 @@ class HiveWatchSessionStore implements WatchSessionStore {
     return dropped;
   }
 
+  @override
+  Future<List<String>> pruneBests({required String keepingRecordId}) async {
+    final box = await _boxFor(WatchBestsRecord.type);
+    if (!box.containsKey(keepingRecordId)) return const [];
+    final dropped = [
+      for (final key in box.keys)
+        if (key != keepingRecordId) key as String,
+    ];
+    if (dropped.isNotEmpty) await box.deleteAll(dropped);
+    return dropped;
+  }
+
   /// Every row the store holds, in append order. Rows written in the same
   /// millisecond are ordered by the sequence the store assigned them.
   Future<List<WatchRecord>> _allRows() async {
@@ -136,6 +152,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
       WatchFoodCatalogRecord.type,
       WatchPreferencesRecord.type,
       WatchRatingPromptRecord.type,
+      WatchBestsRecord.type,
     ]) {
       final box = await _boxFor(type);
       for (final encoded in box.values) {

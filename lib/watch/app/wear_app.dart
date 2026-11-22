@@ -29,6 +29,7 @@ import '../logging/watch_logging_state.dart';
 import '../logging/watch_menu_screen.dart';
 import '../logging/watch_menu_state.dart';
 import '../logging/watch_metric_stepping.dart';
+import '../logging/watch_personal_bests.dart';
 import '../logging/watch_rest_screen.dart';
 import '../nutrition/watch_nutrition_screen.dart';
 import '../nutrition/watch_nutrition_state.dart';
@@ -54,6 +55,7 @@ class WearApp extends StatefulWidget {
     this.units = const WatchUnitPreferences(),
     this.preferences,
     this.rating,
+    this.bests,
   });
 
   final WatchSessionEngine engine;
@@ -79,6 +81,11 @@ class WearApp extends StatefulWidget {
   /// menu may owe the rating, and the shell shows the question alone while one
   /// is owed; left null the shell never asks.
   final WatchEffortRatingState? rating;
+
+  /// The phone's standing bests (plan 288). When given, the shell restores them
+  /// at launch so a `bests_down` frame and the sets the wrist holds are known
+  /// before the first set is logged; left null the shell holds none.
+  final WatchPersonalBests? bests;
 
   /// The copy the wrist shows while it restores what it holds.
   static const String loadingLabel = 'OmniTrain';
@@ -161,6 +168,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
       await widget.nutrition.restore();
       await widget.preferences?.restore();
       await widget.rating?.restore();
+      await widget.bests?.restore();
     } on Object catch (error, stack) {
       debugPrint('OmniTrain wrist restore failed: $error\n$stack');
     } finally {

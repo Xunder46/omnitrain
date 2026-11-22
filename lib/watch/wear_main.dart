@@ -18,6 +18,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'app/wear_app.dart';
 import 'app/wear_watch_transport.dart';
 import 'logging/watch_effort_rating_state.dart';
+import 'logging/watch_personal_bests.dart';
 import 'nutrition/watch_nutrition_state.dart';
 import 'session/hive_watch_session_store.dart';
 import 'session/watch_session_engine.dart';
@@ -44,6 +45,7 @@ Future<void> main() async {
   final paths = WatchSessionStartPaths(engine: engine, store: store);
   final nutrition = WatchNutritionState(engine: engine, store: store);
   final preferences = WatchPhonePreferences(store: store);
+  final bests = WatchPersonalBests(store: store);
   final rating = WatchEffortRatingState(
     engine: engine,
     store: store,
@@ -55,6 +57,7 @@ Future<void> main() async {
     engine: engine,
     nutrition: nutrition,
     preferences: preferences,
+    bests: bests,
   );
 
   runApp(
@@ -66,6 +69,7 @@ Future<void> main() async {
       transport: transport,
       preferences: preferences,
       rating: rating,
+      bests: bests,
     ),
   );
 }

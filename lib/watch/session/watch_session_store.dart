@@ -2,11 +2,13 @@
 ///
 /// Append-only by construction (PROTOCOL.md, authority rule 1): a store offers
 /// no update, no delete and no remove. [WatchSessionStore.append] is the only
-/// way anything enters the store, and there are exactly two ways anything
-/// leaves it — both of them prunes, both of them gated on the session being
-/// over: [WatchSessionStore.pruneConfirmed] drops observations the phone has
+/// way anything enters the store, and there are exactly three ways anything
+/// leaves it — all of them prunes, each of them gated on having nothing left
+/// to lose: [WatchSessionStore.pruneConfirmed] drops observations the phone has
 /// acknowledged, and [WatchSessionStore.pruneSensorSamples] drops the raw
 /// sensor log of a session the phone has recorded in full.
+/// [WatchSessionStore.pruneBests] drops every bests frame but the newest the
+/// wrist applied.
 ///
 /// `test/watch_session_engine_test.dart` (S-004) fails the build if a mutating
 /// method is added to this contract or if the engine reaches for a store method
@@ -27,6 +29,7 @@ class WatchStoreContents {
     this.foodCatalogs = const [],
     this.preferences = const [],
     this.ratingPrompts = const [],
+    this.bests = const [],
   });
 
   final List<WatchSessionRecord> sessions;
@@ -59,6 +62,11 @@ class WatchStoreContents {
   /// The wrist's own owed-rating notes, oldest first (plan 284).
   final List<WatchRatingPromptRecord> ratingPrompts;
 
+  /// The phone's standing-bests frames, oldest first. Only the newest is ever
+  /// kept after a frame applies (`pruneBests`); the frame with the latest
+  /// [WatchBestsRecord.generatedAt] applies (plan 288).
+  final List<WatchBestsRecord> bests;
+
   bool get isEmpty =>
       sessions.isEmpty &&
       observations.isEmpty &&
@@ -68,7 +76,8 @@ class WatchStoreContents {
       routineCatalogs.isEmpty &&
       foodCatalogs.isEmpty &&
       preferences.isEmpty &&
-      ratingPrompts.isEmpty;
+      ratingPrompts.isEmpty &&
+      bests.isEmpty;
 }
 
 abstract class WatchSessionStore {
@@ -93,6 +102,13 @@ abstract class WatchSessionStore {
   /// the phone has recorded in full. A session that is still running keeps every
   /// reading it has taken, which is what makes the live readout kill-safe.
   Future<List<String>> pruneSensorSamples(Iterable<String> sessionIds);
+
+  /// Drops every bests frame except [keepingRecordId], returning the record ids
+  /// that were dropped (plan 288, D-28802). The gate is the newest frame: a
+  /// frame the wrist has applied makes every older one dead weight. When
+  /// [keepingRecordId] is not stored nothing is dropped, so a stale call can
+  /// never empty the frame the wrist decides by.
+  Future<List<String>> pruneBests({required String keepingRecordId});
 }
 
 /// Folds [confirmations] into [observations] as their `confirmedAt` receipt.

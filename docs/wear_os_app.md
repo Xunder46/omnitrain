@@ -509,6 +509,12 @@ With a session of two or more exercises the logging surface shows one exercise a
 
 The rule is the Apple wrist's, described in [The Watch Surface: the Wrist's Exercise Pager](state_management/watch_surface_wrist_pager.md): the pager is a rule over the menu, so a settled swipe is the menu's own jump (`WatchPagerState` in `lib/watch/logging/watch_pager_state.dart`; the widget is `WatchLoggingPager`). Three things differ on Wear, each a decision of [plan 287](plans/2026-11-21-287-wear-swipe-pager-plan/2026-11-21-287-wear-swipe-pager-plan.md). There is no focus: the Apple wrist shows the swiped-to page before the engine has moved, while here the swipe awaits the jump and the logger ignores touches until it lands, so `Log` cannot write to the exercise being left. A second swipe during that jump is ignored. And the pager binds no rotary input: the value rows keep it.
 
+## The personal bests
+
+The phone sends each exercise's standing best in a `bests_down` message: the best estimated one-rep max in kilograms and the most reps at zero load, one entry per exercise the user has completed a set for. The Wear wrist keeps the newest frame (`WatchPersonalBests` in `lib/watch/logging/watch_personal_bests.dart`; a frame is stored as a `WatchBestsRecord`) and nothing else: a frame stamped earlier than the held one is dropped, a frame with the same numbers writes nothing, a frame the wrist cannot read is refused whole, frames are applied one at a time, and the store keeps only the newest frame (`pruneBests`, the third prune on the store contract). Given a set, the wrist can say whether it beats the standing best: the larger of the frame's best and the best of the sets the wrist itself holds, strictly greater, on the weight axis (the estimated one-rep max, at most 12 reps counted) for a loaded set and on the reps axis otherwise. A wrist that never received a frame says nothing; with a frame held, an exercise the phone has no history for makes its first set a record.
+
+The rule is the Apple wrist's (`WatchPersonalBests.swift`; the owner's decisions are in [series 87](plans/2026-10-26-87-wrist-new-pr-banner-index.md)) and the plan is [plan 288](plans/2026-11-22-288-wear-personal-bests-plan/2026-11-22-288-wear-personal-bests-plan.md). Nothing on the screen uses the verdict yet: the banner and the tap on a logged set come next.
+
 ## What the wrist shows
 
 The start surface (synced routines, free training, the quick-log entry, a manual
@@ -552,6 +558,13 @@ without heart rate and distance exactly as it would on a device with no sensor.
   directions, the ends, the short and vertical drags, the locked notice, `Log`
   after a swipe, the held landing, the slide side and its absence, reduced
   motion, the counter at 192 and 227 dp, and the shell wiring.
+- `test/watch_bests_store_test.dart` — the stored bests frame, the prune that
+  keeps the newest, and a reopen, under the in-memory store and Hive.
+- `test/watch_personal_bests_test.dart` — the judge: strict greater-than on both
+  axes, the first-ever record, the own best, the 12-rep cap, an older frame, a tie,
+  an unreadable frame, a relaunch, two frames at once, and the schema validator.
+- `test/wear_personal_bests_wiring_test.dart` — the orchestrator's route, the
+  shell's restore, and the entry point's wiring.
 - `test/wear_os_config_test.dart` — the flavors, the watch feature, the two
   capabilities, the plugin's Android registration and its five calls, the
   production entry point, and the two release invocations.

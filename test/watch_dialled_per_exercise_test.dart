@@ -75,6 +75,10 @@ class _SuspendingStore implements WatchSessionStore {
   @override
   Future<List<String>> pruneSensorSamples(Iterable<String> sessionIds) =>
       _inner.pruneSensorSamples(sessionIds);
+
+  @override
+  Future<List<String>> pruneBests({required String keepingRecordId}) =>
+      _inner.pruneBests(keepingRecordId: keepingRecordId);
 }
 
 /// Bounded poll: never an unbounded wait on the store.

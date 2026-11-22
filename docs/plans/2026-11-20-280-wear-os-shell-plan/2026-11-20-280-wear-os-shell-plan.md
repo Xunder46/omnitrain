@@ -100,7 +100,7 @@ source, so each is a real piece rather than a tweak.
 1. **The exercise menu** (`WatchMenu.swift` and `WatchMenuView.swift`) — the stopgap End control is replaced by it; it also owns jump-to-exercise, Add Exercise and Discard Session. (Corrected 2026-11-21 by plan 281: the Apple menu has no wrist-side remove; removal only arrives from the phone.)
 2. **The swipe pager** (`WatchLoggingPagerView.swift`, `WatchPagerModel.swift`) — one exercise per page. (Built by plan 287.)
 3. **The effort-rating prompt** (`WatchEffortRating.swift`, `WatchEffortRatingView.swift`). (Built by plans 283a-c: the settings 283a, the state 284, the prompt 285.)
-4. **Personal records** (`WatchPersonalBests.swift`, `WatchPersonalRecordBanner.swift`) and the bests frame it reads.
+4. **Personal records** (`WatchPersonalBests.swift`, `WatchPersonalRecordBanner.swift`) and the bests frame it reads. (Part 1, the frame and the judge, built by plan 288.)
 5. **Water** (`WatchWater.swift`) and the routines request's `wantsWater` flag, which the Dart orchestrator's signature does not carry yet.
 6. **The workout summary** (`WatchWorkoutSummary.swift`, `WatchWorkoutSummaryView.swift`).
 7. **Diagnostics** (`WatchDiagnosticsLog.swift`, `WatchDiagnosticsView.swift`, the send path).

@@ -220,6 +220,7 @@ sealed class WatchRecord {
       ),
       WatchFoodCatalogRecord.type => WatchFoodCatalogRecord.fromJson(json),
       WatchPreferencesRecord.type => WatchPreferencesRecord.fromJson(json),
+      WatchBestsRecord.type => WatchBestsRecord.fromJson(json),
       WatchRatingPromptRecord.type => WatchRatingPromptRecord.fromJson(json),
       _ => throw FormatException('unknown watch record type: $type'),
     };
@@ -919,6 +920,68 @@ final class WatchPreferencesRecord extends WatchRecord {
     distanceUnit: json['distanceUnit'] as String?,
     sequence: (json['sequence'] as int?) ?? 0,
   );
+}
+
+/// One frame of the phone's standing bests, as a `bests_down` carried it (plan
+/// 288, D-28801).
+///
+/// Reference data like the catalogs: it belongs to no session (`sessionId` is
+/// empty), the frame with the latest [generatedAt] applies, and the store keeps
+/// only that one (`WatchSessionStore.pruneBests`). [entries] is the frame's
+/// `bests` array verbatim: the wrist parses it once when it arrives and never
+/// edits a number. Mirrors the Apple client's `WatchBestsRecord`.
+final class WatchBestsRecord extends WatchRecord {
+  const WatchBestsRecord({
+    required super.recordId,
+    required super.recordedAt,
+    required this.generatedAt,
+    this.entries = const [],
+    super.sequence,
+  }) : super(sessionId: '');
+
+  static const String type = 'bests';
+
+  /// When the phone generated this frame. An older frame that arrives late is
+  /// not a newer truth.
+  final DateTime generatedAt;
+
+  /// The frame's `bests` entries: an `exerciseId` and at least one of
+  /// `e1rmKg` and `repsBest`.
+  final List<Map<String, Object?>> entries;
+
+  @override
+  String get recordType => type;
+
+  @override
+  WatchBestsRecord withSequence(int sequence) => WatchBestsRecord(
+    recordId: recordId,
+    recordedAt: recordedAt,
+    generatedAt: generatedAt,
+    entries: entries,
+    sequence: sequence,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    'recordType': type,
+    'recordId': recordId,
+    'sessionId': sessionId,
+    'recordedAt': utcIso(recordedAt),
+    'sequence': sequence,
+    'generatedAt': utcIso(generatedAt),
+    'entries': entries,
+  };
+
+  static WatchBestsRecord fromJson(Map<String, Object?> json) =>
+      WatchBestsRecord(
+        recordId: json['recordId']! as String,
+        recordedAt: parseUtcIso(json['recordedAt']),
+        generatedAt: parseUtcIso(json['generatedAt']),
+        entries: ((json['entries'] as List?) ?? const [])
+            .map(asJsonObject)
+            .toList(growable: false),
+        sequence: (json['sequence'] as int?) ?? 0,
+      );
 }
 
 /// The wrist's own note that its End owed a session an effort rating (plan 284,
