@@ -10,10 +10,10 @@
 /// store and a fake link instead of reaching for Hive and a paired watch.
 ///
 /// What this shell does **not** host yet is recorded in the plan's Open items:
-/// the swipe pager, the personal record banner, the water bar, the workout
-/// summary and the diagnostics view that the Apple wrist has. Its `Menu`
-/// button opens the exercise menu (plan 281). The shell wears the phone's
-/// accent colour (plan 286).
+/// the personal record banner, the water bar, the workout summary and the
+/// diagnostics view that the Apple wrist has. Its `Menu` button opens the
+/// exercise menu (plan 281). The shell wears the phone's accent colour
+/// (plan 286) and swipes between exercises on the logging surface (plan 287).
 library;
 
 import 'dart:async';
@@ -24,7 +24,7 @@ import '../../core/constants/omni_theme.dart';
 import '../../core/platform/watch_request_frames.dart';
 import '../logging/watch_effort_rating_screen.dart';
 import '../logging/watch_effort_rating_state.dart';
-import '../logging/watch_logging_screen.dart';
+import '../logging/watch_logging_pager.dart';
 import '../logging/watch_logging_state.dart';
 import '../logging/watch_menu_screen.dart';
 import '../logging/watch_menu_state.dart';
@@ -306,7 +306,11 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     if (session != null && session.status == WatchSessionStatus.active) {
       final surface = _logging.isResting
           ? WatchRestScreen(state: _logging, onNext: _endRest)
-          : WatchLoggingScreen(state: _logging);
+          : WatchLoggingPager(
+              menu: _menu,
+              logging: _logging,
+              onMoved: _menuChanged,
+            );
       return Column(
         children: [
           Expanded(child: surface),

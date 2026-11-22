@@ -58,10 +58,15 @@ class WatchLoggingScreen extends StatefulWidget {
     super.key,
     required this.state,
     this.haptics = const SystemWatchHaptics(),
+    this.pageLabel,
   });
 
   final WatchLoggingState state;
   final WatchHaptics haptics;
+
+  /// The `n/N` counter the pager shows beside the exercise name (plan 287,
+  /// D-28706); null with one exercise or outside the pager.
+  final String? pageLabel;
 
   /// Points of turn that count as one detent, as [WatchRotaryTurn] counts them.
   static const double pointsPerDetent = WatchRotaryTurn.defaultPointsPerDetent;
@@ -206,11 +211,21 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          slot ?? 'No exercise',
-          style: compact ? styles.labelMedium : styles.labelLarge,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                slot ?? 'No exercise',
+                style: compact ? styles.labelMedium : styles.labelLarge,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (widget.pageLabel case final label?) ...[
+              const SizedBox(width: WatchLoggingScreen.surfaceInsetCompact),
+              Text(label, style: styles.labelSmall),
+            ],
+          ],
         ),
         if (compact) ...[
           if (merged.isNotEmpty)

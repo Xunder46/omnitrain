@@ -503,6 +503,12 @@ it wears the default cyan and offers no accent picker
 (`S-28612 a newer copy replaces it, a copy without accent restores the
 default`).
 
+## The exercise pager
+
+With a session of two or more exercises the logging surface shows one exercise and a small `n/N` counter right after its name. A horizontal swipe moves to the neighbouring exercise: to the left for the next one, which slides in from the right edge, to the right for the previous one, which slides in from the left. A swipe past either end does nothing, a drag shorter than 24 points does nothing, and a vertical drag belongs to the value rows. While a work clock (elapsed, hold or round) runs there is no paging: the swipe gives a short vibration and the words `An effort is running` for 1.5 seconds. A move the user did not make (the phone, the menu, the rest screen's Next) shows the new exercise at once, with no slide, and with the system's reduced-motion setting the slide is a plain fade. The rest surface is not paged.
+
+The rule is the Apple wrist's, described in [The Watch Surface: the Wrist's Exercise Pager](state_management/watch_surface_wrist_pager.md): the pager is a rule over the menu, so a settled swipe is the menu's own jump (`WatchPagerState` in `lib/watch/logging/watch_pager_state.dart`; the widget is `WatchLoggingPager`). Three things differ on Wear, each a decision of [plan 287](plans/2026-11-21-287-wear-swipe-pager-plan/2026-11-21-287-wear-swipe-pager-plan.md). There is no focus: the Apple wrist shows the swiped-to page before the engine has moved, while here the swipe awaits the jump and the logger ignores touches until it lands, so `Log` cannot write to the exercise being left. A second swipe during that jump is ignored. And the pager binds no rotary input: the value rows keep it.
+
 ## What the wrist shows
 
 The start surface (synced routines, free training, the quick-log entry, a manual
@@ -510,8 +516,9 @@ sync), the logging surface (one effort, its values, one Log), the rest surface
 (the elapsed rest and one Next), and the nutrition quick-log.
 The Menu button under the logging surface
 and the rest surface opens the exercise menu, the Apple wrist's menu without a remove control (D-28102).
+A swipe on the logging surface moves between the exercises (the pager, below).
 
-The Apple wrist hosts more: the swipe pager between exercises, the
+The Apple wrist hosts more: the
 personal-record banner, the water bar, the workout summary, the diagnostics
 view, and spoken timer cues. None of those is on the Wear wrist; the plan that
 built this shell
@@ -538,6 +545,13 @@ without heart rate and distance exactly as it would on a device with no sensor.
 - `test/wear_menu_screen_test.dart` — the menu over the shell: the ladder rows,
   the three actions, the Finish and Discard questions, the add path and the
   phone-side removal.
+- `test/watch_pager_state_test.dart` — the pager rule: page, count and label,
+  the lock, the neighbour page with no wrap, the jump a settled swipe makes,
+  and the notice window.
+- `test/wear_pager_screen_test.dart` — the pager as a widget: both swipe
+  directions, the ends, the short and vertical drags, the locked notice, `Log`
+  after a swipe, the held landing, the slide side and its absence, reduced
+  motion, the counter at 192 and 227 dp, and the shell wiring.
 - `test/wear_os_config_test.dart` — the flavors, the watch feature, the two
   capabilities, the plugin's Android registration and its five calls, the
   production entry point, and the two release invocations.
@@ -586,6 +600,14 @@ checks, run on real hardware:
    with readable labels; switch the phone to another theme and sync again,
    the colour changes; before any sync the watch's buttons are cyan, not
    purple
+9. (owner) on a Wear emulator or watch: swipe between the exercises of a
+   three-exercise session; a swipe to the left shows the next exercise
+   sliding in from the right with `2/3` beside the name, a swipe to the right
+   goes back; check the system does not take the right swipe as "leave the
+   app" (if it does, tell the owner: the follow-up is a control, not a silent
+   change); a swipe while a clock runs vibrates and shows `An effort is
+   running`; `Log` right after a swipe writes to the exercise on screen; the
+   counter fits beside a long exercise name at the watch's size
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with
