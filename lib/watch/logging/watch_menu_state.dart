@@ -4,14 +4,16 @@
 /// The Dart counterpart of `WatchMenu.swift`. It writes no session structure of
 /// its own: a jump is the engine's `selectExercise`, Add Exercise is the start
 /// paths' `addExerciseToEnd`, End and Discard are the engine's own
-/// `finishSession` and `abandonSession`. It never removes or edits an exercise
-/// or an entry (D-28102), and it mints no ids.
+/// `finishSession` and `abandonSession`, End going through the effort-rating
+/// state when the shell wires one (plan 285). It never removes or edits an
+/// exercise or an entry (D-28102), and it mints no ids.
 library;
 
 import '../session/watch_records.dart';
 import '../session/watch_session_engine.dart';
 import '../start/watch_routine_catalog.dart';
 import '../start/watch_session_start_paths.dart';
+import 'watch_effort_rating_state.dart';
 
 /// The menu's fixed copy, named like the Swift `WatchMenuCopy`.
 abstract final class WatchMenuCopy {
@@ -65,10 +67,15 @@ class WatchMenuRow {
 /// The menu over a live session. A plain class: the screen rebuilds it on its
 /// own one-second refresh, and `rows` is read fresh on every access.
 class WatchMenuState {
-  WatchMenuState({required this.engine, required this.paths});
+  WatchMenuState({required this.engine, required this.paths, this.rating});
 
   final WatchSessionEngine engine;
   final WatchSessionStartPaths paths;
+
+  /// The effort-rating state End goes through when the shell wires one (plan
+  /// 285, D-28503): it finishes the session and notes an owed rating. Left null
+  /// End is the engine's own `finishSession`, as before.
+  final WatchEffortRatingState? rating;
 
   bool get _isActive => engine.session?.status == WatchSessionStatus.active;
 
@@ -151,14 +158,20 @@ class WatchMenuState {
   }
 
   /// End Session: finishes the workout when there is something to save, and is
-  /// a discard when there is not (the phone's own empty finish). No rating
-  /// prompt (D-28107). A session that is not active changes nothing.
+  /// a discard when there is not (the phone's own empty finish). With a rating
+  /// state the finish goes through it, which may owe the effort rating. A
+  /// session that is not active changes nothing.
   Future<void> finish() async {
     if (!_isActive) return;
-    if (hasWorkToSave) {
-      await engine.finishSession();
-    } else {
+    if (!hasWorkToSave) {
       await discard();
+      return;
+    }
+    final rating = this.rating;
+    if (rating != null) {
+      await rating.end();
+    } else {
+      await engine.finishSession();
     }
   }
 

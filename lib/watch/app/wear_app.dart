@@ -10,10 +10,9 @@
 /// store and a fake link instead of reaching for Hive and a paired watch.
 ///
 /// What this shell does **not** host yet is recorded in the plan's Open items:
-/// the swipe pager, the effort-rating prompt, the personal record banner, the
-/// water bar, the workout summary, the diagnostics view and the accent theming
-/// that the Apple wrist has. Its `Menu` button opens the exercise menu
-/// (plan 281).
+/// the swipe pager, the personal record banner, the water bar, the workout
+/// summary, the diagnostics view and the accent theming that the Apple wrist
+/// has. Its `Menu` button opens the exercise menu (plan 281).
 library;
 
 import 'dart:async';
@@ -22,6 +21,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
 import '../../core/platform/watch_request_frames.dart';
+import '../logging/watch_effort_rating_screen.dart';
+import '../logging/watch_effort_rating_state.dart';
 import '../logging/watch_logging_screen.dart';
 import '../logging/watch_logging_state.dart';
 import '../logging/watch_menu_screen.dart';
@@ -50,6 +51,7 @@ class WearApp extends StatefulWidget {
     this.navigatorKey,
     this.units = const WatchUnitPreferences(),
     this.preferences,
+    this.rating,
   });
 
   final WatchSessionEngine engine;
@@ -70,6 +72,11 @@ class WearApp extends StatefulWidget {
   /// units and the rest ping from them (plan 283a); left null it reads
   /// [units] as before.
   final WatchPhonePreferences? preferences;
+
+  /// The effort-rating state (plan 285). When given, a workout ended from the
+  /// menu may owe the rating, and the shell shows the question alone while one
+  /// is owed; left null the shell never asks.
+  final WatchEffortRatingState? rating;
 
   /// The copy the wrist shows while it restores what it holds.
   static const String loadingLabel = 'OmniTrain';
@@ -96,6 +103,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   late final WatchMenuState _menu = WatchMenuState(
     engine: widget.engine,
     paths: widget.paths,
+    rating: widget.rating,
   );
 
   /// The shell's own navigator: the shell is above the `MaterialApp` it builds,
@@ -115,6 +123,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.rating?.addListener(_ratingChanged);
     widget.transport.onIncoming(_onFrame);
     unawaited(_boot());
   }
@@ -124,6 +133,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     _ticker?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(widget.transport.close());
+    widget.rating?.removeListener(_ratingChanged);
     super.dispose();
   }
 
@@ -148,6 +158,7 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
       await widget.paths.restore();
       await widget.nutrition.restore();
       await widget.preferences?.restore();
+      await widget.rating?.restore();
     } on Object catch (error, stack) {
       debugPrint('OmniTrain wrist restore failed: $error\n$stack');
     } finally {
@@ -211,6 +222,12 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     if (mounted) setState(_syncTicker);
   }
 
+  /// The owed question changed (an End owed one, an answer, a Skip): the shell
+  /// redraws, and re-reads whether anything still ticks.
+  void _ratingChanged() {
+    if (mounted) setState(_syncTicker);
+  }
+
   void _openMenu() {
     _navigator.currentState?.push(
       MaterialPageRoute<void>(
@@ -256,6 +273,11 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
   Widget _surface(BuildContext context) {
     if (!_ready) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    final rating = widget.rating;
+    if (rating != null && rating.isPromptOwed) {
+      return WatchEffortRatingScreen(state: rating);
     }
 
     final session = widget.engine.session;

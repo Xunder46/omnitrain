@@ -130,8 +130,12 @@ exercise, and the row is gone within a second
 (`test/wear_menu_screen_test.dart`
 `S-28122 the menu lists the ladder, the actions, and no remove control`,
 `S-28133 a slot the phone removed vanishes, and its stale row tap does nothing`,
-`S-28135 a session whose only slot was removed keeps its actions`). The menu
-has no effort-rating prompt either — that is plan 280's open item 3.
+`S-28135 a session whose only slot was removed keeps its actions`). The
+menu's End
+ends through the effort-rating state when the shell wires one (D-28503).
+It ends the session and asks the question when one is owed
+(`test/wear_effort_rating_screen_test.dart`
+`S-28513 the menu's End goes through the rating state`).
 
 While a hold, a round or a timed (elapsed) work clock runs, the exercise rows
 are disabled and the caption `An effort is running` says why; a running rest
@@ -260,11 +264,13 @@ stored value twice (`test/wear_phone_settings_test.dart`
 `S-28311 the logging state reads the phone's unit on every access`), and the
 Rest Ping interval in seconds (0 = Off) on the rest surface
 (`S-28313 the rest ping interval follows the phone`). The copy's
-effort-rating flag and accent colour are stored but nothing shows them yet —
-the rating prompt and the accent theming stay on the Apple-only list above
+effort-rating flag and accent colour are stored
 (`test/watch_phone_preferences_test.dart`
 group `S-28302 one preferences_down copy applies`, test
-`the getters show the copy and one row is stored`).
+`the getters show the copy and one row is stored`); the effort-rating flag
+asks the question after End and at launch (the section
+`## The effort-rating prompt` below), and the accent colour still shows
+nothing — the accent theming stays on the Apple-only list above.
 
 The wrist stores every copy it accepts and applies the newest by the phone's
 own stamp: a late copy with an older stamp is dropped and not stored
@@ -298,8 +304,8 @@ shows on the next once-a-second repaint
 
 ## The effort rating, underneath
 
-The rating is an engine fact today, underneath a screen that does not exist
-yet. The wrist records a session's effort rating once:
+The rating is an engine fact first; the screen that asks for it is the
+section after this one. The wrist records a session's effort rating once:
 `recordEffortRating` appends one `effort_rating` observation whose id is
 `rating-<sessionId>`, sends it to the phone in exactly one `observations_up`
 frame, and a second call for the same session returns null and changes
@@ -320,7 +326,7 @@ rating outside 1 to 5 is refused with nothing stored
 is its own observation kind, not one of the effort kinds a slot counts
 (`S-28408 the constants`).
 
-nothing on the Wear screen asks for it yet: the wrist's End can owe a
+the Wear screen asks for it after End and at launch: the wrist's End can owe a
 rating, and it stores that debt as a note. When the phone's setting asks
 for one, the session still holds at least one effort entry after the
 phone's deletions, and it has no rating yet, `end()` finishes the session
@@ -364,6 +370,66 @@ question and the first real answer are untouched — a relaunch asks again,
 and a phone-side rating arriving later still closes it
 (`S-28418 Skip records nothing; a later answer still closes the question`).
 
+## The effort-rating prompt
+
+The screen that asks the question sits above the state the previous section
+holds. On a Wear watch, when the phone's effort-rating setting is on (it
+reached the watch at a sync) and a workout with at least one logged effort is
+ended from the menu (`End Session`, then `Finish`), the watch shows the
+question alone: "How hard was this session?", the numbers 1 to 5 with the end
+labels "Very easy" and "Max effort", a Confirm button that stays disabled
+until a number is picked, and a small Skip
+(`test/wear_effort_rating_screen_test.dart`
+`S-28501 End with the setting on shows the question alone`,
+`S-28508 Confirm is disabled until a number is picked`). There is no menu and
+no back button on that surface: the screen builds its own `Scaffold` with no
+back control (`lib/watch/logging/watch_effort_rating_screen.dart`), and the
+shell's Menu button is not on it
+(`test/wear_effort_rating_screen_test.dart`
+`S-28501 End with the setting on shows the question alone`).
+
+A tap picks a number
+(`test/wear_effort_rating_screen_test.dart`
+`S-28503 Confirm records the picked rating and shows the start surface`);
+the rotary — a scroll — or a vertical drag steps it, a turn away from the
+wrist raising it, the first step up picking 1
+(`test/wear_effort_rating_screen_test.dart`
+`S-28505 the rotary steps the number`,
+`S-28505b a turn down from nothing picks nothing`,
+`S-28506 a vertical drag steps the number`). Confirm sends the rating to the
+phone in exactly one `observations_up` frame and shows the start screen
+(`test/wear_effort_rating_screen_test.dart`
+`S-28503 Confirm records the picked rating and shows the start surface`);
+Skip shows the start screen and sends nothing
+(`test/wear_effort_rating_screen_test.dart`
+`S-28504 Skip shows the start surface and records nothing`). The numbers are
+named "N of 5" for a screen reader
+(`test/wear_effort_rating_screen_test.dart`
+`S-28509 the numbers are named for a screen reader`).
+
+The question is asked again at the next launch when the app was closed on it
+(`test/wear_effort_rating_screen_test.dart`
+`S-28510 the question is asked again at launch`) and closes by itself if the
+phone answers first (`test/wear_effort_rating_screen_test.dart`
+`S-28511 the phone answering first closes the prompt`). With the setting
+off, with nothing logged, after a Discard, or in a shell built without the
+rating state, nothing is asked (`test/wear_effort_rating_screen_test.dart`
+`S-28502a the setting off shows the start surface`,
+`S-28502b the setting on but nothing logged shows the start surface`,
+`S-28514 Discard owes nothing`,
+`S-28512 a shell without a rating state never asks`). The entry point
+`lib/watch/wear_main.dart` builds the rating state and hands it to the shell.
+
+The screen fits the 192 dp and 227 dp round watches at exact compact sizes —
+Confirm 40 dp tall, Skip floored at 32 dp, the number buttons 32x36 — and
+scales down rather than overflowing on a crowded one
+(`test/wear_effort_rating_screen_test.dart`
+`S-28507a the prompt fits 227x227`,
+`S-28507b the prompt fits 192x192`,
+`S-28507c a crowded watch still fits the prompt`). On the desktop QA harness
+(`flutter run -d macos -t lib/watch/debug/wear_menu_debug_main.dart`) the
+setting is switched on, so End shows the prompt there.
+
 ## What the wrist shows
 
 The start surface (synced routines, free training, the quick-log entry, a manual
@@ -373,7 +439,6 @@ The Menu button under the logging surface
 and the rest surface opens the exercise menu, the Apple wrist's menu without a remove control (D-28102).
 
 The Apple wrist hosts more: the swipe pager between exercises,
-the effort-rating prompt,
 the personal-record banner, the water bar, the
 workout summary, the diagnostics view, spoken timer cues and the accent
 theming. None of those is on the Wear wrist; the plan that built this shell
@@ -437,6 +502,12 @@ checks, run on real hardware:
    weights show in lb and distances in miles on the logging surface; set the
    phone's Rest Ping to 30 seconds, sync, and a rest on the watch taps every
    30 seconds
+7. (owner) with a paired phone whose effort-rating setting is on: finish a
+   workout with a logged set from the menu and the question appears alone; a
+   tap or a rotary turn picks a number; Confirm saves it (the phone shows the
+   rating); on another workout Skip shows the start screen; closing the app
+   on the question and reopening asks again; the question fits the round
+   screen
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

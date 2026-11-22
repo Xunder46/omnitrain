@@ -21,9 +21,11 @@ import 'package:flutter/services.dart';
 
 import '../app/wear_app.dart';
 import '../app/wear_watch_transport.dart';
+import '../logging/watch_effort_rating_state.dart';
 import '../nutrition/watch_nutrition_state.dart';
 import '../session/in_memory_watch_session_store.dart';
 import '../session/watch_session_engine.dart';
+import '../start/watch_phone_preferences.dart';
 import '../start/watch_session_start_paths.dart';
 import '../start/watch_sync_orchestrator.dart';
 
@@ -101,6 +103,21 @@ const Map<String, Object?> _routinesDown = {
   },
 };
 
+/// The phone's settings with the effort rating switched on, so End shows the
+/// prompt on the desktop.
+final Map<String, Object?> _preferencesDown = {
+  'protocolVersion': 1,
+  'messageId': 'msg-harness-preferences',
+  'type': 'preferences_down',
+  'origin': 'phone',
+  'sentAt': '2026-11-21T09:00:00Z',
+  'payload': {
+    'generatedAt': '2026-11-21T09:00:00Z',
+    'effortRatingPrompt': true,
+    'restPingSeconds': 0,
+  },
+};
+
 Future<void> main() async {
   // The macOS build has no native link, so the radio's sends fail with a
   // missing-plugin error: log it instead of leaving it unhandled.
@@ -120,17 +137,27 @@ Future<void> _run() async {
   final engine = WatchSessionEngine(store, onEmit: transport.send);
   final paths = WatchSessionStartPaths(engine: engine, store: store);
   final nutrition = WatchNutritionState(engine: engine, store: store);
+  final preferences = WatchPhonePreferences(store: store);
+  final rating = WatchEffortRatingState(
+    engine: engine,
+    store: store,
+    preferences: preferences,
+  );
   final orchestrator = WatchSyncOrchestrator(
     transport: transport,
     paths: paths,
     engine: engine,
     nutrition: nutrition,
+    preferences: preferences,
   );
 
   await engine.restore();
   await paths.restore();
   await nutrition.restore();
+  await preferences.restore();
+  await rating.restore();
   await orchestrator.receive(_routinesDown);
+  await orchestrator.receive(_preferencesDown);
   await paths.startFromRoutine('routine-demo');
 
   final navigator = GlobalKey<NavigatorState>();
@@ -168,6 +195,8 @@ Future<void> _run() async {
                           orchestrator: orchestrator,
                           transport: transport,
                           navigatorKey: navigator,
+                          preferences: preferences,
+                          rating: rating,
                         ),
                       ),
                     ),
