@@ -137,7 +137,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     final theme = Theme.of(context);
     try {
       final newId = await widget.foodLibraryState.createFoodGroup(
-        'New Category',
+        widget.foodLibraryState.freeGroupName('New Category'),
       );
       // Track this as the newly created category and focus it
       setState(() {
@@ -1526,7 +1526,22 @@ class _GroupsTabState extends State<_GroupsTab> {
 
   /// Saves the group name on blur (tap away) or Enter key press.
   Future<void> _saveGroupName(String groupId, String newName) async {
-    await widget.foodLibraryState.renameFoodGroup(groupId, newName);
+    final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
+    final state = widget.foodLibraryState;
+    try {
+      await state.renameFoodGroup(groupId, newName);
+    } on DuplicateFoodGroupNameError catch (duplicate) {
+      // Put the old name back in the field and say why (plan 303).
+      for (final g in state.activeFoodGroups) {
+        if (g.id == groupId) _controllers[groupId]?.text = g.name;
+      }
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'A category called "${duplicate.name}" already exists',
+      );
+    }
   }
 
   @override

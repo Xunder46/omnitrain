@@ -454,7 +454,11 @@ organize the user's library. Layout (top to bottom):
 - A trailing read-only `_UngroupedRow` (foods with `groupId == null`).
 - No bottom button: the host's header "+" (`OmniHeaderAddButton`, read
   aloud `New Category`, key `new_group_button`) calls
-  `FoodLibraryState.createFoodGroup('New Category')`.
+  `FoodLibraryState.createFoodGroup(freeGroupName('New Category'))`, so a
+  second press makes "New Category 2". Renaming a row to a name another
+  category has shows "A category called "X" already exists" and puts the old
+  name back in the field (S-30315, S-30316 in
+  `test/duplicate_food_groups_merge_test.dart`).
 
 The list rebuilds via `ListenableBuilder(listenable: foodLibraryState)`
 so add / rename / archive operations reflect immediately.

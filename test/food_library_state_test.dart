@@ -867,7 +867,7 @@ void main() {
       var notified = false;
       state.addListener(() => notified = true);
 
-      await state.createFoodGroup('Proteins');
+      await state.createFoodGroup('My Proteins');
 
       expect(notified, isTrue);
     });
@@ -876,7 +876,7 @@ void main() {
       final repo = await _freshRepo();
       final state = FoodLibraryState(repo);
 
-      await state.createFoodGroup('Proteins');
+      await state.createFoodGroup('My Proteins');
       final group = state.foodGroups[0];
 
       var notified = false;
@@ -900,7 +900,7 @@ void main() {
       final repo = await _freshRepo();
       final state = FoodLibraryState(repo);
 
-      final id = await state.createFoodGroup('Proteins');
+      final id = await state.createFoodGroup('My Proteins');
 
       var notified = false;
       state.addListener(() => notified = true);

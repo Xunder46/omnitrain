@@ -75,7 +75,7 @@ void main() {
         );
         expect(isShippedFoodGroupId('food-group-dairy'), isTrue);
 
-        final id = await state.createFoodGroup('Dairy');
+        final id = await state.createFoodGroup('My Dairy');
         expect(isShippedFoodGroupId(id), isFalse);
       });
 

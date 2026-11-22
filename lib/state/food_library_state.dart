@@ -33,6 +33,19 @@ class ShippedFoodGroupError extends StateError {
     : super('Cannot remove shipped category "$groupName" ($groupId).');
 }
 
+/// Thrown by [FoodLibraryState.createFoodGroup] and
+/// [FoodLibraryState.renameFoodGroup] when another active category already
+/// carries the name (compared trimmed and case-insensitively). Nothing is
+/// written (plan 303): two same-name categories list two headings and cannot be
+/// told apart in the category picker.
+class DuplicateFoodGroupNameError extends StateError {
+  /// The name the caller tried to use, trimmed.
+  final String name;
+
+  DuplicateFoodGroupNameError(this.name)
+    : super('A category called "$name" already exists.');
+}
+
 class FoodLibraryState extends ChangeNotifier {
   final WorkoutRepository _repository;
 
@@ -199,7 +212,11 @@ class FoodLibraryState extends ChangeNotifier {
   /// Create a new food group with the given name and optional color.
   ///
   /// Persists to repository, adds to cache, and notifies listeners.
+  ///
+  /// Throws [DuplicateFoodGroupNameError] (nothing written) when another
+  /// active category already has the name.
   Future<String> createFoodGroup(String name, {String? color}) async {
+    await _refuseDuplicateName(name, exceptId: null);
     final now = DateTime.now().millisecondsSinceEpoch;
     final id = _generateId('group');
 
@@ -285,6 +302,7 @@ class FoodLibraryState extends ChangeNotifier {
     final trimmed = newName.trim();
     if (trimmed.isEmpty) return;
     if (trimmed == group.name) return;
+    await _refuseDuplicateName(trimmed, exceptId: id);
     final updated = FoodGroup(
       id: group.id,
       name: trimmed,
@@ -296,6 +314,32 @@ class FoodLibraryState extends ChangeNotifier {
     await _repository.updateFoodGroup(updated);
     _foodGroups[id] = updated;
     notifyListeners();
+  }
+
+  /// Throws [DuplicateFoodGroupNameError] when an active category other than
+  /// [exceptId] already has [name]. Reads the repository, not the cache, so a
+  /// cold cache cannot let a duplicate through.
+  Future<void> _refuseDuplicateName(String name, {String? exceptId}) async {
+    final key = name.trim().toLowerCase();
+    for (final g in await _repository.getFoodGroups()) {
+      if (g.id == exceptId) continue;
+      if (g.name.trim().toLowerCase() == key) {
+        throw DuplicateFoodGroupNameError(name.trim());
+      }
+    }
+  }
+
+  /// [base] when no active category has that name, otherwise [base] followed
+  /// by the first free number ("New Category", "New Category 2", ...).
+  String freeGroupName(String base) {
+    final taken = {
+      for (final g in activeFoodGroups) g.name.trim().toLowerCase(),
+    };
+    if (!taken.contains(base.toLowerCase())) return base;
+    for (var n = 2; ; n++) {
+      final candidate = '$base $n';
+      if (!taken.contains(candidate.toLowerCase())) return candidate;
+    }
   }
 
   /// Delete (archive) a group, reassigning its foods to [toGroupId]

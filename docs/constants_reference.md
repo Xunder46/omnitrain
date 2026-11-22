@@ -602,7 +602,7 @@ strings persist across app upgrades; keep them stable.
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `currentDataVersion` | `20` | Version a device reaches once the last consolidated migration step has run; the last step is a one-off repair of pre-plan-235 day keys (`repairDayKeys`, plan 264, retire after launch); step 19 is a one-off restore of the shipped food categories (`restoreShippedFoodGroups`, plan 137, retire after launch); step 18 is a one-off back-fill of past routine sessions' modality (`backfillRoutineSessionModality`, plan 122, retire after launch), and step 17 removed the retired seed template rows (`retireOrphanTemplateRows`, ids in `lib/core/constants/retired_template_seed.dart`) |
+| `currentDataVersion` | `21` | Version a device reaches once the last consolidated migration step has run; the last step is a one-off merge of same-name food categories (`mergeDuplicateFoodGroups`, plan 303, retire after launch); step 20 is a one-off repair of pre-plan-235 day keys (`repairDayKeys`, plan 264, retire after launch); step 19 is a one-off restore of the shipped food categories (`restoreShippedFoodGroups`, plan 137, retire after launch); step 18 is a one-off back-fill of past routine sessions' modality (`backfillRoutineSessionModality`, plan 122, retire after launch), and step 17 removed the retired seed template rows (`retireOrphanTemplateRows`, ids in `lib/core/constants/retired_template_seed.dart`) |
 
 Replaces the former ~13 independent one-time `bool`-gated steps with a single
 ordered sequence tracked by the device's `data_version` integer. Steps are

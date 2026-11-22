@@ -12,6 +12,7 @@ import '../../core/constants/water_constants.dart';
 import '../../core/services/data_migration_service.dart';
 import '../../core/services/retired_template_rows_cleanup.dart';
 import '../../core/services/routine_session_modality_backfill.dart';
+import '../../core/services/duplicate_food_groups_merge.dart';
 import '../../core/services/shipped_food_groups_repair.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
@@ -339,6 +340,16 @@ class MockWorkoutRepository implements WorkoutRepository {
       // days in memory with no key encoding, so there is nothing to repair; the
       // step exists so both stores walk the same version sequence.
       _MockMigrationStep(20, 'repairDayKeys', () async {}),
+      // ONE-OFF (plan 303) — retire after launch. See
+      // DuplicateFoodGroupsMerge and docs/db_integration.md.
+      _MockMigrationStep(
+        21,
+        'mergeDuplicateFoodGroups',
+        () => DuplicateFoodGroupsMerge(
+          repo,
+          shippedGroups: SeedData.defaultFoodGroups,
+        ).run(),
+      ),
     ];
   }
 

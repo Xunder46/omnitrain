@@ -471,7 +471,7 @@ void main() {
       () async {
         final repo = await _freshRepo();
         final state = FoodLibraryState(repo);
-        final groupId = await state.createFoodGroup('Proteins');
+        final groupId = await state.createFoodGroup('My Proteins');
 
         var notifications = 0;
         state.addListener(() => notifications++);
@@ -494,14 +494,14 @@ void main() {
     test('renameFoodGroup no-ops on empty or unchanged names', () async {
       final repo = await _freshRepo();
       final state = FoodLibraryState(repo);
-      final groupId = await state.createFoodGroup('Proteins');
+      final groupId = await state.createFoodGroup('My Proteins');
 
       var notifications = 0;
       state.addListener(() => notifications++);
 
       await state.renameFoodGroup(groupId, '   ');
       expect(notifications, 0);
-      await state.renameFoodGroup(groupId, 'Proteins');
+      await state.renameFoodGroup(groupId, 'My Proteins');
       expect(notifications, 0);
     });
 
@@ -515,7 +515,7 @@ void main() {
         'and archives the group', () async {
       final repo = await _freshRepo();
       final state = FoodLibraryState(repo);
-      final proteinsId = await state.createFoodGroup('Proteins');
+      final proteinsId = await state.createFoodGroup('My Proteins');
       final snacksId = await state.createFoodGroup('Snacks');
 
       // Seed 3 foods in Proteins and 1 in Snacks.
@@ -571,7 +571,7 @@ void main() {
       () async {
         final repo = await _freshRepo();
         final state = FoodLibraryState(repo);
-        final proteinsId = await state.createFoodGroup('Proteins');
+        final proteinsId = await state.createFoodGroup('My Proteins');
         final snacksId = await state.createFoodGroup('Snacks');
 
         for (final id in ['f-p1', 'f-p2']) {

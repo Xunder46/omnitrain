@@ -13,6 +13,7 @@ import '../../core/constants/data_version.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/water_constants.dart';
 import '../../core/services/data_migration_service.dart';
+import '../../core/services/duplicate_food_groups_merge.dart';
 import '../../core/services/retired_template_rows_cleanup.dart';
 import '../../core/services/routine_session_modality_backfill.dart';
 import '../../core/services/shipped_food_groups_repair.dart';
@@ -498,6 +499,16 @@ class HiveWorkoutRepository implements WorkoutRepository {
           foods: repo._consumedFoodsBox,
         ),
       ),
+      // ONE-OFF (plan 303) — retire after launch. See
+      // DuplicateFoodGroupsMerge and docs/db_integration.md.
+      _MethodStep(
+        21,
+        'mergeDuplicateFoodGroups',
+        () => DuplicateFoodGroupsMerge(
+          repo,
+          shippedGroups: SeedData.defaultFoodGroups,
+        ).run(),
+      ),
     ];
   }
 
@@ -536,26 +547,18 @@ class HiveWorkoutRepository implements WorkoutRepository {
   /// - Each default group is inserted by its stable id. If a group with that
   ///   id already exists (e.g. a future migration added a group of its own),
   ///   the existing row is preserved untouched.
-  /// - A name-based collision check (case-insensitive) prevents duplicate
-  ///   "Proteins" / "Vegetables" / … groups if the user already created one
-  ///   with that name before the migration ran.
+  /// - There is no name-based collision check (plan 303): a shipped category
+  ///   is always seeded by its stable id, because skipping it left every
+  ///   bundled food of that category pointing at a row that did not exist. A
+  ///   user's own same-name category is folded into it afterwards by
+  ///   `DuplicateFoodGroupsMerge` (step 21).
   Future<void> _seedDefaultFoodGroups() async {
     final seeded = _metaBox.get(_defaultFoodGroupsSeededKey) as bool? ?? false;
     if (seeded) return;
 
-    // Snapshot existing names once so we can detect collisions cheaply.
-    final existingNames = <String>{
-      for (final raw in _foodGroupsBox.values)
-        (raw['name'] as String? ?? '').toLowerCase(),
-    };
-
     for (final group in SeedData.defaultFoodGroups) {
       // Stable-id match: the row is already populated; never overwrite.
       if (_foodGroupsBox.containsKey(group.id)) continue;
-
-      // Name match: the user already created a group with the same name.
-      // Skip seeding to avoid a duplicate (the user's row wins).
-      if (existingNames.contains(group.name.toLowerCase())) continue;
 
       await _foodGroupsBox.put(group.id, group.toMap());
     }

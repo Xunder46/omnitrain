@@ -103,10 +103,11 @@ Manages the user's food library: food groups and food items with macronutrient m
 |---|---|
 | `loadFoodGroups({includeArchived})` | Loads all food groups from repository, updates cache, notifies listeners |
 | `loadFoods({includeArchived})` | Loads all foods from repository, updates cache, notifies listeners |
-| `createFoodGroup(String name, {String? color})` | Creates a new food group with optional color, persists, and notifies |
+| `createFoodGroup(String name, {String? color})` | Creates a new food group with optional color, persists, and notifies; throws `DuplicateFoodGroupNameError` (nothing written) when another active category already has the name, compared trimmed and case-insensitively (S-30311 in `test/duplicate_food_groups_merge_test.dart`) |
+| `freeGroupName(String base)` | Returns `base`, or `base 2`, `base 3`, … — the first name no active category has; the header "+" uses it so a second press makes "New Category 2" (S-30313) |
 | `updateFoodGroup(FoodGroup group)` | Updates an existing food group and persists changes |
 | `archiveFoodGroup(String id)` | Archives (soft-deletes) a food group by setting `isArchived = true`; refuses a shipped category with `ShippedFoodGroupError` before anything is written (S-13703 in `test/shipped_food_groups_lock_test.dart`) |
-| `renameFoodGroup(String id, String newName)` | Renames a food group in place (preserves id / color / createdAtMs / isArchived). Used by the Groups tab's inline `TextField`. No-ops on empty / unchanged names; throws if the group is not in the cache. |
+| `renameFoodGroup(String id, String newName)` | Renames a food group in place (preserves id / color / createdAtMs / isArchived). Used by the Groups tab's inline `TextField`. No-ops on empty / unchanged names; throws if the group is not in the cache; throws `DuplicateFoodGroupNameError` (nothing written) when another active category has the name, while a change of case on the category's own name is allowed (S-30312). |
 | `deleteFoodGroupReassigningFoods(String id, String? toGroupId)` | Archives the group while reassigning its non-archived, user-owned foods (library and user-created catalog foods) to `toGroupId` (or `null` for "Ungrouped"). Foods are never deleted. **Refuses the deletion** by throwing `ShippedFoodGroupError` when the category is one the app ships with (`shippedFoodGroupIds`), as its first check after the group lookup, before anything is read or written (S-13702/S-13703 in `test/shipped_food_groups_lock_test.dart`). |
 | `getFoodGroupById(String id)` | Retrieves a food group from cache or repository; returns null if not found |
 | `createFood(Food food)` | Creates a new food item, persists, and notifies (forces `isCatalog = false`) |

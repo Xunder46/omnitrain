@@ -546,7 +546,7 @@ void main() {
   test(
     'S-156: steps 15 to 19 are appended to both migration sequences',
     () async {
-      expect(currentDataVersion, equals(20));
+      expect(currentDataVersion, equals(21));
 
       final allMock = MockWorkoutRepository().dataMigrationStepsForTest();
       final allHive = HiveWorkoutRepository().dataMigrationStepsForTest();
@@ -554,10 +554,13 @@ void main() {
       // addressed from the end of the sequence up to 19.
       final mockSteps = allMock.where((s) => s.targetVersion <= 19).toList();
       final hiveSteps = allHive.where((s) => s.targetVersion <= 19).toList();
-      expect(allMock.last.targetVersion, equals(20));
-      expect(allMock.last.name, equals('repairDayKeys'));
-      expect(allHive.last.targetVersion, equals(20));
-      expect(allHive.last.name, equals('repairDayKeys'));
+      // Steps 20 (plan 264) and 21 (plan 303) are checked at the end.
+      expect(allMock.last.targetVersion, equals(21));
+      expect(allMock.last.name, equals('mergeDuplicateFoodGroups'));
+      expect(allHive.last.targetVersion, equals(21));
+      expect(allHive.last.name, equals('mergeDuplicateFoodGroups'));
+      expect(allMock[allMock.length - 2].name, equals('repairDayKeys'));
+      expect(allHive[allHive.length - 2].name, equals('repairDayKeys'));
 
       expect(mockSteps[mockSteps.length - 5].targetVersion, equals(15));
       expect(
@@ -655,6 +658,7 @@ void main() {
           'backfillRoutineSessionModality',
           'restoreShippedFoodGroups',
           'repairDayKeys',
+          'mergeDuplicateFoodGroups',
         ]),
       );
       expect(await mock.getDataVersion(), equals(currentDataVersion));
@@ -732,6 +736,7 @@ void main() {
           'backfillRoutineSessionModality',
           'restoreShippedFoodGroups',
           'repairDayKeys',
+          'mergeDuplicateFoodGroups',
         ]),
       );
       expect(await repo.getDataVersion(), equals(currentDataVersion));
@@ -778,10 +783,13 @@ void main() {
       // addressed from the end of the sequence up to 19.
       final mockSteps = allMock.where((s) => s.targetVersion <= 19).toList();
       final hiveSteps = allHive.where((s) => s.targetVersion <= 19).toList();
-      expect(allMock.last.targetVersion, equals(20));
-      expect(allMock.last.name, equals('repairDayKeys'));
-      expect(allHive.last.targetVersion, equals(20));
-      expect(allHive.last.name, equals('repairDayKeys'));
+      // Steps 20 (plan 264) and 21 (plan 303) are checked at the end.
+      expect(allMock.last.targetVersion, equals(21));
+      expect(allMock.last.name, equals('mergeDuplicateFoodGroups'));
+      expect(allHive.last.targetVersion, equals(21));
+      expect(allHive.last.name, equals('mergeDuplicateFoodGroups'));
+      expect(allMock[allMock.length - 2].name, equals('repairDayKeys'));
+      expect(allHive[allHive.length - 2].name, equals('repairDayKeys'));
 
       expect(mockSteps.last.targetVersion, equals(19));
       expect(mockSteps.last.name, equals('restoreShippedFoodGroups'));

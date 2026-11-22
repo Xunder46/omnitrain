@@ -4149,8 +4149,8 @@ void main() {
       final foodLib = FoodLibraryState(repo);
       final nutrition = NutritionState(repo);
       // Seed two groups + one ungrouped food via the state.
-      final proteinsId = await foodLib.createFoodGroup('Proteins');
-      final vegetablesId = await foodLib.createFoodGroup('Vegetables');
+      final proteinsId = await foodLib.createFoodGroup('My Proteins');
+      final vegetablesId = await foodLib.createFoodGroup('My Vegetables');
       await foodLib.createFood(
         Food(
           id: 'f-ungrouped',
@@ -4229,7 +4229,7 @@ void main() {
       final repo = await _freshRepo();
       final foodLib = FoodLibraryState(repo);
       final nutrition = NutritionState(repo);
-      final groupId = await foodLib.createFoodGroup('Proteins');
+      final groupId = await foodLib.createFoodGroup('My Proteins');
       // Add a food in the group so the row is non-empty.
       await foodLib.createFood(
         Food(
@@ -4291,7 +4291,7 @@ void main() {
         final repo = await _freshRepo();
         final foodLib = FoodLibraryState(repo);
         final nutrition = NutritionState(repo);
-        final groupId = await foodLib.createFoodGroup('Proteins');
+        final groupId = await foodLib.createFoodGroup('My Proteins');
         await foodLib.createFood(
           Food(
             id: 'f-cancel',
@@ -4348,7 +4348,7 @@ void main() {
         final repo = await _freshRepo();
         final foodLib = FoodLibraryState(repo);
         final nutrition = NutritionState(repo);
-        final groupId = await foodLib.createFoodGroup('Proteins');
+        final groupId = await foodLib.createFoodGroup('My Proteins');
         await foodLib.createFood(
           Food(
             id: 'f-ungrouped-dest',
@@ -4401,8 +4401,8 @@ void main() {
         final repo = await _freshRepo();
         final foodLib = FoodLibraryState(repo);
         final nutrition = NutritionState(repo);
-        final proteinsId = await foodLib.createFoodGroup('Proteins');
-        final vegetablesId = await foodLib.createFoodGroup('Vegetables');
+        final proteinsId = await foodLib.createFoodGroup('My Proteins');
+        final vegetablesId = await foodLib.createFoodGroup('My Vegetables');
         await foodLib.createFood(
           Food(
             id: 'f-picked-dest',
@@ -4436,7 +4436,7 @@ void main() {
 
         await tester.tap(find.byKey(const Key('delete_group_destination')));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Vegetables').last);
+        await tester.tap(find.text('My Vegetables').last);
         await tester.pumpAndSettle();
 
         await tester.tap(find.byKey(const Key('delete_group_confirm')));
@@ -4618,12 +4618,17 @@ void main() {
         1,
       );
 
+      // A second press is numbered, never a second "New Category" (plan 303).
       await tester.tap(newGroup);
       await tester.pumpAndSettle();
       expect(find.byType(TextField).evaluate().length, before + 2);
       expect(
         foodLib.foodGroups.where((g) => g.name == 'New Category').length,
-        2,
+        1,
+      );
+      expect(
+        foodLib.foodGroups.where((g) => g.name == 'New Category 2').length,
+        1,
       );
     });
 
