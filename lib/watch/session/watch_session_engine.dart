@@ -25,6 +25,7 @@ import '../../core/sync_protocol/end_skew.dart';
 import '../../core/sync_protocol/message_validator.dart';
 import '../sensors/watch_platform_workout.dart';
 import 'watch_records.dart';
+import 'watch_sensor_summaries.dart';
 import 'watch_session_store.dart';
 
 /// Where the engine hands the messages the watch owes the phone.
@@ -736,6 +737,13 @@ class WatchSessionEngine {
     if (creation == null) return null;
     final id = WatchSessionCapture.sessionEndId(sessionId);
     final modality = creation.modality;
+    // The wrist's measured energy for the whole session (plan 305 D-30505),
+    // wrist-created and followed ends alike; absent when nothing was measured.
+    final kcal = WatchSensorSummaries.activeEnergy(
+      _sensorSamples.where((sample) => sample.sessionId == sessionId),
+      creation.startedAt,
+      endedAt,
+    );
     return {
       'entryId': id,
       'eventId': id,
@@ -748,6 +756,7 @@ class WatchSessionEngine {
       // own session carries no `followed` and needs none.
       if (creation.source != 'watch') 'followed': true,
       if (modality != null && modality.isNotEmpty) 'modality': modality,
+      'activeEnergyKcal': ?kcal,
     };
   }
 
@@ -983,6 +992,7 @@ class WatchSessionEngine {
     );
     return true;
   }
+
   /// Applies an incremental timer update: the kinds it names are adopted or
   /// cleared, the kinds it does not name are left alone (PROTOCOL.md, "Timer
   /// state"). Only a snapshot is authoritative for timer state as a whole.
@@ -1866,6 +1876,68 @@ class WatchSessionEngine {
     final stored = await _store.append(record);
     if (!existing) _sensorSamples.add(stored);
     return stored;
+  }
+
+  // The session and instant of the last energy frame (plan 305 D-30504).
+  String? _energySession;
+  double? _energyKcal;
+  DateTime? _energyAt;
+
+  /// Tells the phone the wrist's running active-energy total (plan 305
+  /// D-30504): live only, stored nowhere, sent through the same `onEmit` path as
+  /// a timer. The total is the restart-aware sum of the session's stored counts
+  /// (the chain the session end sums), so a recovered workout's counter falling
+  /// to zero never pulls the phone's chip back down. A frame goes out the first
+  /// time for a session, when the total fell, or when it rose by at least half a
+  /// kilocalorie and at least five seconds passed since the last frame; anything
+  /// else, and any value that is not a finite number of at least zero, sends
+  /// nothing. A frame the protocol refuses records no mark, so the next reading
+  /// may retry.
+  void announceEnergy({required double kilocalories, required DateTime at}) {
+    final session = _session;
+    if (session == null || session.status != WatchSessionStatus.active) return;
+    if (!kilocalories.isFinite || kilocalories < 0) return;
+
+    // The recorder stores the raw reading before it announces, so the stored
+    // samples already include it; with no stored sample inside the window (a
+    // caller that announces without recording) the raw value is the total.
+    final total =
+        WatchSensorSummaries.activeEnergy(
+          _sensorSamples.where((s) => s.sessionId == session.sessionId),
+          session.startedAt,
+          at,
+        ) ??
+        kilocalories;
+
+    final lastKcal = _energyKcal;
+    final lastAt = _energyAt;
+    if (_energySession == session.sessionId &&
+        lastKcal != null &&
+        lastAt != null &&
+        total >= lastKcal) {
+      if (total - lastKcal < 0.5 ||
+          at.difference(lastAt) < const Duration(seconds: 5)) {
+        return;
+      }
+    }
+    final envelope = <String, Object?>{
+      'protocolVersion': SyncProtocolValidator.protocolVersion,
+      'messageId':
+          'msg-energy-${session.sessionId}-${at.toUtc().millisecondsSinceEpoch}',
+      'sessionId': session.sessionId,
+      'type': 'energy_live',
+      'origin': 'watch',
+      'sentAt': utcIso(at),
+      'payload': {'activeEnergyKcal': total, 'at': utcIso(at)},
+    };
+    final rejections =
+        _validator?.validateEnvelope(envelope) ??
+        const <SyncProtocolRejection>[];
+    if (rejections.isNotEmpty) return;
+    _energySession = session.sessionId;
+    _energyKcal = total;
+    _energyAt = at;
+    _emit(envelope);
   }
 
   /// The messages the phone still owes a receipt for, rebuilt from storage.

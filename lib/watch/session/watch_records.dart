@@ -171,8 +171,8 @@ abstract final class WatchSensorKind {
   static const String steps = 'steps';
 
   /// The platform workout's active energy since it began, in kilocalories,
-  /// cumulative. Vocabulary only on this client: it keeps the kind list equal
-  /// to the shared contract, and nothing here records it.
+  /// cumulative. The Wear wrist records it (plan 305); the shared contract
+  /// names it for both clients.
   static const String activeEnergy = 'energy';
 
   static const List<String> all = [

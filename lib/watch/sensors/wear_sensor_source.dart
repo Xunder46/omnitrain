@@ -24,22 +24,30 @@ import 'package:flutter/services.dart';
 import 'watch_platform_workout.dart';
 import 'watch_sensor_recording.dart';
 
-class WearSensorSource implements WatchSensorSource {
+class WearSensorSource implements WatchSensorSource, WatchEnergySource {
   WearSensorSource({
     MethodChannel? methods,
     EventChannel? heartRateEvents,
     EventChannel? locationEvents,
+    EventChannel? energyEvents,
   }) : _methods = methods ?? const MethodChannel(methodsName),
        _heartRateEvents = heartRateEvents ?? const EventChannel(heartRateName),
-       _locationEvents = locationEvents ?? const EventChannel(locationName);
+       _locationEvents = locationEvents ?? const EventChannel(locationName),
+       _energyEvents = energyEvents ?? const EventChannel(energyName);
 
   static const String methodsName = 'omnitrain/wear_sensors/methods';
   static const String heartRateName = 'omnitrain/wear_sensors/heart_rate';
   static const String locationName = 'omnitrain/wear_sensors/location';
 
+  /// Cumulative kilocalories of the platform workout (plan 305, D-30507): the
+  /// native half answers `activeEnergyPermission` on the methods channel and
+  /// streams the numbers here.
+  static const String energyName = 'omnitrain/wear_sensors/energy';
+
   final MethodChannel _methods;
   final EventChannel _heartRateEvents;
   final EventChannel _locationEvents;
+  final EventChannel _energyEvents;
 
   @override
   Future<WatchSensorPermission> heartRatePermission() =>
@@ -48,6 +56,13 @@ class WearSensorSource implements WatchSensorSource {
   @override
   Future<WatchSensorPermission> locationPermission() =>
       _permission('locationPermission');
+
+  @override
+  Future<WatchSensorPermission> activeEnergyPermission() =>
+      _permission('activeEnergyPermission');
+
+  @override
+  Stream<double> activeEnergy() => _numbers(_energyEvents);
 
   @override
   Stream<double> heartRate() => _numbers(_heartRateEvents);

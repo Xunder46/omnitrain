@@ -393,12 +393,23 @@ class WearWatchTransport implements WatchSyncTransport {
     return session is String && session.isNotEmpty ? session : null;
   }
 
-  void _noteSent(Map<String, Object?> frame, String outcome) =>
-      _diagnostics?.note(
-        'frame_sent',
-        session: _sessionOf(frame),
-        detail: '${_nameOf(frame)} $outcome',
-      );
+  /// The types the log coalesces to one line a minute when sent live, as the
+  /// Apple bridge's `chattyTypes` does (plan 305, D-30508): a live reading every
+  /// few seconds would push everything else out of the 3000-line log. The phone
+  /// never sends the wrist such a frame, so receiving is not coalesced.
+  static const Set<String> chattyTypes = {'energy_live'};
+
+  void _noteSent(Map<String, Object?> frame, String outcome) {
+    final name = _nameOf(frame);
+    _diagnostics?.note(
+      'frame_sent',
+      session: _sessionOf(frame),
+      detail: '$name $outcome',
+      coalesce: outcome == 'live' && chattyTypes.contains(name)
+          ? 'frame_sent/$name'
+          : null,
+    );
+  }
 
   void _noteNotSent(Map<String, Object?> frame, Object error) =>
       _diagnostics?.note(

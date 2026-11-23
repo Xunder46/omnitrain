@@ -117,12 +117,18 @@ class _WatchRestScreenState extends State<WatchRestScreen> {
                   ),
                   Expanded(
                     child: Center(
-                      child: Text(
-                        _elapsed(),
-                        style: styles.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: scheme.onSurface,
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _elapsed(),
+                            style: styles.headlineMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onSurface,
+                            ),
+                          ),
+                          ..._burned(styles, scheme),
+                        ],
                       ),
                     ),
                   ),
@@ -142,6 +148,33 @@ class _WatchRestScreenState extends State<WatchRestScreen> {
         ),
       ),
     );
+  }
+
+  /// The burned total under the clock (plan 305, D-30506): one small secondary
+  /// line, scaled down rather than overflowing, and nothing at all until at
+  /// least half a kilocalorie has been measured.
+  List<Widget> _burned(TextTheme styles, ColorScheme scheme) {
+    final label = widget.state.activeEnergyLabel;
+    if (label == null) return const [];
+    final kcal = widget.state.readings.activeEnergyKcal?.round() ?? 0;
+    return [
+      Semantics(
+        label: 'Calories burned',
+        value: kcal == 1 ? '1 kilocalorie burned' : '$kcal kilocalories burned',
+        excludeSemantics: true,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            maxLines: 1,
+            style: styles.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+      ),
+    ];
   }
 
   /// The rest's elapsed time as "m:ss", read from the persisted row at this

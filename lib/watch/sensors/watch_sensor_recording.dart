@@ -67,10 +67,26 @@ abstract interface class WatchSensorSource {
   Stream<WatchLocationFix> location();
 }
 
+/// The platform's active-energy counter, as an optional addition to a
+/// [WatchSensorSource] (plan 305, D-30501): a source that also implements this
+/// is asked for energy, and one that does not is simply a wrist without a
+/// calorie count. A separate interface rather than two more members of the
+/// source, so every existing source and test double stays as it is.
+abstract interface class WatchEnergySource {
+  Future<WatchSensorPermission> activeEnergyPermission();
+
+  /// The workout's active energy since it began, in kilocalories, cumulative.
+  Stream<double> activeEnergy();
+}
+
 /// What the sensors are reading right now, resolved together because a readout
 /// shows them together.
 class WatchSensorReadings {
-  const WatchSensorReadings({this.heartRate, this.distanceMeters});
+  const WatchSensorReadings({
+    this.heartRate,
+    this.distanceMeters,
+    this.activeEnergyKcal,
+  });
 
   /// Nothing measured yet: the state a session starts in, and the state a
   /// surface with no sensors at all stays in.
@@ -82,6 +98,10 @@ class WatchSensorReadings {
   /// Metres covered: the settled total once recording has stopped, and the
   /// latest fix while it runs.
   final double? distanceMeters;
+
+  /// The platform workout's active energy so far, in kilocalories: the newest
+  /// stored cumulative count, or null when none has been recorded.
+  final double? activeEnergyKcal;
 }
 
 /// The sensors of a running session, writing what they read into the session's
@@ -103,6 +123,7 @@ class WatchSensorRecorder {
 
   StreamSubscription<double>? _beats;
   StreamSubscription<WatchLocationFix>? _fixes;
+  StreamSubscription<double>? _energy;
 
   bool _measuringDistance = false;
 
@@ -118,6 +139,7 @@ class WatchSensorRecorder {
       distanceMeters:
           newest[WatchSensorKind.distance]?.value ??
           newest[WatchSensorKind.gps]?.value,
+      activeEnergyKcal: newest[WatchSensorKind.activeEnergy]?.value,
     );
   }
 
@@ -129,6 +151,7 @@ class WatchSensorRecorder {
   /// warming up a radio it will never use (S-001, S-002; plan 205).
   Future<void> start(WatchSessionRecord session) async {
     await _startHeartRate();
+    await _startActiveEnergy();
 
     final capabilities = <String>[
       for (final capability
@@ -153,8 +176,10 @@ class WatchSensorRecorder {
   Future<void> stop() async {
     await _beats?.cancel();
     await _fixes?.cancel();
+    await _energy?.cancel();
     _beats = null;
     _fixes = null;
+    _energy = null;
 
     if (!_measuringDistance) return;
     _measuringDistance = false;
@@ -173,6 +198,42 @@ class WatchSensorRecorder {
       return;
     }
     _beats = _source.heartRate().listen(_onBeat);
+  }
+
+  /// Active energy is counted for every session the user allows it for,
+  /// whatever its modality, and stored like heart rate (plan 305, D-30502).
+  Future<void> _startActiveEnergy() async {
+    // Tested as an Object: the two interfaces are unrelated, so the source
+    // itself does not promote to both.
+    final Object source = _source;
+    if (source is! WatchEnergySource) return;
+    if (await source.activeEnergyPermission() !=
+        WatchSensorPermission.granted) {
+      return;
+    }
+    await _energy?.cancel();
+    _energy = source.activeEnergy().listen(_onEnergy);
+  }
+
+  /// Stores the count at the instant it arrived, then announces the same
+  /// reading with that instant, so the frame the phone gets is stamped with the
+  /// row it sits beside. A failure to store never reaches the sensor stream.
+  void _onEnergy(double kilocalories) {
+    final instant = _clock();
+    unawaited(_storeAndAnnounce(kilocalories, instant));
+  }
+
+  Future<void> _storeAndAnnounce(double kilocalories, DateTime instant) async {
+    try {
+      await _engine.appendSensorSample(
+        kind: WatchSensorKind.activeEnergy,
+        value: kilocalories,
+        recordedAt: instant,
+      );
+      _engine.announceEnergy(kilocalories: kilocalories, at: instant);
+    } on Object {
+      // Logging never depends on a sensor: the next reading tries again.
+    }
   }
 
   void _onBeat(double beatsPerMinute) =>

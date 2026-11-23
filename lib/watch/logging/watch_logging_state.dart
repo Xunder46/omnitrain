@@ -102,7 +102,12 @@ abstract final class WatchSensorPace {
 /// Three strings ready to render, not measurements — the raw values are
 /// [WatchSensorReadings], which the sensors layer owns.
 class WatchSensorLabels {
-  const WatchSensorLabels({this.heartRate, this.distance, this.pace});
+  const WatchSensorLabels({
+    this.heartRate,
+    this.distance,
+    this.pace,
+    this.activeEnergy,
+  });
 
   /// Nothing to show — what a session with no sensors stays at.
   static const WatchSensorLabels none = WatchSensorLabels();
@@ -115,6 +120,10 @@ class WatchSensorLabels {
 
   /// Minutes per display unit of distance.
   final String? pace;
+
+  /// The burned total as the rest screen prints it (`96 kcal burned`), only once
+  /// at least half a kilocalorie has been measured (plan 305, D-30506).
+  final String? activeEnergy;
 }
 
 /// The value screen for the effort the session is currently on.
@@ -277,8 +286,20 @@ class WatchLoggingState {
       heartRate: readings.heartRate?.round().toString(),
       distance: _distanceLabelFor(readings.distanceMeters),
       pace: _paceLabelFor(readings.distanceMeters),
+      activeEnergy: _activeEnergyLabelFor(readings.activeEnergyKcal),
     );
   }
+
+  /// The burned total, as the wrist prints it, and only once at least half a
+  /// kilocalorie has been measured (plan 305, D-30506).
+  String? _activeEnergyLabelFor(double? kilocalories) =>
+      kilocalories == null || kilocalories < 0.5
+      ? null
+      : '${kilocalories.round()} kcal burned';
+
+  /// The burned total as the rest screen prints it, or null when nothing worth
+  /// showing has been measured.
+  String? get activeEnergyLabel => sensorLabels.activeEnergy;
 
   /// The newest heart rate the sensors stored, or null when none has been.
   double? get heartRate => readings.heartRate;
@@ -679,7 +700,6 @@ class WatchLoggingState {
     // D-162: a rest can never outlive the entry that follows it, whichever
     // path logs — a running rest ends at this log's instant.
     if (isResting) await endRest(at: loggedAt);
-
 
     final stored = await _engine.appendObservation(event);
     // The verdict is a synchronous in-memory comparison against the frame and
