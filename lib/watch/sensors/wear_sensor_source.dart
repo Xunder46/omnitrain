@@ -24,7 +24,8 @@ import 'package:flutter/services.dart';
 import 'watch_platform_workout.dart';
 import 'watch_sensor_recording.dart';
 
-class WearSensorSource implements WatchSensorSource, WatchEnergySource {
+class WearSensorSource
+    implements WatchSensorSource, WatchEnergySource, WatchNotificationSource {
   WearSensorSource({
     MethodChannel? methods,
     EventChannel? heartRateEvents,
@@ -72,6 +73,18 @@ class WearSensorSource implements WatchSensorSource, WatchEnergySource {
 
   @override
   Stream<double> activeEnergy() => _numbers(_energyEvents);
+
+  /// A refusal is remembered for the life of the process, like the calories one
+  /// (plan 309): the question is asked once per run.
+  bool _notificationRefused = false;
+
+  @override
+  Future<WatchSensorPermission> notificationPermission() async {
+    if (_notificationRefused) return WatchSensorPermission.denied;
+    final answer = await _permission('notificationPermission');
+    if (answer == WatchSensorPermission.denied) _notificationRefused = true;
+    return answer;
+  }
 
   @override
   Stream<double> heartRate() => _numbers(_heartRateEvents);
@@ -133,12 +146,27 @@ class WearPlatformWorkoutStore implements WatchPlatformWorkoutStore {
         return;
       }
       await _askEnergy();
+      await _askNotifications();
       await _methods.invokeMethod<void>(
         'begin',
         WatchActivityTypes.wearFor(activityType),
       );
     } on Object {
       return;
+    }
+  }
+
+  /// The notification permission, asked after the calories one and before the
+  /// workout starts (plan 309): the chip on the watch face needs the notification
+  /// the workout's service posts. The answer is not needed here; a source without
+  /// the question asks nothing, and a workout without the chip is still a workout.
+  Future<void> _askNotifications() async {
+    final Object source = _source;
+    if (source is! WatchNotificationSource) return;
+    try {
+      await source.notificationPermission();
+    } on Object {
+      // No chip, no failure.
     }
   }
 

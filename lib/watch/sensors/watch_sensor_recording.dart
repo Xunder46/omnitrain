@@ -79,6 +79,14 @@ abstract interface class WatchEnergySource {
   Stream<double> activeEnergy();
 }
 
+/// The notification permission, as an optional addition to a
+/// [WatchSensorSource] (plan 309): the watch-face chip of a running workout is
+/// tied to a posted notification, which the system blocks without it. A separate
+/// interface for the same reason [WatchEnergySource] is one.
+abstract interface class WatchNotificationSource {
+  Future<WatchSensorPermission> notificationPermission();
+}
+
 /// What the sensors are reading right now, resolved together because a readout
 /// shows them together.
 class WatchSensorReadings {

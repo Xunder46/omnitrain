@@ -43,6 +43,9 @@ class WearWorkout(
     /** The callback of the exercise this process started, cleared when it ends. */
     private var updates: ExerciseUpdateCallback? = null
 
+    /** The Health Connect name of the workout being started: the watch-face chip's words (plan 309). */
+    private var activityName: String? = null
+
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "begin" -> begin(call.arguments as? String, result)
@@ -58,6 +61,7 @@ class WearWorkout(
             return
         }
         val type = exerciseTypeFor(name)
+        activityName = name
         val capabilities = try {
             client().getCapabilitiesAsync()
         } catch (error: Exception) {
@@ -189,7 +193,10 @@ class WearWorkout(
     /** The service keeps the process alive while the exercise runs. */
     private fun startService() {
         try {
-            activity.startForegroundService(Intent(activity, WorkoutService::class.java))
+            activity.startForegroundService(
+                Intent(activity, WorkoutService::class.java)
+                    .putExtra(WorkoutService.EXTRA_ACTIVITY, activityName),
+            )
         } catch (error: Exception) {
             // The exercise still runs; only the process priority is lost.
         }

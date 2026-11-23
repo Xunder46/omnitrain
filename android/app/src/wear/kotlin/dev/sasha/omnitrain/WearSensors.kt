@@ -45,6 +45,7 @@ class WearSensors(
         private const val REQUEST_HEART_RATE = 29801
         private const val REQUEST_LOCATION = 29802
         private const val REQUEST_ACTIVITY = 29803
+        private const val REQUEST_NOTIFICATIONS = 29804
 
         /** How often high-accuracy fixes are asked for, and the smallest step worth one (plan 299). */
         private const val LOCATION_INTERVAL_MS = 2000L
@@ -63,6 +64,7 @@ class WearSensors(
     private val waiting = mutableListOf<MethodChannel.Result>()
     private val waitingLocation = mutableListOf<MethodChannel.Result>()
     private val waitingActivity = mutableListOf<MethodChannel.Result>()
+    private val waitingNotifications = mutableListOf<MethodChannel.Result>()
 
     private val tracker = DistanceTracker()
     private var locationSink: EventChannel.EventSink? = null
@@ -89,6 +91,7 @@ class WearSensors(
             "heartRatePermission" -> heartRatePermission(result)
             "locationPermission" -> locationPermission(result)
             "activeEnergyPermission" -> activeEnergyPermission(result)
+            "notificationPermission" -> notificationPermission(result)
             else -> result.notImplemented()
         }
     }
@@ -132,6 +135,7 @@ class WearSensors(
         REQUEST_HEART_RATE -> answerHeartRate(grantResults)
         REQUEST_LOCATION -> answerLocation(permissions, grantResults)
         REQUEST_ACTIVITY -> answerActivity(grantResults)
+        REQUEST_NOTIFICATIONS -> answerNotifications(grantResults)
         else -> false
     }
 
@@ -234,6 +238,43 @@ class WearSensors(
         val answer = if (granted) "granted" else "denied"
         val pending = waitingActivity.toList()
         waitingActivity.clear()
+        for (result in pending) result.success(answer)
+        return true
+    }
+
+    // MARK: - Notification permission (plan 309)
+
+    /**
+     * The watch-face chip of a running workout is tied to a posted notification,
+     * and since Android 13 a notification needs this permission: without it the
+     * system blocks the notification and no chip shows. Before Android 13 there
+     * is nothing to ask.
+     */
+    private fun notificationPermission(result: MethodChannel.Result) {
+        when {
+            Build.VERSION.SDK_INT < 33 -> result.success("granted")
+            activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED -> result.success("granted")
+            else -> askNotifications(result)
+        }
+    }
+
+    private fun askNotifications(result: MethodChannel.Result) {
+        waitingNotifications.add(result)
+        if (waitingNotifications.size == 1) {
+            activity.requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                REQUEST_NOTIFICATIONS,
+            )
+        }
+    }
+
+    private fun answerNotifications(grantResults: IntArray): Boolean {
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        val answer = if (granted) "granted" else "denied"
+        val pending = waitingNotifications.toList()
+        waitingNotifications.clear()
         for (result in pending) result.success(answer)
         return true
     }

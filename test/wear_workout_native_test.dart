@@ -136,12 +136,13 @@ void main() {
     expect(
       service,
       contains(
-        'startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)',
+        'startForeground(NOTIFICATION_ID, builder.build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)',
       ),
     );
     expect(service, contains('.setOngoing(true)'));
     expect(service, contains('return START_NOT_STICKY'));
-    expect(service, contains('.setContentText("Workout in progress")'));
+    // Plan 309: the text names the activity (`Workout` when it is not known).
+    expect(service, contains('.setContentText("\$label in progress")'));
 
     final wear = _read('android/app/src/wear/AndroidManifest.xml');
     expect(

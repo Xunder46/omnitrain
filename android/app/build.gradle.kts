@@ -114,4 +114,8 @@ dependencies {
     "wearImplementation"("com.google.guava:guava:33.0.0-android")
     // The wrist's distance (plan 299): fused location.
     "wearImplementation"("com.google.android.gms:play-services-location:21.3.0")
+    // The watch-face chip of a running workout (plan 309): the Ongoing Activity
+    // builder takes a NotificationCompat builder.
+    "wearImplementation"("androidx.wear:wear-ongoing:1.0.0")
+    "wearImplementation"("androidx.core:core:1.13.1")
 }

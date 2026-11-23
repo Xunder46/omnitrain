@@ -25,6 +25,12 @@
     <!-- Calories (plan 306): the workout's energy needs the physical-activity permission. -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
+    <!--
+      The watch-face chip of a running workout (plan 309) is tied to a posted
+      notification, which Android 13 and later blocks without this permission.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- The platform workout (plan 300): a health foreground service keeps the process. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
