@@ -575,6 +575,12 @@ checks, run on real hardware:
    opens the app when tapped, and the recents list shows `<activity> m:ss`
    counting up; end the workout and it goes; decline the question and the
    workout works with no chip, and the question is not asked again in that run
+25. (owner) on a real Wear watch paired with an Android phone: end a workout
+   that logged two sets of one exercise and then two of another, with heart
+   rate allowed; on the phone the saved session shows an average and a maximum
+   heart rate for the whole session and one for each exercise block, matching
+   the `Workout done` screen's `Avg HR` on the watch; with heart rate refused
+   the session shows none and nothing else changes
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

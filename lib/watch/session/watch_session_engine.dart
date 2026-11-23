@@ -264,15 +264,20 @@ class WatchSessionEngine {
   /// [observations] is the log as appended — nothing in it is ever rewritten.
   /// A correction is therefore a projection, not an edit, which is what keeps
   /// the store append-only and the phone the only side that can edit history.
-  List<WatchObservationRecord> get entries {
+  List<WatchObservationRecord> get entries => _entriesFor(_session?.sessionId);
+
+  /// [entries] for [sessionId]: the same projection over that session's rows,
+  /// so the session that is ending can be read whatever the current session is
+  /// (plan 310, D-31005).
+  List<WatchObservationRecord> _entriesFor(String? sessionId) {
     final projected = <WatchObservationRecord>[
-      for (final observation in observations)
-        if (!_deletedEntryIds.contains(observation.entryId))
+      for (final observation in _observations)
+        if (observation.sessionId == sessionId &&
+            !_deletedEntryIds.contains(observation.entryId))
           switch (_entryCorrections[observation.entryId]) {
             null => observation,
-            final correction when _replacedEntryIds.contains(
-              observation.entryId,
-            ) =>
+            final correction
+                when _replacedEntryIds.contains(observation.entryId) =>
               // D-113.3: a re-stated id with a new stamp **is** the whole entry,
               // so the held row's keys it does not carry are gone with it.
               observation.withPayload(correction),
@@ -744,6 +749,37 @@ class WatchSessionEngine {
       creation.startedAt,
       endedAt,
     );
+    // The heart rate over the whole session and over each set block (plan 310,
+    // D-31004). A window with nothing measured is left out, never zeroed.
+    final started = WatchSensorSummaries.wireInstant(creation.startedAt);
+    final ended = WatchSensorSummaries.wireInstant(endedAt);
+    final samples = [
+      for (final sample in _sensorSamples)
+        if (sample.sessionId == sessionId) sample,
+    ];
+    final sessionHeartRate = WatchSensorSummaries.heartRate(
+      samples,
+      started,
+      ended,
+    );
+    final blocks = <Map<String, Object?>>[];
+    for (final span in WatchSensorSummaries.blockSpans([
+      for (final entry in _entriesFor(sessionId)) entry.payload,
+    ], started)) {
+      final pair = WatchSensorSummaries.heartRate(
+        samples,
+        span.startedAt,
+        span.endedAt,
+      );
+      if (pair == null) continue;
+      blocks.add({
+        'sessionExerciseId': span.sessionExerciseId,
+        'exerciseId': span.exerciseId,
+        'startedAt': utcIso(span.startedAt),
+        'endedAt': utcIso(span.endedAt),
+        ...pair.fields,
+      });
+    }
     return {
       'entryId': id,
       'eventId': id,
@@ -757,6 +793,8 @@ class WatchSessionEngine {
       if (creation.source != 'watch') 'followed': true,
       if (modality != null && modality.isNotEmpty) 'modality': modality,
       'activeEnergyKcal': ?kcal,
+      if (sessionHeartRate != null) ...sessionHeartRate.fields,
+      if (blocks.isNotEmpty) 'setBlockHeartRates': blocks,
     };
   }
 
