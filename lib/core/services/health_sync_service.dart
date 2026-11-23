@@ -47,6 +47,10 @@ class HealthSyncService {
   final bool Function() _isWriteEnabled;
   final bool Function() _isReadEnabled;
 
+  /// The measured energy each workout written or rewritten this run carries,
+  /// so the same energy arriving again rewrites nothing (plan 307 D-30704).
+  final Map<String, double> _energyWritten = {};
+
   /// Sessions written during this process. The persisted ledger covers
   /// restarts; this set also prevents a double fire within one run
   /// without a ledger round-trip.
@@ -80,12 +84,14 @@ class HealthSyncService {
     try {
       if (await _ledgerContains(session.id)) return;
 
+      final energyKcal = await _measuredEnergyKcal(session.id);
       final written = await _platform.writeWorkout(
         HealthWorkoutDraft(
           activityKind: await _activityKindOf(session),
           start: DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
           end: DateTime.fromMillisecondsSinceEpoch(endedAtMs),
           title: session.title,
+          energyKcal: energyKcal,
         ),
       );
       if (!written) {
@@ -96,6 +102,7 @@ class HealthSyncService {
       }
 
       _writtenThisRun.add(session.id);
+      if (energyKcal != null) _energyWritten[session.id] = energyKcal;
       await _rememberWritten(session.id);
     } catch (e) {
       debugPrint('Health workout write skipped: $e');
@@ -131,7 +138,64 @@ class HealthSyncService {
     if (endedAtMs == null) return;
     if (!_isWriteEnabled()) return;
     if (endedAtMs <= previousEndedAtMs) return;
+    await _replaceWorkout(session, previousEndedAtMs: previousEndedAtMs);
+  }
 
+  /// A workout a watch measured the energy of arrives after the workout was
+  /// written (plan 307 D-30704): the wrist's `completed` ends the session
+  /// first and the end entry carrying the energy is imported a moment later.
+  /// When the ledger names the session as written by this phone and the
+  /// measured energy differs from what the workout carries, the workout is
+  /// replaced once with it. A session this phone did not write (the Apple
+  /// watch's own workout) is left entirely alone, the same rule as
+  /// [rewriteWorkout]. Best-effort: nothing throws.
+  Future<void> onEnergyAttached(TrainingSession session) async {
+    final endedAtMs = session.endedAtMs;
+    if (endedAtMs == null) return;
+    if (!_isWriteEnabled()) return;
+    try {
+      final energyKcal = await _measuredEnergyKcal(session.id);
+      if (energyKcal == null) return;
+      if (_energyWritten[session.id] == energyKcal) return;
+      // The ledger check is `_replaceWorkout`'s: a session this phone did not
+      // write is left alone there.
+      await _replaceWorkout(
+        session,
+        previousEndedAtMs: endedAtMs,
+        energyKcal: energyKcal,
+      );
+    } catch (e) {
+      debugPrint('Health workout energy update skipped: $e');
+    }
+  }
+
+  /// The energy a watch measured for the session, in whole kilocalories, or
+  /// null for none and for an estimate: an estimate is never written to a
+  /// health store as if it had been measured.
+  Future<double?> _measuredEnergyKcal(String sessionId) async {
+    try {
+      final energy = await _repository.getSessionEnergy(sessionId);
+      if (energy == null || energy.source != SessionEnergy.sourceMeasured) {
+        return null;
+      }
+      final kcal = energy.activeKcal;
+      return kcal.isFinite && kcal > 0 ? kcal.roundToDouble() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The delete-then-write at the heart of [rewriteWorkout], with the energy
+  /// the session now carries (D-15404: a write that fails writes the previous
+  /// span back).
+  Future<void> _replaceWorkout(
+    TrainingSession session, {
+    required int previousEndedAtMs,
+    double? energyKcal,
+  }) async {
+    final endedAtMs = session.endedAtMs;
+    if (endedAtMs == null) return;
+    energyKcal ??= await _measuredEnergyKcal(session.id);
     try {
       if (!await _ledgerContains(session.id)) return;
 
@@ -162,6 +226,7 @@ class HealthSyncService {
             start: start,
             end: end,
             title: session.title,
+            energyKcal: energyKcal,
           ),
         );
       } catch (e) {
@@ -176,6 +241,7 @@ class HealthSyncService {
         );
         return;
       }
+      if (energyKcal != null) _energyWritten[session.id] = energyKcal;
 
       final rating = session.sessionFeeling;
       final score = rating == null ? null : ratingToAppleEffort(rating);

@@ -157,7 +157,13 @@ class HealthPluginPlatformService
   @override
   Future<bool> requestWritePermission() async {
     await _invokeEffort('requestAuthorization');
-    return _requestPermission([HealthDataType.WORKOUT], write: true);
+    // Health Connect inserts the exercise session and its calories in one call
+    // (plan 307 D-30705), so the calories permission is asked with the
+    // workout's; iOS has no such type here.
+    return _requestPermission([
+      HealthDataType.WORKOUT,
+      if (!_isIOS) HealthDataType.TOTAL_CALORIES_BURNED,
+    ], write: true);
   }
 
   @override
@@ -218,6 +224,20 @@ class HealthPluginPlatformService
 
   @override
   Future<bool> writeWorkout(HealthWorkoutDraft workout) async {
+    final energy = workout.energyKcal;
+    final kcal = energy == null || !energy.isFinite || energy <= 0
+        ? null
+        : energy.round();
+    // Health Connect writes the session and its calories in one all-or-nothing
+    // call, so a missing calories permission fails the whole write; the
+    // workout is then written without them (plan 307 D-30705).
+    if (kcal != null && kcal > 0) {
+      if (await _writeWorkoutOnce(workout, kcal)) return true;
+    }
+    return _writeWorkoutOnce(workout, null);
+  }
+
+  Future<bool> _writeWorkoutOnce(HealthWorkoutDraft workout, int? kcal) async {
     try {
       return await _health.writeWorkoutData(
         activityType: pluginActivityTypeFor(
@@ -226,6 +246,7 @@ class HealthPluginPlatformService
         ),
         start: workout.start,
         end: workout.end,
+        totalEnergyBurned: kcal,
         title: workout.title,
       );
     } catch (e) {
@@ -333,7 +354,12 @@ class HealthPluginPlatformService
     try {
       return await _health.requestAuthorization(
         types,
-        permissions: [write ? HealthDataAccess.WRITE : HealthDataAccess.READ],
+        // One access entry per type: the plugin refuses a list of another
+        // length (plan 307: the workout and its calories are asked together).
+        permissions: List.filled(
+          types.length,
+          write ? HealthDataAccess.WRITE : HealthDataAccess.READ,
+        ),
       );
     } catch (e) {
       debugPrint('Health permission request failed: $e');

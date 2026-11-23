@@ -77,6 +77,12 @@ class SessionCore {
   /// without a watch; the phone's end then writes as it always has.
   final bool Function(String sessionId)? _wristRunsSession;
 
+  /// Whether the wrist saves its own Health workout (plan 307 D-30702): true
+  /// for the Apple watch, false for a Wear watch, whose workout reaches Health
+  /// Connect only through the phone's write. Defaults to true, the behaviour
+  /// before plan 307.
+  final bool _wristSavesOwnWorkout;
+
   /// Plan 218: runs the finish's drop of a watch-linked workout behind the
   /// inbox's queued import passes. Null in tests and builds without a
   /// watch: the drop then runs directly.
@@ -134,6 +140,7 @@ class SessionCore {
     HealthSyncService? healthSync,
     WatchLateEntryRecovery? lateEntryRecovery,
     bool Function(String sessionId)? wristRunsSession,
+    bool wristSavesOwnWorkout = true,
 
     /// Plan 218: runs the finish's drop of a watch-linked workout behind the
     /// inbox's queued import passes. Null in tests and builds without a
@@ -156,6 +163,7 @@ class SessionCore {
        _healthSync = healthSync,
        _lateEntryRecovery = lateEntryRecovery,
        _wristRunsSession = wristRunsSession,
+       _wristSavesOwnWorkout = wristSavesOwnWorkout,
        _afterPendingWristImports = afterPendingWristImports,
        _onSessionEnded = onSessionEnded,
        _activeEnergy = activeEnergy {

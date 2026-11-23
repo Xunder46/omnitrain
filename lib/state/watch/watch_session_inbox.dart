@@ -486,6 +486,20 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     }
   }
 
+  /// Gives the health sync the session whose wrist summary a pass just stored,
+  /// so a workout written before its measured energy arrived is replaced with
+  /// it (plan 307 D-30704). The service decides whether anything changes.
+  Future<void> _sendEnergyToHealth(String sessionId) async {
+    final healthSync = _healthSync;
+    if (healthSync == null) return;
+    try {
+      final session = await _repository.getSession(sessionId);
+      if (session != null) await healthSync.onEnergyAttached(session);
+    } catch (_) {
+      // The summary is imported; the workout only lacks the calories.
+    }
+  }
+
   /// Rewrites the Health workout of a session a pass moved the end of
   /// (plan 146c D-14634) — the service itself decides whether the phone wrote
   /// it (D-14636). A failed read only means no rewrite.
@@ -533,6 +547,7 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
       }
       if (pass.sensorSummaryAttached) {
         await _onSensorSummaryAttached?.call(sessionId);
+        await _sendEnergyToHealth(sessionId);
       }
       final endMovedFromMs = pass.endMovedFromMs;
       if (endMovedFromMs != null) {

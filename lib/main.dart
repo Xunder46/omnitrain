@@ -425,6 +425,9 @@ Future<Widget> runStartup({
     // Plan 89c1 D-2: a session the wrist is running gets its Fitness workout
     // from the watch, so the phone's own end does not write a second one.
     wristRunsSession: watchSync?.mirror.wristRunsSession,
+    // Plan 307: the Apple watch saves its own workout; a Wear watch does not,
+    // so on Android the phone writes the workout for a wrist-run session.
+    wristSavesOwnWorkout: defaultTargetPlatform != TargetPlatform.android,
     // Plan 218: the phone's end of a wrist-linked workout drops its planned
     // sets behind the inbox's queued import passes.
     afterPendingWristImports: watchSync?.afterPendingImports,

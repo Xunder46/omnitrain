@@ -569,6 +569,11 @@ checks, run on real hardware:
    decline the question and the workout, the heart rate and logging all work
    with no calorie line, and the question is not asked a second time in that
    run
+23. (owner) on a real Wear watch paired with an Android phone that has
+   Write workouts on: finish a workout on the watch; once the phone has it, Health
+   Connect shows ONE workout with the session's start, end and calories (no
+   second copy, even after the watch syncs again); with the setting off nothing
+   is written; deleting the session on the phone removes the workout
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

@@ -63,6 +63,7 @@ class WorkoutState extends ChangeNotifier {
     WatchLateEntryRecovery? watchLateEntryRecovery,
     DateTime Function()? clock,
     bool Function(String sessionId)? wristRunsSession,
+    bool wristSavesOwnWorkout = true,
 
     /// Plan 218: runs the finish's drop of a watch-linked workout behind the
     /// inbox's queued import passes. Null in tests and builds without a
@@ -103,6 +104,7 @@ class WorkoutState extends ChangeNotifier {
       healthSync: healthSync,
       lateEntryRecovery: watchLateEntryRecovery,
       wristRunsSession: wristRunsSession,
+      wristSavesOwnWorkout: wristSavesOwnWorkout,
       afterPendingWristImports: afterPendingWristImports,
       onSessionEnded: onSessionEnded,
       activeEnergy: activeEnergy,
@@ -272,6 +274,7 @@ class WorkoutState extends ChangeNotifier {
 
   Future<void> populateSessionFromManifest(RoutineSessionManifest manifest) =>
       _sessionCore.populateSessionFromManifest(manifest);
+
   /// Ends the session. [writeToHealth] false skips the Health write-back: the
   /// wrist's own end, whose workout the watch already saved (plan 89c1 D-1).
   Future<void> endSession({bool writeToHealth = true, int? atMs}) =>
@@ -321,6 +324,7 @@ class WorkoutState extends ChangeNotifier {
       count: (wristSummary.value?.count ?? 0) + 1,
     );
   }
+
   Future<void> updateSessionRpe(String sessionId, double rpe) =>
       _sessionCore.updateSessionRpe(sessionId, rpe);
   Future<void> restoreSessionSnapshot(SessionEditSnapshot snapshot) =>
@@ -345,6 +349,7 @@ class WorkoutState extends ChangeNotifier {
     List<SegmentEffort> efforts, {
     required String sessionId,
   }) => _sessionCore.appendSessionSlots(efforts, sessionId: sessionId);
+
   /// Gives an effort its first entry (set or interval) when it has none.
   Future<void> seedFirstEntry(String effortId, {int? atMs}) =>
       _sessionCore.seedFirstEntry(effortId, atMs: atMs);

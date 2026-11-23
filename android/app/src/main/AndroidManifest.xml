@@ -30,6 +30,8 @@
       the app can see whether Health Connect is installed.
     -->
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
+    <!-- Calories of a workout a watch measured (plan 307): written with the workout. -->
+    <uses-permission android:name="android.permission.health.WRITE_TOTAL_CALORIES_BURNED" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
     <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
     <queries>

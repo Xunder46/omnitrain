@@ -110,7 +110,7 @@ Verified by `test/active_energy_service_test.dart` (group `Mock — ActiveEnergy
 
 ### `HealthSyncService`
 
-**File**: `lib/core/services/health_sync_service.dart`
+**File**: `lib/core/services/health_sync_service.dart` (a Wear wrist's workout and its calories: [wear_os_app_calories.md](../wear_os_app_calories.md))
 
 Owns the two opt-in platform-health pipelines (Apple Health / Health Connect):
 writing a completed session out, and reading body weight back in. Constructed

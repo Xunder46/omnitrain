@@ -19,11 +19,16 @@ class HealthWorkoutDraft {
   final DateTime end;
   final String? title;
 
+  /// The energy the workout burned, in kilocalories, when a watch measured it
+  /// (plan 307). Null when nothing was measured: an estimate is never written.
+  final double? energyKcal;
+
   const HealthWorkoutDraft({
     required this.activityKind,
     required this.start,
     required this.end,
     this.title,
+    this.energyKcal,
   });
 }
 

@@ -19,8 +19,10 @@ extension SessionCoreLifecycleMethods on SessionCore {
     if (_currentSession == null) return;
     if (_currentSession!.endedAtMs != null) return;
 
-    final wristSavesWorkout =
-        _wristRunsSession?.call(_currentSession!.id) ?? false;
+    final wristRuns = _wristRunsSession?.call(_currentSession!.id) ?? false;
+    // Plan 307 D-30702: only a wrist that saves its own workout (the Apple
+    // watch) makes the phone skip its Health write; a Wear wrist does not.
+    final wristSavesWorkout = wristRuns && _wristSavesOwnWorkout;
 
     _clearError();
 
@@ -35,7 +37,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
       try {
         final wristHadAHand =
             !writeToHealth ||
-            wristSavesWorkout ||
+            wristRuns ||
             (await _repository.getWatchInboxEntriesForSession(
               _currentSession!.id,
             )).any((row) => row.origin == WatchInboxEntry.originWatch);
@@ -116,7 +118,8 @@ extension SessionCoreLifecycleMethods on SessionCore {
     // contract-bound never to throw, so nothing here can flip the
     // session into an error state.
     final completedSession = _currentSession;
-    if (completedSession != null && writeToHealth && !wristSavesWorkout) {
+    final wristEndSkipsWrite = !writeToHealth && _wristSavesOwnWorkout;
+    if (completedSession != null && !wristEndSkipsWrite && !wristSavesWorkout) {
       await _healthSync?.onSessionCompleted(completedSession);
     }
   }
