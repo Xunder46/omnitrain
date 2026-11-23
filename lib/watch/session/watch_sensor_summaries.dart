@@ -5,6 +5,8 @@
 /// the part the Wear wrist sends: the session's active energy.
 library;
 
+import 'dart:math' as math;
+
 import 'watch_records.dart';
 
 /// One heart-rate pair over a window: what the wire carries as
@@ -47,6 +49,15 @@ final class WatchSetBlockSpan {
 
   /// The block's last set's `loggedAt`.
   final DateTime endedAt;
+}
+
+/// A stretch of a window the wrist's timer was paused for: `[start, end)`,
+/// half-open, so the instant a timer resumes counts again (plan 311, D-31101).
+final class WatchPauseInterval {
+  const WatchPauseInterval({required this.start, required this.end});
+
+  final DateTime start;
+  final DateTime end;
 }
 
 abstract final class WatchSensorSummaries {
@@ -103,13 +114,25 @@ abstract final class WatchSensorSummaries {
   /// The heart-rate pair over `[start, end]`, both ends inclusive, or null when
   /// no reading qualifies. Absence is the answer to "nothing was measured",
   /// never zero.
+  ///
+  /// A reading inside any of [excluding]'s `[start, end)` intervals — the
+  /// stretches of the window the timer was paused for (plan 311, D-31101) — is
+  /// left out: the instant a timer resumes counts again.
   static WatchHeartRateSummary? heartRate(
     Iterable<WatchSensorSampleRecord> samples,
     DateTime start,
-    DateTime end,
-  ) {
+    DateTime end, {
+    List<WatchPauseInterval> excluding = const [],
+  }) {
     final first = start.toUtc().millisecondsSinceEpoch;
     final last = end.toUtc().millisecondsSinceEpoch;
+    final paused = [
+      for (final pause in excluding)
+        (
+          pause.start.toUtc().millisecondsSinceEpoch,
+          pause.end.toUtc().millisecondsSinceEpoch,
+        ),
+    ];
 
     final readings = <double>[];
     for (final sample in samples) {
@@ -117,6 +140,7 @@ abstract final class WatchSensorSummaries {
       if (!sample.value.isFinite || sample.value < lowestHeartRateBpm) continue;
       final at = _ms(sample);
       if (at < first || at > last) continue;
+      if (paused.any((pause) => at >= pause.$1 && at < pause.$2)) continue;
       readings.add(sample.value);
     }
     if (readings.isEmpty) return null;
@@ -137,6 +161,69 @@ abstract final class WatchSensorSummaries {
       averageBpm: mean < lowest ? lowest : (mean > highest ? highest : mean),
       maximumBpm: highest,
     );
+  }
+
+  /// The pauses of the timer that started at [startedAt], read from its stored
+  /// rows (plan 311, D-31102).
+  ///
+  /// A pause begins at a row's `pausedAt`. It ends where that timer next ran
+  /// again (the first later row without a `pausedAt`: that row's `recordedAt`)
+  /// or, when it never did, where the row itself stopped, or else at
+  /// [windowEnd]. [rows] are one timer kind of one session; the rows of the
+  /// timer that timed the entry are the ones that share its start.
+  static List<WatchPauseInterval> pauses(
+    Iterable<WatchTimerRecord> rows,
+    DateTime startedAt,
+    DateTime windowEnd,
+  ) {
+    final started = startedAt.toUtc().millisecondsSinceEpoch;
+    final timer = [
+      for (final row in rows)
+        if (row.startedAt.toUtc().millisecondsSinceEpoch == started) row,
+    ]..sort((a, b) => a.sequence.compareTo(b.sequence));
+
+    final intervals = <WatchPauseInterval>[];
+    for (var index = 0; index < timer.length; index++) {
+      final pausedAt = timer[index].pausedAt;
+      if (pausedAt == null) continue;
+      DateTime? resumedAt;
+      for (var next = index + 1; next < timer.length; next++) {
+        if (timer[next].pausedAt == null) {
+          resumedAt = timer[next].recordedAt;
+          break;
+        }
+      }
+      intervals.add(
+        WatchPauseInterval(
+          start: pausedAt,
+          end: resumedAt ?? timer[index].stoppedAt ?? windowEnd,
+        ),
+      );
+    }
+    return intervals;
+  }
+
+  /// A round's pause as the wire carries it: the countdown's accumulated pause
+  /// plus any pause still open, counted up to the window's end, and never
+  /// longer than the window, which is the protocol's own rule for the field.
+  static int pausedMs(
+    WatchTimerRecord countdown,
+    DateTime windowStart,
+    DateTime windowEnd,
+  ) {
+    int ms(DateTime instant) => instant.toUtc().millisecondsSinceEpoch;
+    final windowMs = math.max(0, ms(windowEnd) - ms(windowStart));
+
+    var paused = math.max(0, countdown.accumulatedPauseMs);
+    final pausedAt = countdown.pausedAt;
+    if (pausedAt != null) {
+      final pauseEnd = math.min(
+        ms(countdown.stoppedAt ?? windowEnd),
+        ms(windowEnd),
+      );
+      paused += math.max(0, pauseEnd - ms(pausedAt));
+    }
+    return math.min(paused, windowMs);
   }
 
   /// The session's set blocks and their spans, in the order the blocks began.

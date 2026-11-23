@@ -27,7 +27,7 @@ Acceptance: S-31001..S-31008 green and each guard red without its change; `flutt
 - **Time edges.** A reading exactly at the start or end instant counts; one a millisecond outside does not. Windows are normalised to wire resolution before comparing so the phone reading the entry's timestamps gets the same set of readings.
 - **Load cost.** One pass over the session's samples and entries at the single moment of ending; a few thousand samples at most for a long workout.
 - **Wording.** No user-visible words change.
-- **Slot competition.** None (no screen). One wire entry grows by at most one pair plus one pair per set block; well inside the protocol's bounds (`setBlockHeartRates` is validated for uniqueness and ordering of the span, `message_validator.dart` 592-640).
+- **Slot competition.** None (no screen). One wire entry grows by at most one pair plus one pair per set block; well inside the protocol's bounds (`setBlockHeartRates` is validated for uniqueness of the (slot, exercise) block and for a complete pair, not for the span order, `message_validator.dart` 592-640).
 
 ## Scenarios
 

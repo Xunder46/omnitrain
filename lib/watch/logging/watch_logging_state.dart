@@ -24,6 +24,7 @@ import '../../core/utils/date_utils.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../sensors/watch_sensor_recording.dart';
 import '../session/watch_records.dart';
+import '../session/watch_sensor_summaries.dart';
 import '../session/watch_session_engine.dart';
 import '../session/watch_timer_math.dart';
 import 'watch_metric_stepping.dart';
@@ -697,6 +698,10 @@ class WatchLoggingState {
       ..._metricPayload(loggedAt),
     };
 
+    // What the wrist measured over the effort's own window, from the readings
+    // it has stored, computed now and never again (plan 311, D-31105).
+    event.addAll(_sensorSummary(_eventKind, event));
+
     // D-162: a rest can never outlive the entry that follows it, whichever
     // path logs — a running rest ends at this log's instant.
     if (isResting) await endRest(at: loggedAt);
@@ -730,11 +735,23 @@ class WatchLoggingState {
     switch (effortKind) {
       case WatchEffortKind.round:
         final window = _roundWindow(loggedAt);
+        // The time the countdown spent paused, which the round's own duration
+        // excludes (plan 311, D-31104). A round with no countdown was never
+        // paused, and a pause of nothing is not sent.
+        final countdown = _engine.timerFor(WatchTimerKind.round);
+        final paused = countdown == null
+            ? 0
+            : WatchSensorSummaries.pausedMs(
+                countdown,
+                WatchSensorSummaries.wireInstant(window.startedAt),
+                WatchSensorSummaries.wireInstant(window.endedAt),
+              );
         return {
           'startedAt': utcIso(window.startedAt),
           'endedAt': utcIso(window.endedAt),
           'roundNumber': (_valueOf(WatchMetricKey.rounds) ?? nextRoundNumber)
               .round(),
+          if (paused > 0) 'pausedMs': paused,
         };
       case WatchEffortKind.set:
         final reps = _valueOf(WatchMetricKey.reps) ?? 1;
@@ -758,6 +775,44 @@ class WatchLoggingState {
           if (extraLoad != null && extraLoad != 0) 'extraLoadKg': extraLoad,
         };
     }
+  }
+
+  /// The heart rate the wrist measured over [event]'s own window (plan 311,
+  /// D-31105): for timed work and holds over the whole window, for a round
+  /// leaving out the time its countdown was paused. A set has no window of its
+  /// own, so it carries nothing; a window with no qualifying reading adds
+  /// nothing.
+  Map<String, Object?> _sensorSummary(String kind, Map<String, Object?> event) {
+    if (kind != WatchObservationKind.timed &&
+        kind != WatchObservationKind.round &&
+        kind != WatchObservationKind.hold) {
+      return const {};
+    }
+    final startedAt = event['startedAt'];
+    final endedAt = event['endedAt'];
+    if (startedAt is! String || endedAt is! String) return const {};
+    final DateTime start;
+    final DateTime end;
+    try {
+      start = parseUtcIso(startedAt);
+      end = parseUtcIso(endedAt);
+    } on Object {
+      return const {};
+    }
+    final pauses = kind == WatchObservationKind.round
+        ? WatchSensorSummaries.pauses(
+            _engine.timerRows(WatchTimerKind.round),
+            start,
+            end,
+          )
+        : const <WatchPauseInterval>[];
+    final pair = WatchSensorSummaries.heartRate(
+      _engine.sensorSamples,
+      start,
+      end,
+      excluding: pauses,
+    );
+    return pair?.fields ?? const {};
   }
 
   Map<String, Object?> _windowPayload(

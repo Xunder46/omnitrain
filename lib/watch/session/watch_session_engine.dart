@@ -257,6 +257,14 @@ class WatchSessionEngine {
   /// The newest row for [kind], which is the timer that applies.
   WatchTimerRecord? timerFor(String kind) => _newestTimer(kind: kind);
 
+  /// The current session's timer rows of [kind], in the order they were
+  /// appended (plan 311, D-31103): a countdown that was paused and resumed
+  /// leaves one row per change, all sharing the timer's start.
+  List<WatchTimerRecord> timerRows(String kind) => List.unmodifiable([
+    for (final row in _timers)
+      if (row.kind == kind && row.sessionId == _session?.sessionId) row,
+  ]);
+
   /// The session's entries as the wrist shows them: the watch's own log plus
   /// the entries the phone sent, with the phone's corrections folded in and its
   /// deletions dropped, in the order they were logged.

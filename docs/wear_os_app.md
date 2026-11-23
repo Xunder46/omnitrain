@@ -581,6 +581,13 @@ checks, run on real hardware:
    heart rate for the whole session and one for each exercise block, matching
    the `Workout done` screen's `Avg HR` on the watch; with heart rate refused
    the session shows none and nothing else changes
+26. (owner) on a real Wear watch paired with an Android phone: run a timed
+   effort and a round effort on the watch with heart rate allowed, pausing the
+   round's countdown for a few seconds in the middle; on the phone the saved
+   timed entry and the round show an average and a maximum heart rate, and the
+   round shows how long it was paused; the round's heart rate does not dip or
+   jump because of the paused seconds; with heart rate refused none is shown
+   and nothing else changes
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

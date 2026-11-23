@@ -48,8 +48,41 @@ deleted is not a block member`; the validator's acceptance by S-31008 `a
 session_end the engine builds passes its own validator` and `a hand-built pair
 above its maximum is refused`; the pair's bounds and the session's isolation
 by S-31009 `equal readings average to exactly their value` and `an earlier
-session's sets and a skewed reading never reach the next session's end`. Not
-sent yet: heart rate on each timed, round and hold entry and a round's paused
-time (plan 311), and steps (the Wear wrist has no step source).
+session's sets and a skewed reading never reach the next session's end`. `test/wear_heart_rate_per_effort_test.dart` (plan 311) proves what follows.
+
+Each timed, round and hold entry carries its own heart rate — the average and
+the maximum over that entry's own window, measured from the readings stored at
+the moment it is logged and never again; a set carries none; an entry with no
+reading in its window carries none (`S-31105 a timed effort carries its
+window's heart rate` `readings inside the window land on the entry`,
+`a window nothing was measured over adds nothing` and `a set has no window of
+its own and carries nothing`; `S-31106 a hold carries its window's heart rate
+too` `the pair sits beside the extra load the hold carried`).
+
+a round leaves its paused stretches out — the round's heart rate skips the
+stretches its countdown was paused (a pause lasts from the moment it began to
+the moment the countdown ran again; the instant it resumes counts again:
+`S-31101 the pause interval is half-open` `readings inside the pause are left
+out, the resume instant is kept`, the pauses read from the timer's rows by
+`S-31102 the pauses of one timer, read from its rows` `a pause ends where the
+timer next ran again`), and the round also carries `pausedMs`, the time the
+countdown spent paused — an open pause counted up to the round's end, never
+longer than the round, absent when zero or when no countdown ran
+(`S-31103 a round's pausedMs` `an accumulated pause alone is what it
+accumulated`, `an open pause is counted up to the window's end` and `the pause
+is never longer than the window`; `S-31107 a round leaves its paused stretches
+out` `a paused round keeps only the readings outside the pause and sends
+pausedMs`, `a never-paused round counts every reading and sends no pausedMs`
+and `a round paused for the whole window sends no pair and a full pause`;
+`S-31109 the corners the mutation pass found` `rows handed over out of order
+read the same pauses`, `a later resume wins over the paused row's own stop`,
+`an open pause is counted up to the stop, not to the window's end` and
+`a negative accumulated pause counts as none`). The engine hands the summary
+a timer's rows (`S-31104 the engine's timerRows` `one timer kind of the
+current session, in append order`), and the emission validator accepts every
+logged entry and refuses a `pausedMs` above its window (`S-31108 the emission
+validator accepts every logged entry` `the entries of S-31105..S-31107 pass
+the shared schemas` and `a round whose pausedMs exceeds its window is
+refused`). Steps are not sent (the Wear wrist has no step source).
 
 > **Doc freshness** - Derived from `lib/watch/` and `android/app/src/wear/` on 2026-11-22. If a claim here disagrees with the source, the source wins.

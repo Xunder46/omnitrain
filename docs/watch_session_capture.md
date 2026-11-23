@@ -255,8 +255,9 @@ the wrist asks, which the capture contract pins for both.
 
 Both wrists send what the import consumes. The watchOS package sends the
 `session_end`, the session's summary fields and the effort rating; the Dart twin
-in `lib/watch/session/` sends the `session_end` only, with none of the summary
-fields (plan 160).
+in `lib/watch/session/` sends the `session_end` with its heart rate and calories (plans 305, 310)
+and each timed, round and hold entry's heart rate and a round's `pausedMs` (plan 311); steps
+are not sent (no Wear step source).
 
 | Concern | Owner |
 |---|---|
