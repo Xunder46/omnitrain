@@ -7,6 +7,13 @@ import io.flutter.embedding.engine.FlutterEngine
 fun registerSensors(activity: Activity, engine: FlutterEngine): SensorBridge? {
     val messenger = engine.dartExecutor.binaryMessenger
     val sensors = WearSensors(activity, messenger)
-    WearWorkout(activity, messenger) { sensors.heartRateGranted() }
+    val energy = EnergyStream(messenger)
+    WearWorkout(
+        activity,
+        messenger,
+        holdsBodySensors = { sensors.heartRateGranted() },
+        holdsActivity = { sensors.activityRecognitionGranted() },
+        energy = energy,
+    )
     return sensors
 }

@@ -45,20 +45,24 @@ void main() {
   test('S-30009 the exercise client: permission, types, config, service', () {
     final begin = _body(_workout, 'private fun begin(');
     expect(begin, contains('if (name == null || !holdsBodySensors()) {'));
-    expect(begin, contains('ExerciseConfig.builder(exerciseTypeFor(name))'));
-    expect(begin, contains('.setDataTypes(setOf(DataType.HEART_RATE_BPM))'));
-    expect(begin, contains('.setIsAutoPauseAndResumeEnabled(false)'));
-    expect(begin, contains('.setIsGpsEnabled(false)'));
-    expect(begin, contains('client().startExerciseAsync(config)'));
-    expect(begin, contains('if (started) startService()'));
+    expect(begin, contains('val type = exerciseTypeFor(name)'));
     expect(
       begin.indexOf('holdsBodySensors()'),
-      lessThan(begin.indexOf('startExerciseAsync')),
+      lessThan(begin.indexOf('start(type')),
       reason: 'no exercise without the permission',
     );
+
+    // The config moved into `start` with plan 306 (calories join the data types).
+    final start = _body(_workout, 'private fun start(');
+    expect(start, contains('ExerciseConfig.builder(type)'));
+    expect(start, contains('setOf(DataType.HEART_RATE_BPM)'));
+    expect(start, contains('.setIsAutoPauseAndResumeEnabled(false)'));
+    expect(start, contains('.setIsGpsEnabled(false)'));
+    expect(start, contains('client().startExerciseAsync(config)'));
+    expect(start, contains('if (started) startService() else clearUpdates()'));
     expect(
-      begin.indexOf('future.get()'),
-      lessThan(begin.indexOf('startService()')),
+      start.indexOf('future.get()'),
+      lessThan(start.indexOf('startService()')),
       reason: 'the service only after the exercise started',
     );
 
@@ -163,9 +167,7 @@ void main() {
     final registrar = _read('${_dir}SensorsRegistrar.kt');
     expect(
       registrar,
-      contains(
-        'WearWorkout(activity, messenger) { sensors.heartRateGranted() }',
-      ),
+      contains('holdsBodySensors = { sensors.heartRateGranted() },'),
     );
     expect(
       registrar,

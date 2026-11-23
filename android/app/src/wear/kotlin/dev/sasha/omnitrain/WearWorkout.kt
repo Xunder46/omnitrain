@@ -10,11 +10,15 @@ package dev.sasha.omnitrain
 import android.app.Activity
 import android.content.Intent
 import androidx.health.services.client.ExerciseClient
+import androidx.health.services.client.ExerciseUpdateCallback
 import androidx.health.services.client.HealthServices
+import androidx.health.services.client.data.Availability
 import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.ExerciseConfig
+import androidx.health.services.client.data.ExerciseLapSummary
 import androidx.health.services.client.data.ExerciseTrackedStatus
 import androidx.health.services.client.data.ExerciseType
+import androidx.health.services.client.data.ExerciseUpdate
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -24,6 +28,10 @@ class WearWorkout(
     messenger: BinaryMessenger,
     /** Whether the body-sensor permission is held: an exercise needs it. */
     private val holdsBodySensors: () -> Boolean,
+    /** Whether the physical-activity permission is held: the calories need it (plan 306). */
+    private val holdsActivity: () -> Boolean,
+    /** Where the workout's cumulative calories go (plan 306). */
+    private val energy: EnergyStream,
 ) : MethodChannel.MethodCallHandler {
 
     companion object {
@@ -31,6 +39,9 @@ class WearWorkout(
     }
 
     private fun client(): ExerciseClient = HealthServices.getClient(activity).exerciseClient
+
+    /** The callback of the exercise this process started, cleared when it ends. */
+    private var updates: ExerciseUpdateCallback? = null
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
@@ -46,14 +57,51 @@ class WearWorkout(
             result.success(null)
             return
         }
+        val type = exerciseTypeFor(name)
+        val capabilities = try {
+            client().getCapabilitiesAsync()
+        } catch (error: Exception) {
+            start(type, calories = false, result)
+            return
+        }
+        capabilities.addListener(
+            {
+                // Calories ride along only when the permission is held and the type
+                // supports them; anything that fails here is a workout without them.
+                val calories = holdsActivity() && try {
+                    capabilities.get()
+                        .getExerciseTypeCapabilities(type)
+                        .supportedDataTypes
+                        .contains(DataType.CALORIES_TOTAL)
+                } catch (error: Exception) {
+                    false
+                }
+                start(type, calories, result)
+            },
+            activity.mainExecutor,
+        )
+    }
+
+    private fun start(type: ExerciseType, calories: Boolean, result: MethodChannel.Result) {
+        val callback = if (calories) energyCallback() else null
         val future = try {
-            val config = ExerciseConfig.builder(exerciseTypeFor(name))
-                .setDataTypes(setOf(DataType.HEART_RATE_BPM))
+            val dataTypes = if (calories) {
+                setOf(DataType.HEART_RATE_BPM, DataType.CALORIES_TOTAL)
+            } else {
+                setOf(DataType.HEART_RATE_BPM)
+            }
+            val config = ExerciseConfig.builder(type)
+                .setDataTypes(dataTypes)
                 .setIsAutoPauseAndResumeEnabled(false)
                 .setIsGpsEnabled(false)
                 .build()
+            if (callback != null) {
+                updates = callback
+                client().setUpdateCallback(activity.mainExecutor, callback)
+            }
             client().startExerciseAsync(config)
         } catch (error: Exception) {
+            clearUpdates()
             result.success(null)
             return
         }
@@ -65,23 +113,51 @@ class WearWorkout(
                 } catch (error: Exception) {
                     false
                 }
-                if (started) startService()
+                if (started) startService() else clearUpdates()
                 result.success(null)
             },
             activity.mainExecutor,
         )
     }
 
+    /** Each update's cumulative calories go to the Dart recorder, which owns what is done with them. */
+    private fun energyCallback() = object : ExerciseUpdateCallback {
+        override fun onExerciseUpdateReceived(update: ExerciseUpdate) {
+            val total = update.latestMetrics.getData(DataType.CALORIES_TOTAL)?.total ?: return
+            energy.emit(total)
+        }
+
+        override fun onLapSummaryReceived(lapSummary: ExerciseLapSummary) {}
+
+        override fun onRegistered() {}
+
+        override fun onRegistrationFailed(throwable: Throwable) {}
+
+        override fun onAvailabilityChanged(dataType: DataType<*, *>, availability: Availability) {}
+    }
+
+    private fun clearUpdates() {
+        val callback = updates ?: return
+        updates = null
+        try {
+            client().clearUpdateCallbackAsync(callback)
+        } catch (error: Exception) {
+            // The platform already dropped it.
+        }
+    }
+
     private fun end(result: MethodChannel.Result) {
         val future = try {
             client().endExerciseAsync()
         } catch (error: Exception) {
+            clearUpdates()
             stopService()
             result.success(null)
             return
         }
         future.addListener(
             {
+                clearUpdates()
                 stopService()
                 result.success(null)
             },

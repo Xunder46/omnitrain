@@ -57,9 +57,18 @@ class WearSensorSource implements WatchSensorSource, WatchEnergySource {
   Future<WatchSensorPermission> locationPermission() =>
       _permission('locationPermission');
 
+  /// A refusal is remembered for the life of the process (plan 306, D-30608):
+  /// the workout asks before it starts and the recorder asks again, and Android
+  /// shows the prompt a second time after a first "Don't allow".
+  bool _energyRefused = false;
+
   @override
-  Future<WatchSensorPermission> activeEnergyPermission() =>
-      _permission('activeEnergyPermission');
+  Future<WatchSensorPermission> activeEnergyPermission() async {
+    if (_energyRefused) return WatchSensorPermission.denied;
+    final answer = await _permission('activeEnergyPermission');
+    if (answer == WatchSensorPermission.denied) _energyRefused = true;
+    return answer;
+  }
 
   @override
   Stream<double> activeEnergy() => _numbers(_energyEvents);
@@ -123,12 +132,29 @@ class WearPlatformWorkoutStore implements WatchPlatformWorkoutStore {
           WatchSensorPermission.granted) {
         return;
       }
+      await _askEnergy();
       await _methods.invokeMethod<void>(
         'begin',
         WatchActivityTypes.wearFor(activityType),
       );
     } on Object {
       return;
+    }
+  }
+
+  /// The calorie permission, asked before the workout starts (plan 306,
+  /// D-30606): the native half fixes the exercise's data types at start and
+  /// reads the held permission itself, so the answer is not needed here. The
+  /// shell starts the workout before the recorder asks, which is why this
+  /// cannot wait for it. A source without energy asks nothing.
+  Future<void> _askEnergy() async {
+    // Tested as an Object: the two interfaces are unrelated.
+    final Object source = _source;
+    if (source is! WatchEnergySource) return;
+    try {
+      await source.activeEnergyPermission();
+    } on Object {
+      // A workout without calories is still a workout.
     }
   }
 

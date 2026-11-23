@@ -305,7 +305,7 @@ The wrist wires the session's sensors in the shell (plan 297, the Dart half of p
 
 The heart rate comes from Health Services' `MeasureClient` (`WearSensors` in `android/app/src/wear/kotlin/`, plan 298): a watch with no heart-rate sensor answers `unavailable`; otherwise the first question asks the system for the body-sensor permission (`BODY_SENSORS`, or `READ_HEART_RATE` from Wear OS 6) unless it is already held, and answers `granted` or `denied`; with it, each reading is sent to Dart and the platform subscription ends with the workout. The phone build carries none of this. The Kotlin side has no test harness, so its guards are source checks (`test/wear_heart_rate_native_test.dart`), and on the emulator the prompt, the grant, the denial and live synthetic readings were seen. The distance comes from the fused location provider (`WearSensors` and `DistanceTracker` in `android/app/src/wear/kotlin/`, plan 299): a watch with no GPS answers `unavailable`; otherwise the first question asks the system for the location permission (fine and coarse together) unless it is held; with it, the stream asks for high-accuracy fixes every 2 seconds with a 3 metre minimum step and sends the running total in metres, which the existing sensor line shows in kilometres or miles. A fix with no accuracy or worse than 50 metres is ignored, so is one more than 10 seconds old (a cached fix from earlier), and a step that would need more than 15 metres a second is a new starting point rather than distance (the emulator's first fix once made the probe read 222 km). The Dart side subscribes only for an exercise with the `distance` capability, so a lift never wakes the radio. On the emulator the prompt, the grant, and a simulated walk (about 5.5 metres every 2 seconds adding up to the metres walked) were seen; the guards are source checks (`test/wear_distance_native_test.dart`). The platform workout is a Health Services exercise (`WearWorkout` and `WorkoutService` in `android/app/src/wear/kotlin/`, plan 300): when the session's sensors start the wrist asks the body-sensor permission (the heart-rate question, once) and, only if it is held, starts an exercise of the type the workout calls for (running for distance work, strength training for lifts, stretching for holds, otherwise a generic workout; the shared type table's watchOS name is translated to the Health Connect name by `WatchActivityTypes.wearFor`) with heart rate as its data type, then a foreground service of type `health` whose ongoing notification says `Workout in progress` and opens the app, so the system keeps the process while the wrist is down. Ending the workout, discarding it or the phone ending it ends the exercise and then stops the service; at launch the wrist first asks whether an exercise of its own is still running and ends it, before the restored session registers a fresh one. A refused permission or a Health Services failure registers nothing and changes nothing the user sees. On the emulator the exercise started, the foreground service ran as a health service with its notification channel, the exercise reported in progress, and both ended with `end`; the real app's restored session started the service; the emulator ended the exercise itself when the app was force-stopped, so a stranded exercise was not seen (`test/wear_platform_workout_store_test.dart`, `test/wear_workout_native_test.dart`). Not built: calories, the Health Connect write and the watch-face ongoing-activity chip.
 
-The calorie count (plans 305 and 306) is on its own page: [The Wear OS App: calories](wear_os_app_calories.md). Until plan 306 the native half is not built, so a Wear build counts no calories.
+The calorie count (plans 305 and 306) is on its own page: [The Wear OS App: calories](wear_os_app_calories.md).
 
 ## The diagnostics log
 
@@ -560,6 +560,15 @@ checks, run on real hardware:
    range and bring it back: the file arrives when it is next in range, with the
    phone app closed too (it is read when the app next starts); with no phone
    app installed the screen says `Install the OmniTrain app on the phone.`
+22. (owner) on a real Wear watch: start a workout; after the heart-rate question
+   the watch asks to allow your physical activity; allow it, log a set and rest:
+   `N kcal burned` appears under the rest clock and grows while you move; the
+   number is the platform's total (it includes your resting burn, so it reads
+   higher than an Apple watch's active energy); with a paired phone the phone's
+   active-session bar follows it, and the saved workout carries the total;
+   decline the question and the workout, the heart rate and logging all work
+   with no calorie line, and the question is not asked a second time in that
+   run
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

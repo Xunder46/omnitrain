@@ -21,6 +21,7 @@ import androidx.health.services.client.data.Availability
 import androidx.health.services.client.data.DataPointContainer
 import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.DeltaDataType
+import androidx.health.services.client.data.ExerciseType
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -43,6 +44,7 @@ class WearSensors(
 
         private const val REQUEST_HEART_RATE = 29801
         private const val REQUEST_LOCATION = 29802
+        private const val REQUEST_ACTIVITY = 29803
 
         /** How often high-accuracy fixes are asked for, and the smallest step worth one (plan 299). */
         private const val LOCATION_INTERVAL_MS = 2000L
@@ -60,6 +62,7 @@ class WearSensors(
     /** Permission questions in flight: they all wait on one system prompt. */
     private val waiting = mutableListOf<MethodChannel.Result>()
     private val waitingLocation = mutableListOf<MethodChannel.Result>()
+    private val waitingActivity = mutableListOf<MethodChannel.Result>()
 
     private val tracker = DistanceTracker()
     private var locationSink: EventChannel.EventSink? = null
@@ -85,6 +88,7 @@ class WearSensors(
         when (call.method) {
             "heartRatePermission" -> heartRatePermission(result)
             "locationPermission" -> locationPermission(result)
+            "activeEnergyPermission" -> activeEnergyPermission(result)
             else -> result.notImplemented()
         }
     }
@@ -127,6 +131,7 @@ class WearSensors(
     ): Boolean = when (requestCode) {
         REQUEST_HEART_RATE -> answerHeartRate(grantResults)
         REQUEST_LOCATION -> answerLocation(permissions, grantResults)
+        REQUEST_ACTIVITY -> answerActivity(grantResults)
         else -> false
     }
 
@@ -175,6 +180,60 @@ class WearSensors(
         val answer = if (granted) "granted" else "denied"
         val pending = waitingLocation.toList()
         waitingLocation.clear()
+        for (result in pending) result.success(answer)
+        return true
+    }
+
+    // MARK: - Calories permission (plan 306)
+
+    /** Whether the physical-activity permission, which the workout's calories need, is held. */
+    fun activityRecognitionGranted(): Boolean =
+        activity.checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun activeEnergyPermission(result: MethodChannel.Result) {
+        val future = try {
+            HealthServices.getClient(activity).exerciseClient.getCapabilitiesAsync()
+        } catch (error: Exception) {
+            result.success("unavailable")
+            return
+        }
+        future.addListener(
+            {
+                val supported = try {
+                    future.get()
+                        .getExerciseTypeCapabilities(ExerciseType.WORKOUT)
+                        .supportedDataTypes
+                        .contains(DataType.CALORIES_TOTAL)
+                } catch (error: Exception) {
+                    false
+                }
+                when {
+                    !supported -> result.success("unavailable")
+                    activityRecognitionGranted() -> result.success("granted")
+                    else -> askActivity(result)
+                }
+            },
+            activity.mainExecutor,
+        )
+    }
+
+    private fun askActivity(result: MethodChannel.Result) {
+        waitingActivity.add(result)
+        if (waitingActivity.size == 1) {
+            activity.requestPermissions(
+                arrayOf(Manifest.permission.ACTIVITY_RECOGNITION),
+                REQUEST_ACTIVITY,
+            )
+        }
+    }
+
+    private fun answerActivity(grantResults: IntArray): Boolean {
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        val answer = if (granted) "granted" else "denied"
+        val pending = waitingActivity.toList()
+        waitingActivity.clear()
         for (result in pending) result.success(answer)
         return true
     }
