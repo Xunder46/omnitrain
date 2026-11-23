@@ -33,6 +33,8 @@ import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../constants/health_constants.dart';
 import '../constants/profile_measurements.dart';
+import '../../watch/sensors/watch_platform_workout.dart';
+import '../utils/watch_reference_sync.dart';
 import 'health_effort_mapper.dart';
 import 'health_modality_mapper.dart';
 import 'health_platform_service.dart';
@@ -50,6 +52,10 @@ class HealthSyncService {
   /// The measured energy each workout written or rewritten this run carries,
   /// so the same energy arriving again rewrites nothing (plan 307 D-30704).
   final Map<String, double> _energyWritten = {};
+
+  /// The sessions a wrist ran, as the phone's end told this run (plan 308
+  /// D-30804), so a later rewrite types the workout the way the first write did.
+  final Set<String> _wristRan = {};
 
   /// Sessions written during this process. The persisted ledger covers
   /// restarts; this set also prevents a double fire within one run
@@ -75,11 +81,19 @@ class HealthSyncService {
   /// Writes a completed session to the platform health store when the
   /// user has opted in. Safe to call again for the same session — the
   /// platform is touched at most once per session id.
-  Future<void> onSessionCompleted(TrainingSession session) async {
+  ///
+  /// [wristRan] is true for a session a wrist ran (plan 308): the workout is
+  /// then typed the way the wrist's own rule types it, so a Wear watch's workout
+  /// reads as the Apple watch's does.
+  Future<void> onSessionCompleted(
+    TrainingSession session, {
+    bool wristRan = false,
+  }) async {
     final endedAtMs = session.endedAtMs;
     if (endedAtMs == null) return;
     if (!_isWriteEnabled()) return;
     if (_writtenThisRun.contains(session.id)) return;
+    if (wristRan) _wristRan.add(session.id);
 
     try {
       if (await _ledgerContains(session.id)) return;
@@ -92,6 +106,7 @@ class HealthSyncService {
           end: DateTime.fromMillisecondsSinceEpoch(endedAtMs),
           title: session.title,
           energyKcal: energyKcal,
+          activityTypeName: await _wristTypeNameOf(session, wristRan: wristRan),
         ),
       );
       if (!written) {
@@ -208,6 +223,7 @@ class HealthSyncService {
       // Read before the delete: a repository failure here must not leave the
       // workout deleted with nothing written in its place (D-15404).
       final activityKind = await _activityKindOf(session);
+      final typeName = await _wristTypeNameOf(session);
 
       final deleted = await _platform.deleteWorkouts(start, windowEnd);
       if (!deleted) return;
@@ -227,6 +243,7 @@ class HealthSyncService {
             end: end,
             title: session.title,
             energyKcal: energyKcal,
+            activityTypeName: typeName,
           ),
         );
       } catch (e) {
@@ -236,6 +253,7 @@ class HealthSyncService {
         await _restorePreviousSpan(
           session,
           activityKind: activityKind,
+          activityTypeName: typeName,
           start: start,
           previousEndedAtMs: previousEndedAtMs,
         );
@@ -261,6 +279,7 @@ class HealthSyncService {
   Future<void> _restorePreviousSpan(
     TrainingSession session, {
     required HealthActivityKind activityKind,
+    String? activityTypeName,
     required DateTime start,
     required int previousEndedAtMs,
   }) async {
@@ -272,6 +291,7 @@ class HealthSyncService {
           start: start,
           end: end,
           title: session.title,
+          activityTypeName: activityTypeName,
         ),
       );
       if (!written) return;
@@ -283,6 +303,63 @@ class HealthSyncService {
       }
     } catch (e) {
       debugPrint('Health workout restore skipped: $e');
+    }
+  }
+
+  /// The Health Connect exercise name the wrist's own rule gives a session a
+  /// wrist ran, or null for a session it did not run (plan 308 D-30804).
+  ///
+  /// A wrist ran it when the caller says so or this run was told so earlier, or
+  /// when the phone holds a watch-origin inbox row for it (the later paths after
+  /// a restart). The inputs are the session's modality and its exercises in
+  /// session order, each as the slot the phone sends the wrist: its capabilities
+  /// and the Health kind the phone names for it. A session with no modality uses
+  /// only its first exercise, because the wrist fixes the type when the first
+  /// exercise opens the workout and never retypes it. Nothing throws.
+  Future<String?> _wristTypeNameOf(
+    TrainingSession session, {
+    bool wristRan = false,
+  }) async {
+    try {
+      var ran = wristRan || _wristRan.contains(session.id);
+      if (!ran) {
+        ran = (await _repository.getWatchInboxEntriesForSession(
+          session.id,
+        )).any((row) => row.origin == WatchInboxEntry.originWatch);
+      }
+      if (!ran) return null;
+
+      // Both repositories return a session's segments and a segment's efforts in
+      // the session's own order, which is the order the wrist's rule reads.
+      final segments =
+          (await _repository.getSegmentsBySession())[session.id] ?? const [];
+      final effortsBySegment = await _repository.getEffortsBySegment();
+      final exercises = {
+        for (final row in await _repository.getExercises()) row.id: row,
+      };
+      final slots = <Map<String, Object?>>[];
+      for (final segment in segments) {
+        // The repository's own order: top-level position, then block position
+        // (not the raw `orderIndex`, which a block can contradict).
+        for (final effort in effortsBySegment[segment.id] ?? const []) {
+          final exercise = exercises[effort.exerciseId];
+          if (exercise == null) continue;
+          slots.add({
+            'capabilities': exercise.capabilities,
+            'healthActivity': WatchReferenceSync.healthActivityOf(
+              disciplineId: exercise.disciplineId,
+              exerciseId: exercise.id,
+            ),
+          });
+        }
+      }
+      final used = session.modality == null ? slots.take(1).toList() : slots;
+      return WatchActivityTypes.forModalityAndExercises(
+        session.modality,
+        used,
+      )?.wear;
+    } catch (_) {
+      return null;
     }
   }
 

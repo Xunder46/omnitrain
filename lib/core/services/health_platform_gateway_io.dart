@@ -78,6 +78,45 @@ HealthWorkoutActivityType pluginActivityTypeFor(
   }
 }
 
+/// The Health Connect type each name of the Wear wrist's table writes as
+/// (plan 308 D-30803). The names are the wrist's (`WatchActivityTypes`, the
+/// `wear` column); a name Health Connect has no entry for in the plugin is
+/// written as the generic type, as the phone already does for flexibility.
+const Map<String, HealthWorkoutActivityType> healthConnectTypeByWearName = {
+  'exercise_type_running': HealthWorkoutActivityType.RUNNING,
+  'exercise_type_biking': HealthWorkoutActivityType.BIKING,
+  'exercise_type_swimming': HealthWorkoutActivityType.SWIMMING_POOL,
+  'exercise_type_rowing': HealthWorkoutActivityType.ROWING,
+  'exercise_type_walking': HealthWorkoutActivityType.WALKING,
+  'exercise_type_hiking': HealthWorkoutActivityType.HIKING,
+  'exercise_type_strength_training':
+      HealthWorkoutActivityType.STRENGTH_TRAINING,
+  'exercise_type_calisthenics': HealthWorkoutActivityType.CALISTHENICS,
+  'exercise_type_yoga': HealthWorkoutActivityType.YOGA,
+  'exercise_type_boxing': HealthWorkoutActivityType.BOXING,
+  'exercise_type_martial_arts': HealthWorkoutActivityType.MARTIAL_ARTS,
+  'exercise_type_cross_training':
+      HealthWorkoutActivityType.HIGH_INTENSITY_INTERVAL_TRAINING,
+  'exercise_type_tennis': HealthWorkoutActivityType.TENNIS,
+  'exercise_type_badminton': HealthWorkoutActivityType.BADMINTON,
+  'exercise_type_table_tennis': HealthWorkoutActivityType.TABLE_TENNIS,
+  'exercise_type_squash': HealthWorkoutActivityType.SQUASH,
+  'exercise_type_volleyball': HealthWorkoutActivityType.VOLLEYBALL,
+  'exercise_type_basketball': HealthWorkoutActivityType.BASKETBALL,
+  'exercise_type_baseball': HealthWorkoutActivityType.BASEBALL,
+  'exercise_type_cricket': HealthWorkoutActivityType.CRICKET,
+  'exercise_type_golf': HealthWorkoutActivityType.GOLF,
+  'exercise_type_rugby': HealthWorkoutActivityType.RUGBY,
+  'exercise_type_american_football':
+      HealthWorkoutActivityType.AMERICAN_FOOTBALL,
+  'exercise_type_rock_climbing': HealthWorkoutActivityType.ROCK_CLIMBING,
+  // No entry in the plugin: the generic type.
+  'exercise_type_flexibility': HealthWorkoutActivityType.OTHER,
+  'exercise_type_stretching': HealthWorkoutActivityType.OTHER,
+  'exercise_type_football': HealthWorkoutActivityType.OTHER,
+  'exercise_type_other_workout': HealthWorkoutActivityType.OTHER,
+};
+
 /// One active-energy sample as the pure bucketing sees it: when it started and
 /// its kcal, or null for a value that is not numeric.
 typedef ActiveEnergyPoint = ({DateTime dateFrom, num? kcal});
@@ -237,13 +276,21 @@ class HealthPluginPlatformService
     return _writeWorkoutOnce(workout, null);
   }
 
+  /// The wrist's own type on Android when the draft names one the table maps
+  /// (plan 308), else the coarse kind mapping.
+  HealthWorkoutActivityType _activityTypeOf(HealthWorkoutDraft workout) {
+    final named = workout.activityTypeName;
+    if (!_isIOS && named != null) {
+      final type = healthConnectTypeByWearName[named];
+      if (type != null) return type;
+    }
+    return pluginActivityTypeFor(workout.activityKind, isIOS: Platform.isIOS);
+  }
+
   Future<bool> _writeWorkoutOnce(HealthWorkoutDraft workout, int? kcal) async {
     try {
       return await _health.writeWorkoutData(
-        activityType: pluginActivityTypeFor(
-          workout.activityKind,
-          isIOS: Platform.isIOS,
-        ),
+        activityType: _activityTypeOf(workout),
         start: workout.start,
         end: workout.end,
         totalEnergyBurned: kcal,

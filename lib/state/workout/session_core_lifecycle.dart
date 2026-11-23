@@ -120,7 +120,12 @@ extension SessionCoreLifecycleMethods on SessionCore {
     final completedSession = _currentSession;
     final wristEndSkipsWrite = !writeToHealth && _wristSavesOwnWorkout;
     if (completedSession != null && !wristEndSkipsWrite && !wristSavesWorkout) {
-      await _healthSync?.onSessionCompleted(completedSession);
+      // Plan 308: a session the wrist ran, or the wrist's own end, is typed the
+      // way the wrist's rule types it.
+      await _healthSync?.onSessionCompleted(
+        completedSession,
+        wristRan: wristRuns || !writeToHealth,
+      );
     }
   }
 

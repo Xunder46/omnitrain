@@ -142,12 +142,21 @@ abstract final class WatchActivityTypes {
   /// The wrist fixes the type once the workout opens — HealthKit cannot retype
   /// an `HKWorkoutSession` — so an exercise added later never retypes it
   /// (S-8808).
-  static WatchActivityType? forSession(WatchSessionRecord session) {
-    final named = _forNamedHealthKinds(session.exercises);
+  static WatchActivityType? forSession(WatchSessionRecord session) =>
+      forModalityAndExercises(session.modality, session.exercises);
+
+  /// The rule of [forSession] over a modality and slot maps (`capabilities`,
+  /// `healthActivity`), so the phone can reproduce exactly what the wrist
+  /// registered for a session without a record (plan 308 D-30801): there is one
+  /// rule, and `forSession` is this with the wrist's own session.
+  static WatchActivityType? forModalityAndExercises(
+    String? modality,
+    List<Map<String, Object?>> exercises,
+  ) {
+    final named = _forNamedHealthKinds(exercises);
     if (named != null) return named;
-    final modality = session.modality;
     if (modality != null) return forModality(modality);
-    return _forExercises(session.exercises);
+    return _forExercises(exercises);
   }
 }
 

@@ -571,7 +571,8 @@ checks, run on real hardware:
    run
 23. (owner) on a real Wear watch paired with an Android phone that has
    Write workouts on: finish a workout on the watch; once the phone has it, Health
-   Connect shows ONE workout with the session's start, end and calories (no
+   Connect shows ONE workout with the session's start, end, calories and type
+   (a run as Running, a lift as Strength training, as the Apple watch would; no
    second copy, even after the watch syncs again); with the setting off nothing
    is written; deleting the session on the phone removes the workout
 

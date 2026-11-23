@@ -23,12 +23,19 @@ class HealthWorkoutDraft {
   /// (plan 307). Null when nothing was measured: an estimate is never written.
   final double? energyKcal;
 
+  /// The Health Connect exercise name the wrist's own rule gives this session
+  /// (`exercise_type_running`), set only for a session a Wear wrist ran (plan
+  /// 308). The Android gateway prefers it to the coarse [activityKind]; any
+  /// platform or name it does not map falls back to the kind.
+  final String? activityTypeName;
+
   const HealthWorkoutDraft({
     required this.activityKind,
     required this.start,
     required this.end,
     this.title,
     this.energyKcal,
+    this.activityTypeName,
   });
 }
 
