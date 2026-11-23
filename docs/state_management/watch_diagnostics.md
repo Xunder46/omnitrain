@@ -178,3 +178,5 @@ Verified by `WatchDiagnosticsSendTests` (`watch/watchos/Tests/WatchSessionEngine
 `test/diagnostics_merged_text_test.dart`, `test/settings_diagnostics_watch_log_test.dart`,
 `test/diagnostics_received_storage_test.dart` and `test/diagnostics_file_receive_source_test.dart`; the transfer
 itself needs a real watch and phone (QA step 40).
+
+**On a Wear watch (plan 304).** The Wear wrist has the same button and the same sentences, with a fifth, "Nothing to send." for an empty log. It is not a file transfer: the plugin's `sendDiagnostics` call puts the log text as an asset on one data item (`/omnitrain/diagnostics/watch-log`), and the Android phone's plugin writes it to the same `watch-diagnostics/watch-received.jsonl`, so everything above on the phone applies unchanged. See [wear_os_app.md](../wear_os_app.md) "The diagnostics log". Verified by `test/wear_diagnostics_send_test.dart`; the delivery itself needs a real watch and phone (wear_os_app.md owner check 21).

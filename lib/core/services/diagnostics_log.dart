@@ -141,6 +141,16 @@ class DiagnosticsLog {
     }
   }
 
+  /// The stored lines exactly as written, for a send to the phone (plan 304).
+  /// Empty when nothing is recorded or the read fails.
+  String rawText() {
+    try {
+      return _storage.read();
+    } catch (_) {
+      return '';
+    }
+  }
+
   /// The log as text to paste: the [header] lines, then one line per event,
   /// oldest first: `<UTC time> <kind>[ s:<session>][ <detail>]`.
   String shareText({List<String> header = const <String>[]}) {

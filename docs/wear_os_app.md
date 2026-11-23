@@ -307,7 +307,7 @@ The heart rate comes from Health Services' `MeasureClient` (`WearSensors` in `an
 
 ## The diagnostics log
 
-The wrist keeps a diagnostics log, the same one the phone keeps (`DiagnosticsLog` in `lib/core/services/diagnostics_log.dart`: one line per event, the newest 3000 kept, the same cut and coalescing, so the two logs read together): a `launch` line naming the last thing the previous run recorded, a `scene` line for each app lifecycle change (`active`, `inactive`, `background`), a `reachability` line each time the phone's reachability changes (never one per tick), a `frame_sent` line for each frame the wrist sends (`live` or `queued`), `frame_not_sent` when the radio refused it (with the error's type), `frame_received` for each arrival and `frame_handler_failed` when its handler threw. A line names the frame's type, the session it names, an outcome word and an error's type, never a payload value. It records in every build. In debug and profile builds (and in release while the phone's `kHideDiagnosticsInRelease` is false) the Start screen shows a `Diagnostics` button that opens a screen with the plain sentences (`Started 09:12`, `Before that: last seen on screen at 09:10` or `First run recorded.`) and the newest 40 lines, newest first. The rule is the Apple wrist's (plans 142 and 177) and the plan is [plan 293](plans/2026-11-22-293-wear-diagnostics-plan/2026-11-22-293-wear-diagnostics-plan.md). Not built: sending the log to the phone (the Apple wrist hands the phone a file; the Wear platform plugin has no file transfer), and the workout, sensor and recovery lines (the Wear wrist has no platform workout yet).
+The wrist keeps a diagnostics log, the same one the phone keeps (`DiagnosticsLog` in `lib/core/services/diagnostics_log.dart`: one line per event, the newest 3000 kept, the same cut and coalescing, so the two logs read together): a `launch` line naming the last thing the previous run recorded, a `scene` line for each app lifecycle change (`active`, `inactive`, `background`), a `reachability` line each time the phone's reachability changes (never one per tick), a `frame_sent` line for each frame the wrist sends (`live` or `queued`), `frame_not_sent` when the radio refused it (with the error's type), `frame_received` for each arrival and `frame_handler_failed` when its handler threw. A line names the frame's type, the session it names, an outcome word and an error's type, never a payload value. It records in every build. In debug and profile builds (and in release while the phone's `kHideDiagnosticsInRelease` is false) the Start screen shows a `Diagnostics` button that opens a screen with the plain sentences (`Started 09:12`, `Before that: last seen on screen at 09:10` or `First run recorded.`) and the newest 40 lines, newest first. The rule is the Apple wrist's (plans 142 and 177) and the plan is [plan 293](plans/2026-11-22-293-wear-diagnostics-plan/2026-11-22-293-wear-diagnostics-plan.md). In those builds the screen ends with a `Send to phone` button ([plan 304](plans/2026-11-22-304-wear-diagnostics-send-plan/2026-11-22-304-wear-diagnostics-send-plan.md)): a tap hands the phone the whole log and the screen then says `Sent. The phone has it when it next wakes.`, `Install the OmniTrain app on the phone.` (no phone declares the app), `Phone link not ready.` (no Play services), `Could not send.` (the platform refused it, or did not answer in 10 s) or `Nothing to send.` (the log is empty); the button is off while a send runs. The carrier is not a sync frame: the plugin's `sendDiagnostics` call puts one data item at `/omnitrain/diagnostics/watch-log` with the log text as an asset (a newer send replaces an older one the phone never took), which the data layer delivers when the phone is next in range, even if the phone app is closed. The Android phone takes it when its plugin is running or next attaches: it writes the asset beside its own log as `watch-diagnostics/watch-received.jsonl` (a temporary name, then a rename, so a failed read leaves the previous file) and deletes the item only after a good write. That is the file the phone's Settings Diagnostics row already reads, so it then shows `N events · watch log M events` and Copy merges both timelines. The log holds names, ids and outcome words only, so the file moves no workout content, and it is sent only when the button is tapped; the send leaves one `diagnostics_send` line (the outcome word) in the wrist log. Not built: the workout, sensor and recovery lines (the platform workout of plan 300 writes none yet), a receipt back to the wrist, and a refresh of an open Settings row when the file arrives (the row reads at build, as on Apple).
 
 ## What the wrist shows
 
@@ -429,6 +429,11 @@ without heart rate and distance exactly as it would on a device with no sensor.
 - `test/wear_diagnostics_transport_test.dart` — what the transport records: a
   live, a queued and a refused send, the name rule, an arrival before its
   handler, a failing handler, no payload value, and a transport with no log.
+- `test/wear_diagnostics_send_test.dart` — the send to the phone (plan 304): the
+  link call and its codes, the log's raw text, the transport's outcome words
+  and its one log line, the screen's button (once, off while sending, fits 192
+  and 227 dp), the shell's wiring, and source guards on the plugin's send and
+  receive (no Kotlin harness exists).
 - `test/wear_diagnostics_shell_test.dart` — the shell: the lifecycle lines, the
   reachability lines once per change, the Start screen's button, the screen, its
   fit at 192 and 227 dp and the entry point's wiring.
@@ -544,6 +549,15 @@ checks, run on real hardware:
 18. (owner) on a real small round watch: the logging screen's exercise name and
    heart-rate line are whole and centred at the top, the `n/N` counter shows with
    a long name, and `Log` and `Menu` are where they were
+21. (owner) on a real Wear watch paired with an Android phone, in a debug or
+   profile build: open `Diagnostics`, tap `Send to phone` and read `Sent. The
+   phone has it when it next wakes.`; on the phone open Settings, the watch
+   row's Diagnostics line reads `N events · watch log M events` (open the
+   screen again if it was already open), and Copy puts both logs on the
+   clipboard, lines tagged `[phone]` and `[watch]`; send with the phone out of
+   range and bring it back: the file arrives when it is next in range, with the
+   phone app closed too (it is read when the app next starts); with no phone
+   app installed the screen says `Install the OmniTrain app on the phone.`
 
 > **Doc freshness** — Derived from `lib/watch/`, `android/app/` and
 > `packages/omnitrain_watch_link/` on 2026-11-21. If a claim here disagrees with

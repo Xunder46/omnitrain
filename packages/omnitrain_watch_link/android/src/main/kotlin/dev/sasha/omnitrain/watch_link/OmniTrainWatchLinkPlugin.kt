@@ -28,6 +28,7 @@ import android.os.Handler
 import android.os.Looper
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.wearable.Asset
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.CapabilityInfo
 import com.google.android.gms.wearable.DataClient
@@ -39,6 +40,7 @@ import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.NodeClient
+import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.PutDataRequest
 import com.google.android.gms.wearable.Wearable
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -48,7 +50,9 @@ import io.flutter.plugin.common.MethodChannel
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
+import java.io.File
 import java.util.ArrayDeque
+import java.util.concurrent.Executors
 
 class OmniTrainWatchLinkPlugin :
     FlutterPlugin,
@@ -64,6 +68,23 @@ class OmniTrainWatchLinkPlugin :
 
         /** Queued frames: one data item per frame, keyed by its `messageId`. */
         private const val QUEUE_PREFIX = "/omnitrain/queue/"
+
+        /**
+         * The wrist's diagnostics log on its way to the phone (plan 304): one
+         * data item at one path, the log text as an asset under [KEY_LOG], so a
+         * newer send replaces an older one the phone never took.
+         */
+        private const val DIAGNOSTICS_PATH = "/omnitrain/diagnostics/watch-log"
+        private const val KEY_LOG = "log"
+        private const val KEY_STAMP_MS = "sentAtMs"
+
+        /**
+         * Where the phone keeps the received log: the directory and file the
+         * Dart side opens (`getApplicationSupportDirectory()` is `filesDir` on
+         * Android), so the existing merge reads it with no change.
+         */
+        private const val RECEIVED_DIRECTORY = "watch-diagnostics"
+        private const val RECEIVED_FILE = "watch-received.jsonl"
 
         /**
          * The capabilities the two apps declare in their own `wear.xml`, so a
@@ -100,6 +121,9 @@ class OmniTrainWatchLinkPlugin :
     private var events: EventChannel? = null
 
     private val main = Handler(Looper.getMainLooper())
+
+    /** Reads a received log off the main thread (a file descriptor read blocks). */
+    private val io = Executors.newSingleThreadExecutor()
 
     private var sink: EventChannel.EventSink? = null
     private val pending = ArrayDeque<Map<String, Any?>>()
@@ -154,6 +178,7 @@ class OmniTrainWatchLinkPlugin :
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         detachListeners()
+        io.shutdown()
         methods?.setMethodCallHandler(null)
         events?.setStreamHandler(null)
         methods = null
@@ -203,6 +228,7 @@ class OmniTrainWatchLinkPlugin :
             "transferUserInfo" -> transferUserInfo(call.arguments, result)
             "outstandingTransfers" -> outstandingTransfers(result)
             "cancelTransfers" -> cancelTransfers(call.arguments, result)
+            "sendDiagnostics" -> sendDiagnostics(call.arguments, result)
             else -> result.notImplemented()
         }
     }
@@ -360,6 +386,35 @@ class OmniTrainWatchLinkPlugin :
     }
 
     /**
+     * Hands the phone the wrist's diagnostics log (plan 304): one data item at
+     * [DIAGNOSTICS_PATH], the text as an asset. The data layer carries it when
+     * the two devices next meet, so a phone that is away takes it later.
+     * Answers `not_supported` on a phone or without Play services,
+     * `phone_app_missing` when no phone declares the app, `send_failed` when the
+     * put fails.
+     */
+    private fun sendDiagnostics(arguments: Any?, result: MethodChannel.Result) {
+        if (!supported || !isWatch) return result.error(failure("not_supported"))
+
+        val text = (arguments as? Map<*, *>)?.get("text") as? String
+            ?: return result.error(failure("send_failed", "the call carries no text"))
+        if (peerNodeId == null) return result.error(failure("phone_app_missing"))
+
+        val client = dataClient ?: return result.error(failure("not_supported"))
+        val request = PutDataMapRequest.create(DIAGNOSTICS_PATH)
+        request.dataMap.putAsset(KEY_LOG, Asset.createFromBytes(text.toByteArray(Charsets.UTF_8)))
+        request.dataMap.putString(KEY_ROLE, ownRole())
+        request.dataMap.putLong(KEY_STAMP_MS, System.currentTimeMillis())
+        client.putDataItem(request.asPutDataRequest().setUrgent())
+            .addOnSuccessListener { main.post { result.success(null) } }
+            .addOnFailureListener { error ->
+                main.post {
+                    result.error(failure("send_failed", error.message ?: error.toString()))
+                }
+            }
+    }
+
+    /**
      * The frames this device queued and the peer has not taken: a data item is
      * gone once either side deletes it, so what is still there is still owed.
      */
@@ -491,6 +546,7 @@ class OmniTrainWatchLinkPlugin :
      */
     private fun takeQueuedItem(item: DataItem) {
         val path = item.uri.path ?: return
+        if (path == DIAGNOSTICS_PATH) return takeDiagnostics(item)
         if (!path.startsWith(QUEUE_PREFIX)) return
         val itemBytes = item.data ?: return
         val map = runCatching { DataMap.fromByteArray(itemBytes) }.getOrNull() ?: return
@@ -500,6 +556,40 @@ class OmniTrainWatchLinkPlugin :
         val uri = item.uri
         emit(mapOf("kind" to "userInfo", "frame" to frame))
         dataClient?.deleteDataItems(uri)
+    }
+
+    /**
+     * The wrist's diagnostics log, left for this phone (plan 304): read from its
+     * asset on a background thread, written beside the phone's own log under a
+     * temporary name and renamed over the previous received file, so a failure
+     * at any step leaves the previous file. The data item is deleted only after
+     * a good write, so a failed read is offered again at the next attach.
+     * Nothing is emitted to Dart: the Settings row reads the file when it builds.
+     */
+    private fun takeDiagnostics(item: DataItem) {
+        val itemBytes = item.data ?: return
+        val map = runCatching { DataMap.fromByteArray(itemBytes) }.getOrNull() ?: return
+        if (map.getString(KEY_ROLE) == ownRole()) return
+        val asset = map.getAsset(KEY_LOG) ?: return
+        val uri = item.uri
+        val client = dataClient ?: return
+        val directory = context?.filesDir?.let { File(it, RECEIVED_DIRECTORY) } ?: return
+
+        client.getFdForAsset(asset).addOnSuccessListener(io) { response ->
+            val written = try {
+                response.inputStream.use { input ->
+                    directory.mkdirs()
+                    val part = File(directory, "$RECEIVED_FILE.part")
+                    part.outputStream().use { output -> input.copyTo(output) }
+                    part.renameTo(File(directory, RECEIVED_FILE))
+                }
+            } catch (_: Exception) {
+                false
+            } finally {
+                response.release()
+            }
+            if (written) main.post { dataClient?.deleteDataItems(uri) }
+        }
     }
 
     // MARK: - Events

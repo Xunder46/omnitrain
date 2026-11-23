@@ -32,6 +32,7 @@ import 'package:omnitrain_watch_link/omnitrain_watch_link.dart';
 import '../../core/platform/watch_frame_wire.dart';
 import '../../core/platform/watch_request_frames.dart';
 import '../../core/services/diagnostics_log.dart';
+import '../diagnostics/watch_diagnostics_send_outcome.dart';
 import '../start/watch_sync_orchestrator.dart';
 
 /// What the wrist app hands arriving frames to.
@@ -43,10 +44,12 @@ class WearWatchTransport implements WatchSyncTransport {
     void Function(Object error, StackTrace stack)? onFailure,
     Duration sendTimeout = const Duration(seconds: 5),
     DiagnosticsLog? diagnostics,
+    Duration diagnosticsSendTimeout = const Duration(seconds: 10),
   }) : _link = link ?? WatchLink(),
        _onFailure = onFailure,
        _sendTimeout = sendTimeout,
-       _diagnostics = diagnostics;
+       _diagnostics = diagnostics,
+       _diagnosticsSendTimeout = diagnosticsSendTimeout;
 
   final WatchLink _link;
 
@@ -191,6 +194,33 @@ class WearWatchTransport implements WatchSyncTransport {
 
   @override
   Future<void> requestSnapshot() => send(WatchTransportRequest.snapshotFrame());
+
+  /// How long a diagnostics send may wait for the platform before it is
+  /// reported as failed (plan 304).
+  final Duration _diagnosticsSendTimeout;
+
+  /// Hands the phone the wrist's diagnostics [text] (plan 304). Never a sync
+  /// frame: the platform carries it on its own path, so it cannot change what
+  /// syncs. An empty [text] sends nothing. The outcome is one line in the log
+  /// (the outcome word only, never the text).
+  Future<WatchDiagnosticsSendOutcome> sendDiagnostics(String text) async {
+    if (text.isEmpty) return WatchDiagnosticsSendOutcome.nothingToSend;
+    WatchDiagnosticsSendOutcome outcome;
+    try {
+      await _link.sendDiagnostics(text).timeout(_diagnosticsSendTimeout);
+      outcome = WatchDiagnosticsSendOutcome.sent;
+    } on WatchLinkException catch (error) {
+      outcome = switch (error.code) {
+        'not_supported' => WatchDiagnosticsSendOutcome.notReady,
+        'phone_app_missing' => WatchDiagnosticsSendOutcome.phoneAppMissing,
+        _ => WatchDiagnosticsSendOutcome.failed,
+      };
+    } on Object {
+      outcome = WatchDiagnosticsSendOutcome.failed;
+    }
+    _diagnostics?.note('diagnostics_send', detail: outcome.name);
+    return outcome;
+  }
 
   /// Hands the phone one frame the wrist owes it.
   ///

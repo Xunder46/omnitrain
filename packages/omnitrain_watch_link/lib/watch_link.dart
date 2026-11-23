@@ -163,6 +163,23 @@ class WatchLink {
     }
   }
 
+  /// Hands the phone the wrist's diagnostics [text] (plan 304). Completes when
+  /// the platform has queued it for delivery, which the data layer does when the
+  /// phone is next in range. Throws [WatchLinkException] with `not_supported`
+  /// (no platform support, or an iOS build, whose plugin has no such call),
+  /// `phone_app_missing` or `send_failed`.
+  Future<void> sendDiagnostics(String text) async {
+    try {
+      await _methods.invokeMethod<void>('sendDiagnostics', <String, Object?>{
+        'text': text,
+      });
+    } on MissingPluginException {
+      throw const WatchLinkException('not_supported');
+    } on PlatformException catch (error) {
+      throw WatchLinkException(error.code, error.message);
+    }
+  }
+
   /// Everything the native link reports, in arrival order. One broadcast
   /// stream: the native side starts reporting (and flushes what it buffered)
   /// when the first listener attaches.

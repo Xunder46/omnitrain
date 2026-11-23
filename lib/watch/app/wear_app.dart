@@ -379,7 +379,10 @@ class WearAppState extends State<WearApp> with WidgetsBindingObserver {
     if (log == null) return;
     _navigator.currentState?.push(
       MaterialPageRoute<void>(
-        builder: (context) => WatchDiagnosticsScreen(log: log),
+        builder: (context) => WatchDiagnosticsScreen(
+          log: log,
+          onSend: () => widget.transport.sendDiagnostics(log.rawText()),
+        ),
       ),
     );
   }
